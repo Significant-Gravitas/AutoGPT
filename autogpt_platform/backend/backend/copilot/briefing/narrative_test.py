@@ -34,6 +34,13 @@ def cost_log():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def platform_api():
+    """Run on a route with a platform API; the dev default is ``disabled``."""
+    with patch.object(narrative_module.ChatConfig, "has_platform_api", True):
+        yield
+
+
 def make_content(run_items=None, **kwargs) -> BriefingContent:
     defaults = {
         "generated_at": NOW,
@@ -94,6 +101,18 @@ async def test_returns_narrative_and_respects_call_limits():
     assert kwargs["max_output_tokens"] == _MAX_OUTPUT_TOKENS
     assert kwargs["timeout_seconds"] == _TIMEOUT_SECONDS
     assert kwargs["response_model"] is NarrativeResponse
+
+
+@pytest.mark.asyncio
+async def test_no_platform_api_falls_back_without_a_call_or_a_warning(caplog):
+    with (
+        patch.object(narrative_module.ChatConfig, "has_platform_api", False),
+        patch_llm(return_value=completion("Unreachable.")) as mock,
+        caplog.at_level("WARNING", logger=narrative_module.logger.name),
+    ):
+        assert await compose_narrative(USER, make_content()) is None
+    mock.assert_not_awaited()
+    assert not caplog.records
 
 
 @pytest.mark.asyncio

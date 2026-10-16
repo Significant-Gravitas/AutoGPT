@@ -328,7 +328,7 @@ async def make_flex_graphiti_client(group_id: str):
     extra_body kwarg silently or — in the local case — would dispatch
     via the OpenAI Responses API endpoint (`responses.parse`) which
     the backend doesn't speak, returning a 404 mid-rebuild. When the
-    active ``TransportProfile.supports_flex_tier`` is ``False`` we
+    platform route's ``supports_flex_tier`` is ``False`` we
     swap in the regular cached ``OpenAIClient`` so the rebuild still
     runs — at full sync price, but it runs.
     """
@@ -336,13 +336,13 @@ async def make_flex_graphiti_client(group_id: str):
 
     from .flex_client import FlexOpenAIClient
 
-    if not chat_cfg.transport.supports_flex_tier:
+    if not (chat_cfg.route_row and chat_cfg.route_row.supports_flex_tier):
         from graphiti_core.llm_client import OpenAIClient
 
         logger.info(
             "Graphiti community rebuild: flex tier not available on "
             "transport=%s; falling back to sync OpenAIClient.",
-            chat_cfg.transport.name,
+            chat_cfg.platform_route,
         )
         llm_client = OpenAIClient(config=_build_llm_config())
     else:

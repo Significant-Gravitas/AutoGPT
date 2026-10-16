@@ -1,11 +1,11 @@
 """Unit tests for ``transport_routing.routing_kwargs_for_chat_transport``.
 
 Each test wires up a fresh ``ChatConfig`` and ``Settings`` and asserts
-that the resolved ``ProviderRoutingKwargs`` matches the active
-``TransportProfile`` row plus the right runtime credential. These
-pin the integration boundary between dev's transport machinery
-(#12993) and our centralized ``util/llm/providers.py::call_provider``,
-so regressions in either side surface immediately.
+that the resolved ``ProviderRoutingKwargs`` matches the platform route's row
+plus the right runtime credential. These pin the integration boundary
+between the route table and our centralized
+``util/llm/providers.py::call_provider``, so regressions in either side
+surface immediately.
 """
 
 from unittest.mock import MagicMock
@@ -18,16 +18,20 @@ from backend.copilot.transport_routing import (
     routing_kwargs_for_chat_transport,
 )
 
-# Same env-cleanup pattern as ``config_test.py`` — leftover ``CHAT_*`` /
-# ``*_API_KEY`` env vars in the developer or CI environment would flip
-# transport resolution and break these tests deterministically.
+# Leftover ``CHAT_*`` / ``*_API_KEY`` env vars in the developer or CI
+# environment would change the route and break these tests deterministically.
 _ENV_VARS_TO_CLEAR = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_LOCAL",
-    "CHAT_API_KEY",
-    "CHAT_BASE_URL",
-    "CHAT_DIRECT_ANTHROPIC_API_KEY",
+    "CHAT_PLATFORM_ROUTE",
+    "CHAT_OPENROUTER_API_KEY",
+    "CHAT_OPENROUTER_BASE_URL",
+    "CHAT_ANTHROPIC_API_KEY",
+    "CHAT_ANTHROPIC_BASE_URL",
+    "CHAT_LOCAL_BASE_URL",
+    "CHAT_LOCAL_API_KEY",
+    "CHAT_LOCAL_ADAPTER",
+    "CHAT_LOCAL_CONTEXT_TOKENS",
+    "CHAT_STANDARD_MODEL",
+    "CHAT_ADVANCED_MODEL",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -66,21 +70,33 @@ def _patch_settings(monkeypatch: pytest.MonkeyPatch, **secrets) -> None:
     fake_settings = MagicMock()
     fake_settings.secrets = fake_secrets
     monkeypatch.setattr(settings_mod, "Settings", lambda: fake_settings)
+    # ``ChatConfig.batch_anthropic_api_key`` reads the module-level settings.
+    from backend.copilot import config as config_mod
+
+    monkeypatch.setattr(config_mod, "settings", fake_settings)
 
 
-class TestLocalTransport:
-    """Local transport routes through Ollama. ``api_key`` and
-    ``base_url`` come from ``chat_cfg`` directly — no fallback to
-    Settings since local has ``api_key_fallback_envs=()``."""
+def _local(**overrides) -> ChatConfig:
+    return ChatConfig(
+        **{
+            "platform_route": "local",
+            "local_base_url": "http://localhost:11434/v1",
+            "local_adapter": "openai_chat",
+            "local_context_tokens": 131_072,
+            "standard_model": "llama3.1:8b",
+            "advanced_model": "llama3.1:8b",
+            **overrides,
+        }
+    )
+
+
+class TestLocalRoute:
+    """The local route dispatches to the operator's server with its own key
+    and URL; nothing falls back to an integration key."""
 
     def test_local_routing_kwargs(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = ChatConfig(
-            use_local=True,
-            api_key="ollama-placeholder",
-            base_url="http://localhost:11434/v1",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch)
+        _patch_chat_cfg(monkeypatch, _local(local_api_key="ollama-placeholder"))
+        _patch_settings(monkeypatch, open_router_api_key="or-secrets-key")
 
         result = routing_kwargs_for_chat_transport()
 
@@ -89,212 +105,152 @@ class TestLocalTransport:
             api_key="ollama-placeholder",
             base_url="http://localhost:11434/v1",
             supports_flex=False,
-            cost_log_provider="ollama",
+            cost_log_provider="local",
         )
 
-    def test_local_with_empty_api_key_is_still_valid(
+    def test_a_server_without_a_key_gets_a_placeholder(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Ollama doesn't validate the bearer token, so an empty
-        ``api_key`` is acceptable. The helper returns ``""`` and the
-        ``call_provider`` ollama branch ignores it."""
-        # ChatConfig validates that ``CHAT_API_KEY`` is non-empty under
-        # local, so the operator must set *something* — we mimic the
-        # "minimal placeholder" case the docs recommend.
-        cfg = ChatConfig(
-            use_local=True,
-            api_key="x",
-            base_url="http://h:11434/v1",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch)
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "ollama"
-        assert result.base_url == "http://h:11434/v1"
-        assert result.supports_flex is False
-
-
-class TestOpenRouterTransport:
-    """OpenRouter is the canonical cloud path. Reads
-    ``settings.secrets.open_router_api_key`` when ``chat_cfg.api_key``
-    is unset; ``base_url`` is left ``None`` so ``call_provider``'s
-    OpenRouter branch uses its baked-in ``OPENROUTER_BASE_URL``."""
-
-    def test_openrouter_with_chat_api_key(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key-from-chat-config",
-            base_url="https://openrouter.ai/api/v1",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
-
-        result = routing_kwargs_for_chat_transport()
-        # chat_cfg.api_key wins over secrets.
-        assert result.provider == "open_router"
-        assert result.api_key == "or-key-from-chat-config"
-        assert result.base_url is None
-        assert result.supports_flex is True
-        assert result.cost_log_provider == "open_router"
-
-    def test_openrouter_falls_back_to_secrets(self, monkeypatch: pytest.MonkeyPatch):
-        # OpenRouter requires both api_key and a valid base_url for the
-        # ``openrouter_active`` gate. Use the canonical OR base url so the
-        # transport actually resolves to ``openrouter`` and not
-        # ``direct_anthropic``.
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
-
-        result = routing_kwargs_for_chat_transport()
-        # ``cfg.api_key`` set to "or-key" wins; demonstrating the
-        # fallback path requires a config that resolves to openrouter
-        # without setting chat_cfg.api_key — which the validator forbids
-        # under the openrouter_active gate. The fallback exists as
-        # belt-and-suspenders for runtime env mutations.
-        assert result.api_key == "or-key"
-
-
-class TestSubscriptionTransport:
-    """Subscription users authenticate the chat path via Claude Code
-    OAuth, but that token can't call the Messages API directly (see
-    Anthropic Feb-2026 ToS). Dream pass needs a separate
-    ``ANTHROPIC_API_KEY`` — the helper surfaces ``""`` when missing
-    so callers can produce a friendly error."""
-
-    def test_subscription_with_anthropic_key_from_settings(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        cfg = ChatConfig(
-            use_claude_code_subscription=True,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch, anthropic_api_key="ant-key-12345")
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == "ant-key-12345"
-        assert result.base_url is None
-        assert result.supports_flex is False
-        assert result.cost_log_provider == "anthropic"
-
-    def test_subscription_without_anthropic_key_returns_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        """Friendly-error path — callers (e.g. dream/llm.py) check for
-        empty ``api_key`` and raise with an env-var hint instead of
-        letting ``call_provider`` 401."""
-        cfg = ChatConfig(
-            use_claude_code_subscription=True,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch)  # anthropic_api_key="" by default
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == ""
-        assert result.cost_log_provider == "anthropic"
-
-    def test_subscription_prefers_direct_anthropic_api_key_field(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        """``chat.direct_anthropic_api_key`` (if the operator set it)
-        wins over the platform-wide ``settings.secrets.anthropic_api_key``."""
-        cfg = ChatConfig(
-            use_claude_code_subscription=True,
-            direct_anthropic_api_key="ant-key-direct-cfg",
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch, anthropic_api_key="ant-key-from-secrets")
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.api_key == "ant-key-direct-cfg"
-
-
-class TestDirectAnthropicTransport:
-    """direct_anthropic is the explicit "skip OpenRouter, talk to
-    Anthropic" cloud transport. Same provider as subscription but
-    different transport identity (so cost-log labels match)."""
-
-    def test_direct_anthropic_routing_kwargs(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            direct_anthropic_api_key="ant-key-direct",
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch)
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == "ant-key-direct"
-        assert result.base_url is None
-        assert result.supports_flex is False
-        assert result.cost_log_provider == "anthropic"
-
-
-class TestStaticIdentityPropagation:
-    """Sanity tests that the static ``TransportProfile`` fields
-    (``dispatch_provider``, ``supports_flex_tier``,
-    ``cost_log_provider``) flow into the returned dataclass without
-    transformation."""
-
-    @pytest.mark.parametrize(
-        "transport_kwargs, expected_provider, expected_cost, expected_flex",
-        [
-            (
-                dict(
-                    use_local=True,
-                    api_key="ollama",
-                    base_url="http://h:11434/v1",
-                ),
-                "ollama",
-                "ollama",
-                False,
-            ),
-            (
-                dict(
-                    use_openrouter=True,
-                    api_key="or-key",
-                    base_url="https://openrouter.ai/api/v1",
-                ),
-                "open_router",
-                "open_router",
-                True,
-            ),
-        ],
-    )
-    def test_profile_fields_propagate_into_routing_kwargs(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        transport_kwargs: dict,
-        expected_provider: str,
-        expected_cost: str,
-        expected_flex: bool,
-    ):
-        cfg = ChatConfig(**transport_kwargs)
-        _patch_chat_cfg(monkeypatch, cfg)
+        """Ollama doesn't validate the bearer token, and CHAT_LOCAL_API_KEY is
+        optional: an unset key is sent as a placeholder, never as an
+        integration key."""
+        _patch_chat_cfg(monkeypatch, _local())
         _patch_settings(monkeypatch, open_router_api_key="or-secrets-key")
 
         result = routing_kwargs_for_chat_transport()
-        assert result.provider == expected_provider
-        assert result.cost_log_provider == expected_cost
-        assert result.supports_flex is expected_flex
+        assert result.provider == "ollama"
+        assert result.api_key == "local"
+        assert result.base_url == "http://localhost:11434/v1"
+        assert result.supports_flex is False
+
+    def test_anthropic_passthrough_gets_the_openai_compatible_v1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """With the passthrough adapter CHAT_LOCAL_BASE_URL is the server's
+        root; side calls use its OpenAI-compatible /v1."""
+        _patch_chat_cfg(
+            monkeypatch,
+            _local(
+                local_base_url="http://localhost:11434",
+                local_adapter="anthropic_passthrough",
+            ),
+        )
+        _patch_settings(monkeypatch)
+
+        assert routing_kwargs_for_chat_transport().base_url == (
+            "http://localhost:11434/v1"
+        )
+
+
+class TestOpenRouterRoute:
+    """OpenRouter: the route's own key, sent to the route's OpenAI-compatible
+    URL; never the OpenRouter integration key."""
+
+    def test_the_routes_key_and_url(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(
+            platform_route="openrouter",
+            openrouter_api_key="or-key-from-chat-config",
+            openrouter_base_url="https://or.proxy.example/api/",
+        )
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
+
+        assert routing_kwargs_for_chat_transport() == ProviderRoutingKwargs(
+            provider="open_router",
+            api_key="or-key-from-chat-config",
+            base_url="https://or.proxy.example/api/v1",
+            supports_flex=True,
+            cost_log_provider="open_router",
+        )
+
+    def test_the_default_url_is_openrouters_own(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="openrouter", openrouter_api_key="k")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch)
+
+        assert routing_kwargs_for_chat_transport().base_url == (
+            "https://openrouter.ai/api/v1"
+        )
+
+    def test_never_the_integration_key(self, monkeypatch: pytest.MonkeyPatch):
+        _patch_chat_cfg(monkeypatch, ChatConfig(platform_route="openrouter"))
+        _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
+
+        assert routing_kwargs_for_chat_transport().api_key == ""
+
+
+class TestSubscriptionRoute:
+    """A Claude login cannot call the Messages API, and no integration key
+    stands in for it: background calls have no route at all."""
+
+    def test_no_platform_api_whatever_keys_are_around(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        cfg = ChatConfig(
+            platform_route="subscription", anthropic_api_key="ant-key-direct-cfg"
+        )
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(
+            monkeypatch,
+            anthropic_api_key="ant-key-from-secrets",
+            open_router_api_key="or-key-from-secrets",
+        )
+
+        result = routing_kwargs_for_chat_transport()
+        assert result.provider is None
+        assert result.api_key == ""
+        assert result.base_url is None
+        assert cfg.batch_anthropic_api_key is None
+
+
+class TestDirectAnthropicRoute:
+    """direct_anthropic: the route's own key, sent to the route's Messages
+    API root. The Batch API keeps its own policy (the route's key, else the
+    integration key); the synchronous path never takes the integration key."""
+
+    def test_the_routes_key_and_url(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(
+            platform_route="direct_anthropic",
+            anthropic_api_key="ant-key",
+            anthropic_base_url="https://anthropic.proxy.example/",
+        )
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch)
+
+        assert routing_kwargs_for_chat_transport() == ProviderRoutingKwargs(
+            provider="anthropic",
+            api_key="ant-key",
+            base_url="https://anthropic.proxy.example",
+            supports_flex=False,
+            cost_log_provider="anthropic",
+        )
+
+    def test_the_default_url_is_anthropics_own(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="direct_anthropic", anthropic_api_key="k")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch)
+
+        assert (
+            routing_kwargs_for_chat_transport().base_url == "https://api.anthropic.com"
+        )
+
+    def test_never_the_integration_key(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="direct_anthropic")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch, anthropic_api_key="ant-key-from-secrets")
+
+        assert routing_kwargs_for_chat_transport().api_key == ""
+        assert cfg.batch_anthropic_api_key == "ant-key-from-secrets"
+
+
+class TestDisabledRoute:
+    def test_no_route_gives_callers_nothing_to_dispatch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _patch_chat_cfg(monkeypatch, ChatConfig(platform_route="disabled"))
+        _patch_settings(monkeypatch, open_router_api_key="or-secrets-key")
+
+        result = routing_kwargs_for_chat_transport()
+        assert result.provider is None
+        assert result.api_key == ""
+        assert result.cost_log_provider == "none"

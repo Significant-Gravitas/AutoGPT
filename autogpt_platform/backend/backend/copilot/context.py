@@ -196,16 +196,12 @@ def get_current_hidden_tools() -> frozenset[str]:
     return _current_hidden_tools.get()
 
 
-def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
-    """Record whether anyone is watching the running turn. The executor sets
-    it for every turn, so a value never carries over to the next one.
-
-    Nobody is when the scheduler fired the turn, even into the user's own
-    chat, or when an automation opened the chat: a scheduled run's own chat, a
-    sub-session, a graph's AutoPilot block. A legacy chat without an origin
-    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+def set_turn_unattended(unattended: bool) -> None:
+    """Record whether anyone is watching the running turn
+    (``SessionKind.unattended``). The executor sets it for every turn, so a
+    value never carries over to the next one.
     """
-    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+    _current_turn_unattended.set(unattended)
 
 
 def is_unattended_turn() -> bool:

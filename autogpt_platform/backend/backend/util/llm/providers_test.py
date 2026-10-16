@@ -800,7 +800,8 @@ class TestAIMLAPI:
 
 @pytest.fixture(autouse=True)
 def _reset_chat_base_url_cache():
-    """The ChatConfig.base_url read is memoized module-wide; clear it so
+    """The local route's URL read (``ChatConfig.local_openai_base_url``) is
+    memoized module-wide; clear it so
     each test's patched ``backend.copilot.config.ChatConfig`` is the one
     actually constructed."""
     from backend.util.llm.providers import _read_chat_config_base_url
@@ -850,7 +851,7 @@ def _patched_ollama_dispatch(
         patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
         patch(
             "backend.copilot.config.ChatConfig",
-            return_value=SimpleNamespace(base_url=chat_base_url),
+            return_value=SimpleNamespace(local_openai_base_url=chat_base_url),
         ),
         patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
     ):
@@ -1036,7 +1037,7 @@ class TestOllamaTrustedHosts:
             settings.config.ollama_host
         ]
         assert any(
-            "Could not read ChatConfig.base_url" in rec.message
+            "Could not read the local route's URL" in rec.message
             for rec in caplog.records
         )
 
@@ -1052,7 +1053,9 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                return_value=SimpleNamespace(
+                    local_openai_base_url="http://192.168.1.50:11434/v1"
+                ),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -1072,13 +1075,13 @@ class TestOllamaTrustedHosts:
         """``ChatConfig`` is a pydantic-settings class with
         ``env_file=".env"`` — constructing it per dispatch meant dotenv
         disk I/O and repeated validator warnings on every Ollama call.
-        The base_url read must be memoized after the first success while
+        The URL read must be memoized after the first success while
         every dispatch still gets the cached value in its trust list."""
         captured: dict = {}
         validate_mock = AsyncMock(return_value=None)
         chat_config_ctor = MagicMock(
             return_value=SimpleNamespace(
-                base_url="http://host.docker.internal:11434/v1"
+                local_openai_base_url="http://host.docker.internal:11434/v1"
             )
         )
         with (
@@ -1118,7 +1121,7 @@ class TestOllamaTrustedHosts:
         chat_config_ctor = MagicMock(
             side_effect=[
                 ValueError("transient misconfiguration"),
-                SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                SimpleNamespace(local_openai_base_url="http://192.168.1.50:11434/v1"),
             ]
         )
         with (
@@ -1153,7 +1156,7 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url=None),
+                return_value=SimpleNamespace(local_openai_base_url=None),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -2475,3 +2478,32 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "groq", "ollama", "llama_api"])
+async def test_a_base_url_is_refused_where_the_provider_takes_none(provider):
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider=provider,
+            model="m",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            base_url="https://proxy.example/v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submission_takes_no_base_url():
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            execution_mode="batch",
+            custom_id="c",
+            base_url="https://proxy.example",
+        )

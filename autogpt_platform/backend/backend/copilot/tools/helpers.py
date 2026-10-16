@@ -22,7 +22,6 @@ from backend.copilot.constants import (
 from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tree import charge_credits
@@ -1586,15 +1585,27 @@ def require_guide_read(session: ChatSession, tool_name: str):
     if session_read_building_guide(session):
         return None
     if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
-        if not chat_config.transport.supports_sdk:
-            # SDK-less deployment: the enter tool served the guide inline.
+        if not session.sdk_turn_active:
+            # The local route's turns run without the SDK; there the
+            # enter tool served the guide inline.
             return None
+        if session.building_mode_requested:
+            return ErrorResponse(
+                message=(
+                    "Building mode is starting: the agent-building guide "
+                    "arrives in your system prompt as <building_guide> once "
+                    "this step's tool calls finish. Retry "
+                    f"tool:{tool_name} after it arrives, and do not call "
+                    "enter_agent_building_mode again."
+                ),
+                session_id=session.session_id,
+            )
+        # The restart ran but could not load the guide.
         return ErrorResponse(
             message=(
-                "The engine switch is pending — building continues "
-                "automatically on the next turn with the guide loaded. End "
-                f"your turn now with a brief note; do not retry tool:{tool_name} "
-                "in this turn."
+                "The agent-building guide is not in your system prompt. "
+                "Call tool:get_agent_building_guide to load it inline, then "
+                f"retry tool:{tool_name}."
             ),
             session_id=session.session_id,
         )

@@ -626,28 +626,6 @@ class TestRunSubSession:
         assert "workspace file" in (r.message or "")
 
     @pytest.mark.asyncio
-    async def test_queued_outcome_surfaces_queued_status(
-        self, mock_queue, mock_waiter, mock_model
-    ):
-        """When the shared primitive reports the target session already has
-        a turn running, the tool surfaces ``status='queued'`` so the LLM can
-        decide whether to poll or move on."""
-
-        queued_res = SessionResult(queued=True, pending_buffer_length=2)
-        mock_waiter.return_value = ("queued", queued_res)
-
-        r = await RunSubSessionTool()._execute(
-            user_id="alice",
-            session=_session("alice"),
-            prompt="please do another thing",
-            wait_for_result=0,
-        )
-        assert isinstance(r, SubSessionStatusResponse)
-        assert r.status == "queued"
-        assert r.sub_session_id == "inner-1"
-        assert "queued" in (r.message or "").lower()
-
-    @pytest.mark.asyncio
     async def test_wait_clamps_above_maximum(self, mock_queue, mock_waiter, mock_model):
         """wait_for_result values above the cap are clamped before being
         passed to the queue primitive."""
@@ -1237,12 +1215,11 @@ class TestActorParameter:
 class TestSpawnEnvelopeArguments:
     """The spawn shape each tool asks for is a security property, not a
     detail: flipping shares_memory to False silently regrants an isolate
-    memory_store under the parent's identity, and allow_queue=True lets a
-    prompt run under another turn's envelope. Neither was asserted anywhere.
+    memory_store under the parent's identity. It was asserted nowhere.
     """
 
     @pytest.mark.asyncio
-    async def test_run_sub_session_spawns_a_memory_sharing_isolate_and_never_queues(
+    async def test_run_sub_session_spawns_a_memory_sharing_isolate(
         self, mock_queue, mock_waiter, mock_model
     ):
         await RunSubSessionTool()._execute(
@@ -1252,7 +1229,6 @@ class TestSpawnEnvelopeArguments:
             wait_for_result=0,
         )
         kwargs = mock_waiter.await_args.kwargs
-        assert kwargs["allow_queue"] is False
         assert kwargs["spawn"].shares_memory is True
         assert kwargs["spawn"].may_spawn is True
 

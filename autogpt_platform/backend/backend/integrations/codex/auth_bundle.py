@@ -1,8 +1,6 @@
 import base64
 import binascii
-import hashlib
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -125,26 +123,6 @@ def decode_provider_state(provider_state: SecretStr) -> CodexAuthBundleV1:
         raise CodexAuthBundleError(
             "Encrypted Codex provider state is invalid"
         ) from None
-
-
-def materialize_auth_bundle(bundle: CodexAuthBundleV1, auth_path: Path) -> None:
-    auth_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    payload = {
-        "auth_mode": "chatgpt",
-        "OPENAI_API_KEY": None,
-        "tokens": _tokens_payload(bundle.tokens),
-        "last_refresh": _datetime_payload(bundle.last_refresh),
-    }
-    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-    descriptor = os.open(auth_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "wb") as auth_file:
-        auth_file.write(encoded)
-        auth_file.flush()
-        os.fsync(auth_file.fileno())
-
-
-def auth_bundle_fingerprint(bundle: CodexAuthBundleV1) -> str:
-    return hashlib.sha256(encode_provider_state(bundle).encode()).hexdigest()
 
 
 def decode_jwt_claims(token: SecretStr) -> CodexJwtClaims:

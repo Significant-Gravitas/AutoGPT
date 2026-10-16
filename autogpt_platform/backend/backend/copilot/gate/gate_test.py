@@ -494,6 +494,7 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
         env_ctx="/home/user",
         session_ctx="session_id: session-1",
         skills_ctx="- skill: " + "summarise a document. " * 60,
+        kickoff_turn=False,
     )
     assert session.messages[-1].content.startswith("<available_skills>")
 

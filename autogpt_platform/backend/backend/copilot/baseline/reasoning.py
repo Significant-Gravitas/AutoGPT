@@ -170,7 +170,7 @@ def _is_reasoning_route(model: str) -> bool:
     prefix (or to a bare model id with no prefix at all) to avoid
     substring false positives — a custom ``some-other-provider/claude-mock``
     or ``provider/hakimi-large`` configured via
-    ``CHAT_FAST_STANDARD_MODEL`` must NOT inherit the reasoning
+    standard tier must NOT inherit the reasoning
     extra_body and take a 400 from its upstream.  Recognised shapes:
 
     * Claude — ``anthropic/`` or ``anthropic.`` provider prefix, or a
@@ -264,7 +264,7 @@ def anthropic_thinking_extra_body(
 ) -> dict[str, Any] | None:
     """Build the Anthropic-native ``extra_body["thinking"]`` fragment.
 
-    Used in direct-Anthropic mode (``CHAT_USE_OPENROUTER=false``) where
+    Used in direct-Anthropic mode (``CHAT_PLATFORM_ROUTE=direct_anthropic``) where
     the OpenRouter ``reasoning`` wrapper isn't recognized — Anthropic's
     OpenAI-compat endpoint takes the parameter under its native key.
     Without this fragment, models like Claude 3.7 Sonnet silently lose

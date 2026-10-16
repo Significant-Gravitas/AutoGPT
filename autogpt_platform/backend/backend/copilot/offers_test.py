@@ -1,12 +1,13 @@
 """The server-owned description of an AI connection."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_mock
 
 from backend.copilot import offers, provider_tiers, transports
+from backend.copilot.config import ChatConfig
 from backend.copilot.offers import (
     EntitlementUnavailable,
     advanced_tier_allowed,
@@ -49,9 +50,7 @@ def advanced_allowed(mocker: pytest_mock.MockerFixture):
 def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
-    mocker.patch.object(
-        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=False)
-    )
+    mocker.patch.object(provider_tiers, "platform_engine", return_value="baseline")
     mocker.patch.object(
         provider_tiers,
         "resolve_model_route",
@@ -220,10 +219,8 @@ async def test_tiers_name_the_model_they_resolve_to(
 async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """The engine is the server's decision, so it is knowable before a turn."""
-    mocker.patch.object(
-        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=True)
-    )
+    """The engine is the platform route's, so it is knowable before a turn."""
+    mocker.patch.object(provider_tiers, "platform_engine", return_value="sdk")
     _mock_transports(mocker, [_transport(default=True)])
 
     (offer,) = await get_connection_offers(USER_ID)
@@ -269,11 +266,10 @@ async def test_an_unavailable_connection_is_not_selectable(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.LOCAL)
-    chat_config = MagicMock()
-    chat_config.test_mode = False
-    chat_config.use_claude_code_subscription = False
-    chat_config.main_client_credentials = (None, "https://api.anthropic.com/v1/")
-    mocker.patch.object(transports, "config", chat_config)
+    # No platform route: the deployment runs no chat model of its own.
+    mocker.patch.object(
+        transports, "config", ChatConfig(platform_route="disabled", test_mode=False)
+    )
     _mock_transports(mocker, [_transport(label="Self-hosted chat", available=False)])
 
     (offer,) = await get_connection_offers(USER_ID)

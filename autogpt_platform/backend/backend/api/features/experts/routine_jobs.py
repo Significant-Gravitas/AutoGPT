@@ -187,6 +187,7 @@ async def create_routine_schedules(
     run_at: datetime | None,
     session_id: str | None,
     user_timezone: str,
+    tainted: bool = False,
 ) -> list[str]:
     scheduler = get_scheduler_client()
     created: list[str] = []
@@ -208,6 +209,7 @@ async def create_routine_schedules(
                 user_timezone=user_timezone,
                 expert_id=expert_id,
                 routine_id=row.id,
+                tainted=tainted,
             )
             created.append(info.id)
     except Exception:

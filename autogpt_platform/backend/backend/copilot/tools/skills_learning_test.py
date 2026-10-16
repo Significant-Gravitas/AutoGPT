@@ -26,6 +26,7 @@ from backend.copilot.tools.skills import (
     build_skills_context,
     build_skills_update_notice,
     list_all_skills,
+    start_session_skill_versions,
     store_user_skill,
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
@@ -290,6 +291,51 @@ async def test_each_conversation_sees_body_updates_even_with_the_same_authored_v
             await build_skills_update_notice(USER, None, history, session_id=session)
             == ""
         )
+
+
+async def _store_csv_import(steps: str) -> None:
+    await store_user_skill(
+        USER, name="csv-import", description="Import CSV", body=f"## Steps\n{steps}\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_first_index_a_session_is_shown_starts_its_version_baseline(
+    workspace,
+):
+    """The first turn carries the index and sends no notice. A body updated
+    after it is news to the session's first notice."""
+    with patch("backend.copilot.tools.skills._remember_updated", new=AsyncMock()):
+        await _store_csv_import("1. go")
+        context = await build_skills_context(USER)
+        history = [f"<available_skills>{context}</available_skills>"]
+        await start_session_skill_versions(USER, None, "chat")
+        await _store_csv_import("1. validate")
+
+        notice = await build_skills_update_notice(
+            USER, None, history, session_id="chat"
+        )
+
+    assert "Updated skills: csv-import" in notice
+
+
+@pytest.mark.asyncio
+async def test_a_later_fresh_index_keeps_the_baseline(workspace):
+    """A turn that could not resume re-sends the index, which lists names, not
+    bodies: a body changed since the last notice is still news after it."""
+    with patch("backend.copilot.tools.skills._remember_updated", new=AsyncMock()):
+        await _store_csv_import("1. go")
+        context = await build_skills_context(USER)
+        history = [f"<available_skills>{context}</available_skills>"]
+        await build_skills_update_notice(USER, None, history, session_id="chat")
+        await _store_csv_import("1. validate")
+        await start_session_skill_versions(USER, None, "chat")
+
+        notice = await build_skills_update_notice(
+            USER, None, history, session_id="chat"
+        )
+
+    assert "Updated skills: csv-import" in notice
 
 
 @pytest.mark.asyncio

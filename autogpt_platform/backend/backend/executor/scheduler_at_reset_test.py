@@ -1,6 +1,7 @@
 """The scheduler's side of resume and send at the budget reset: the job's
 id and shape, and what a due one does (``copilot/at_reset.py`` decides)."""
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,14 +14,22 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import at_reset_schedule_id, reset_jitter_seconds
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
+from backend.copilot.executor import utils as executor_utils
 from backend.copilot.executor.utils import ScheduledTurnOrigin
-from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetadata
+from backend.copilot.model import (
+    ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
     SubscriptionTier,
     UsageWindow,
 )
+from backend.copilot.trial_cost_context import TrialCostContext
+from backend.copilot.turn_pause import PAUSE_KEY, TurnPause, append_pause_marker
 from backend.executor.scheduler import (
     _MAX_AT_RESET_RETRIES,
     CopilotTurnJobArgs,
@@ -446,3 +455,101 @@ def test_a_put_back_with_nothing_newer_is_itself(live_scheduler):
     _add(live_scheduler, "send", "draft the launch post", created_at=set_at)
     args = _job_args(live_scheduler, "send")
     assert (args.message, args.created_at) == ("draft the launch post", set_at)
+
+
+@pytest.fixture
+def queued(fire_env):
+    """``fire_env`` with the real dispatch, down to the queue: what the
+    executor would pick up is ``queued.entry()``."""
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    queue = MagicMock(publish_message=AsyncMock())
+    cost = TrialCostContext(user_id=USER, trial_id=None)
+    with (
+        patch(f"{_SCHEDULER}.schedule_turn", executor_utils.schedule_turn),
+        patch.object(executor_utils, "check_inflight_cap", AsyncMock()),
+        patch.object(executor_utils, "acquire_turn_slot", acquire),
+        patch.object(executor_utils, "admit_turn", AsyncMock()),
+        patch.object(
+            executor_utils, "capture_cost_context", AsyncMock(return_value=cost)
+        ),
+        patch("backend.copilot.stream_registry.create_session", AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            AsyncMock(return_value=queue),
+        ),
+    ):
+
+        def entry() -> executor_utils.CoPilotExecutionEntry:
+            call = queue.publish_message.await_args
+            assert call is not None
+            return executor_utils.CoPilotExecutionEntry.model_validate_json(
+                call.kwargs["message"]
+            )
+
+        fire_env.entry = entry
+        yield fire_env
+
+
+def _paused_rows(*, tainted: bool) -> list[ChatMessage]:
+    session = ChatSession.new(USER, dry_run=False)
+    session.messages = [ChatMessage(role="user", content="Build the report")]
+    append_pause_marker(session, TurnPause(reason="daily"), tainted=tainted)
+    return session.messages
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tainted",
+    [True, False],
+    ids=["paused-turn-from-a-bot", "paused-turn-from-the-owner"],
+)
+async def test_a_resume_starts_with_the_paused_turns_taint(queued, tainted: bool):
+    """A web chat, so only the paused turn's own record can say a bot's
+    message started the work the resume carries on."""
+    queued.load.return_value = _chat(*_paused_rows(tainted=tainted))
+
+    await _fire(_args("resume"))
+
+    entry = queued.entry()
+    assert entry.message == RESUMED_AT_RESET_NOTE
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is tainted
+
+
+@pytest.mark.asyncio
+async def test_a_resume_on_a_marker_from_before_the_field_continues_tainted(
+    queued,
+):
+    """An executor from before the field wrote it, so how the paused turn ran
+    is unknown: the resume runs as if it was tainted."""
+    old = ChatMessage(
+        role="assistant",
+        content="Paused: this task is out of today's budget.",
+        metadata={PAUSE_KEY: TurnPause(reason="daily").as_part()},
+    )
+    queued.load.return_value = _chat(
+        ChatMessage(role="user", content="Build the report"), old
+    )
+
+    await _fire(_args("resume"))
+
+    entry = queued.entry()
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is True
+
+
+@pytest.mark.asyncio
+async def test_a_send_is_the_users_own_words_whoever_started_the_task(queued):
+    queued.load.return_value = _chat(*_paused_rows(tainted=True))
+
+    await _fire(_args("send"))
+
+    entry = queued.entry()
+    assert entry.message == "also check the invoices"
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is False

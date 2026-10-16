@@ -22,6 +22,10 @@ main() {
   chmod 0600 "${AUTOGPT_RUNTIME_ENV}"
   load_runtime_config
   configure_environment
+  # The chat settings, checked once before any service starts: a retired
+  # setting or a route missing what it needs is named here, values never.
+  "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" check-chat-env \
+    --backend-env "${AUTOGPT_BACKEND_DIR}/.env"
   write_valkey_configs
   initialize_postgres
   write_rabbitmq_config
@@ -189,6 +193,10 @@ configure_environment() {
   # sentinel; a positive microdollar amount (1 USD = 1000000) re-enables a
   # spend guard for that window. An empty value also means "unset" so a
   # blank template field never reaches Pydantic as a non-integer.
+  # Without a route the image runs connection-only: users chat over the
+  # accounts they connect. Set CHAT_PLATFORM_ROUTE to run the platform's own
+  # chat model (see docs/platform/single-container.md).
+  export CHAT_PLATFORM_ROUTE="${CHAT_PLATFORM_ROUTE:-disabled}"
   export CHAT_DAILY_COST_LIMIT_MICRODOLLARS="${CHAT_DAILY_COST_LIMIT_MICRODOLLARS:--1}"
   export CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="${CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS:--1}"
 

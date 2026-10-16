@@ -76,6 +76,12 @@ class CodexModelInfo(BaseModel):
     default_reasoning_effort: CodexReasoningEffort
     supported_reasoning_efforts: list[CodexReasoningEffort]
     input_modalities: list[str] = Field(default_factory=list)
+    # What the account advertises for this model.  ``context_window`` is the
+    # window Codex itself runs the model at (the API maximum is larger);
+    # ``auto_compact_token_limit`` is the absolute token count at which
+    # codex-rs compacts.  Either may be absent from the payload.
+    context_window: int | None = None
+    auto_compact_token_limit: int | None = None
 
 
 class CodexInvocationRequest(BaseModel):

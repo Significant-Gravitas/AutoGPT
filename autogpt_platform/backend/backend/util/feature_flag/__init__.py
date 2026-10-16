@@ -178,7 +178,7 @@ class Flag(str, Enum):
     # Note: there is intentionally no DREAM_PASS_LOCAL_TRANSPORT
     # flag. Whether to run on local-LLM transport is a CODE decision
     # — ``resolve_dream_execution_path()`` in
-    # ``copilot/dream/routing.py`` inspects ``config.transport`` and
+    # ``copilot/dream/routing.py`` inspects ``config.platform_route`` and
     # picks sync-baseline + phase-collapse + extended lock TTL for
     # local users. If a user has ``DREAM_PASS_ENABLED`` true, they
     # get dreams, period — degraded on local, full on cloud. See

@@ -5,6 +5,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.data.model import OAuth2Credentials
 from backend.integrations.microsoft_365_copilot.client import (
     CopilotTextUpdate,
@@ -293,3 +294,83 @@ async def test_service_closes_stream_after_midstream_failure(mocker) -> None:
         "error",
         "finish",
     ]
+
+
+@pytest.mark.asyncio
+async def test_service_stamps_a_scheduled_prompt_row(mocker) -> None:
+    from backend.integrations.microsoft_365_copilot import service
+
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="credential-1",
+    )
+    session.session_id = "session-1"
+    session.messages.append(ChatMessage(role="assistant", content="Earlier reply"))
+    origin = PromptOrigin(kind="scheduled_followup", schedule_id="job-1")
+    mocker.patch.object(
+        service, "upsert_chat_session", new=AsyncMock(side_effect=lambda value: value)
+    )
+    mocker.patch.object(
+        service, "persist_and_record_usage", new=AsyncMock(return_value=4)
+    )
+    mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
+    mocker.patch.object(service, "_get_timezone", new=AsyncMock(return_value="UTC"))
+
+    async for _ in service.stream_chat_completion_microsoft_365(
+        session_id="session-1",
+        message="Check the inbox.",
+        is_user_message=False,
+        user_id="user-1",
+        session=session,
+        credential_lease=_credential_lease(),
+        message_metadata=with_prompt_origin(None, origin),
+    ):
+        pass
+
+    prompt_row = session.messages[1]
+    assert prompt_row.role == "assistant"
+    assert prompt_row.content == "Check the inbox."
+    assert prompt_row.prompt_origin == origin
+    assert prompt_row.metadata is None
+    assert session.messages[-1].prompt_origin is None
+
+
+@pytest.mark.asyncio
+async def test_service_keeps_the_metadata_of_a_delegated_row(mocker) -> None:
+    """A row written for a turn another chat started keeps its metadata, as it
+    does on the SDK and baseline engines."""
+    from backend.integrations.microsoft_365_copilot import service
+
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="credential-1",
+    )
+    session.session_id = "session-1"
+    mocker.patch.object(
+        service, "upsert_chat_session", new=AsyncMock(side_effect=lambda value: value)
+    )
+    mocker.patch.object(
+        service, "persist_and_record_usage", new=AsyncMock(return_value=4)
+    )
+    mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
+    mocker.patch.object(service, "_get_timezone", new=AsyncMock(return_value="UTC"))
+
+    async for _ in service.stream_chat_completion_microsoft_365(
+        session_id="session-1",
+        message="Summarise the thread for me.",
+        is_user_message=True,
+        user_id="user-1",
+        session=session,
+        credential_lease=_credential_lease(),
+        message_metadata={"from_session_id": "session-2"},
+    ):
+        pass
+
+    row = session.messages[0]
+    assert (row.role, row.content) == ("user", "Summarise the thread for me.")
+    assert row.metadata == {"from_session_id": "session-2"}
+    assert row.prompt_origin is None

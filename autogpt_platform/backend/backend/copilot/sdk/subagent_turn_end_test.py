@@ -8,8 +8,8 @@ notification that starts a new model turn.  A copilot turn ends at the first
 ``_safe_close_sdk_client``), so the background sub-agent is stopped before its
 report reaches the reply.
 
-This drives the bundled CLI through ``ClaudeSDKClient`` with the environment
-``build_sdk_env()`` builds, against a scripted fake Anthropic API, and follows
+This drives the pinned CLI through ``ClaudeSDKClient`` with the environment
+``route_launch_env()`` builds, against a scripted fake Anthropic API, and follows
 the same lifecycle as ``_run_stream_attempt``: open the client, send the query,
 read ``receive_response()`` up to the ``ResultMessage``, close.  The fake main
 model calls the Agent tool once and then writes its reply, quoting the
@@ -22,7 +22,6 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from aiohttp import web
@@ -37,8 +36,12 @@ from claude_agent_sdk import (
 )
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
-from backend.copilot.sdk.env import build_sdk_env
+from backend.copilot.route_profile import platform_profile
+from backend.copilot.sdk.cli_openrouter_compat_test import (
+    _resolve_cli_path,
+    assert_pinned_cli,
+)
+from backend.copilot.sdk.env import route_launch_env
 
 _MAIN_USER_MARKER = "MAIN-USER-7f3a"
 _SUBAGENT_PROMPT = "SUBAGENT-PROMPT-9c41: report the magic word."
@@ -155,6 +158,7 @@ class _ScriptedAnthropic:
     that takes a while to report."""
 
     def __init__(self) -> None:
+        self.user_agents: list[str] = []
         self.agent_tool_name: str | None = None
         self.subagent_started = asyncio.Event()
         self.subagent_report_sent = False
@@ -166,6 +170,7 @@ class _ScriptedAnthropic:
         return f"msg_{self._ids}"
 
     async def handle(self, request: web.Request) -> web.StreamResponse:
+        self.user_agents.append(request.headers.get("User-Agent", ""))
         body = json.loads(await request.text())
         messages: list[dict[str, Any]] = body.get("messages", [])
         first_user = " ".join(_texts(messages[0])) if messages else ""
@@ -233,17 +238,11 @@ async def _start(server: _ScriptedAnthropic) -> tuple[web.AppRunner, int]:
     return runner, port
 
 
-def _direct_anthropic_config() -> ChatConfig:
+def _direct_anthropic_config(base_url: str) -> ChatConfig:
     return ChatConfig(
-        use_claude_code_subscription=False,
-        use_openrouter=False,
-        api_key=None,
-        base_url=None,
-        thinking_standard_model="anthropic/claude-sonnet-4-6",
-        thinking_advanced_model="anthropic/claude-opus-4-7",
-        claude_agent_autocompact_pct_override=50,
-        claude_agent_context_window=200_000,
-        aux_api_key="or-aux-key",
+        platform_route="direct_anthropic",
+        anthropic_api_key="sk-test-fake-key-not-real",
+        anthropic_base_url=base_url,
     )
 
 
@@ -257,15 +256,15 @@ async def run_copilot_style_turn(
     stderr_lines: list[str] = []
     received: list[Any] = []
     try:
-        with patch("backend.copilot.sdk.env.config", _direct_anthropic_config()):
-            env = build_sdk_env(session_id="subagent-turn-end", sdk_cwd=str(workdir))
-        env.update(
-            {
-                "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
-                "ANTHROPIC_API_KEY": "sk-test-fake-key-not-real",
-                "CLAUDE_CONFIG_DIR": str(workdir / ".claude-config"),
-            }
+        profile = platform_profile(
+            _direct_anthropic_config(f"http://127.0.0.1:{port}"),
+            "claude-sonnet-4-6",
+            "env",
         )
+        env = route_launch_env(
+            profile, session_id="subagent-turn-end", sdk_cwd=str(workdir)
+        )
+        env["CLAUDE_CONFIG_DIR"] = str(workdir / ".claude-config")
         options = ClaudeAgentOptions(
             cli_path=str(cli_path),
             system_prompt="You are a test main agent.",
@@ -330,7 +329,8 @@ async def test_subagent_report_reaches_the_turn_that_started_it(tmp_path):
         "The Agent tool did not return the sub-agent's report "
         f"(tool result: {tool_result[:300]!r}). A background launch ends the "
         "turn and closes the CLI before the sub-agent reports, so its work "
-        "is lost; build_sdk_env() must set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1."
+        "is lost; route_launch_env() must set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1."
     )
     assert server.subagent_report_sent
     assert _REPLY_WITH_REPORT in _reply_text(received)
+    assert_pinned_cli(server.user_agents, cli_path)

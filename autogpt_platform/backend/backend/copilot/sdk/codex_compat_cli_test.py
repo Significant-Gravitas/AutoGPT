@@ -1,7 +1,4 @@
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import cast
 
 import pytest
 from claude_agent_sdk import (
@@ -12,8 +9,13 @@ from claude_agent_sdk import (
     tool,
 )
 
+from backend.copilot.route_profile import codex_profile
+from backend.copilot.sdk.cli_openrouter_compat_test import (
+    _resolve_cli_path,
+    assert_pinned_cli,
+)
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
-from backend.copilot.sdk.env import build_sdk_env
+from backend.copilot.sdk.env import GatewayEndpoint, route_launch_env
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
@@ -21,7 +23,6 @@ from backend.integrations.codex.models import (
     CodexStreamEvent,
     CodexTokenUsage,
 )
-from backend.integrations.credential_lease import CredentialLease
 
 
 class _ClaudeHarnessAgentSession:
@@ -68,24 +69,15 @@ class _ClaudeHarnessAgentSession:
         )
 
 
-class _ClaudeHarnessTransport:
-    def __init__(self, session: _ClaudeHarnessAgentSession) -> None:
-        self.session = session
-
-    @asynccontextmanager
-    async def agent_session(
-        self,
-        _lease: CredentialLease,
-    ) -> AsyncIterator[_ClaudeHarnessAgentSession]:
-        yield self.session
-
-
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    cli_path = _resolve_cli_path()
+    if cli_path is None:
+        pytest.skip("No Claude Code CLI binary bundled or configured")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     tool_called = asyncio.Event()
     stderr_lines: list[str] = []
@@ -101,11 +93,18 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     )
     agent_session = _ClaudeHarnessAgentSession()
     gateway = CodexAnthropicGateway(
-        credential_lease=cast(CredentialLease, object()),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
         effort="medium",
-        transport=_ClaudeHarnessTransport(agent_session),
     )
+    user_agents: list[str] = []
+    handle_messages = gateway._handle_messages
+
+    async def recording(request):
+        user_agents.append(request.headers.get("User-Agent", ""))
+        return await handle_messages(request)
+
+    monkeypatch.setattr(gateway, "_handle_messages", recording)
 
     async with gateway:
         options = ClaudeAgentOptions(
@@ -127,13 +126,20 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
             cwd=str(tmp_path),
             max_turns=3,
             stderr=stderr_lines.append,
-            env=build_sdk_env(
+            env=route_launch_env(
+                codex_profile(
+                    "gpt-5.6-terra",
+                    effort="medium",
+                    routing_source="env",
+                    codex_engine=None,
+                ),
                 session_id="codex-cli-conformance",
                 sdk_cwd=str(tmp_path),
-                model="gpt-5.6-terra",
-                codex_gateway_url=gateway.base_url,
-                codex_gateway_token=gateway.auth_token,
+                gateway=GatewayEndpoint(
+                    base_url=gateway.base_url, auth_token=gateway.auth_token
+                ),
             ),
+            cli_path=str(cli_path),
         )
         received = []
         async with ClaudeSDKClient(options=options) as client:
@@ -159,3 +165,4 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     assert gateway.result is not None
     assert gateway.result.usage is not None
     assert gateway.result.usage.total_tokens == 25
+    assert_pinned_cli(user_agents, cli_path)

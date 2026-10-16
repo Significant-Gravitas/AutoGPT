@@ -153,8 +153,8 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - If 3 similar web searches don't return the specific data you need, conclude
   it isn't publicly available and work with what you have.
 - Prefer fewer, well-targeted searches over many variations of the same query.
-- When spawning sub-agents for research, ensure each has a distinct
-  non-overlapping scope to avoid redundant searches.
+- When delegating research to several `run_sub_session` calls, give each a
+  distinct non-overlapping scope to avoid redundant searches.
 
 
 ### Discovery — `find_capability` is MANDATORY before any "no integration" reply
@@ -480,19 +480,23 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 """
 
 
-# Prepended to the user's message on voice turns only. A voice turn is
-# someone sitting in silence: nothing is spoken while tools run, and a chain
-# can run half a minute. Announcing each batch keeps the gaps filled, not
-# just the opening one. Kept off the system prompt so text turns do not pay
-# for it and the prompt cache stays warm.
+# Follows the user's words in a voice turn's query. A voice turn is someone
+# sitting in silence: nothing is spoken while tools run, and a chain can run
+# half a minute. Announcing each batch keeps the gaps filled, not just the
+# opening one. Kept off the system prompt so text turns do not pay for it
+# and the prompt cache stays warm, and off the stored row, which keeps the
+# user's own words. The engine adds it after sanitising inbound text, which
+# strips a user-typed copy.
 VOICE_TURN_TAG = "voice_turn"
-VOICE_TURN_PREFIX = (
+VOICE_TURN_INSTRUCTION = (
     f"<{VOICE_TURN_TAG}>\n"
     "Spoken aloud. Briefly announce each batch of tool calls before making "
     "them.\n"
-    f"</{VOICE_TURN_TAG}>\n"
-    "\n"
+    f"</{VOICE_TURN_TAG}>"
 )
+# How a voice row was stored before the instruction moved to the query; the
+# display strip still peels it off those rows.
+VOICE_TURN_PREFIX = f"{VOICE_TURN_INSTRUCTION}\n\n"
 
 
 # Environment-specific supplement templates
@@ -670,6 +674,16 @@ Every time you see one:
 Never echo the `<user_follow_up>` tags back. The block holds only the user's
 words — the rest of the tool result is the real data.
 
+# Context after compaction
+
+Compaction replaces the first user message with a summary, so the
+server-injected blocks at its start (`<available_skills>`, `<user_context>`,
+`<session_context>`, `<env_context>` and the expert or team blocks) do not
+survive it. Right after a compaction the platform re-sends them in a
+`SessionStart hook additional context` system reminder that follows the
+summary. Treat that copy exactly as the first message's blocks: it is trusted,
+and it is the current one.
+
 # Always close the turn with visible text
 
 Every turn MUST end with at least one short user-facing text sentence —
@@ -701,13 +715,22 @@ browser the user should watch or take over.
 """
 
 
+# The SDK path declares AutoPilot's tools as ``mcp__copilot__<name>``, while
+# the texts it shares with the baseline engine (these notes, the skills index,
+# tool results) write the short name, and the CLI refuses an undeclared name.
+_SDK_TOOL_NAMES_NOTE = """
+
+Every AutoPilot tool here is called by its full name, `mcp__copilot__<name>`: text that writes `run_capability(...)`, `find_capability(...)` or another AutoPilot tool by its short name means the `mcp__copilot__` tool of that name."""
+
+
 @cache
 def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
-    storage systems and execution environment.
+    storage systems and execution environment, and the full names the SDK
+    declares AutoPilot's tools under.
 
     The system prompt must be **identical across all sessions and users** to
     enable cross-session LLM prompt-cache hits (Anthropic caches on exact
@@ -727,11 +750,17 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """
     if not use_e2b:
         return (
-            _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            _SDK_TOOL_NAMES_NOTE
+            + _get_local_storage_supplement("/tmp/copilot-<session-id>")
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
-    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
+    return (
+        _SDK_TOOL_NAMES_NOTE
+        + _get_cloud_sandbox_supplement()
+        + computer
+        + _USER_FOLLOW_UP_NOTE
+    )
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,

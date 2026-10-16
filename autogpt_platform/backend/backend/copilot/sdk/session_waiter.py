@@ -35,10 +35,7 @@ from backend.copilot.model import (
     _get_session_lock,
     get_chat_session,
 )
-from backend.copilot.pending_message_helpers import (
-    is_turn_in_flight,
-    queue_user_message,
-)
+from backend.copilot.pending_message_helpers import is_turn_in_flight
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_pause import TurnPause
@@ -57,7 +54,6 @@ SessionOutcome = Literal[
     "completed",
     "failed",
     "running",
-    "queued",
     # Waiting for one of the user's task slots; it starts on its own.
     "queued_for_slot",
     "rejected_concurrent_turn_cap",
@@ -77,11 +73,9 @@ class SessionResult:
     """Aggregated result from a copilot session turn observed via
     ``stream_registry``.
 
-    When ``queued`` is set, :func:`run_copilot_turn_via_queue` detected an
-    in-flight turn on the target session and pushed the message onto the
-    pending buffer instead of starting a new turn.  ``response_text`` is
-    empty and the aggregate counts are zero in that case; the executor
-    running the earlier turn drains the buffer on its next round.
+    ``queued`` is set while the turn waits for one of the user's task
+    slots (``queued_for_slot``); ``response_text`` is empty and the
+    aggregate counts are zero in that case.
     """
 
     response_text: str = ""
@@ -90,7 +84,6 @@ class SessionResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     queued: bool = False
-    pending_buffer_length: int = 0
     # Why the turn never started, when the outcome is ``refused``. Written
     # for the model: it names the bound that was hit.
     refusal: str = ""
@@ -193,22 +186,17 @@ async def run_copilot_turn_via_queue(
     tool_call_id: str,
     tool_name: str,
     spawn: SpawnRequest | None = None,
-    allow_queue: bool = True,
     message_metadata: dict[str, Any] | None = None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
     ``spawn`` is what the caller asks for the child's tree envelope; the
-    chokepoint clamps it. ``allow_queue=False`` refuses the in-flight
-    fallback below: a spawn tool must never append its prompt into a turn
-    that is already running under a different envelope.
-
-    That is a deliberate behaviour change, not just a new flag. Continuing a
-    delegation to a teammate who is still working (``delegate_to_expert`` with
-    ``delegated_session_id``) used to queue into their running turn; it now
-    returns ``refused`` with a message telling the caller to wait or start
-    fresh. ``AutoPilotBlock`` passes no ``spawn``, but it does pass
-    ``allow_queue=False`` for the same reason, and raises on ``refused``.
+    chokepoint clamps it. A target session with a turn in flight, or with a
+    task already waiting for a slot, is ``refused``: a prompt never rides a
+    turn that is running under a different envelope. Continuing a
+    delegation to a teammate who is still working (``delegate_to_expert``
+    with ``delegated_session_id``) gets a message telling the caller to wait
+    or start fresh, and ``AutoPilotBlock`` raises on ``refused``.
 
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
@@ -224,72 +212,21 @@ async def run_copilot_turn_via_queue(
     ``tool_call_id`` / ``tool_name`` disambiguate who originated the
     turn in observability / replay (e.g. ``"sub:<parent>"`` for a
     sub-session, ``"autopilot_block"`` for an AutoPilotBlock run).
-
-    Self-defensive queue-fallback: if the target session already has a
-    turn running (another ``run_sub_session`` / Otto block / UI
-    chat), don't race it on the cluster lock.  Push the message onto the
-    pending buffer so the existing turn drains it at its next round
-    boundary, then:
-
-    * ``timeout == 0`` — return immediately with
-      ``("queued", SessionResult(queued=True, ...))``.  Callers that
-      explicitly opted into fire-and-forget (``run_sub_session`` with
-      ``wait_for_result=0``) use this to bail without waiting.
-    * ``timeout > 0`` — **subscribe to the in-flight turn's stream and
-      return its aggregated result** (exactly the same shape as a
-      normally-dispatched turn, but with ``result.queued=True`` so
-      callers can tell we rode on someone else's turn).  Semantically
-      identical to "I asked the session to do something and here is
-      what happened next"; no separate deferred-state branch needed in
-      ``run_sub_session`` / ``AutoPilotBlock``.
     """
     session = await get_chat_session(session_id, user_id)
     if session is None:
         raise RuntimeError("copilot_session_not_found")
 
-    if not allow_queue and (
-        await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
-    ):
+    if await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED:
         return "refused", SessionResult(refusal=_ALREADY_WAITING)
     if await is_turn_in_flight(session_id):
-        if not allow_queue:
-            return "refused", SessionResult(
-                refusal=(
-                    "That session already has a turn in flight, so this task "
-                    "cannot be handed to it right now. Wait for it to finish, "
-                    "or start a fresh one."
-                )
+        return "refused", SessionResult(
+            refusal=(
+                "That session already has a turn in flight, so this task "
+                "cannot be handed to it right now. Wait for it to finish, "
+                "or start a fresh one."
             )
-        logger.info(
-            "[queue] session=%s has a turn in flight; queueing message "
-            "(tool=%s) into pending buffer instead of starting a new turn",
-            session_id[:12],
-            tool_name,
         )
-        state = await queue_user_message(
-            session_id=session_id, message=message, metadata=message_metadata
-        )
-        if timeout <= 0:
-            # Fire-and-forget: caller explicitly asked not to wait.
-            return "queued", SessionResult(
-                queued=True, pending_buffer_length=state.buffer_length
-            )
-        # Ride the in-flight turn: subscribe to its stream and return the
-        # same aggregated result shape as a fresh dispatch.  The model
-        # drains the pending buffer between tool rounds (baseline) or at
-        # the next tool boundary via the PostToolUse hook (SDK), so the
-        # response we observe will reflect our queued follow-up (or be
-        # the terminal result if the in-flight turn finishes before the
-        # buffer drains — in that case ``result.queued=True`` is still
-        # the correct signal for the caller).
-        outcome, observed = await wait_for_session_result(
-            session_id=session_id,
-            user_id=user_id,
-            timeout=timeout,
-        )
-        observed.queued = True
-        observed.pending_buffer_length = state.buffer_length
-        return outcome, observed
 
     # Same per-user concurrent-turn cap as the HTTP chat route via the
     # shared ``schedule_turn`` helper — without this a graph spawning N

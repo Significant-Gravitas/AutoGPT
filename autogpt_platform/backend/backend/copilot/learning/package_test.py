@@ -16,7 +16,7 @@ from backend.copilot.learning.proposal import validate_proposal
 from backend.copilot.tools.skills import (
     ParsedSkill,
     SkillFile,
-    render_skills_index,
+    skills_index_entries,
     validate_skill_content,
 )
 
@@ -142,7 +142,7 @@ def test_trigger_index_is_bounded_without_truncating_stored_phrases():
         body=BODY,
         triggers=triggers,
     )
-    index = render_skills_index([skill])
+    (index,) = skills_index_entries([skill])
     assert len(index) < 750 and index.endswith("…")
     assert skill.triggers == triggers
     validate_skill_content(skill.description, skill.body, skill.triggers)

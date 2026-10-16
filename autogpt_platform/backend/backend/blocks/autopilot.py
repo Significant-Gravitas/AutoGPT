@@ -460,10 +460,6 @@ class AutoPilotBlock(Block):
                 permissions=effective_permissions,
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
-                # Never ride an in-flight turn: the prompt would execute under
-                # THAT turn's envelope and permissions, dropping this block's
-                # own filter. Same hole the three spawn tools close.
-                allow_queue=False,
             )
             if outcome == "rejected_concurrent_turn_cap":
                 # No session record / transcript was created — the slot
@@ -491,10 +487,6 @@ class AutoPilotBlock(Block):
                 raise RuntimeError(result.refusal or "AutoPilot turn was refused")
 
             # Build a lightweight conversation summary from the aggregated data.
-            # When ``result.queued`` is True the prompt rode on an already-
-            # in-flight turn (``run_copilot_turn_via_queue`` queued it and
-            # waited on the existing turn's stream); the aggregated result
-            # is still valid, so the same rendering path applies.
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
             ]
@@ -597,14 +589,11 @@ class AutoPilotBlock(Block):
                 )
                 return
             use_codex = True
-        elif input_data.transport == AutoPilotTransport.PLATFORM:
+        else:
             # Explicit platform: honour it even if a connection is still
             # attached, otherwise the user cannot move a step back onto
             # platform credits once codex has been configured.
             use_codex = False
-        else:
-            yield "error", f"Unsupported AutoPilot transport: {input_data.transport}"
-            return
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
@@ -905,10 +894,9 @@ async def _enqueue_for_recovery(
         return
     try:
         from backend.copilot.executor.utils import (  # avoid circular import
-            enqueue_copilot_turn,
+            schedule_turn,
         )
         from backend.copilot.model import get_chat_session
-        from backend.copilot.tree import root_envelope
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -918,21 +906,21 @@ async def _enqueue_for_recovery(
             )
             return
 
-        recovery_turn_id = str(uuid.uuid4())
         await asyncio.wait_for(
-            enqueue_copilot_turn(
+            # Through the dispatch every turn takes: the user's concurrency
+            # slot, the stream registry and the tree ledger.
+            schedule_turn(
                 session_id=session_id,
                 user_id=user_id,
+                turn_id=str(uuid.uuid4()),
                 message=message,
-                turn_id=recovery_turn_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 # The orphaned turn's envelope died with its worker and is not
-                # recoverable, so this re-dispatch roots a fresh tree — which
-                # is what an AutoPilotBlock turn already gets, the graph
-                # executor being a separate process.
+                # recoverable, so this re-dispatch roots a fresh tree, which
+                # is what an AutoPilotBlock turn already gets.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id, session_id=session_id),
+                root=True,
                 # Still the block's turn: it may run on credits as the first did,
                 # paid from the same tenancy.
                 tool_name=_AUTOPILOT_TOOL_NAME,

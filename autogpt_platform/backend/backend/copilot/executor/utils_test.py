@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,12 +19,14 @@ from backend.copilot.executor.utils import (
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
+    ScheduledTurnOrigin,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
 )
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.prompting import VOICE_TURN_TAG
+from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
 from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
+from backend.copilot.trial_cost_context import TrialCostContext
 
 
 @pytest.mark.asyncio
@@ -226,10 +229,59 @@ class TestCoPilotLogMetadata:
 
 
 @pytest.mark.asyncio
-async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> None:
-    # The services dedup the dispatched message against the row saved here.
-    # When the two diverged, the turn was saved twice — once with the prefix
-    # and once without.
+@pytest.mark.parametrize("from_chat_platform", [True, False])
+async def test_a_chat_platform_dispatch_queues_a_tainted_envelope(
+    from_chat_platform: bool,
+) -> None:
+    """The envelope carries the taint from dispatch, not only the entry's own
+    field: an executor that predates the field still runs a bot's prompt
+    tainted, in a chat started on the web as much as in the bot's own."""
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    queue = MagicMock(publish_message=AsyncMock())
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "admit_turn", new=AsyncMock()),
+        patch.object(
+            utils,
+            "capture_cost_context",
+            new=AsyncMock(return_value=TrialCostContext(user_id="u1", trial_id=None)),
+        ),
+        patch(
+            "backend.copilot.model.append_and_save_message",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hi from the bot",
+            from_chat_platform=from_chat_platform,
+        )
+
+    call = queue.publish_message.await_args
+    assert call is not None
+    entry = utils.CoPilotExecutionEntry.model_validate_json(call.kwargs["message"])
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is from_chat_platform
+    assert entry.from_chat_platform is from_chat_platform
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_saves_the_spoken_words_it_dispatches() -> None:
+    # The engine dedups the dispatched message against the row saved here,
+    # so the two must match; when they diverged the turn was saved twice.
+    # The voice instruction travels on the turn, not in either of them.
     slot = MagicMock(admitted=True)
 
     @asynccontextmanager
@@ -253,8 +305,8 @@ async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> N
 
     persisted = append.await_args.args[1].content
     assert persisted == dispatch.await_args.kwargs["message"]
-    assert persisted.startswith(f"<{VOICE_TURN_TAG}>")
-    assert persisted.endswith("what did I run yesterday")
+    assert persisted == "what did I run yesterday"
+    assert dispatch.await_args_list[-1].kwargs["voice"] is True
 
 
 @pytest.mark.asyncio
@@ -344,8 +396,9 @@ async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
-    # The row was saved by an earlier call; prefixing now would put the two
-    # out of step again, which is the duplicate this guard exists to prevent.
+    # The row was saved by an earlier call; changing the text now would put
+    # the two out of step, which is the duplicate this guard exists to
+    # prevent.
     slot = MagicMock(admitted=True)
 
     @asynccontextmanager
@@ -491,6 +544,52 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+
+def _scheduled_entry(**scheduled_fields) -> CoPilotExecutionEntry:
+    return CoPilotExecutionEntry(
+        session_id="sess-1",
+        user_id="user-1",
+        message="Check the inbox.",
+        is_user_message=False,
+        message_metadata={"from_session_id": "s-2"},
+        scheduled=ScheduledTurnOrigin(**scheduled_fields),
+    )
+
+
+def test_row_metadata_stamps_a_follow_up_prompt() -> None:
+    fired_at = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
+    entry = _scheduled_entry(schedule_id="job-1", fired_at=fired_at)
+
+    rest, origin = split_prompt_origin(entry.row_metadata())
+
+    assert rest == {"from_session_id": "s-2"}
+    assert origin == PromptOrigin(
+        kind="scheduled_followup", schedule_id="job-1", fired_at=fired_at
+    )
+    assert entry.message_metadata == {"from_session_id": "s-2"}
+
+
+def test_row_metadata_marks_a_routine_prompt() -> None:
+    entry = _scheduled_entry(schedule_id="job-1", routine_id="routine-1")
+
+    _, origin = split_prompt_origin(entry.row_metadata())
+
+    assert origin is not None
+    assert origin.kind == "scheduled_routine"
+    assert origin.routine_id == "routine-1"
+    assert origin.fired_at is None
+
+
+def test_row_metadata_leaves_unscheduled_turns_alone() -> None:
+    entry = CoPilotExecutionEntry(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        message_metadata={"from_session_id": "s-2"},
+    )
+
+    assert entry.row_metadata() is entry.message_metadata
 
 
 @pytest.mark.asyncio

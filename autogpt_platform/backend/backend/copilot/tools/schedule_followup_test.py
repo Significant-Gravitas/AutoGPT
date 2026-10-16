@@ -10,6 +10,7 @@ from backend.copilot.tools.schedule_followup import (
     ScheduleCreatedResponse,
     ScheduleFollowupTool,
 )
+from backend.copilot.tree import root_envelope
 from backend.executor.scheduler import CopilotTurnJobInfo
 
 from ._test_data import make_session
@@ -211,6 +212,43 @@ async def test_plain_session_does_not_attribute_followup(tool, session):
 
     call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
     assert call_kwargs["expert_id"] is None
+
+
+async def _scheduled_taint(tool, session, envelope) -> bool:
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.tree.get_current_envelope", return_value=envelope),
+    ):
+        await tool._execute(
+            user_id=_USER, session=session, message="check CI", delay_seconds=1200
+        )
+    return mock_client.add_copilot_turn_schedule.call_args.kwargs["tainted"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tainted", [True, False])
+async def test_a_followup_keeps_the_taint_of_the_turn_that_made_it(
+    tool, session, tainted: bool
+):
+    """Every fire starts with it, in whichever chat it lands."""
+    envelope = root_envelope("turn-1", tainted=tainted)
+    assert await _scheduled_taint(tool, session, envelope) is tainted
+
+
+@pytest.mark.asyncio
+async def test_a_followup_from_a_chat_platform_chat_is_tainted(tool, session):
+    """That chat's turns run tainted, envelope or not."""
+    session.metadata.source_platform = "slack"
+    assert await _scheduled_taint(tool, session, None) is True
 
 
 @pytest.mark.asyncio

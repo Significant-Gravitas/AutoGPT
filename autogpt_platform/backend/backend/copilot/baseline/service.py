@@ -1,9 +1,9 @@
 """Baseline LLM fallback — OpenAI-compatible streaming with tool calling.
 
-Used when ``CHAT_USE_CLAUDE_AGENT_SDK=false``, e.g. as a fallback when the
-Claude Agent SDK / Anthropic API is unavailable.  Routes through any
-OpenAI-compatible provider (OpenRouter by default) and reuses the same
-shared tool registry as the SDK path.
+Serves the local route (``CHAT_PLATFORM_ROUTE=local``) until the shared
+model gateway carries it on the SDK path.  Talks to the local server's
+OpenAI-compatible API and reuses the same shared tool registry as the
+SDK path.
 """
 
 import asyncio
@@ -29,7 +29,6 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -105,11 +104,9 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
-    StreamModeChanged,
     StreamProviderFailure,
     StreamStart,
     StreamStartStep,
-    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -120,11 +117,14 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.route_profile import THINKING_BUDGET_TOKENS
+from backend.copilot.sdk.resume_gap import unseen_rows
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
     _update_title_async,
     config,
+    fetch_business_understanding,
     inject_user_context,
     strip_user_context_tags,
 )
@@ -161,10 +161,8 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
-    detect_gap,
     download_transcript,
     extract_context_messages,
-    fill_hole_between_transcript_and_gap,
     next_uncovered_sequence,
     strip_for_upload,
     upload_transcript,
@@ -336,6 +334,11 @@ _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 # into the final usage chunk. Module-level constant so we don't reallocate
 # an identical dict on every streaming call.
 _OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+# Prompt-cache marker lifetime on the OpenRouter and direct dialects. 1h is
+# strictly cheaper overall when the static prefix gets >7 reads per write
+# window, and the system prompt + tools are the same for every user.
+_PROMPT_CACHE_TTL = "1h"
 
 
 def _extract_usage_cost(usage: CompletionUsage) -> float | None:
@@ -635,8 +638,8 @@ def _supports_prompt_cache_markers(model: str) -> bool:
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
     """Return a FRESH ephemeral ``cache_control`` dict each call.
 
-    The ``ttl`` is sourced from :attr:`ChatConfig.baseline_prompt_cache_ttl`
-    (default ``1h``) so the static prefix stays warm across many users'
+    The ``ttl`` is ``_PROMPT_CACHE_TTL`` (``1h``) so the static prefix
+    stays warm across many users'
     requests in the same workspace cache.  Anthropic caches are keyed
     per-workspace, so every copilot user reading the same system prompt
     hits the same cached entry.
@@ -645,7 +648,7 @@ def _fresh_ephemeral_cache_control() -> dict[str, str]:
     (e.g. the OpenAI SDK normalising fields in-place) poison every future
     request's marker.  Construction is O(1) so the safety margin is free.
     """
-    return {"type": "ephemeral", "ttl": config.baseline_prompt_cache_ttl}
+    return {"type": "ephemeral", "ttl": _PROMPT_CACHE_TTL}
 
 
 def _fresh_anthropic_caching_headers() -> dict[str, str]:
@@ -667,8 +670,8 @@ def _mark_tools_with_cache_control(
     """Return a copy of *tools* with ``cache_control`` on the last entry.
 
     Marking the last tool is a cache breakpoint that covers the whole tool
-    schema block as a cacheable prefix segment.  Extracted from
-    :func:`_mark_system_message_with_cache_control` so callers can precompute
+    schema block as a cacheable prefix segment.  Separate from
+    :func:`_build_cached_system_message` so callers can precompute
     the marked tool list once per session — the tool set is static within a
     request and the ~43 dict-copies would otherwise run on every LLM round
     in the tool-call loop.
@@ -838,23 +841,6 @@ def _prepend_skills_notice_to_current_message(
             break
 
 
-def _mark_system_message_with_cache_control(
-    messages: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with ``cache_control`` on the system block.
-
-    Thin wrapper around :func:`_build_cached_system_message` that preserves
-    the original list shape.  Prefer the memoised path in
-    ``_baseline_llm_caller`` (which builds the cached system dict once per
-    session) for hot-loop callers; this function is retained for call sites
-    outside the tool-call loop where per-call copying is acceptable.
-    """
-    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
-    if cached_messages and cached_messages[0].get("role") == "system":
-        cached_messages[0] = _build_cached_system_message(cached_messages[0])
-    return cached_messages
-
-
 async def _baseline_llm_caller(
     messages: list[dict[str, Any]],
     tools: Sequence[Any],
@@ -907,7 +893,7 @@ async def _baseline_llm_caller(
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
         # The wire format must match the endpoint ``main_client_credentials``
         # actually dialed — ``baseline_provider`` is the shared truth for both
-        # (local → openrouter_active → anthropic). Keying on
+        # (one per platform route). Keying on
         # ``transport.name == "openrouter"`` would send direct-Anthropic shape
         # to an OpenRouter endpoint in subscription mode with OR creds present,
         # where ``transport.name`` is ``"subscription"`` but the baseline client
@@ -933,15 +919,13 @@ async def _baseline_llm_caller(
                     generation_name="copilot-baseline",
                 )
             )
-            reasoning_param = reasoning_extra_body(
-                state.model, config.claude_agent_max_thinking_tokens
-            )
+            reasoning_param = reasoning_extra_body(state.model, THINKING_BUDGET_TOKENS)
             if reasoning_param:
                 extra_body.update(reasoning_param)
         else:
             # Direct mode (non-OR, non-local): use native Anthropic thinking param.
             thinking_param = anthropic_thinking_extra_body(
-                state.model, config.claude_agent_max_thinking_tokens
+                state.model, THINKING_BUDGET_TOKENS
             )
             if thinking_param:
                 extra_body.update(thinking_param)
@@ -949,7 +933,7 @@ async def _baseline_llm_caller(
         max_tokens_arg: int | Any = openai_omit
         if not is_openrouter_transport and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
-            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+            budget = min(THINKING_BUDGET_TOKENS, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
             max_tokens_arg = min(budget + 4096, model_max)
         # Route through the shared providers helper so future provider
@@ -1011,7 +995,7 @@ async def _baseline_llm_caller(
                             cache_creation_tokens=(
                                 _extract_cache_creation_tokens(ptd) if ptd else 0
                             ),
-                            cache_ttl=config.baseline_prompt_cache_ttl,
+                            cache_ttl=_PROMPT_CACHE_TTL,
                         )
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
@@ -1424,8 +1408,11 @@ async def _compress_session_messages(
     # ~120k and never fire before the (much smaller) local window overflows.
     # Probe the backend for its real window and target compaction at it.
     target_tokens: int | None = None
-    if config.effective_transport == "local" and config.base_url:
-        window = await probe_local_context_window(config.base_url, model)
+    local_url = config.local_openai_base_url
+    if config.platform_route == "local" and local_url:
+        window = await probe_local_context_window(
+            local_url, model, fallback=config.local_context_tokens
+        )
         target_tokens = compaction_target_for_window(window)
 
     try:
@@ -1472,11 +1459,11 @@ def _humanize_baseline_error(e: Exception) -> str:
     operator's LLM backend (Ollama/vLLM/…) isn't running — say so, instead of
     surfacing a bare "Connection error.".
     """
-    if isinstance(e, APIConnectionError) and config.effective_transport == "local":
+    if isinstance(e, APIConnectionError) and config.platform_route == "local":
         return (
-            f"Can't reach the local LLM backend at {config.base_url}. Make sure "
-            "your model server is running — for Ollama, start it with "
-            "`ollama serve` (or check CHAT_BASE_URL)."
+            f"Can't reach the local LLM backend at {config.local_base_url}. "
+            "Make sure your model server is running — for Ollama, start it "
+            "with `ollama serve` (or check CHAT_LOCAL_BASE_URL)."
         )
     return str(e) or type(e).__name__
 
@@ -1509,11 +1496,9 @@ def _append_gap_to_builder(
     Converts ChatMessage (OpenAI format) to TranscriptBuilder entries
     (Claude CLI JSONL format) so the uploaded transcript covers all turns.
 
-    Pre-condition: ``gap`` always starts at a user or assistant boundary
-    (never mid-turn at a ``tool`` role), because ``detect_gap`` enforces
-    ``session_messages[wm-1].role == 'assistant'`` before returning a non-empty
-    gap.  Any ``tool`` role messages within the gap always follow an assistant
-    entry that already exists in the builder or in the gap itself.
+    ``gap`` is what :func:`~backend.copilot.sdk.resume_gap.unseen_rows`
+    returns: a ``tool`` row's call is in the gap or in the transcript the
+    builder already holds.
     """
     for msg in gap:
         if msg.role == "user":
@@ -1612,24 +1597,21 @@ async def _load_prior_transcript(
         restore.message_count,
     )
 
-    gap = detect_gap(restore, session_messages)
-    # Hole-fill: when the cap engaged AND the windowed view starts above the
-    # transcript watermark, the sequences in between live in DB but neither
-    # the transcript nor the loaded gap.  Persisting them to the builder here
-    # (so the next-turn upload includes them) closes the loop — without this,
-    # detect_gap on every subsequent turn would re-discover the same hole.
-    hole: list[ChatMessage] = []
-    if restore.message_count > 0:
-        hole = await fill_hole_between_transcript_and_gap(
-            session_id, restore.message_count, gap
-        )
-    if hole or gap:
-        _append_gap_to_builder(hole + gap, transcript_builder)
+    # The rows the stored transcript lacks, a capped window's hole included,
+    # go into the builder so the next upload covers them; otherwise every
+    # later turn would find the same gap again.
+    rows = [m for m in session_messages if m.role != "reasoning"]
+    gap = await unseen_rows(
+        rows[:-1],
+        restore.message_count,
+        session_id=session_id,
+        log_prefix="[Baseline]",
+    )
+    if gap:
+        _append_gap_to_builder(gap, transcript_builder)
         logger.info(
-            "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
-            "+ %d gap msgs from DB",
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d msgs from DB",
             restore.message_count,
-            len(hole),
             len(gap),
         )
 
@@ -1820,8 +1802,8 @@ async def stream_chat_completion_baseline(
     # message first, queued follow-ups second).  The already-saved user message
     # in the DB is updated via update_message_content_by_sequence rather than
     # inserting a new row, because routes.py has already saved the user message
-    # before the executor picks up the turn (using insert_pending_before_last +
-    # persist_session_safe would add a duplicate row at sequence N+1).
+    # before the executor picks up the turn (inserting the pending rows and
+    # persisting would add a duplicate row at sequence N+1).
     drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
     if drained_at_start_pending:
         logger.info(
@@ -1859,9 +1841,7 @@ async def stream_chat_completion_baseline(
         # config default is also invalid (deployment-level misconfig caught
         # by the ``model_validator`` at startup).
         tier_default = (
-            config.fast_advanced_model
-            if model == "advanced"
-            else config.fast_standard_model
+            config.tier_model("advanced" if model == "advanced" else "standard") or ""
         )
         try:
             active_model = normalize_model_for_transport(tier_default, config)
@@ -1917,10 +1897,10 @@ async def stream_chat_completion_baseline(
     # a needless DB lookup for user understanding.
     should_inject_user_context = is_first_turn and is_user_message
 
-    if should_inject_user_context:
-        prompt_task = _build_system_prompt(user_id)
-    else:
-        prompt_task = _build_system_prompt(None)
+    prompt_task = _build_system_prompt()
+    understanding_task = fetch_business_understanding(
+        user_id if should_inject_user_context else None
+    )
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.  Use the pre-drain count so pending
@@ -1930,7 +1910,8 @@ async def stream_chat_completion_baseline(
     if user_id and _pre_drain_msg_count > 1:
         (
             (transcript_upload_safe, transcript_download),
-            (base_system_prompt, understanding),
+            base_system_prompt,
+            understanding,
         ) = await asyncio.gather(
             _load_prior_transcript(
                 user_id=user_id,
@@ -1939,9 +1920,12 @@ async def stream_chat_completion_baseline(
                 transcript_builder=transcript_builder,
             ),
             prompt_task,
+            understanding_task,
         )
     else:
-        base_system_prompt, understanding = await prompt_task
+        base_system_prompt, understanding = await asyncio.gather(
+            prompt_task, understanding_task
+        )
 
     # Append user message to transcript after context injection below so the
     # transcript receives the prefixed message when user context is available.
@@ -2111,6 +2095,7 @@ async def stream_chat_completion_baseline(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
+            kickoff_turn=is_expert_kickoff_turn(session),
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
@@ -2490,18 +2475,6 @@ async def stream_chat_completion_baseline(
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
-                # Engine switch requested (enter_agent_building_mode): end
-                # the loop at this iteration boundary — the round's tool
-                # results are already folded into the conversation, so the
-                # tool-call rows persist and the processor's derived
-                # building-mode signal holds. The processor dispatches the
-                # SDK continuation turn after the slot is released.
-                if engine_switch.is_pending(session_id):
-                    logger.info(
-                        f"[Baseline] Engine switch pending for "
-                        f"{session_id[:12]} — ending tool loop"
-                    )
-                    break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
                 # in-place, so appending here means the model sees the new
@@ -2717,7 +2690,7 @@ async def stream_chat_completion_baseline(
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         if out_of_credits:
             report_provider_out_of_credits(
-                provider=config.effective_transport,
+                provider=config.platform_route,
                 model=active_model,
                 surface="copilot_baseline",
                 error=e,
@@ -2881,7 +2854,7 @@ async def stream_chat_completion_baseline(
                 completion_tokens=state.turn_completion_tokens,
                 cache_read_tokens=state.turn_cache_read_tokens,
                 cache_creation_tokens=state.turn_cache_creation_tokens,
-                cache_ttl=config.baseline_prompt_cache_ttl,
+                cache_ttl=_PROMPT_CACHE_TTL,
             )
             if recovered is not None:
                 state.cost_usd = recovered
@@ -2903,11 +2876,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            provider=(
-                "open_router"
-                if baseline_provider == "openrouter"
-                else config.transport.cost_log_provider
-            ),
+            provider=config.aux_provider_label,
         )
 
         # Persist structured tool-call history (assistant + tool messages)
@@ -3035,24 +3004,4 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
-    for event in _engine_switch_finish_events(session_id):
-        yield event
     yield StreamFinish()
-
-
-def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
-    """Terminal events for a turn that registered an engine switch.
-
-    Emitted right before StreamFinish so the frontend learns the engine
-    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
-    exactly once, at the turn boundary where the baseline loop stopped.
-    There is no mode picker to flip any more — the client uses this only to
-    widen its post-finish refetch window, since a switch takes longer to
-    settle.
-    """
-    if not engine_switch.is_pending(session_id):
-        return []
-    return [
-        StreamModeChanged(mode="extended_thinking"),
-        StreamStatus(message="Switching engines for agent building…"),
-    ]

@@ -196,3 +196,23 @@ def test_unparseable_numbers_do_not_raise() -> None:
         }
     )
     assert limits.primary is None
+
+
+def test_parse_model_keeps_the_advertised_window() -> None:
+    parsed = _parse_model(
+        _model(context_window=272_000, auto_compact_token_limit=244_800)
+    )
+    assert parsed is not None
+    assert parsed.context_window == 272_000
+    assert parsed.auto_compact_token_limit == 244_800
+
+
+def test_parse_model_window_absent_or_junk_is_none() -> None:
+    absent = _parse_model(_model())
+    assert absent is not None
+    assert absent.context_window is None
+    assert absent.auto_compact_token_limit is None
+    junk = _parse_model(_model(context_window="272000", auto_compact_token_limit=True))
+    assert junk is not None
+    assert junk.context_window is None
+    assert junk.auto_compact_token_limit is None

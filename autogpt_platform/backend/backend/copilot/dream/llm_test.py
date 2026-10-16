@@ -18,6 +18,7 @@ from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm.providers import ProviderResponse
 
 from .llm import (
+    NO_PLATFORM_API,
     DreamLLMError,
     _extract_first_json_object,
     _normalize_ollama_host,
@@ -179,6 +180,15 @@ def _anthropic_routing(api_key: str = "") -> ProviderRoutingKwargs:
     )
 
 
+@pytest.fixture(autouse=True)
+def _model_names_as_given(mocker):
+    """These tests fake the route's kwargs, so model names pass through as
+    given; ``background_dispatch_test.py`` covers the real spelling."""
+    mocker.patch(
+        "backend.copilot.dream.llm.background_model_name", side_effect=lambda m: m
+    )
+
+
 class TestStructuredCompletionDelegation:
     """Confirms ``structured_completion`` delegates to ``call_provider``
     with kwargs derived from ``routing_kwargs_for_chat_transport()`` and
@@ -289,8 +299,8 @@ class TestStructuredCompletionDelegation:
 
     @pytest.mark.asyncio
     async def test_routes_to_ollama_under_local_transport(self):
-        """Local transport: dispatch becomes ``provider="ollama"`` with
-        ``ollama_host`` derived from ``CHAT_BASE_URL`` (sans the
+        """The local route: dispatch becomes ``provider="ollama"`` with
+        ``ollama_host`` derived from ``CHAT_LOCAL_BASE_URL`` (sans the
         OpenAI-compat ``/v1`` suffix). Closes the dream-pass-on-local
         hole identified in the local-AI memory integration."""
         fake_response = ProviderResponse(
@@ -326,7 +336,7 @@ class TestStructuredCompletionDelegation:
             "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
             return_value=_openrouter_routing(api_key=""),
         ):
-            with pytest.raises(DreamLLMError, match="OPEN_ROUTER_API_KEY"):
+            with pytest.raises(DreamLLMError, match="CHAT_OPENROUTER_API_KEY"):
                 await structured_completion(
                     model="anthropic/claude-sonnet-4-6",
                     messages=[{"role": "user", "content": "hi"}],
@@ -334,28 +344,45 @@ class TestStructuredCompletionDelegation:
                 )
 
     @pytest.mark.asyncio
-    async def test_raises_with_subscription_hint_when_no_anthropic_key(self):
-        """Subscription mode lands on ``provider="anthropic"`` with an
-        empty api_key (the Claude Code OAuth token can't authenticate
-        against the Messages API per the Feb-2026 Anthropic ToS). The
-        wrapper must surface a friendly error pointing operators at
-        the ``ANTHROPIC_API_KEY`` env var instead of leaking a 401."""
+    async def test_raises_naming_the_direct_routes_key_when_unset(self):
+        """A friendly error naming the route's own key instead of a 401."""
+        call_provider_mock = AsyncMock()
         with patch(
             "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
             return_value=_anthropic_routing(api_key=""),
-        ):
-            with pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY") as exc_info:
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            with pytest.raises(DreamLLMError, match="CHAT_ANTHROPIC_API_KEY"):
                 await structured_completion(
                     model="anthropic/claude-sonnet-4-6",
                     messages=[{"role": "user", "content": "hi"}],
                     response_model=_SampleOutput,
                 )
-        # The hint is user-facing self-serve documentation — the anchor must
-        # match the real heading slug in docs/platform/copilot-local-llm.md
-        # ("### Subscription mode caveat").
-        assert "docs/platform/copilot-local-llm.md#subscription-mode-caveat" in str(
-            exc_info.value
+        call_provider_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_route_without_an_api_raises_before_any_call(self):
+        """Subscription and disabled have no platform API: no call at all."""
+        call_provider_mock = AsyncMock()
+        no_api = ProviderRoutingKwargs(
+            provider=None,
+            api_key="",
+            base_url=None,
+            supports_flex=False,
+            cost_log_provider="none",
         )
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=no_api,
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            with pytest.raises(DreamLLMError) as raised:
+                await structured_completion(
+                    model="anthropic/claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
+        assert str(raised.value) == NO_PLATFORM_API
+        assert raised.value.usage is None
+        call_provider_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_empty_content_raises_dream_llm_error(self):

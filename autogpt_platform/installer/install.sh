@@ -355,12 +355,31 @@ prepare_environment() {
 	if [ ! -e "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ]; then
 		(umask 077 && printf '%s\n' \
 			'# Private runtime configuration for the AutoGPT appliance.' \
-			'AUTOGPT_PUBLIC_URL=http://localhost:3000' >"$ENV_FILE")
+			'AUTOGPT_PUBLIC_URL=http://localhost:3000' \
+			"# AutoPilot's platform chat route: disabled (users chat over the accounts" \
+			'# they connect), openrouter, direct_anthropic or local, each with its own' \
+			'# settings. See docs/platform/single-container.md.' \
+			'CHAT_PLATFORM_ROUTE=disabled' >"$ENV_FILE")
 	fi
 	validate_private_file "$ENV_FILE" 'Runtime configuration'
 	ENV_HASH="$(file_sha256 "$ENV_FILE")"
 	[[ "$ENV_HASH" =~ ^[0-9a-f]{64}$ ]] || die 'Could not hash the runtime configuration.'
 	ok "Private runtime configuration: ${ENV_FILE}"
+}
+
+check_chat_settings() {
+	# The appliance's own startup check, run on this file before any container
+	# exists: a retired chat setting, or a route missing what it needs, is named
+	# here (names only, never values) instead of in a restart loop. The file is
+	# never rewritten. Releases without the check skip it.
+	step 'Checking the AutoPilot chat settings'
+	docker run --rm --network none --env-file "$ENV_FILE" --entrypoint /bin/sh "$IMAGE_DIGEST" -c '
+		[ -f /app/autogpt_platform/backend/backend/copilot/chat_env.py ] || exit 0
+		CHAT_PLATFORM_ROUTE="${CHAT_PLATFORM_ROUTE:-disabled}" exec python3 \
+			/opt/autogpt/single-container/runtime_config.py check-chat-env \
+			--backend-env /app/autogpt_platform/backend/.env' ||
+		die "Update the chat settings named above in ${ENV_FILE}, then re-run the installer. See docs/platform/single-container.md."
+	ok 'AutoPilot chat settings'
 }
 
 preflight() {
@@ -598,6 +617,7 @@ prepare_state
 prepare_environment
 prepare_image
 info "Selected release -> ${VER_REF} -> ${IMAGE_DIGEST}"
+check_chat_settings
 start_appliance
 wait_for_healthy
 

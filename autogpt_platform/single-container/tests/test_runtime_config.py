@@ -511,5 +511,56 @@ def _replace_config_value(content: str, name: str, value: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+_STUB_CHAT_ENV = """
+class ChatEnvironmentError(ValueError):
+    pass
+
+
+def check_chat_environment(environ, dotenv_paths):
+    paths = list(dotenv_paths)
+    if environ.get("CHAT_PLATFORM_ROUTE") != "disabled":
+        raise ChatEnvironmentError("CHAT_PLATFORM_ROUTE is not set")
+    return [f"files={len(paths)}"]
+"""
+
+
+class CheckChatEnvTest(unittest.TestCase):
+    """check-chat-env runs the backend's own check from its source."""
+
+    def _backend(self, root: Path) -> Path:
+        module = root / "backend" / "copilot" / "chat_env.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(_STUB_CHAT_ENV, encoding="utf-8")
+        return root
+
+    def test_runs_the_backends_check_with_its_dotenv_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            env_file = root / ".env"
+            env_file.write_text("X=1\n", encoding="utf-8")
+            warnings = runtime_config.check_chat_env(
+                env_file,
+                {"AUTOGPT_BACKEND_DIR": str(root), "CHAT_PLATFORM_ROUTE": "disabled"},
+            )
+        self.assertEqual(warnings, ["files=1"])
+
+    def test_a_missing_dotenv_file_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            warnings = runtime_config.check_chat_env(
+                root / ".env",
+                {"AUTOGPT_BACKEND_DIR": str(root), "CHAT_PLATFORM_ROUTE": "disabled"},
+            )
+        self.assertEqual(warnings, ["files=0"])
+
+    def test_problems_stop_startup_as_a_configuration_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            with self.assertRaisesRegex(ValueError, "CHAT_PLATFORM_ROUTE is not set"):
+                runtime_config.check_chat_env(
+                    root / ".env", {"AUTOGPT_BACKEND_DIR": str(root)}
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

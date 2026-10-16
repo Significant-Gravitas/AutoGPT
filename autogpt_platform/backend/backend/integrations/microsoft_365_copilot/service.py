@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import uuid4
 
-from backend.copilot.config import CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLLMModel
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -124,12 +124,12 @@ async def stream_chat_completion_microsoft_365(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     context: dict[str, str] | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     credential_lease: CredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    del mode, model
+    del model
     if session is None:
         session = await get_chat_session(session_id, user_id)
     if not session:
@@ -159,7 +159,7 @@ async def stream_chat_completion_microsoft_365(
     # The route persists the original text before enqueueing. Deduplicate
     # against that exact value; sanitization is only for what leaves our trust
     # boundary and must not create a second user row in chat history.
-    maybe_append_user_message(session, message, is_user_message)
+    maybe_append_user_message(session, message, is_user_message, message_metadata)
 
     message_id = str(uuid4())
     text_id = f"{message_id}-text"

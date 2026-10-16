@@ -114,7 +114,6 @@ async def sdk_turn(
         query_message="",
         compaction_stats=None,
         use_resume=False,
-        resume_file=None,
         transcript_msg_count=0,
         adapter=SDKResponseAdapter(
             message_id=message_id, session_id=session.session_id
@@ -184,15 +183,15 @@ async def sdk_service_turn(
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),
-        "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
+        "_build_system_prompt": AsyncMock(return_value="System prompt"),
+        "fetch_business_understanding": AsyncMock(return_value=None),
         "download_transcript": AsyncMock(return_value=None),
         "upload_transcript": AsyncMock(),
         "create_copilot_mcp_server": MagicMock(),
         "create_security_hooks": MagicMock(),
         "get_copilot_tool_names": MagicMock(return_value=[]),
         "get_sdk_disallowed_tools": MagicMock(return_value=[]),
-        "build_sdk_env": MagicMock(return_value={}),
-        "_resolve_sdk_model": MagicMock(return_value=None),
+        "route_launch_env": MagicMock(return_value={}),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
         "resolve_turn_budget": AsyncMock(
@@ -204,17 +203,16 @@ async def sdk_service_turn(
         ),
         "resolve_answered": AsyncMock(return_value=held_results or []),
         "build_session_context": AsyncMock(return_value=""),
-        "build_skills_context": AsyncMock(return_value=""),
+        "skills_context_block": AsyncMock(return_value=None),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
         "build_turn_budget_block": AsyncMock(return_value=""),
         "persist_and_record_usage": AsyncMock(),
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
-                "api_key": UNSENT_MODEL_KEY,
-                "use_claude_code_subscription": False,
+                "platform_route": "openrouter",
+                "openrouter_api_key": UNSENT_MODEL_KEY,
                 "use_e2b_sandbox": False,
-                "claude_agent_fallback_model": None,
                 "claude_agent_max_transient_retries": 1,
             }
         ),

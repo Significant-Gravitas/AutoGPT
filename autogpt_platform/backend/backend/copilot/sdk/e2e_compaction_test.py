@@ -27,11 +27,8 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionTracker
-from backend.copilot.sdk.transcript import (
-    read_compacted_entries,
-    strip_progress_entries,
-)
-from backend.copilot.sdk.transcript_builder import TranscriptBuilder
+from backend.copilot.transcript import read_compacted_entries, strip_for_upload
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json
 
 
@@ -459,7 +456,7 @@ class TestCompactionE2E:
 
         This tests the exact sequence that happens across two turns:
         Turn 1: SDK produces transcript with progress entries
-        Upload: strip_progress_entries removes progress, upload to cloud
+        Upload: strip_for_upload removes progress, upload to cloud
         Turn 2: Download → load_previous → compaction fires → replace → export
         Turn 3: Download the Turn 2 export → load_previous (roundtrip)
         """
@@ -482,7 +479,7 @@ class TestCompactionE2E:
         )
 
         # Strip progress for upload
-        stripped = strip_progress_entries(raw_content)
+        stripped = strip_for_upload(raw_content)
         stripped_entries = [
             json.loads(line) for line in stripped.strip().split("\n") if line.strip()
         ]

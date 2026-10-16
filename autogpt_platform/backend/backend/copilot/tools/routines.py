@@ -23,6 +23,7 @@ from backend.api.features.experts.routines import (
 )
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.tree import running_turn_tainted
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import experts_db
 
@@ -292,9 +293,21 @@ class ScheduleRoutineTool(BaseTool):
         )
         if isinstance(credential_pins, SetupRequirementsResponse):
             return credential_pins
+        # Set on the routine's row for good when this turn runs tainted, so
+        # every fire starts tainted however the routine is switched on later.
+        tainted = running_turn_tainted(
+            session.metadata.source_platform if session else None
+        )
         try:
             routine = await self._apply(
-                user_id, owner, routine_id, enabled, pinned, credential_pins, kwargs
+                user_id,
+                owner,
+                routine_id,
+                enabled,
+                pinned,
+                credential_pins,
+                kwargs,
+                tainted=tainted,
             )
         except RoutineUnansweredAsksError as e:
             return ErrorResponse(
@@ -431,6 +444,8 @@ class ScheduleRoutineTool(BaseTool):
         pinned_session_id: str | None,
         credential_pins: CredentialPins | None,
         kwargs: dict[str, Any],
+        *,
+        tainted: bool,
     ) -> ExpertRoutine:
         run_at = _run_at(kwargs.get("delay_seconds"))
         crons = kwargs.get("crons")
@@ -451,6 +466,7 @@ class ScheduleRoutineTool(BaseTool):
                 # default rather than a change to leave alone.
                 grants_credentials=True if grant is None else bool(grant),
                 credential_pins=credential_pins,
+                tainted=tainted,
             )
             if not enabled:
                 return created
@@ -478,6 +494,7 @@ class ScheduleRoutineTool(BaseTool):
             # never quietly widens what it can touch.
             grants_credentials=grant,
             credential_pins=credential_pins,
+            tainted=tainted,
         )
 
 

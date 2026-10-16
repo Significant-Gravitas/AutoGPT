@@ -1,12 +1,15 @@
-"""The bundled CLI counts a resumed session's cost on from what our reader finds.
+"""The pinned CLI counts a resumed session's usage on from what our reader finds.
 
-A turn is charged ``total_cost_usd`` minus ``cli_session_cost_usd`` of the file
-the CLI resumed, so a CLI bump that changes where the resumed total comes from
-must fail here rather than mis-bill. Runs against a localhost fake provider.
+A result the CLI never reports is recovered as the session file's token
+counters minus the ones already charged, and the CLI's own running total is
+logged against the rate card; a CLI bump that changes where the resumed
+counters come from must fail here rather than mis-bill. Runs against a
+localhost fake provider.
 """
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -14,9 +17,9 @@ import pytest
 from aiohttp import web
 
 from backend.copilot.sdk.cost_tracking import read_cli_session_usage
-from backend.copilot.transcript import cli_session_cost_usd, cli_session_path
+from backend.copilot.transcript import cli_session_cost_state, cli_session_path
 
-from .cli_openrouter_compat_test import _resolve_cli_path
+from .cli_openrouter_compat_test import _resolve_cli_path, assert_pinned_cli
 
 _MODEL = "claude-sonnet-5-5"
 _CALL_USAGE = {
@@ -36,7 +39,8 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
     cwd = tmp_path / "run"
     cwd.mkdir()
     session_id = str(uuid.uuid4())
-    runner, port = await _start_fake_provider()
+    user_agents: list[str] = []
+    runner, port = await _start_fake_provider(user_agents)
     try:
         first = await _run_cli(cli, cwd, port, "--session-id", session_id)
         session_file = Path(cli_session_path(str(cwd), session_id))
@@ -47,7 +51,8 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
                 with session_file.open("a") as f:
                     row = {"type": "cost-state", "sessionId": "x", "totalCostUSD": 5}
                     f.write(json.dumps(row) + "\n")
-            restored = cli_session_cost_usd(session_file.read_text(), session_id)
+            entry = cli_session_cost_state(session_file.read_text(), session_id)
+            restored = float(entry["totalCostUSD"]) if entry else 0.0
             result = await _run_cli(cli, cwd, port, "--resume", session_id)
             resumed.append((restored, result["total_cost_usd"]))
             for key, value in _CALL_USAGE.items():
@@ -64,10 +69,14 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
     snapshot = read_cli_session_usage(str(cwd), session_id, "")
     assert snapshot.cost_usd == pytest.approx(resumed[-1][1])
     assert snapshot.tokens == {key: 3 * value for key, value in _CALL_USAGE.items()}
+    assert_pinned_cli(user_agents, cli)
 
 
-async def _start_fake_provider() -> tuple[web.AppRunner, int]:
+async def _start_fake_provider(
+    user_agents: list[str],
+) -> tuple[web.AppRunner, int]:
     async def messages(request: web.Request) -> web.StreamResponse:
+        user_agents.append(request.headers.get("User-Agent", ""))
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         await response.prepare(request)
         await response.write(_streamed_reply().encode())
@@ -97,6 +106,8 @@ async def _run_cli(cli: Path, cwd: Path, port: int, *session_args: str) -> dict:
         "DISABLE_TELEMETRY": "1",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        # Windows: the CLI's runtime needs it for any network request.
+        **{k: os.environ[k] for k in ("SystemRoot",) if k in os.environ},
     }
     query = {"type": "user", "message": {"role": "user", "content": "Say ok."}}
     proc = await asyncio.create_subprocess_exec(

@@ -63,7 +63,7 @@ def _provider_for_execution_path(execution_path: ExecutionPath) -> str:
 
     The batch path is pinned to Anthropic. The
     sync_baseline path follows the active chat transport — so a
-    local-Ollama install logs ``provider="ollama"``, a subscription
+    local-route install logs ``provider="local"``, a subscription
     or direct-Anthropic install logs ``"anthropic"``, and the cloud
     OpenRouter default logs ``"open_router"``. Centralizes what was
     a static ``"sync_baseline" → "open_router"`` mapping that

@@ -67,6 +67,13 @@ Only the sample fixture was checked.
 """
 
 
+@pytest.fixture(autouse=True)
+def platform_api():
+    """Run on a route with a platform API; the dev default is ``disabled``."""
+    with patch.object(nightly.ChatConfig, "has_platform_api", True):
+        yield
+
+
 async def _persist_turn(
     session: ChatSession, offset: int, request: str, tool_arguments: str = "{}"
 ) -> list[ChatMessage]:

@@ -9,6 +9,7 @@ import pytest
 from backend.api.features.experts.roster import RosterError
 from backend.api.features.store.skill_catalog_release import CatalogError
 from backend.copilot.config import ChatConfig
+from backend.copilot.context_blocks import render_context_blocks
 from backend.copilot.expert_context import (
     build_expert_context,
     build_expert_identity_suffix,
@@ -131,8 +132,11 @@ async def test_user_prefix_is_the_production_first_turn_context():
             AsyncMock(return_value=True),
         ),
     ):
-        assert await build_expert_context("user", max_.id) == user_prefix(max_, roster)
-        assert await build_expert_context("user", None) == user_prefix(None, roster)
+        for expert in (max_, None):
+            production = await build_expert_context(
+                "user", expert.id if expert else None
+            )
+            assert render_context_blocks(production) == user_prefix(expert, roster)
     assert "Lead Finder (Local Businesses)" in user_prefix(max_, roster)
     assert (
         "Maria" in user_prefix(max_, roster)
@@ -181,15 +185,11 @@ def test_the_baseline_records_which_delegation_state_it_measured():
 
 @pytest.mark.asyncio
 async def test_chat_model_comes_from_the_router_without_launchdarkly():
+    # The OpenRouter route runs the SDK engine, so the thinking cell.
     config = ChatConfig(
-        use_claude_agent_sdk=True,
-        thinking_standard_model="anthropic/claude-style-test",
-        use_claude_code_subscription=False,
+        platform_route="openrouter", standard_model="anthropic/claude-style-test"
     )
-    with patch(
-        "backend.copilot.engine.is_feature_enabled", AsyncMock(return_value=True)
-    ):
-        routed = await resolve_chat_model(config)
+    routed = await resolve_chat_model(config)
     assert routed.mode == "thinking"
     assert routed.slug == "anthropic/claude-style-test"
     assert routed.source == "env"

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from backend.copilot.config import TransportName
+from backend.copilot.route_table import PlatformRoute
 
 # The single source of truth for execution paths; ``model_pricing``,
 # ``billing`` and ``schemas`` import it from here.
@@ -25,22 +25,19 @@ ExecutionPath = Literal["sync_baseline", "anthropic_batch"]
 # - ``"local"`` — local backends (Ollama, vLLM, …) don't expose batch
 #   endpoints; even if the operator set ``ANTHROPIC_API_KEY`` for some
 #   unrelated reason, the dream pass should stay on the local LLM that
-#   the rest of the install uses (and that ``CHAT_USE_LOCAL=true``
+#   the rest of the install uses (and that ``CHAT_PLATFORM_ROUTE=local``
 #   explicitly opted in to).
-# - ``"subscription"`` — the chat layer authenticates via Claude Code
-#   OAuth (no API key); dual-billing the user's Anthropic API key for
-#   the dream pass would surprise the operator and split the cost-log
-#   audit trail across two surfaces. Force sync so dream + chat
-#   continue to roll up under the same provider label
-#   (``cost_log_provider="anthropic"``).
-_TRANSPORTS_FORCE_SYNC: frozenset[TransportName] = frozenset({"local", "subscription"})
+# - ``"subscription"`` — a Claude login is no platform API, so the pass
+#   skips before it gets here (``ChatConfig.has_platform_api``); listed
+#   so a direct caller never reaches the Batch path either.
+_TRANSPORTS_FORCE_SYNC: frozenset[PlatformRoute] = frozenset({"local", "subscription"})
 
 
 def resolve_dream_execution_path(
     *,
     has_anthropic_key: bool,
     batch_processing_enabled: bool = False,
-    transport_name: TransportName | None = None,
+    transport_name: PlatformRoute | None = None,
 ) -> ExecutionPath:
     """Pick the dream pass execution path.
 

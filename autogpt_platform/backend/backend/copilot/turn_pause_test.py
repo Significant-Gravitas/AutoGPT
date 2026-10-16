@@ -7,8 +7,10 @@ from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.turn_pause import (
     PAUSE_KEY,
+    PAUSED_TURN_TAINTED_KEY,
     TurnPause,
     append_pause_marker,
+    continues_tainted,
     pause_of,
 )
 
@@ -70,3 +72,64 @@ def test_a_kickoff_note_is_not_a_marker(note):
     session = _session(ChatMessage(role="assistant", content=note))
     assert append_pause_marker(session, TurnPause(reason="daily")) is True
     assert len(session.messages) == 2
+
+
+def _paused(*, tainted: bool) -> ChatSession:
+    session = _session(ChatMessage(role="user", content="Build the report"))
+    append_pause_marker(session, TurnPause(reason="steps", steps=450), tainted=tainted)
+    return session
+
+
+@pytest.mark.parametrize("tainted", [True, False])
+def test_every_marker_says_how_its_turn_ran_beside_the_card(tainted: bool):
+    row = _paused(tainted=tainted).messages[-1]
+    assert row.metadata is not None
+    assert row.metadata[PAUSED_TURN_TAINTED_KEY] is tainted
+    # The card's part is what the client renders; the taint isn't in it.
+    assert row.metadata[PAUSE_KEY] == TurnPause(reason="steps", steps=450).as_part()
+
+
+def test_a_marker_written_without_a_taint_says_untainted():
+    session = _session(ChatMessage(role="user", content="Build the report"))
+    append_pause_marker(session, TurnPause(reason="task"))
+    assert session.messages[-1].metadata == {
+        PAUSE_KEY: TurnPause(reason="task").as_part(),
+        PAUSED_TURN_TAINTED_KEY: False,
+    }
+
+
+@pytest.mark.parametrize("tainted", [True, False])
+def test_a_continuation_starts_with_the_paused_turns_taint(tainted: bool):
+    assert continues_tainted(_paused(tainted=tainted).messages) is tainted
+
+
+def test_the_latest_pause_decides():
+    earlier = _paused(tainted=True).messages
+    later = _paused(tainted=False).messages
+    assert continues_tainted([*earlier, *later]) is False
+    assert continues_tainted([*later, *earlier]) is True
+
+
+def test_a_marker_from_before_the_field_continues_tainted():
+    """Written by an executor from before the field: how its turn ran is
+    unknown, so the turn that picks it up runs as if it was tainted."""
+    old = ChatMessage(
+        role="assistant",
+        content=f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run.",
+        metadata={PAUSE_KEY: TurnPause(reason="steps", steps=450).as_part()},
+    )
+    assert continues_tainted([old]) is True
+
+
+def test_a_later_untainted_marker_still_decides_over_an_old_one():
+    old = ChatMessage(
+        role="assistant",
+        content=f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run.",
+        metadata={PAUSE_KEY: TurnPause(reason="steps", steps=450).as_part()},
+    )
+    later = _paused(tainted=False).messages
+    assert continues_tainted([old, *later]) is False
+
+
+def test_a_chat_with_no_pause_continues_untainted():
+    assert continues_tainted([ChatMessage(role="user", content="hi")]) is False

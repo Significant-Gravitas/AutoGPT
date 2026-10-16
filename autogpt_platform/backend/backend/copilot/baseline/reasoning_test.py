@@ -179,7 +179,7 @@ class TestIsReasoningRoute:
         # Regression (Sentry review on #12871): ``'claude' in lowered``
         # matched any substring — a custom
         # ``someprovider/claude-mock-v1`` set via
-        # ``CHAT_FAST_STANDARD_MODEL`` would inherit the reasoning
+        # ``CHAT_STANDARD_MODEL`` would inherit the reasoning
         # extra_body and take a 400 from its upstream.  The anchored
         # match requires either an ``anthropic`` / ``anthropic.`` /
         # ``anthropic/`` prefix, or a bare ``claude-`` id with no

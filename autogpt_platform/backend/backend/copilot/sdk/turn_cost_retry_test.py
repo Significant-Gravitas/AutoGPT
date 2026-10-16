@@ -2,7 +2,8 @@
 
 A transient failure is ours to absorb: the turn is charged only the attempt
 that succeeded. A context retry also keeps the overflow result it was billed
-for, since that result was reported before the retry.
+for, since that result was reported before the retry. Each result is
+charged its own tokens on the rate card, whatever the CLI's running total.
 """
 
 import contextlib
@@ -20,7 +21,14 @@ from backend.copilot.transcript import cli_session_path
 
 from .conftest import build_cli_cost_row, build_test_transcript
 from .retry_scenarios_test import _make_sdk_patches
-from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
+from .turn_cost_test import (
+    _CALL_COST,
+    _CLI_CALL_COST,
+    _SDK_CWD,
+    _SESSION_ID,
+    _SVC,
+    _result,
+)
 
 
 @pytest.mark.asyncio
@@ -30,8 +38,10 @@ from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
         # The failed attempt spent one call and the retry one: only the retry.
         ("transient", 1),
         ("transient-assistant", 1),
-        ("context-result", 3),
-        ("context-zero", 2),
+        # The overflow result reported one call before the retry's one.
+        ("context-result", 2),
+        # The overflow result reported no tokens: only the retry's call.
+        ("context-zero", 1),
     ],
 )
 async def test_retried_turn_charge(
@@ -42,7 +52,7 @@ async def test_retried_turn_charge(
     session_file.parent.mkdir(parents=True)
     transcript = build_test_transcript(
         [("user", "prior question"), ("assistant", "prior answer")]
-    ) + build_cli_cost_row(_SESSION_ID, _CALL_COST)
+    ) + build_cli_cost_row(_SESSION_ID, _CLI_CALL_COST)
     compacted = build_test_transcript(
         [("user", "summary"), ("assistant", "summarized answer")]
     )
@@ -68,7 +78,9 @@ async def test_retried_turn_charge(
             if first_process:
                 if failure != "context-zero":
                     with session_file.open("a") as handle:
-                        handle.write(build_cli_cost_row(_SESSION_ID, 2 * _CALL_COST))
+                        handle.write(
+                            build_cli_cost_row(_SESSION_ID, 2 * _CLI_CALL_COST)
+                        )
                 if failure == "transient":
                     raise ConnectionError("ECONNRESET: connection reset by peer")
                 if failure == "transient-assistant":
@@ -76,7 +88,7 @@ async def test_retried_turn_charge(
                         content=[], model="claude-sonnet-4-6", error="rate_limit"
                     )
                     return
-                result = _result(0 if failure == "context-zero" else 2 * _CALL_COST)
+                result = _result(0 if failure == "context-zero" else 2 * _CLI_CALL_COST)
                 result.subtype = "error_during_execution"
                 result.is_error = True
                 result.result = "Prompt is too long"
@@ -87,7 +99,7 @@ async def test_retried_turn_charge(
             yield AssistantMessage(
                 content=[TextBlock(text="ok")], model="claude-sonnet-4-6"
             )
-            yield _result((2 if failure.startswith("context") else 3) * _CALL_COST)
+            yield _result((2 if failure.startswith("context") else 3) * _CLI_CALL_COST)
 
         client = MagicMock()
         client.query = AsyncMock()

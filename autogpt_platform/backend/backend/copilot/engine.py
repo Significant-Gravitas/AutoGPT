@@ -1,4 +1,4 @@
-"""Which execution engine runs a turn.
+"""Which execution engine runs a platform-route turn.
 
 Lives apart from the processor so the answer can be read without importing
 the engines themselves: the processor pulls in both services at module
@@ -6,36 +6,20 @@ level, and the API layer needs this decision to describe a connection
 before any turn exists.
 """
 
-import logging
+from typing import Literal
 
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.copilot.config import ChatConfig
 
-logger = logging.getLogger(__name__)
+Engine = Literal["sdk", "baseline"]
 
 
-async def resolve_use_sdk(
-    user_id: str | None,
-    *,
-    use_claude_code_subscription: bool,
-    config_default: bool,
-    thinking_available: bool = True,
-) -> bool:
-    """Pick the SDK vs baseline engine.
+def platform_engine(config: ChatConfig) -> Engine:
+    """The engine the platform route's turns run on: its row's.
 
-    Entirely the server's call: the Claude Code subscription override, then
-    the ``COPILOT_SDK`` LaunchDarkly flag, then the config default. Callers
-    used to be able to name an engine per request; nothing can now, so this
-    is one decision rather than a request overriding it — which is also what
-    makes it answerable ahead of a turn.
-
-    ``thinking_available`` is the kill-switch for deployments where the SDK
-    transport simply cannot run (today: ``CHAT_USE_LOCAL=true`` — Ollama
-    doesn't speak Anthropic's wire protocol).
+    Only the local route runs on the fast engine, until the shared gateway
+    carries it; every other route runs on the Claude Agent SDK. A disabled
+    route has no engine of its own, and its SDK turn refuses itself.
+    Connected accounts pick their own engine in the processor.
     """
-    if not thinking_available:
-        return False
-    return use_claude_code_subscription or await is_feature_enabled(
-        Flag.COPILOT_SDK,
-        user_id or "anonymous",
-        default=config_default,
-    )
+    row = config.route_row
+    return row.engine if row is not None else "sdk"

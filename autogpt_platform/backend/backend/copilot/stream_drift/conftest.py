@@ -47,9 +47,9 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "config",
         baseline.config.model_copy(
             update={
-                "api_key": UNSENT_MODEL_KEY,
+                "platform_route": "openrouter",
+                "openrouter_api_key": UNSENT_MODEL_KEY,
                 "use_e2b_sandbox": False,
-                "use_local": False,
             }
         ),
     )
@@ -58,7 +58,8 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
-        "_build_system_prompt": ("System prompt", None),
+        "_build_system_prompt": "System prompt",
+        "fetch_business_understanding": None,
         "build_turn_budget_block": "",
         "is_enabled_for_user": False,
         "is_feature_enabled": False,

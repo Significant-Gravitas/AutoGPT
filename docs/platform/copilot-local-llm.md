@@ -13,11 +13,11 @@ This guide makes the AutoPilot chat work **without an Anthropic, OpenAI,
 or OpenRouter key** by routing it through any **OpenAI-compatible HTTP
 endpoint you control**.
 
-The transport is called `local` because it's the typical case, but
-``CHAT_BASE_URL`` is just a URL — every deployment shape below works
+The route is called `local` because it's the typical case, but
+`CHAT_LOCAL_BASE_URL` is just a URL — every deployment shape below works
 equally well:
 
-| Scenario | `CHAT_BASE_URL` |
+| Scenario | `CHAT_LOCAL_BASE_URL` |
 | --- | --- |
 | Ollama on the same Docker host (most common) | `http://192.168.1.42:11434/v1` (LAN IP) |
 | Ollama on the same Docker host, via Docker Desktop | `http://host.docker.internal:11434/v1` |
@@ -33,67 +33,89 @@ substitute your own endpoint anywhere you see `http://...:11434/v1`.
 
 ## How it works
 
-AutoPilot's `ChatConfig` (`backend/backend/copilot/config.py`) recognises
-four chat transports. When `CHAT_USE_LOCAL=true`:
+AutoPilot's chat runs on one **platform route**, chosen by
+`CHAT_PLATFORM_ROUTE`: `openrouter`, `direct_anthropic`, `local`,
+`subscription` (this machine's Claude login; self-hosted only) or
+`disabled` (no platform model: users chat over the accounts they
+connect). Each route reads only its own settings, and the integration
+keys (`OPEN_ROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+never configure the chat. With `CHAT_PLATFORM_ROUTE=local`:
 
-| Transport behaviour | Local |
+| Behaviour | Local route |
 | --- | --- |
-| Routes the baseline (fast) path to `CHAT_BASE_URL` over OpenAI-compatible HTTP | ✅ |
-| Supports the SDK / extended-thinking path (Claude Agent SDK) | ❌ — auto-downgrades to fast |
-| `api_key` falls back to `OPEN_ROUTER_API_KEY` / `OPENAI_API_KEY` if `CHAT_API_KEY` is unset | ❌ — explicit `CHAT_API_KEY` only |
-| Aux + advanced models (`title_model`, `simulation_model`, `fast_advanced_model`) inherit `fast_standard_model` if left at a cloud default | ✅ |
-| Allows non-`anthropic/*` SDK model slugs (vendor validator skipped) | ✅ |
+| Where turns go | `CHAT_LOCAL_BASE_URL`; every turn runs on the baseline engine |
+| Key | `CHAT_LOCAL_API_KEY`, only if your server checks one; never `OPENAI_API_KEY` or `OPEN_ROUTER_API_KEY` |
+| Models | `CHAT_STANDARD_MODEL` and `CHAT_ADVANCED_MODEL`, both required, sent to the server verbatim |
+| Titles, dry runs and other side calls | the standard tier, on the same server |
+| Context window | `CHAT_LOCAL_CONTEXT_TOKENS` (required), or the server's own report when it gives one |
 
-The downgrade is logged at WARNING when an `extended_thinking` request
-arrives — there is no 500. The frontend toggle should already be hidden
-because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
-self-hosted deployments.
-
-On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
-vars are the *bottom* layer of model resolution: LaunchDarkly per-user
+On the managed cloud platform (`BEHAVE_AS=cloud`), the route's two
+tiers are the *bottom* layer of model resolution: LaunchDarkly per-user
 override → the LLM catalog's routing cell
-(`backend/data/llm_registry/catalog.py`) → env default, with slugs
-unknown to the catalog or disabled in it refused at serve time.
+(`backend/data/llm_registry/catalog.py`) → the tier, with slugs unknown
+to the catalog or disabled in it refused at serve time.
 
-**On self-hosted installs — any transport — the catalog's routing cells
+**On self-hosted installs — any route — the catalog's routing cells
 are skipped entirely**: they are the cloud deployment's config traveling
-in the shipped file, and they never override your `CHAT_*_MODEL`
-configuration. Resolution here is LaunchDarkly → `CHAT_*_MODEL`, exactly
-the pre-catalog behavior; your env vars stay authoritative. See
+in the shipped file, and they never override your `CHAT_STANDARD_MODEL`
+/ `CHAT_ADVANCED_MODEL`. Resolution here is LaunchDarkly → your tiers;
+your settings stay authoritative. See
 [Managing LLM Models](contributing/managing-llm-models.md).
+
+Every backend service checks the chat settings when it starts. A
+setting from the old format, even one left empty, stops it with a list
+naming each such setting and what replaced it, and so does a route
+missing a setting it needs. The list names settings, never their
+values. Moving an existing local install over:
+
+| Old setting | Now |
+| --- | --- |
+| `CHAT_USE_LOCAL=true` | `CHAT_PLATFORM_ROUTE=local` |
+| `CHAT_BASE_URL` | `CHAT_LOCAL_BASE_URL` |
+| `CHAT_API_KEY` | `CHAT_LOCAL_API_KEY`, only if the server checks a key |
+| `CHAT_FAST_STANDARD_MODEL` | `CHAT_STANDARD_MODEL` |
+| `CHAT_FAST_ADVANCED_MODEL` | `CHAT_ADVANCED_MODEL` (now required; repeat the standard model if you run one) |
+| `CHAT_TITLE_MODEL`, `CHAT_SIMULATION_MODEL` | removed: side calls use the standard tier |
+| (new) | `CHAT_LOCAL_ADAPTER` and `CHAT_LOCAL_CONTEXT_TOKENS` |
+
+Delete the old lines rather than emptying them. The `--with-ollama`
+installers write the new block for you.
 
 ## Required environment variables
 
 In `autogpt_platform/backend/.env`:
 
 ```bash
-# Turn on the local transport
-CHAT_USE_LOCAL=true
+# Select the local route
+CHAT_PLATFORM_ROUTE=local
 
-# Where the OpenAI-compatible endpoint lives. From inside the docker
-# containers this must NOT be 127.0.0.1 / localhost — use the host's LAN
-# IP (e.g. 192.168.1.42) or, if you've added the directive to compose,
+# Where the server lives. From inside the docker containers this must
+# NOT be 127.0.0.1 / localhost — use the host's LAN IP (e.g.
+# 192.168.1.42) or, if you've added the directive to compose,
 # host.docker.internal:host-gateway.
-CHAT_BASE_URL=http://192.168.1.42:11434/v1
+CHAT_LOCAL_BASE_URL=http://192.168.1.42:11434/v1
 
-# Any non-empty string — Ollama doesn't validate it. The local transport
-# deliberately does NOT fall back to OPENAI_API_KEY (which is usually
-# present for graphiti / embedders), so this must be set explicitly.
-CHAT_API_KEY=ollama
+# How AutoPilot speaks to the server. openai_chat: an OpenAI-compatible
+# server, and CHAT_LOCAL_BASE_URL is its /v1 URL (as above).
+# anthropic_passthrough: a server that also speaks Anthropic's Messages
+# API, and CHAT_LOCAL_BASE_URL is its root (http://192.168.1.42:11434).
+# Today chat turns use the server's OpenAI-compatible /v1 API either way.
+CHAT_LOCAL_ADAPTER=openai_chat
 
-# The chat model. Bare model names ONLY — provider/model slugs (e.g.
+# The model's context window as the server has it loaded; see "Context
+# window" below. At least 65536.
+CHAT_LOCAL_CONTEXT_TOKENS=262144
+
+# The two tiers. Bare model names ONLY — provider/model slugs (e.g.
 # `anthropic/claude-...`) are passed through verbatim and Ollama can't
-# resolve them. See "Picking a model" below.
-CHAT_FAST_STANDARD_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
+# resolve them. Both are required: set the same model twice if you run
+# one. Set a bigger advanced model only if you have the VRAM for it.
+# See "Picking a model" below.
+CHAT_STANDARD_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
+CHAT_ADVANCED_MODEL=qwen3:14b-q4_K_M
 
-# Optional — override for the advanced tier. If you leave it out, the
-# local transport derives title_model, simulation_model, AND
-# CHAT_FAST_ADVANCED_MODEL from CHAT_FAST_STANDARD_MODEL automatically
-# (see _apply_local_aux_models in backend/backend/copilot/config.py),
-# so the advanced toggle never sends a cloud-only slug to Ollama. Set
-# it explicitly only if you want a bigger model for the advanced tier
-# and have the VRAM for it.
-CHAT_FAST_ADVANCED_MODEL=qwen3:14b-q4_K_M
+# Only when the server checks a key (Ollama doesn't).
+# CHAT_LOCAL_API_KEY=
 ```
 
 ## Picking a model
@@ -114,7 +136,7 @@ Pull whichever you choose:
 ollama pull hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 ```
 
-## Context window — set it once, on the backend
+## Context window — set it on the server, then tell AutoPilot
 
 Ollama defaults `num_ctx` to **4096 tokens regardless of the model's
 advertised window** ([ollama/ollama#2714](https://github.com/ollama/ollama/issues/2714)).
@@ -122,19 +144,25 @@ That's smaller than AutoPilot's system prompt + tool schemas — without a
 larger window Ollama only sees the *end* of the instructions and responses
 are incoherent or 500 outright.
 
-Set the window **once, on the server**, via `OLLAMA_CONTEXT_LENGTH`. There is
-**no AutoGPT-side context config** to keep in sync: AutoPilot reads the
-backend's *actual* loaded window back at runtime — Ollama `/api/ps`, llama.cpp
-`/props`, vLLM / LM Studio `/v1/models` — and compacts the conversation under
-it. Backends that don't report a window (LiteLLM proxy, Jan,
-text-generation-webui) fall back to assuming 32k.
+Set the window **on the server**, via `OLLAMA_CONTEXT_LENGTH`, and put the
+same number in `CHAT_LOCAL_CONTEXT_TOKENS`: AutoPilot compacts the
+conversation to fit it. When the server reports the window it actually
+loaded — Ollama `/api/ps`, llama.cpp `/props`, vLLM / LM Studio
+`/v1/models` — AutoPilot follows that report; backends that don't report
+one (LiteLLM proxy, Jan, text-generation-webui) are taken at
+`CHAT_LOCAL_CONTEXT_TOKENS`. So the setting has to be the real window: a
+number too high overflows the model, one too low throws history away.
 
 The default Ornith model has a 262,144-token native window, so the installer
-sets `OLLAMA_CONTEXT_LENGTH=262144`. This maximizes available conversation
-history but substantially increases KV-cache RAM/VRAM use. Operators using a
-custom model or constrained hardware can lower it, but should keep at least
-24k: below that, the system prompt + tools leave almost no room for
-conversation and AutoPilot logs a warning.
+sets `OLLAMA_CONTEXT_LENGTH=262144`, loads the model, and writes the window
+Ollama reports into `CHAT_LOCAL_CONTEXT_TOKENS`. It asks when the server
+doesn't report one; `--context-tokens=N` (`/context-tokens=N` on Windows)
+sets it outright. A large window maximizes available conversation history
+but substantially increases KV-cache RAM/VRAM use. Operators using a custom
+model or constrained hardware can lower it, but must keep at least 65,536
+(64K): AutoPilot's system prompt and tools beside a working conversation
+need that much, and the backend refuses to start with a smaller
+`CHAT_LOCAL_CONTEXT_TOKENS`.
 
 The installer sets `OLLAMA_CONTEXT_LENGTH` for you. Manual setup per platform:
 
@@ -169,8 +197,8 @@ setx OLLAMA_CONTEXT_LENGTH "262144"
 ```
 
 Verify on any platform with `ollama ps` (the `CONTEXT` column should
-show your value, e.g. 262144). If you change it, AutoPilot picks up the
-new window automatically on the next turn — nothing else to update.
+show your value, e.g. 262144). If you change it, set
+`CHAT_LOCAL_CONTEXT_TOKENS` to match and restart the backend.
 
 ## Networking — same host, different host, or remote
 
@@ -186,7 +214,7 @@ Desktop (macOS / Windows) or native Docker (Linux):
 `host.docker.internal` entry pointing at the host. No extra wiring:
 
 ```bash
-CHAT_BASE_URL=http://host.docker.internal:11434/v1
+CHAT_LOCAL_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
 Still set `OLLAMA_HOST=0.0.0.0:11434` so the .app/tray-managed Ollama
@@ -196,7 +224,7 @@ only to `127.0.0.1`.
 **Linux (native Docker)** — there's no auto-injected
 `host.docker.internal`. Pick one:
 
-1. **Use the LAN IP** in `CHAT_BASE_URL` — simplest, works everywhere.
+1. **Use the LAN IP** in `CHAT_LOCAL_BASE_URL` — simplest, works everywhere.
 2. **Bind Ollama to all interfaces:** `OLLAMA_HOST=0.0.0.0:11434` (set
    in the systemd unit or a drop-in), so containers reach it via the
    bridge gateway.
@@ -213,10 +241,10 @@ The bundled installer does these for you on a fresh box:
 
 ### Different LAN box (dedicated GPU server, NAS, …)
 
-Set `CHAT_BASE_URL` to the box's hostname or IP:
+Set `CHAT_LOCAL_BASE_URL` to the box's hostname or IP:
 
 ```bash
-CHAT_BASE_URL=http://gpu-rig.lab.local:11434/v1
+CHAT_LOCAL_BASE_URL=http://gpu-rig.lab.local:11434/v1
 ```
 
 On the Ollama box, set `OLLAMA_HOST=0.0.0.0:11434` so it accepts
@@ -235,8 +263,8 @@ Two approaches, in increasing order of "please do this":
    whatever, and require a bearer token. Set:
 
    ```bash
-   CHAT_BASE_URL=https://ollama.example.com/v1
-   CHAT_API_KEY=<the-bearer-the-proxy-checks>
+   CHAT_LOCAL_BASE_URL=https://ollama.example.com/v1
+   CHAT_LOCAL_API_KEY=<the-bearer-the-proxy-checks>
    ```
 
 > **Do not** expose raw Ollama on the public internet. Ollama itself
@@ -244,19 +272,18 @@ Two approaches, in increasing order of "please do this":
 > use (and exhaust) your model. Always front it with a proxy that
 > enforces a token.
 
-## Other platform features that use the local transport
+## Other platform features that use the local route
 
-The `local` transport isn't just for AutoPilot chat. The same client
+The `local` route isn't just for AutoPilot chat. The same client
 flows to every backend helper that needs an LLM, so a single
-`CHAT_USE_LOCAL=true` install also covers:
+`CHAT_PLATFORM_ROUTE=local` install also covers:
 
 - **Dry-run block simulator** — when a user clicks "Test" in the agent
   builder, blocks role-play their execution against an LLM rather than
-  hitting external APIs. Uses `ChatConfig.simulation_model`
-  (auto-derived to `fast_standard_model` under local).
+  hitting external APIs. Uses the standard tier (`CHAT_STANDARD_MODEL`).
 - **Onboarding business-understanding extraction** — the post-signup
   Tally form is extracted into structured suggestions via the LLM.
-  Uses `ChatConfig.title_model`.
+  Uses the standard tier too.
 - **Long-run prompt compression** — the chat / agent loop summarizes
   message history when context grows beyond a threshold.
 - **Marketplace semantic search** — the store generates embeddings for
@@ -300,15 +327,15 @@ not fatal, just less smart.
 After `docker compose up -d`:
 
 ```bash
-# 1. CHAT_USE_LOCAL is in the live container env
+# 1. The local route is in the live container env
 docker exec autogpt_platform-copilot_executor-1 env | grep ^CHAT_
-#   CHAT_USE_LOCAL=true
-#   CHAT_BASE_URL=http://192.168.1.42:11434/v1
+#   CHAT_PLATFORM_ROUTE=local
+#   CHAT_LOCAL_BASE_URL=http://192.168.1.42:11434/v1
 #   ...
 
 # 2. Send a turn from the UI, then confirm baseline routing in the log
 docker logs autogpt_platform-copilot_executor-1 | grep -E "Using.*service"
-#   [CoPilotExecutor|...] Using baseline service (mode=default)
+#   [CoPilotExecutor|...] Using baseline service
 
 # 3. Confirm Ollama saw the request — per platform:
 
@@ -331,6 +358,11 @@ quantization concerns rather than config-routing bugs.
 
 ## Troubleshooting
 
+**The backend exits at startup, naming chat settings** — a setting from
+the old format is still set (an empty one counts), or the route is
+missing one it needs. Replace or add each setting the list names; see
+the table under "How it works" above.
+
 **Frontend shows "The assistant encountered an error"** — check the
 copilot_executor log for the upstream error. Common causes:
 - `model requires more system memory (X GiB) than is available (Y GiB)`
@@ -339,15 +371,14 @@ copilot_executor log for the upstream error. Common causes:
 - `connection refused` → containers can't reach the host on `:11434`;
   see "Container → host networking" above
 
-**`api_key` is `None` even though I set `OPENAI_API_KEY`** — by design.
-The local transport requires an explicit `CHAT_API_KEY` so a stray cloud
-key set for graphiti / embedders doesn't silently bind to your local
-backend as the bearer token.
+**The server gets no key even though I set `OPENAI_API_KEY`** — by
+design. The local route sends only `CHAT_LOCAL_API_KEY`, so a cloud key
+set for graphiti / embedders never reaches your local server as its
+bearer token. Set `CHAT_LOCAL_API_KEY` if the server checks one.
 
-**Title generation fails / returns "Untitled chat"** — `title_model`
-should auto-inherit `fast_standard_model` under the local transport. If
-you've explicitly set `CHAT_TITLE_MODEL=openai/gpt-4o-mini` somewhere,
-remove it.
+**Title generation fails / returns "Untitled chat"** — titles run on
+the standard tier (`CHAT_STANDARD_MODEL`) against the same server; check
+that model is pulled and answers.
 
 **Slow first response** — Ollama loads the model into RAM on the first
 request, which can take 5-15 s for 8 B models on CPU. Subsequent
@@ -366,25 +397,26 @@ log (see the per-platform commands in "Verifying the wiring" above)
 and watch for the `POST /v1/chat/completions` line — once it appears
 with a 200, prefill finished and the model is generating.
 
-## Dream pass + memory under local transport
+## Dream pass + memory on the local route
 
 The graphiti memory layer and the nightly dream pass both ride the
-same self-hosted backend `CHAT_USE_LOCAL=true` points at. Three
+same self-hosted backend `CHAT_LOCAL_BASE_URL` points at. Three
 things you should know:
 
 ### Dream pass runs sync-baseline only
 
 The dream pass's batch path (Anthropic batch, OpenAI batch) is
-provider-locked and unavailable on local backends. `CHAT_USE_LOCAL=true`
-forces `execution_path="sync_baseline"` regardless of which API keys
-might be set elsewhere on the box — your local LLM handles all three
-phases (consolidate / recombine / sanitize) on the same endpoint as
-chat. Cost-log rows label `provider="ollama"` so the admin
-platform-costs dashboard distinguishes them from cloud spend.
+provider-locked and unavailable on local backends.
+`CHAT_PLATFORM_ROUTE=local` forces `execution_path="sync_baseline"`
+regardless of which API keys might be set elsewhere on the box — your
+local LLM handles all three phases (consolidate / recombine / sanitize)
+on the same endpoint as chat, with the two tiers. Cost-log rows label
+`provider="local"` so the admin platform-costs dashboard distinguishes
+them from cloud spend.
 
 ### Memory uses the chat models by default
 
-When `CHAT_USE_LOCAL=true`, `GraphitiConfig._apply_local_graphiti_models`
+On the local route, `GraphitiConfig._apply_local_graphiti_models`
 rewrites the cloud OpenAI defaults to local Ollama equivalents:
 
 | Setting | Cloud default | Local default |
@@ -429,20 +461,21 @@ local default.
 `graphiti_config.community_rebuild_use_flex_tier=True` (the default)
 is treated as a *request*, not a guarantee. OpenAI's flex tier only
 delivers the ~50% discount through OpenRouter's pass-through to
-OpenAI / Google upstreams, so on local + Anthropic transports the
+OpenAI / Google upstreams, so on the local and Anthropic routes the
 flex client is silently swapped for the regular `OpenAIClient`
 (logged at INFO). The weekly community rebuild still runs — at full
 sync price, which on local Ollama is `$0`.
 
 ### Subscription mode caveat
 
-If you also use Claude Code subscription (`CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`)
-for the chat path, the dream pass needs a separate `ANTHROPIC_API_KEY`
-set in the environment. The Claude Code OAuth token authenticates the
-chat CLI only; per Anthropic's Feb-2026 ToS update, OAuth tokens
-**cannot** call the Messages API directly. Without `ANTHROPIC_API_KEY`,
-the dream pass writes an `errored` JobStatus with a friendly hint
-pointing you at this section.
+If the chat runs on a Claude Code subscription (`CHAT_PLATFORM_ROUTE=subscription`),
+the platform has no model API of its own. The Claude Code OAuth token
+authenticates the chat CLI only; per Anthropic's Feb-2026 ToS update, OAuth
+tokens **cannot** call the Messages API directly. So the dream pass skips
+(reason `no_platform_api`) before any model call, and briefings and teammate
+consults go without their model-written parts. An integration key such as
+`ANTHROPIC_API_KEY` is never used in its place. Choose an API route
+(`openrouter`, `direct_anthropic` or `local`) to run them.
 
 A separate Anthropic Agent-SDK credit pool launches **2026-06-15**
 ($20 Pro / $100 Max-5x / $200 Max-20x at standard API rates,

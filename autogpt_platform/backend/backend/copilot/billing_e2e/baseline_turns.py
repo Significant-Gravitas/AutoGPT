@@ -48,8 +48,9 @@ class BaselineTurns:
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_messages": AsyncMock(return_value=[]),
             "_build_system_prompt": AsyncMock(
-                return_value=("You are a test assistant. Reply briefly.", None)
+                return_value="You are a test assistant. Reply briefly."
             ),
+            "fetch_business_understanding": AsyncMock(return_value=None),
             "build_budget_ctx": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),
             "build_skills_context": AsyncMock(return_value=""),

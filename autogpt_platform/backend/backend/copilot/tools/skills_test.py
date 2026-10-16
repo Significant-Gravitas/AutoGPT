@@ -69,7 +69,7 @@ from backend.copilot.tools.skills import (
     parse_skill_markdown,
     read_user_skill_package,
     render_skill_markdown,
-    render_skills_index,
+    skills_index_entries,
     store_user_skill,
     store_user_skills,
     validate_package,
@@ -202,12 +202,12 @@ def test_default_skills_load_from_disk():
         assert len(skill.body) > 100
 
 
-def test_render_skills_index_includes_name_and_description():
+def test_skills_index_entries_include_name_and_description():
     skills = [
         ParsedSkill(name="a", description="alpha desc", body=""),
         ParsedSkill(name="b", description="beta desc", body="", triggers=("x", "y")),
     ]
-    index = render_skills_index(skills)
+    index = "\n".join(skills_index_entries(skills))
     # ``name:`` prefix anchors the slug for the model to round-trip into
     # ``read_skill(name=...)``.
     assert "- name: a — alpha desc" in index
@@ -217,11 +217,11 @@ def test_render_skills_index_includes_name_and_description():
     assert "— triggers: x, y" in index
 
 
-def test_render_skills_index_empty_returns_empty_string():
-    """An empty registry must yield ``""`` so ``inject_user_context``
-    omits the ``<available_skills>`` block entirely — preventing a
-    zero-content tag from eating tokens for no reason."""
-    assert render_skills_index([]) == ""
+def test_skills_index_entries_empty_returns_no_entries():
+    """An empty registry has no entries, so the ``<available_skills>``
+    block is left out entirely — preventing a zero-content tag from
+    eating tokens for no reason."""
+    assert skills_index_entries([]) == []
 
 
 def test_description_length_cap_enforced_by_validate_path():
@@ -1191,6 +1191,21 @@ async def test_build_skills_context_anon_includes_directive():
 
 
 @pytest.mark.asyncio
+async def test_build_skills_context_names_run_capability_as_the_engine_declares_it():
+    """The model copies the directive's call, so it names ``run_capability``
+    the way the calling engine declares it: bare by default, and the SDK
+    path's ``mcp__copilot__`` name when that is passed in."""
+    bare = await build_skills_context(user_id=None)
+    declared = await build_skills_context(
+        user_id=None, run_capability_tool="mcp__copilot__run_capability"
+    )
+    call = '(id="tool:read_skill", input={"name": ...})`'
+    assert f"`run_capability{call}" in bare
+    assert "mcp__copilot__" not in bare
+    assert f"`mcp__copilot__run_capability{call}" in declared
+
+
+@pytest.mark.asyncio
 async def test_list_all_skills_user_skills_follow_defaults():
     """Default skills always lead — the model sees built-in agent-
     building guide before any user customisation."""
@@ -1571,6 +1586,27 @@ async def test_sdk_prepend_noop_when_index_current():
             session, "user-1", True, "do the thing"
         )
     assert result == "do the thing"
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_noop_when_the_query_sends_a_fresh_index():
+    """A turn that re-sends the first turn's context leads its query with a
+    fresh index; a notice calling the index stale would contradict it."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    session = _session_with_user_history(
+        [_history_with_index("- name: agent_building_guide — guide")]
+    )
+    query = (
+        "<budget_status>\nok\n</budget_status>\n\n"
+        "<available_skills>\n- name: mine — my skill\n</available_skills>\n\n"
+        "do the thing"
+    )
+    with _patch_skills_path(fake_manager):
+        result = await _maybe_prepend_skills_update(session, "user-1", True, query)
+    assert result == query
 
 
 @pytest.mark.asyncio

@@ -226,8 +226,11 @@ async def bill_to_credits(
 
 def credits_can_pay_block_turns() -> bool:
     """Whether a block turn past the allowance can run on credits here: credits
-    are on, and the SDK engine that caps a turn's spend can run."""
-    return settings.config.enable_credit and config.thinking_available
+    are on, and the platform route's engine gives a turn a dollar ceiling (the
+    SDK engine with the CLI's ``max_budget_usd``, which the local route's
+    engine doesn't have)."""
+    row = config.route_row
+    return settings.config.enable_credit and row is not None and row.usd_budget
 
 
 async def _balance(user_id: str, organization_id: str | None) -> int:

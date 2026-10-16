@@ -1,16 +1,21 @@
 """Tests for _format_conversation_context and _build_query_message."""
 
+import logging
 from datetime import UTC, datetime
 
 import pytest
 
-from backend.copilot.model import ChatMessage, ChatSession
-from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.constants import COPILOT_ERROR_PREFIX, STOPPED_BY_USER_MARKER
+from backend.copilot.db import PaginatedMessages
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionInfo
+from backend.copilot.sdk.compaction import COMPACTION_TOOL_NAME, CompactionStats
 from backend.copilot.sdk.service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
     _build_query_message,
     _format_conversation_context,
+    _transcript_watermark_after_turn,
 )
+from backend.copilot.sdk.turn_summary import TurnSummaryCollector
 
 # ---------------------------------------------------------------------------
 # _format_conversation_context
@@ -51,8 +56,58 @@ def test_format_assistant_tool_calls():
         )
     ]
     result = _format_conversation_context(msgs)
-    # Assistant with no content and tool_calls omitted produces no lines
-    assert result is None
+    # What the agent *did* is part of the history it restarts from; the
+    # compressor budgets these arguments, so the renderer must show them.
+    assert result is not None
+    assert 'You called search: {"q": "test"}' in result
+
+
+def test_format_names_autopilot_tools_as_the_sdk_declares_them():
+    """History must not show the bare call notation the model copies into a
+    call the CLI refuses: AutoPilot's own tools carry their declared
+    ``mcp__copilot__`` name, CLI built-ins and other names stay as stored."""
+    calls = [
+        ("run_capability", '{"id": "tool:read_skill", "input": {"name": "x"}}'),
+        ("glob", '{"pattern": "*.md"}'),
+        ("TodoWrite", '{"todos": []}'),
+        ("search", '{"q": "test"}'),
+    ]
+    msgs = [
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": f"tc{i}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": arguments},
+                }
+                for i, (name, arguments) in enumerate(calls)
+            ],
+        )
+    ]
+
+    result = _format_conversation_context(msgs)
+
+    assert result is not None
+    assert (
+        'You called mcp__copilot__run_capability: {"id": "tool:read_skill", '
+        '"input": {"name": "x"}}' in result
+    )
+    assert 'You called mcp__copilot__glob: {"pattern": "*.md"}' in result
+    assert 'You called TodoWrite: {"todos": []}' in result
+    assert 'You called search: {"q": "test"}' in result
+    assert "You called run_capability" not in result
+
+
+def test_format_tool_result_is_rendered_as_the_compressor_left_it():
+    """No 500-character cut here: the compressor already sized this content,
+    and cutting it again made the compression budget a fiction."""
+    long_output = "x" * 5_000
+    msgs = [ChatMessage(role="tool", content=long_output)]
+    result = _format_conversation_context(msgs)
+    assert result is not None
+    assert f"Tool output: {long_output}" in result
 
 
 def test_format_tool_result():
@@ -133,17 +188,14 @@ async def test_build_query_resume_up_to_date():
 
 
 @pytest.mark.asyncio
-async def test_build_query_resume_misaligned_watermark():
-    """With --resume and watermark pointing at a user message, skip gap."""
-    # Simulates a deleted message shifting DB positions so the watermark
-    # lands on a user turn instead of the expected assistant turn.
+async def test_build_query_resume_watermark_after_a_user_row_sends_the_rest():
+    """The watermark is the next uncovered sequence, whatever role sits
+    before it: rows at or above it are sent, rows below it are not."""
     session = _make_session(
         [
             ChatMessage(role="user", content="turn 1"),
             ChatMessage(role="assistant", content="reply 1"),
-            ChatMessage(
-                role="user", content="turn 2"
-            ),  # ← watermark points here (role=user)
+            ChatMessage(role="user", content="turn 2"),
             ChatMessage(role="assistant", content="reply 2"),
             ChatMessage(role="user", content="turn 3"),
         ]
@@ -152,11 +204,13 @@ async def test_build_query_resume_misaligned_watermark():
         "turn 3",
         session,
         use_resume=True,
-        transcript_msg_count=3,  # prior[2].role == "user" — misaligned
+        transcript_msg_count=3,
         session_id="test-session",
     )
-    # Misaligned watermark → skip gap, return bare message
-    assert result == "turn 3"
+    assert result == (
+        "<conversation_history>\nYou responded: reply 2\n</conversation_history>"
+        "\n\nNow, the user says:\nturn 3"
+    )
     assert stats is None
 
 
@@ -505,7 +559,7 @@ async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
     # No DB lookup expected — the watermark is already a sequence.
     fake_db = type("FakeDB", (), {})()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -578,7 +632,7 @@ async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeyp
         },
     )()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -630,7 +684,7 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
         },
     )()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -649,9 +703,496 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
     assert "Now, the user says:\ncurrent" in result
 
 
+@pytest.mark.asyncio
+async def test_build_query_resume_hole_fill_drops_error_markers(monkeypatch):
+    """Rows fetched from the DB for the hole go through the same marker
+    filter as the loaded window."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "window-1502"),
+            ("assistant", "window-1503"),
+            ("user", "current turn"),
+            start=1502,
+        )
+    )
+    hole_page = PaginatedMessages(
+        messages=_seq_rows(
+            ("user", "hole-1500"),
+            ("assistant", f"{COPILOT_ERROR_PREFIX} HOLE MARKER"),
+            start=1500,
+        ),
+        has_more=False,
+        oldest_sequence=1500,
+        session=ChatSessionInfo(
+            session_id="test-session",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_return(hole_page)
+            )
+        },
+    )()
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
+
+    result, _ = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+
+    assert "hole-1500" in result
+    assert "window-1503" in result
+    assert "HOLE MARKER" not in result
+
+
 async def _async_return(value):
     return value
 
 
 async def _async_raise(exc):
     raise exc
+
+
+# ---------------------------------------------------------------------------
+# Resumed-session gap: production-shaped rows (every row has a sequence)
+# ---------------------------------------------------------------------------
+
+_CAP_WARNING = "Cap-engaged + empty sequence-based gap"
+
+
+def _seq_rows(*rows: tuple[str, str], start: int = 0) -> list[ChatMessage]:
+    return [
+        ChatMessage(role=role, content=content, sequence=start + i)
+        for i, (role, content) in enumerate(rows)
+    ]
+
+
+def _history(*lines: str) -> str:
+    return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
+
+
+def _cap_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and _CAP_WARNING in r.getMessage()
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rows, watermark, ceiling",
+    [
+        pytest.param(
+            _seq_rows(("user", "q"), ("assistant", "a"), ("user", "CURRENT")),
+            2,
+            None,
+            id="current-transcript",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("reasoning", "r"),
+                ("assistant", "a"),
+                ("user", "CURRENT"),
+            ),
+            3,
+            None,
+            id="current-transcript-with-reasoning",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("assistant", "a"),
+                ("user", "CURRENT"),
+                ("user", "pending drained at turn start"),
+            ),
+            2,
+            3,
+            id="turn-start-drain-after-ceiling",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("assistant", "a"),
+                ("reasoning", "r"),
+                ("user", "CURRENT"),
+            ),
+            2,
+            None,
+            id="trailing-reasoning-row",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"), ("assistant", "a"), ("user", "CURRENT"), start=1000
+            ),
+            1002,
+            None,
+            id="capped-window-transcript-current",
+        ),
+    ],
+)
+async def test_build_query_resume_current_transcript_sends_no_gap_and_no_cap_warning(
+    rows, watermark, ceiling, caplog
+):
+    """A healthy resumed turn whose transcript covers every prior row sends
+    the bare message and does not log the cap warning (it used to fire on
+    847 of 886 resumed prod turns, all of them current)."""
+    result, stats = await _build_query_message(
+        "CURRENT",
+        _make_session(rows),
+        use_resume=True,
+        transcript_msg_count=watermark,
+        session_id="test-session",
+        session_msg_ceiling=ceiling,
+    )
+    assert result == "CURRENT"
+    assert stats is None
+    assert _cap_warnings(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_warning_fires_when_unloaded_rows_are_left_out(
+    monkeypatch, caplog
+):
+    """The loaded window starts above the watermark, the hole fetch fails and
+    the window holds nothing sendable: rows were left out, so it warns, with
+    its text and field order unchanged."""
+    session = _make_session(
+        _seq_rows(
+            ("assistant", f"{COPILOT_ERROR_PREFIX} Operation cancelled"),
+            ("user", "CURRENT"),
+            start=1502,
+        )
+    )
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
+            ),
+        },
+    )()
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
+
+    result, _ = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    assert result == "CURRENT"
+    assert _cap_warnings(caplog) == [
+        "[SDK] [test-ses] Cap-engaged + empty sequence-based gap: window may not"
+        " contain post-watermark rows (transcript=1500, db=2)"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_warning_fires_when_only_the_window_is_sent(
+    monkeypatch, caplog
+):
+    """The hole fetch fails but the loaded rows above the watermark are still
+    sent: the rows in between were left out, so it warns as well."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "LOADED QUESTION"),
+            ("assistant", "LOADED ANSWER"),
+            ("user", "CURRENT"),
+            start=1504,
+        )
+    )
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
+            ),
+        },
+    )()
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
+
+    result, _ = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    assert result == (
+        _history("User: LOADED QUESTION", "You responded: LOADED ANSWER")
+        + "\n\nNow, the user says:\nCURRENT"
+    )
+    assert _cap_warnings(caplog) == [
+        "[SDK] [test-ses] Cap-engaged + empty sequence-based gap: window may not"
+        " contain post-watermark rows (transcript=1500, db=3)"
+    ]
+
+
+def test_transcript_watermark_after_a_midturn_followup_covers_the_whole_turn():
+    """The follow-up row is not subtracted: the watermark is one past the
+    turn's last row, so nothing of the turn is uncovered."""
+    turn = _seq_rows(
+        ("user", "build me an agent"),
+        ("assistant", "On it."),
+        ("tool", "TOOL OUTPUT"),
+        ("user", "FOLLOW-UP: make it hourly"),
+        ("reasoning", "thinking again"),
+        ("assistant", "FINAL ANSWER"),
+        start=40,
+    )
+    assert _transcript_watermark_after_turn(turn) == 46
+
+
+@pytest.mark.asyncio
+async def test_build_query_after_a_midturn_followup_turn_resends_nothing():
+    """Turn N took a follow-up mid-turn.  Its text reached the CLI as the
+    PostToolUse hook's additionalContext, which the CLI stores in its session
+    file (see followup_resume_cli_test.py), so the watermark uploaded after
+    turn N covers every row of the turn.  Turn N+1 must not re-send turn N's
+    tail: a watermark stepped back by the follow-up count sends the last tool
+    output and the final answer as a <conversation_history> prefix, and not
+    the follow-up."""
+    turn_n = _seq_rows(
+        ("user", "build me an agent"),
+        ("reasoning", "thinking"),
+        ("assistant", "On it."),
+        ("tool", "TOOL OUTPUT"),
+        ("user", "FOLLOW-UP: make it hourly"),
+        ("reasoning", "thinking again"),
+        ("assistant", "FINAL ANSWER"),
+    )
+    watermark = _transcript_watermark_after_turn(turn_n)
+    session = _make_session(turn_n + _seq_rows(("user", "CURRENT"), start=7))
+
+    result, stats = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=watermark,
+        session_id="test-session",
+    )
+    assert watermark == 7
+    assert result == "CURRENT"
+    assert stats is None
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_gap_never_sends_error_markers():
+    """An error marker above the watermark is UI state, not something the
+    model said: it must not reach the model as 'You responded: ...'."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "q"),
+            ("assistant", "a"),
+            ("user", "MY QUESTION"),
+            ("assistant", f"{COPILOT_ERROR_PREFIX} Operation cancelled"),
+            ("assistant", STOPPED_BY_USER_MARKER),
+            ("user", "CURRENT"),
+        )
+    )
+    result, _ = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+    )
+    assert result == (
+        _history("User: MY QUESTION") + "\n\nNow, the user says:\nCURRENT"
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_gap_of_only_a_marker_sends_the_bare_message(
+    caplog,
+):
+    session = _make_session(
+        _seq_rows(
+            ("user", "q"),
+            ("assistant", "a"),
+            ("assistant", f"{COPILOT_ERROR_PREFIX} Operation cancelled"),
+            ("user", "CURRENT"),
+        )
+    )
+    result, _ = await _build_query_message(
+        "CURRENT",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+    )
+    assert result == "CURRENT"
+    assert _cap_warnings(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_gap_hands_no_compaction_rows_to_the_compressor(
+    monkeypatch,
+):
+    compressed_inputs: list[list[ChatMessage]] = []
+
+    async def _spy(msgs, target_tokens=None):
+        compressed_inputs.append(list(msgs))
+        return msgs, False, None
+
+    monkeypatch.setattr("backend.copilot.sdk.service._compress_messages", _spy)
+    rows = _seq_rows(
+        ("user", "q"),
+        ("assistant", "a"),
+        ("user", "Q"),
+        ("assistant", ""),
+        ("tool", "Conversation compacted"),
+        ("assistant", "ANSWER"),
+        ("user", "CURRENT"),
+    )
+    rows[3].tool_calls = [
+        {
+            "id": "compact-1",
+            "type": "function",
+            "function": {"name": COMPACTION_TOOL_NAME, "arguments": "{}"},
+        }
+    ]
+    rows[4].tool_call_id = "compact-1"
+
+    result, _ = await _build_query_message(
+        "CURRENT",
+        _make_session(rows),
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+    )
+    assert [[m.content for m in batch] for batch in compressed_inputs] == [
+        ["Q", "ANSWER"]
+    ]
+    assert result == (
+        _history("User: Q", "You responded: ANSWER")
+        + "\n\nNow, the user says:\nCURRENT"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rows, watermark, expected_lines",
+    [
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("reasoning", "r"),
+                ("assistant", "a"),
+                ("user", "FAILED USER"),
+                ("reasoning", "r"),
+                ("assistant", "FAILED PARTIAL"),
+                ("user", "CURRENT"),
+            ),
+            3,
+            ["User: FAILED USER", "You responded: FAILED PARTIAL"],
+            id="failed-turn-was-skipped-as-misaligned",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("reasoning", "r"),
+                ("assistant", "a"),
+                ("user", "q2"),
+                ("reasoning", "r"),
+                ("assistant", "a2"),
+                ("user", "F1 USER"),
+                ("assistant", "F1 PARTIAL"),
+                ("user", "F2 USER"),
+                ("assistant", "F2 PARTIAL"),
+                ("user", "F3 USER"),
+                ("assistant", "F3 PARTIAL"),
+                ("user", "CURRENT"),
+            ),
+            6,
+            [
+                "User: F1 USER",
+                "You responded: F1 PARTIAL",
+                "User: F2 USER",
+                "You responded: F2 PARTIAL",
+                "User: F3 USER",
+                "You responded: F3 PARTIAL",
+            ],
+            id="first-failed-turn-was-dropped",
+        ),
+        pytest.param(
+            _seq_rows(
+                ("user", "q"),
+                ("reasoning", "r"),
+                ("assistant", "a"),
+                ("user", "q2"),
+                ("reasoning", "r"),
+                ("assistant", "a2"),
+                ("user", "FAILED USER"),
+                ("reasoning", "r"),
+                ("assistant", "FAILED TEXT"),
+                ("tool", "TOOL OUT"),
+                ("user", "CURRENT"),
+            ),
+            6,
+            [
+                "User: FAILED USER",
+                "You responded: FAILED TEXT",
+                "Tool output: TOOL OUT",
+            ],
+            id="user-and-assistant-were-dropped-for-an-orphan-tool-output",
+        ),
+    ],
+)
+async def test_build_query_resume_gap_is_sequence_based_with_reasoning_rows(
+    rows, watermark, expected_lines
+):
+    """Reasoning rows take sequences but never reach the CLI.  The gap is the
+    rows at or above the watermark sequence, never a list position in a
+    reasoning-filtered list."""
+    result, _ = await _build_query_message(
+        "CURRENT",
+        _make_session(rows),
+        use_resume=True,
+        transcript_msg_count=watermark,
+        session_id="test-session",
+    )
+    assert result == _history(*expected_lines) + "\n\nNow, the user says:\nCURRENT"
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_gap_rows_reach_the_turn_summary():
+    """The rows sent as gap on a resumed turn are the history rows the turn's
+    summary line reports."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "turn 1"),
+            ("assistant", "reply 1"),
+            ("user", "turn 2"),
+            ("assistant", "reply 2"),
+            ("user", "turn 3"),
+        )
+    )
+    collector = TurnSummaryCollector("test-session")
+
+    query, _ = await _build_query_message(
+        "turn 3",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+        turn_summary=collector,
+    )
+    collector.record_query(query, use_resume=True, covered_rows=2, session_rows=5)
+
+    assert collector.summary.query_path == "resume_gap"
+    assert collector.summary.history_rows == 2

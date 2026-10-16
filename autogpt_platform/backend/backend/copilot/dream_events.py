@@ -1,7 +1,7 @@
 """SSE events emitted when a dream pass produces operations.
 
 Lives in its own module so ``response_model.py`` stays under the 300-line
-target. The event mirrors the ``data-status`` / ``data-cursor`` shape
+target. The event mirrors the ``data-status`` shape
 already in use by the AI SDK v5 wire protocol — a ``data-<name>`` part
 with an opaque ``data`` payload — so the frontend just needs to recognise
 a new ``part.type`` rather than learn a whole new envelope.

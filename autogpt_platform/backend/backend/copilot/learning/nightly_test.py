@@ -200,6 +200,34 @@ async def test_no_eligible_work_means_no_model_call(fake_store, adapter, boundar
 
 
 @pytest.mark.asyncio
+async def test_a_route_without_a_platform_api_skips_before_any_source_is_reserved(
+    fake_store, adapter, boundaries
+):
+    """A Claude login or a disabled route has no model to review with. A
+    refusal at the call would come after the source's reservation had
+    spent one of its model attempts, so the pass skips first."""
+    record = await _source(fake_store)
+    acquire = AsyncMock()
+
+    with (
+        patch.object(nightly.ChatConfig, "has_platform_api", False),
+        patch.object(nightly, "_acquire_lease", acquire),
+    ):
+        result = await _run()
+
+    assert result.skipped and result.skip_reason == "no_platform_api"
+    assert result.per_source_errors == []
+    boundaries["review"].assert_not_called()
+    acquire.assert_not_called()
+    assert (
+        await fake_store.get_review_for_revision(
+            USER, record.source_id, record.revision, nightly.POLICY_VERSION
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_review_knows_every_existing_skill_in_the_owner_scope(monkeypatch):
     skills = [
         ParsedSkill(name=f"recipe-{i}", description=f"Task {i}", body="")

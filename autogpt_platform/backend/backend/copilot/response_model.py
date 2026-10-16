@@ -54,7 +54,6 @@ class ResponseType(str, Enum):
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
-    CURSOR = "data-cursor"
     # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
     # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
     DREAM_OPERATIONS = "data-dream-operations"
@@ -343,26 +342,6 @@ class StreamHeartbeat(StreamBaseResponse):
         return ": heartbeat\n\n"
 
 
-class StreamCursor(StreamBaseResponse):
-    """Deprecated Redis-stream cursor data part.
-
-    Kept so older stored chunks or tests can still be reconstructed, but new
-    stream subscriptions no longer emit it. AI SDK resume needs a full replay
-    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
-    """
-
-    type: ResponseType = ResponseType.CURSOR
-    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
-
-    def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part."""
-        data = {
-            "type": self.type.value,
-            "data": {"chunkId": self.chunkId},
-        }
-        return f"data: {json.dumps(data)}\n\n"
-
-
 class StreamModeChanged(StreamBaseResponse):
     """The backend switched the session's engine/mode server-side.
 
@@ -372,9 +351,7 @@ class StreamModeChanged(StreamBaseResponse):
     """
 
     type: ResponseType = ResponseType.MODE_CHANGED
-    mode: Literal["extended_thinking", "fast"] = Field(
-        ..., description="New effective mode"
-    )
+    mode: Literal["extended_thinking"] = Field(..., description="New effective mode")
 
     def to_sse(self) -> str:
         """Emit as an AI SDK v5 data part."""
@@ -429,8 +406,8 @@ class StreamStatus(StreamBaseResponse):
 
     Emitted when the backend is about to enter a phase that would otherwise
     leave the user staring at a silent "Thinking…" bubble — e.g. the first
-    LLM call, the continuation after a tool result, compacting conversation
-    context on retry, or activating a fallback model. The copilot UI does
+    LLM call, the continuation after a tool result, or compacting
+    conversation context on retry. The copilot UI does
     not show `message` (it describes plumbing, not anything the user needs);
     it shows a plain "Thinking…" instead.
     """

@@ -35,9 +35,11 @@ from claude_agent_sdk import ResultMessage
 from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
+from backend.copilot.sdk.retry_scenarios_test import scenario_profile
 from backend.copilot.turn_budget import TurnBudget
 
 _SVC = "backend.copilot.sdk.service"
+_SYSTEM_PROMPT = "backend.copilot.sdk.system_prompt"
 
 
 def _make_lock_mock():
@@ -110,7 +112,10 @@ def _make_patches(*, hire_experts_enabled: bool):
             f"{_SVC}.upsert_chat_session",
             dict(new_callable=AsyncMock, side_effect=lambda s: s),
         ),
-        (f"{_SVC}.build_skills_context", dict(new_callable=AsyncMock, return_value="")),
+        (
+            f"{_SVC}.skills_context_block",
+            dict(new_callable=AsyncMock, return_value=None),
+        ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (f"{_SVC}.AsyncClusterLock", dict(side_effect=_make_lock_mock())),
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
@@ -121,7 +126,11 @@ def _make_patches(*, hire_experts_enabled: bool):
         ),
         (
             f"{_SVC}._build_system_prompt",
-            dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+            dict(new_callable=AsyncMock, return_value="system prompt"),
+        ),
+        (
+            f"{_SVC}.fetch_business_understanding",
+            dict(new_callable=AsyncMock, return_value=None),
         ),
         (
             f"{_SVC}.ClaudeSDKClient",
@@ -131,16 +140,17 @@ def _make_patches(*, hire_experts_enabled: bool):
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}.build_sdk_env", dict(return_value={})),
-        (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
+        (f"{_SVC}.route_launch_env", dict(return_value={})),
+        (
+            f"{_SVC}.resolve_turn_profile",
+            dict(new_callable=AsyncMock, return_value=scenario_profile()),
+        ),
         (f"{_SVC}.set_execution_context", {}),
         (f"{_SVC}.is_feature_enabled", dict(new=is_feature_enabled_mock)),
         (
             f"{_SVC}.config",
             dict(
-                api_key="test-key",
-                use_claude_code_subscription=False,
-                claude_agent_use_resume=True,
+                platform_route="direct_anthropic",
                 claude_agent_max_buffer_size=100_000,
                 claude_agent_max_subtasks=5,
                 stream_lock_ttl=60,
@@ -150,11 +160,7 @@ def _make_patches(*, hire_experts_enabled: bool):
                 agent_max_turns=1000,
                 sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
-                claude_agent_max_thinking_tokens=0,
-                claude_agent_thinking_effort=None,
-                claude_agent_fallback_model=None,
-                claude_agent_model="claude-sonnet-4-6",
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                tier_model=MagicMock(return_value="claude-sonnet-4-6"),
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
@@ -257,7 +263,7 @@ class TestSdkComputerNoteWiring:
             hire_experts_enabled=False,
             expert_id=expert_id,
             extra_patches=[
-                (f"{_SVC}.get_sdk_supplement", dict(new=supplement)),
+                (f"{_SYSTEM_PROMPT}.get_sdk_supplement", dict(new=supplement)),
                 (
                     f"{_SVC}.build_expert_identity_suffix",
                     dict(new_callable=AsyncMock, return_value=""),

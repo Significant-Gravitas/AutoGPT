@@ -142,7 +142,11 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         ),
         patch(
             f"{svc}._build_system_prompt",
-            new=AsyncMock(return_value=("system prompt", None)),
+            new=AsyncMock(return_value="system prompt"),
+        ),
+        patch(
+            f"{svc}.fetch_business_understanding",
+            new=AsyncMock(return_value=None),
         ),
         patch(f"{svc}.is_enabled_for_user", new=AsyncMock(return_value=False)),
         patch(f"{svc}.is_feature_enabled", new=AsyncMock(return_value=False)),
@@ -219,7 +223,6 @@ async def test_the_card_copy_on_a_held_result_never_reaches_the_model():
     model_inputs = [
         format_pending_as_user_message(row)["content"],
         combine_pending_with_current([row], "go on", request_arrival_at=0),
-        json.dumps(session.to_openai_messages()),
         _session_messages_to_transcript(session.messages),
     ]
     assert all("posted" in text for text in model_inputs)

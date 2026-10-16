@@ -11,10 +11,10 @@ from backend.copilot.constants import (
 )
 from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.markers import (
+    PROVIDER_FAILURE_KEY,
     append_error_marker,
     has_trailing_marker,
     is_error_marker,
-    provider_failure_of,
 )
 from backend.copilot.model import ChatMessage, ChatSession
 
@@ -197,8 +197,9 @@ class TestTheMarkerCarriesTheFailure:
             failure={"kind": "usage_limit", "authProvider": "codex", "resetsAt": None},
         )
 
-        recorded = provider_failure_of(session.messages[-1])
-        assert recorded is not None
+        metadata = session.messages[-1].metadata
+        assert metadata is not None
+        recorded = metadata[PROVIDER_FAILURE_KEY]
         assert recorded["kind"] == "usage_limit"
         assert recorded["authProvider"] == "codex"
 
@@ -207,22 +208,7 @@ class TestTheMarkerCarriesTheFailure:
         # classifier declined to name. Callers fall back to the prefix.
         session = _session()
         append_error_marker(session, "boom", retryable=True)
-        assert provider_failure_of(session.messages[-1]) is None
-
-    def test_an_ordinary_reply_is_never_read_as_a_failure(self) -> None:
-        assert (
-            provider_failure_of(ChatMessage(role="assistant", content="Here you go."))
-            is None
-        )
-
-    def test_a_non_dict_payload_is_refused(self) -> None:
-        # The bag is shared; a collision on the key must not crash a render.
-        msg = ChatMessage(
-            role="assistant",
-            content=f"{COPILOT_ERROR_PREFIX} boom",
-            metadata={"provider_failure": "not-a-dict"},
-        )
-        assert provider_failure_of(msg) is None
+        assert session.messages[-1].metadata is None
 
 
 class TestTheFailureReachesTheDatabase:

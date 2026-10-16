@@ -1,8 +1,9 @@
-"""A resumed SDK turn is charged its own cost, not the CLI session's running total.
+"""A resumed SDK turn is charged its own tokens, not the CLI session's total.
 
-On ``--resume`` the CLI restores its session total from the session file's
-``cost-state`` row, so a resumed turn's ``ResultMessage.total_cost_usd`` also
-counts every earlier turn of the chat.
+Each result is priced on the platform's rate card from the tokens it
+reports. On ``--resume`` the CLI restores its session total from the session
+file's ``cost-state`` row, so a resumed turn's ``ResultMessage.total_cost_usd``
+also counts every earlier turn of the chat; it is logged, never charged.
 """
 
 import contextlib
@@ -15,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
+from backend.copilot.anthropic_rate_card import anthropic_usage_cost_usd
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.moonshot import rate_card_usd
 from backend.copilot.sdk.cost_tracking import read_cli_session_usage
@@ -27,7 +29,7 @@ from backend.copilot.sdk.service import (
 from backend.copilot.transcript import cli_session_path
 
 from .conftest import build_test_transcript
-from .retry_scenarios_test import _make_sdk_patches
+from .retry_scenarios_test import _make_sdk_patches, scenario_profile
 
 _SVC = "backend.copilot.sdk.service"
 _SESSION_ID = "5f0c2a4e-1b7d-4c9a-9e3f-2d8b6a1c4e70"
@@ -39,8 +41,20 @@ _CALL_USAGE = {
     "cache_read_input_tokens": 100_000,
     "cache_creation_input_tokens": 2000,
 }
-# _CALL_USAGE at the CLI's Sonnet rates, as the locked CLI reports it.
-_CALL_COST = 0.028
+# What the platform charges for _CALL_USAGE on Sonnet 4.6: Anthropic's rate
+# card, with the cache writes at their five-minute price.
+_SONNET_CALL_COST = anthropic_usage_cost_usd(
+    model="claude-sonnet-4-6",
+    input_tokens=_CALL_USAGE["input_tokens"],
+    output_tokens=_CALL_USAGE["output_tokens"],
+    cache_read_tokens=_CALL_USAGE["cache_read_input_tokens"],
+    cache_write_5m_tokens=_CALL_USAGE["cache_creation_input_tokens"],
+)
+assert _SONNET_CALL_COST is not None
+_CALL_COST: float = _SONNET_CALL_COST
+# What the CLI reports for the same call: its own price, which feeds its
+# running total and the log but is never charged.
+_CLI_CALL_COST = 0.028
 _KIMI = "moonshotai/kimi-k2.6"
 
 
@@ -57,28 +71,39 @@ def _kimi_rate_card_cost() -> float:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "model,message_id,sink,expected",
+    "model,route,message_id,sink,expected",
     [
         pytest.param(
-            "claude-sonnet-4-6", None, "persist", _CALL_COST, id="cli-cost-recorded"
+            "claude-sonnet-4-6",
+            "direct_anthropic",
+            None,
+            "persist",
+            _CALL_COST,
+            id="rate-card-recorded",
         ),
         pytest.param(
             "claude-sonnet-4-6",
+            "openrouter",
             "gen-1",
             "reconcile",
             _CALL_COST,
-            id="cli-cost-as-openrouter-fallback",
+            id="rate-card-as-openrouter-fallback",
         ),
         pytest.param(
-            _KIMI, None, "persist", _kimi_rate_card_cost(), id="moonshot-rate-card"
+            _KIMI,
+            "openrouter",
+            None,
+            "persist",
+            _kimi_rate_card_cost(),
+            id="moonshot-rate-card",
         ),
     ],
 )
 async def test_resumed_turn_is_charged_its_own_cost(
-    model, message_id, sink, expected, tmp_path, monkeypatch
+    model, route, message_id, sink, expected, tmp_path, monkeypatch
 ):
-    # The session file the turn resumes says turn 1 cost _CALL_COST, so the
-    # CLI reports this identical call as twice that.
+    # The session file the turn resumes says turn 1 cost the CLI's price
+    # for the call, so the CLI reports this identical call as twice that.
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
     os.makedirs(os.path.dirname(cli_session_path(_SDK_CWD, _SESSION_ID)))
     transcript = build_test_transcript(
@@ -87,7 +112,7 @@ async def test_resumed_turn_is_charged_its_own_cost(
     cost_state = {
         "type": "cost-state",
         "sessionId": _SESSION_ID,
-        "totalCostUSD": _CALL_COST,
+        "totalCostUSD": _CLI_CALL_COST,
     }
     transcript = transcript.rstrip("\n") + "\n" + json.dumps(cost_state) + "\n"
     messages = [
@@ -101,7 +126,7 @@ async def test_resumed_turn_is_charged_its_own_cost(
             is_error=False,
             num_turns=1,
             session_id=_SESSION_ID,
-            total_cost_usd=2 * _CALL_COST,
+            total_cost_usd=2 * _CLI_CALL_COST,
             usage=dict(_CALL_USAGE),
             result="ok",
         ),
@@ -140,6 +165,7 @@ async def test_resumed_turn_is_charged_its_own_cost(
         original_transcript=transcript,
         compacted_transcript=None,
         client_side_effect=_client_factory,
+        profile=scenario_profile(model, route),
     )
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
@@ -175,15 +201,16 @@ async def test_resumed_turn_is_charged_its_own_cost(
     else:
         persist.assert_not_awaited()
         reconcile.assert_called_once()
+        assert reconcile.call_args is not None
         cost = reconcile.call_args.kwargs["fallback_cost_usd"]
         assert cost == pytest.approx(expected)
 
 
 def test_every_query_of_one_cli_process_is_charged():
     # A re-prompt is a second query to the same CLI process, whose total
-    # then counts both queries.
+    # then counts both queries; each is charged its own tokens.
     state = _retry_state()
-    for running_total in (_CALL_COST, 2 * _CALL_COST):
+    for running_total in (_CLI_CALL_COST, 2 * _CLI_CALL_COST):
         _record_result_usage(_result(running_total), state, "")
 
     assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
@@ -196,42 +223,42 @@ def test_model_switch_preserves_the_price_of_each_result(models):
     state = _retry_state()
     for index, model in enumerate(models, start=1):
         state.observed_model = model
-        _record_result_usage(_result(index * _CALL_COST), state, "")
+        _record_result_usage(_result(index * _CLI_CALL_COST), state, "")
 
     assert state.usage.cost_usd == pytest.approx(_CALL_COST + _kimi_rate_card_cost())
 
 
 def test_reset_cli_total_does_not_erase_already_billed_spend(caplog):
     state = _retry_state()
-    state.usage.cli_session_total_usd = 2 * _CALL_COST
+    state.usage.cli_session_total_usd = 2 * _CLI_CALL_COST
     with caplog.at_level(logging.ERROR):
-        for running_total in (3 * _CALL_COST, _CALL_COST, 2 * _CALL_COST):
+        for running_total in (3 * _CLI_CALL_COST, _CLI_CALL_COST, 2 * _CLI_CALL_COST):
             _record_result_usage(_result(running_total), state, "")
 
     assert state.usage.cost_usd == pytest.approx(3 * _CALL_COST)
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
 
 
-def test_a_total_below_the_baseline_is_charged_in_full_and_alerts(caplog):
+def test_a_total_below_the_baseline_alerts_and_charges_the_results_tokens(caplog):
     state = _retry_state()
-    state.usage.cli_session_total_usd = 2 * _CALL_COST
+    state.usage.cli_session_total_usd = 2 * _CLI_CALL_COST
     with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.cost_tracking"):
-        _record_result_usage(_result(_CALL_COST), state, "")
+        _record_result_usage(_result(_CLI_CALL_COST), state, "")
 
     assert state.usage.cost_usd == pytest.approx(_CALL_COST)
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
 
 
-def test_an_unreadable_session_file_is_charged_in_full_and_alerts(
+def test_an_unreadable_session_file_alerts_and_charges_the_results_tokens(
     tmp_path, monkeypatch, caplog
 ):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))  # holds no session file
     state = _retry_state()
     with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.cost_tracking"):
         state.usage.start_cli_session(read_cli_session_usage(_SDK_CWD, _SESSION_ID, ""))
-        _record_result_usage(_result(2 * _CALL_COST), state, "")
+        _record_result_usage(_result(2 * _CLI_CALL_COST), state, "")
 
-    assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
+    assert state.usage.cost_usd == pytest.approx(_CALL_COST)
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
 
 
@@ -241,7 +268,6 @@ def _retry_state() -> _RetryState:
         query_message="",
         compaction_stats=None,
         use_resume=False,
-        resume_file=None,
         transcript_msg_count=0,
         adapter=MagicMock(),
         transcript_builder=MagicMock(),

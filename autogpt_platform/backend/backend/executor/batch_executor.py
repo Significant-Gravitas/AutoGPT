@@ -516,20 +516,15 @@ def _default_api_key_for(provider: ProviderLiteral) -> str | None:
     providers' batch APIs land they get added here.
     """
     if provider == "anthropic":
-        # The dream pass uses the copilot config's direct Anthropic key.
-        # Fall back to the shared settings key so other future callers
-        # (block-layer if it ever opts in) still work.
+        # The dream pass's Batch key, on the routes that use the Batch API
+        # (``ChatConfig.batch_anthropic_api_key``); none elsewhere.
         try:
             from backend.copilot.config import ChatConfig
 
-            chat = ChatConfig()
-            if chat.direct_anthropic_api_key:
-                return chat.direct_anthropic_api_key
+            return ChatConfig().batch_anthropic_api_key
         except Exception:
-            logger.debug("ChatConfig unavailable for batch API key lookup")
-        from backend.util.settings import Settings
-
-        return Settings().secrets.anthropic_api_key or None
+            logger.warning("ChatConfig unavailable for batch API key lookup")
+            return None
     return None
 
 

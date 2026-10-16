@@ -74,6 +74,11 @@ class HeldResult(PendingMessage):
 
     content: str = Field(min_length=1, max_length=_MAX_RESULT_CHARS)
 
+    def text_for_model(self) -> str:
+        """Built here around a tool's output, which reaches the model as it
+        would in a direct tool result."""
+        return self.content
+
 
 class HeldCall(BaseModel):
     review_id: str

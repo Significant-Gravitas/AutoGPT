@@ -17,7 +17,6 @@ Scenario matrix:
   5. Error × 2 → attempt 3 DB fallback succeeds
   6. All 3 attempts exhausted → StreamError(all_attempts_exhausted)
   7. Compaction returns identical content → treated as compact failure → DB fallback
-  8. skip_transcript_upload → finally skips upload
 """
 
 from __future__ import annotations
@@ -32,6 +31,7 @@ import pytest
 from claude_agent_sdk import ResultMessage
 
 from backend.copilot.budget_gate import AutoContinueGate
+from backend.copilot.config import ChatConfig
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
@@ -43,6 +43,7 @@ from backend.copilot.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
+from backend.copilot.route_profile import RouteProfile, platform_profile
 from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
@@ -53,14 +54,16 @@ from backend.copilot.transcript import (
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
+    compact_transcript,
+    validate_transcript,
 )
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.copilot.turn_budget import TurnBudget
 from backend.util import json
+from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
-from .transcript import compact_transcript, validate_transcript
-from .transcript_builder import TranscriptBuilder
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,19 +76,15 @@ def _mock_compress_result(
     original_token_count: int = 500,
     token_count: int = 100,
 ) -> object:
-    """Create a mock CompressResult."""
-    return type(
-        "CompressResult",
-        (),
-        {
-            "was_compacted": was_compacted,
-            "messages": messages or [],
-            "original_token_count": original_token_count,
-            "token_count": token_count,
-            "messages_summarized": 2 if was_compacted else 0,
-            "messages_dropped": 0,
-        },
-    )()
+    """A real CompressResult, so the code under test sees every field."""
+    return CompressResult(
+        messages=messages or [],
+        token_count=token_count,
+        was_compacted=was_compacted,
+        original_token_count=original_token_count,
+        messages_summarized=2 if was_compacted else 0,
+        messages_dropped=0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -235,15 +234,9 @@ class TestScenarioNoTranscriptFallback:
         """When transcript_content is empty, _reduce_context goes straight to
         DB fallback without attempting compaction."""
         ctx = await _reduce_context(
-            transcript_content="",
-            tried_compaction=False,
-            session_id="sess-4",
-            sdk_cwd="/tmp/sandbox",
-            log_prefix="[T4]",
+            transcript_content="", log_prefix="[T4]", profile=scenario_profile()
         )
-        # No transcript → no resume file, transcript is lost
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
+        # No transcript → transcript is lost
         assert ctx.transcript_lost is True
 
 
@@ -294,16 +287,14 @@ class TestScenarioDoubleFailDBFallback:
         assert result is not None
         assert validate_transcript(result)
 
-        # If attempt 2 also fails, _reduce_context with tried_compaction=True
+        # If attempt 2 also fails, the second retry (attempt=2)
         # unconditionally drops the transcript and returns DB fallback
         ctx = await _reduce_context(
             transcript_content=result,
-            tried_compaction=True,
-            session_id="sess-5",
-            sdk_cwd="/tmp/sandbox",
             log_prefix="[T5]",
+            profile=scenario_profile(),
+            attempt=2,
         )
-        assert ctx.use_resume is False
         assert ctx.transcript_lost is True
 
 
@@ -316,21 +307,18 @@ class TestScenarioAllAttemptsExhausted:
     """All 3 attempts fail — final StreamError is emitted."""
 
     @pytest.mark.asyncio
-    async def test_tried_compaction_always_drops_transcript(self):
-        """When tried_compaction=True (all context-reduction paths exhausted),
-        _reduce_context always drops the transcript regardless of content."""
+    async def test_a_later_retry_always_drops_transcript(self):
+        """On a retry after the compacted one (attempt >= 2), _reduce_context
+        always drops the transcript regardless of content."""
         transcript = _build_transcript([("user", "Q"), ("assistant", "A")])
-        # Even with a non-empty transcript, once tried_compaction is True
+        # Even with a non-empty transcript, once compaction was tried
         # (all prior strategies used) we must drop to DB fallback
         ctx = await _reduce_context(
             transcript_content=transcript,
-            tried_compaction=True,
-            session_id="sess-6",
-            sdk_cwd="/tmp/sandbox",
             log_prefix="[T6]",
+            profile=scenario_profile(),
+            attempt=2,
         )
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is True
 
 
@@ -382,330 +370,12 @@ class TestScenarioCompactionIdentical:
         ):
             ctx = await _reduce_context(
                 transcript_content=transcript,
-                tried_compaction=False,
-                session_id="sess-7",
-                sdk_cwd="/tmp/sandbox",
                 log_prefix="[T7]",
+                profile=scenario_profile(),
             )
 
         # compact_transcript returned None → must drop to DB fallback
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is True
-
-
-# ---------------------------------------------------------------------------
-# Scenario 8: skip_transcript_upload → finally skips upload
-# ---------------------------------------------------------------------------
-
-
-class TestScenarioTranscriptCausedError:
-    """When skip_transcript_upload is True, the finally block skips
-    transcript upload to avoid persisting a broken transcript."""
-
-    def test_finally_guard_logic(self):
-        """Verify the guard logic matches the implementation."""
-        # Case 1: skip_transcript_upload = True → skip upload
-        skip_transcript_upload = True
-        claude_agent_use_resume = True
-        user_id = "uid"
-        session = MagicMock()
-
-        if skip_transcript_upload:
-            action = "skip_upload"
-        elif claude_agent_use_resume and user_id and session is not None:
-            action = "upload"
-        else:
-            action = "no_upload_config"
-
-        assert action == "skip_upload"
-
-        # Case 2: skip_transcript_upload = False → upload
-        skip_transcript_upload = False
-        if skip_transcript_upload:
-            action = "skip_upload"
-        elif claude_agent_use_resume and user_id and session is not None:
-            action = "upload"
-        else:
-            action = "no_upload_config"
-
-        assert action == "upload"
-
-    def test_db_fallback_sets_skip_transcript_upload(self):
-        """Both DB fallback branches must set skip_transcript_upload = True.
-        This verifies the fix for coderabbit comment #3."""
-        # Branch 1: compaction failed, dropping transcript
-        skip_transcript_upload = False
-        # Simulating the "compaction failed" branch
-        skip_transcript_upload = True
-        assert skip_transcript_upload is True
-
-        # Branch 2: no transcript to compact
-        skip_transcript_upload = False
-        # Simulating the "no transcript" branch
-        skip_transcript_upload = True
-        assert skip_transcript_upload is True
-
-
-# ---------------------------------------------------------------------------
-# Retry state machine — full simulation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.supplementary
-class TestRetryStateMachine:
-    """Supplementary: simulate the retry state machine with different failure patterns.
-
-    .. deprecated::
-        Prefer ``TestStreamChatCompletionRetryIntegration`` which exercises the
-        real ``stream_chat_completion_sdk`` generator end-to-end.  This class
-        manually reimplements the retry logic, so it can drift from production
-        code without detection.  Kept as supplementary coverage of edge-case
-        state transitions; will be removed once all scenarios are ported to
-        integration tests.
-    """
-
-    def _simulate_retry_loop(
-        self,
-        attempt_results: list[str],
-        transcript_content: str = "some_content",
-        compact_result: str | None = "compacted_content",
-    ) -> dict:
-        """Simulate the retry loop and return final state.
-
-        Args:
-            attempt_results: List of outcomes per attempt.
-                "success" = stream completes normally
-                "error"   = streaming error
-            transcript_content: Initial transcript content ("" = none)
-            compact_result: Result of compact_transcript (None = failure)
-        """
-        _stream_error: Exception | None = None
-        skip_transcript_upload = False
-        use_resume = bool(transcript_content)
-        stream_completed = False
-        attempts_made = 0
-        _tried_compaction = False
-
-        for _attempt in range(min(_MAX_STREAM_ATTEMPTS, len(attempt_results))):
-            if _attempt > 0:
-                _stream_error = None
-                stream_completed = False
-
-                # First retry: try compacting the transcript.
-                # Subsequent retries: drop transcript, rebuild from DB.
-                if transcript_content and not _tried_compaction:
-                    _tried_compaction = True
-                    if compact_result and compact_result != transcript_content:
-                        use_resume = True
-                    else:
-                        use_resume = False
-                        skip_transcript_upload = True
-                else:
-                    use_resume = False
-                    skip_transcript_upload = True
-
-            attempts_made += 1
-            result = attempt_results[_attempt]
-
-            if result == "error":
-                _stream_error = Exception("simulated error")
-                continue  # skip post-stream
-
-            # Stream succeeded
-            stream_completed = True
-            break
-
-        if _stream_error is not None:
-            skip_transcript_upload = True
-
-        return {
-            "attempts_made": attempts_made,
-            "stream_error": _stream_error,
-            "skip_transcript_upload": skip_transcript_upload,
-            "stream_completed": stream_completed,
-            "use_resume": use_resume,
-        }
-
-    def test_normal_flow_single_attempt(self):
-        """Scenario 1: Success on first attempt."""
-        state = self._simulate_retry_loop(["success"])
-        assert state["attempts_made"] == 1
-        assert state["stream_error"] is None
-        assert state["skip_transcript_upload"] is False
-        assert state["stream_completed"] is True
-        assert state["use_resume"] is True
-
-    def test_compact_and_retry_succeeds(self):
-        """Scenario 2: Fail, compact, succeed on attempt 2."""
-        state = self._simulate_retry_loop(
-            ["error", "success"],
-            transcript_content="original",
-            compact_result="compacted",
-        )
-        assert state["attempts_made"] == 2
-        assert state["stream_error"] is None
-        assert state["skip_transcript_upload"] is False
-        assert state["stream_completed"] is True
-        assert state["use_resume"] is True  # compacted transcript used
-
-    def test_compact_fails_db_fallback_succeeds(self):
-        """Scenario 3: Fail, compact fails, DB fallback succeeds."""
-        state = self._simulate_retry_loop(
-            ["error", "success"],
-            transcript_content="original",
-            compact_result=None,  # compact fails
-        )
-        assert state["attempts_made"] == 2
-        assert state["stream_error"] is None
-        assert state["skip_transcript_upload"] is True  # DB fallback
-        assert state["stream_completed"] is True
-        assert state["use_resume"] is False
-
-    def test_no_transcript_db_fallback_succeeds(self):
-        """Scenario 4: No transcript, DB fallback on attempt 2."""
-        state = self._simulate_retry_loop(
-            ["error", "success"],
-            transcript_content="",  # no transcript
-        )
-        assert state["attempts_made"] == 2
-        assert state["stream_error"] is None
-        assert state["skip_transcript_upload"] is True
-        assert state["stream_completed"] is True
-        assert state["use_resume"] is False
-
-    def test_double_fail_db_fallback_succeeds(self):
-        """Scenario 5: Fail, compact succeeds but retry fails, DB fallback."""
-        state = self._simulate_retry_loop(
-            ["error", "error", "success"],
-            transcript_content="original",
-            compact_result="compacted",
-        )
-        assert state["attempts_made"] == 3
-        assert state["stream_error"] is None
-        assert state["skip_transcript_upload"] is True
-        assert state["stream_completed"] is True
-        assert state["use_resume"] is False  # dropped for attempt 3
-
-    def test_all_attempts_exhausted(self):
-        """Scenario 6: All 3 attempts fail."""
-        state = self._simulate_retry_loop(
-            ["error", "error", "error"],
-            transcript_content="original",
-            compact_result="compacted",
-        )
-        assert state["attempts_made"] == 3
-        assert state["stream_error"] is not None
-        assert state["skip_transcript_upload"] is True
-        assert state["stream_completed"] is False
-
-    def test_compact_identical_triggers_db_fallback(self):
-        """Scenario 8: Compaction returns identical content."""
-        state = self._simulate_retry_loop(
-            ["error", "success"],
-            transcript_content="original",
-            compact_result="original",  # Same as input!
-        )
-        assert state["attempts_made"] == 2
-        assert state["skip_transcript_upload"] is True
-        assert state["use_resume"] is False  # Fell through to DB fallback
-
-    def test_no_transcript_all_exhausted(self):
-        """No transcript + all attempts fail."""
-        state = self._simulate_retry_loop(
-            ["error", "error", "error"],
-            transcript_content="",
-        )
-        assert state["attempts_made"] == 3
-        assert state["stream_error"] is not None
-        assert state["skip_transcript_upload"] is True
-        assert state["stream_completed"] is False
-
-
-# ---------------------------------------------------------------------------
-# Scenario 9: events_yielded > 0 prevents retry
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.supplementary
-class TestEventsYieldedGuard:
-    """Supplementary: when events have already been yielded to the frontend,
-    retrying would produce duplicate/inconsistent output.  The retry loop must break
-    immediately with an error instead of continuing to the next attempt."""
-
-    def _simulate_retry_with_events_yielded(
-        self,
-        events_yielded_per_attempt: list[int],
-        transcript_content: str = "some_content",
-    ) -> dict:
-        """Simulate the retry loop with explicit events_yielded counts.
-
-        Args:
-            events_yielded_per_attempt: Number of non-heartbeat events yielded
-                before the error on each attempt.  Only the first attempt that
-                errors with events_yielded > 0 matters — the loop should break.
-            transcript_content: Initial transcript content.
-        """
-        stream_err: Exception | None = None
-        ended_with_stream_error = False
-        attempts_made = 0
-
-        for attempt in range(
-            min(_MAX_STREAM_ATTEMPTS, len(events_yielded_per_attempt))
-        ):
-            attempts_made += 1
-            events_yielded = events_yielded_per_attempt[attempt]
-
-            # Simulate stream error
-            stream_err = Exception("simulated stream error")
-            is_context_error = True
-
-            if events_yielded > 0:
-                # This is the guard under test: when events have been
-                # yielded, the loop breaks immediately — no retry.
-                ended_with_stream_error = True
-                break
-
-            if not is_context_error:
-                ended_with_stream_error = True
-                break
-
-            # Would continue to next attempt
-            continue
-        else:
-            ended_with_stream_error = True
-
-        return {
-            "attempts_made": attempts_made,
-            "stream_err": stream_err,
-            "ended_with_stream_error": ended_with_stream_error,
-        }
-
-    def test_events_yielded_prevents_retry(self):
-        """When events were yielded on attempt 1, no retry should happen."""
-        state = self._simulate_retry_with_events_yielded([5])
-        assert state["attempts_made"] == 1
-        assert state["ended_with_stream_error"] is True
-        assert state["stream_err"] is not None
-
-    def test_zero_events_allows_retry(self):
-        """When no events were yielded on attempt 1, retry should proceed."""
-        state = self._simulate_retry_with_events_yielded([0, 0, 0])
-        assert state["attempts_made"] == 3
-        assert state["ended_with_stream_error"] is True  # all exhausted
-
-    def test_events_on_second_attempt_stops_retry(self):
-        """Attempt 1: 0 events (retry allowed).
-        Attempt 2: events yielded (no further retry)."""
-        state = self._simulate_retry_with_events_yielded([0, 3])
-        assert state["attempts_made"] == 2
-        assert state["ended_with_stream_error"] is True
-
-    def test_single_event_is_enough_to_prevent_retry(self):
-        """Even a single non-heartbeat event should prevent retry."""
-        state = self._simulate_retry_with_events_yielded([1])
-        assert state["attempts_made"] == 1
-        assert state["ended_with_stream_error"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -853,34 +523,6 @@ class TestRetryStateReset:
         assert use_resume is False
         assert resume_file is None
 
-    @pytest.mark.asyncio
-    async def test_compact_returns_none_preserves_error_flag(self):
-        """When compaction returns None, skip_transcript_upload is set."""
-        transcript = _build_transcript([("user", "A"), ("assistant", "B")])
-        skip_transcript_upload = False
-
-        with (
-            patch(
-                "backend.copilot.config.ChatConfig",
-                return_value=type(
-                    "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
-                )(),
-            ),
-            patch(
-                "backend.copilot.transcript._run_compression",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("boom"),
-            ),
-        ):
-            compacted = await compact_transcript(transcript, model="test-model")
-
-        # compact_transcript returns None on failure
-        assert compacted is None
-        # Caller sets skip_transcript_upload
-        if not compacted:
-            skip_transcript_upload = True
-        assert skip_transcript_upload is True
-
 
 class TestTranscriptEdgeCases:
     """Edge cases in transcript parsing and generation."""
@@ -983,16 +625,36 @@ def _make_lock_mock():
     return _lock_factory
 
 
+def scenario_profile(
+    model: str = "claude-sonnet-4-6", route: str = "direct_anthropic"
+) -> RouteProfile:
+    """The route a scenario turn runs on: direct Anthropic unless a test says
+    otherwise, so the turn is priced on the rate card and persisted through
+    ``persist_and_record_usage``. Held to a 200K window with the CLI's own
+    trigger, the shape the scenarios' history sizes were written against.
+    """
+    cfg = ChatConfig(
+        platform_route=route,
+        anthropic_api_key="sk-ant-scenario",
+        openrouter_api_key="sk-or-scenario",
+    )
+    profile = platform_profile(cfg, model, "env")
+    return profile.model_copy(update={"window": 200_000, "trigger_pct": None})
+
+
 def _make_sdk_patches(
     session,
     original_transcript: str,
     compacted_transcript: str | None,
     client_side_effect,
+    *,
+    profile: RouteProfile | None = None,
 ):
     """Return a list of (target, kwargs) tuples for patching service dependencies.
 
     Using a flat list instead of nested ``with`` statements avoids Python's
     20-block nesting limit.  Callers apply them via ``contextlib.ExitStack``.
+    The turn runs on *profile* (default: ``scenario_profile()``).
     """
     return [
         (
@@ -1003,7 +665,7 @@ def _make_sdk_patches(
             f"{_SVC}.upsert_chat_session",
             dict(new_callable=AsyncMock, return_value=session),
         ),
-        # Unmocked, build_skills_context runs get_or_create_workspace — a
+        # Unmocked, skills_context_block runs get_or_create_workspace — a
         # REAL Prisma write — on this test's function-scoped event loop
         # whenever an earlier test already connected Prisma. That leaves
         # connections in the shared Prisma httpx pool bound to a dead loop,
@@ -1012,9 +674,12 @@ def _make_sdk_patches(
         # test_chatsession_redis_storage / test_sdk_resume_multi_turn
         # failing depending on suite timing).
         (
-            f"{_SVC}.build_skills_context",
-            dict(new_callable=AsyncMock, return_value=""),
+            f"{_SVC}.skills_context_block",
+            dict(new_callable=AsyncMock, return_value=None),
         ),
+        # The same holds for the skill-version baseline a query carrying the
+        # index starts: it reads the registry, through Prisma once connected.
+        (f"{_SVC}.start_session_skill_versions", dict(new_callable=AsyncMock)),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (
             f"{_SVC}.AsyncClusterLock",
@@ -1028,7 +693,11 @@ def _make_sdk_patches(
         ),
         (
             f"{_SVC}._build_system_prompt",
-            dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+            dict(new_callable=AsyncMock, return_value="system prompt"),
+        ),
+        (
+            f"{_SVC}.fetch_business_understanding",
+            dict(new_callable=AsyncMock, return_value=None),
         ),
         (
             f"{_SVC}.download_transcript",
@@ -1053,15 +722,21 @@ def _make_sdk_patches(
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}.build_sdk_env", dict(return_value={})),
-        (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
+        (f"{_SVC}.route_launch_env", dict(return_value={})),
+        # The route the turn runs on: model, window, trigger and cost
+        # source all come from it, never from the mocked config below.
+        (
+            f"{_SVC}.resolve_turn_profile",
+            dict(
+                new_callable=AsyncMock,
+                return_value=profile or scenario_profile(),
+            ),
+        ),
         (f"{_SVC}.set_execution_context", {}),
         (
             f"{_SVC}.config",
             dict(
-                api_key="test-key",
-                use_claude_code_subscription=False,
-                claude_agent_use_resume=True,
+                platform_route="direct_anthropic",
                 claude_agent_max_buffer_size=100_000,
                 claude_agent_max_subtasks=5,
                 stream_lock_ttl=60,
@@ -1071,15 +746,9 @@ def _make_sdk_patches(
                 agent_max_turns=1000,
                 sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
-                claude_agent_max_thinking_tokens=0,
-                claude_agent_autocompact_pct_override=0,
-                claude_agent_thinking_effort=None,
-                claude_agent_fallback_model=None,
-                # Real strings: the stamp path canonicalizes the model for
-                # fallback detection; auto-MagicMock attributes would leak
-                # into regex-based comparison.
-                claude_agent_model="claude-sonnet-4-6",
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                # A real string: compaction's model; an auto-MagicMock
+                # would leak into the compressor's call.
+                tier_model=MagicMock(return_value="claude-sonnet-4-6"),
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
@@ -2125,14 +1794,22 @@ class TestStreamChatCompletionRetryIntegration:
             f"--resume was set even though download_transcript returned None: "
             f"{captured_options}"
         )
+        # The declared built-ins come from the same lists the hook enforces,
+        # both empty here; without them the CLI declares every built-in it has.
+        assert captured_options["options"].tools == []
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
-    async def test_queued_messages_wait_when_the_allowance_is_used_up(self):
+    @pytest.mark.parametrize("tainted", [False, True])
+    async def test_queued_messages_wait_when_the_allowance_is_used_up(
+        self, tainted: bool
+    ):
         """Auto-continue asks the allowance first. Refused, it drains nothing
         and starts no second query: the turn ends on a not-started pause and
-        the queued messages stay queued for the next turn."""
+        the queued messages stay queued for the next turn. The pause records
+        the taint the continuation would have kept."""
         from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.tree import root_envelope
         from backend.copilot.turn_pause import TurnPause
 
         session = self._make_session()
@@ -2167,10 +1844,13 @@ class TestStreamChatCompletionRetryIntegration:
                 is_user_message=True,
                 user_id="test-user",
                 session=session,
+                envelope=root_envelope("turn-1", tainted=tainted),
             ):
                 events.append(event)
 
-        refused.assert_awaited_once_with(session, "test-user", platform_billed=True)
+        refused.assert_awaited_once_with(
+            session, "test-user", platform_billed=True, tainted=tainted
+        )
         assert [e.pause for e in events if isinstance(e, StreamTurnPaused)] == [
             pause.as_part()
         ]
@@ -2257,7 +1937,6 @@ class TestPreQueryCompactionRowTiming:
         """
         return _RestoreResult(
             transcript_content="seeded",
-            transcript_covers_prefix=True,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=len(prior),

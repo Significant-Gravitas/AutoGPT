@@ -25,9 +25,9 @@ def _make_messages(n_pairs: int, *, current_user: str = "current") -> list[Magic
     """Build a flat list of n_pairs*2 alternating user/asst messages, plus
     one trailing user message for the *current* turn.
 
-    ``sequence`` is left ``None`` so the cap-engaged sequence-based path
-    in ``_build_query_message`` (which short-circuits on ``sequence > 0``)
-    doesn't fire — these tests target the legacy index-based gap branch.
+    ``sequence`` is left ``None``, so each row's sequence is its position in
+    the list (``resume_gap.row_sequences``) and the gap is the rows at or
+    above the watermark, as for stored rows.
     """
     msgs: list[MagicMock] = []
     for i in range(n_pairs):

@@ -6,18 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.util import json
-
-from .transcript import (
+from backend.copilot.transcript import (
     STRIPPABLE_TYPES,
     delete_transcript,
     read_compacted_entries,
-    strip_progress_entries,
-    strip_stale_thinking_blocks,
     validate_transcript,
-    write_transcript_to_tempfile,
 )
-from .transcript_builder import TranscriptBuilder
+from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util import json
 
 
 def _make_jsonl(*entries: dict) -> str:
@@ -44,58 +40,6 @@ PROGRESS_ENTRY = {
 }
 
 VALID_TRANSCRIPT = _make_jsonl(METADATA_LINE, FILE_HISTORY, USER_MSG, ASST_MSG)
-
-
-# --- write_transcript_to_tempfile ---
-
-
-class TestWriteTranscriptToTempfile:
-    """Tests use /tmp/copilot-* paths to satisfy the sandbox prefix check."""
-
-    def test_writes_file_and_returns_path(self):
-        cwd = "/tmp/copilot-test-write"
-        try:
-            result = write_transcript_to_tempfile(
-                VALID_TRANSCRIPT, "sess-1234-abcd", cwd
-            )
-            assert result is not None
-            assert os.path.isfile(result)
-            assert result.endswith(".jsonl")
-            with open(result) as f:
-                assert f.read() == VALID_TRANSCRIPT
-        finally:
-            import shutil
-
-            shutil.rmtree(cwd, ignore_errors=True)
-
-    def test_creates_parent_directory(self):
-        cwd = "/tmp/copilot-test-mkdir"
-        try:
-            result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "sess-1234", cwd)
-            assert result is not None
-            assert os.path.isdir(cwd)
-        finally:
-            import shutil
-
-            shutil.rmtree(cwd, ignore_errors=True)
-
-    def test_uses_session_id_prefix(self):
-        cwd = "/tmp/copilot-test-prefix"
-        try:
-            result = write_transcript_to_tempfile(
-                VALID_TRANSCRIPT, "abcdef12-rest", cwd
-            )
-            assert result is not None
-            assert "abcdef12" in os.path.basename(result)
-        finally:
-            import shutil
-
-            shutil.rmtree(cwd, ignore_errors=True)
-
-    def test_rejects_cwd_outside_sandbox(self, tmp_path):
-        cwd = str(tmp_path / "not-copilot")
-        result = write_transcript_to_tempfile(VALID_TRANSCRIPT, "sess-1234", cwd)
-        assert result is None
 
 
 # --- validate_transcript ---
@@ -169,127 +113,6 @@ class TestValidateTranscript:
             + "\n"  # another blank line
         )
         assert validate_transcript(content) is True
-
-
-# --- strip_progress_entries ---
-
-
-class TestStripProgressEntries:
-    def test_strips_all_strippable_types(self):
-        """All STRIPPABLE_TYPES are removed from the output."""
-        entries = [
-            USER_MSG,
-            {"type": "progress", "uuid": "p1", "parentUuid": "u1"},
-            {"type": "file-history-snapshot", "files": []},
-            {"type": "queue-operation", "subtype": "create"},
-            {"type": "summary", "text": "..."},
-            {"type": "pr-link", "url": "..."},
-            ASST_MSG,
-        ]
-        result = strip_progress_entries(_make_jsonl(*entries))
-        result_types = {json.loads(line)["type"] for line in result.strip().split("\n")}
-        assert result_types == {"user", "assistant"}
-        for stype in STRIPPABLE_TYPES:
-            assert stype not in result_types
-
-    def test_reparents_children_of_stripped_entries(self):
-        """An assistant message whose parent is a progress entry gets reparented."""
-        progress = {
-            "type": "progress",
-            "uuid": "p1",
-            "parentUuid": "u1",
-            "data": {"type": "bash_progress"},
-        }
-        asst = {
-            "type": "assistant",
-            "uuid": "a1",
-            "parentUuid": "p1",  # Points to progress
-            "message": {"role": "assistant", "content": "done"},
-        }
-        content = _make_jsonl(USER_MSG, progress, asst)
-        result = strip_progress_entries(content)
-        lines = [json.loads(line) for line in result.strip().split("\n")]
-
-        asst_entry = next(e for e in lines if e["type"] == "assistant")
-        # Should be reparented to u1 (the user message)
-        assert asst_entry["parentUuid"] == "u1"
-
-    def test_reparents_through_chain(self):
-        """Reparenting walks through multiple stripped entries."""
-        p1 = {"type": "progress", "uuid": "p1", "parentUuid": "u1"}
-        p2 = {"type": "progress", "uuid": "p2", "parentUuid": "p1"}
-        p3 = {"type": "progress", "uuid": "p3", "parentUuid": "p2"}
-        asst = {
-            "type": "assistant",
-            "uuid": "a1",
-            "parentUuid": "p3",  # 3 levels deep
-            "message": {"role": "assistant", "content": "done"},
-        }
-        content = _make_jsonl(USER_MSG, p1, p2, p3, asst)
-        result = strip_progress_entries(content)
-        lines = [json.loads(line) for line in result.strip().split("\n")]
-
-        asst_entry = next(e for e in lines if e["type"] == "assistant")
-        assert asst_entry["parentUuid"] == "u1"
-
-    def test_preserves_non_strippable_entries(self):
-        """User, assistant, and system entries are preserved."""
-        system = {"type": "system", "uuid": "s1", "message": "prompt"}
-        content = _make_jsonl(system, USER_MSG, ASST_MSG)
-        result = strip_progress_entries(content)
-        result_types = [json.loads(line)["type"] for line in result.strip().split("\n")]
-        assert result_types == ["system", "user", "assistant"]
-
-    def test_empty_input(self):
-        result = strip_progress_entries("")
-        # Should return just a newline (empty content stripped)
-        assert result.strip() == ""
-
-    def test_no_strippable_entries(self):
-        """When there's nothing to strip, output matches input structure."""
-        content = _make_jsonl(USER_MSG, ASST_MSG)
-        result = strip_progress_entries(content)
-        result_lines = result.strip().split("\n")
-        assert len(result_lines) == 2
-
-    def test_handles_entries_without_uuid(self):
-        """Entries without uuid field are handled gracefully."""
-        no_uuid = {"type": "queue-operation", "subtype": "create"}
-        content = _make_jsonl(no_uuid, USER_MSG, ASST_MSG)
-        result = strip_progress_entries(content)
-        result_types = [json.loads(line)["type"] for line in result.strip().split("\n")]
-        # queue-operation is strippable
-        assert "queue-operation" not in result_types
-        assert "user" in result_types
-        assert "assistant" in result_types
-
-    def test_preserves_original_line_formatting(self):
-        """Non-reparented entries keep their original JSON formatting."""
-        # orjson produces compact JSON - test that we preserve the exact input
-        # when no reparenting is needed (no re-serialization)
-        original_line = json.dumps(USER_MSG)
-
-        content = original_line + "\n" + json.dumps(ASST_MSG) + "\n"
-        result = strip_progress_entries(content)
-        result_lines = result.strip().split("\n")
-
-        # Original line should be byte-identical (not re-serialized)
-        assert result_lines[0] == original_line
-
-    def test_reparented_entries_are_reserialized(self):
-        """Entries whose parentUuid changes must be re-serialized."""
-        progress = {"type": "progress", "uuid": "p1", "parentUuid": "u1"}
-        asst = {
-            "type": "assistant",
-            "uuid": "a1",
-            "parentUuid": "p1",
-            "message": {"role": "assistant", "content": "done"},
-        }
-        content = _make_jsonl(USER_MSG, progress, asst)
-        result = strip_progress_entries(content)
-        lines = result.strip().split("\n")
-        asst_entry = json.loads(lines[-1])
-        assert asst_entry["parentUuid"] == "u1"  # reparented
 
 
 # --- delete_transcript ---
@@ -732,36 +555,6 @@ class TestCompactionFlowIntegration:
         entries = [json.loads(line) for line in output.strip().split("\n")]
         assert entries[-1]["parentUuid"] == "a2"
 
-    def test_strip_progress_preserves_compact_summaries(self):
-        """strip_progress_entries doesn't strip isCompactSummary entries
-        even though their type is 'summary' (in STRIPPABLE_TYPES)."""
-        compact_summary = {
-            "type": "summary",
-            "uuid": "cs1",
-            "isCompactSummary": True,
-            "message": {"role": "user", "content": "compacted"},
-        }
-        regular_summary = {"type": "summary", "uuid": "s1", "message": {"content": "x"}}
-        progress = {"type": "progress", "uuid": "p1", "data": {"stdout": "..."}}
-        user = {
-            "type": "user",
-            "uuid": "u1",
-            "message": {"role": "user", "content": "hi"},
-        }
-
-        content = _make_jsonl(compact_summary, regular_summary, progress, user)
-        stripped = strip_progress_entries(content)
-        stripped_entries = [
-            json.loads(line) for line in stripped.strip().split("\n") if line.strip()
-        ]
-
-        uuids = [e.get("uuid") for e in stripped_entries]
-        # compact_summary kept, regular_summary stripped, progress stripped, user kept
-        assert "cs1" in uuids  # compact summary preserved
-        assert "s1" not in uuids  # regular summary stripped
-        assert "p1" not in uuids  # progress stripped
-        assert "u1" in uuids  # user kept
-
     def test_builder_load_then_replace_then_export_roundtrip(self):
         """Load a compacted transcript, replace with new compaction, export.
         Simulates two consecutive turns with compaction each time."""
@@ -960,7 +753,9 @@ class TestRunCompression:
         )
         call_count = [0]
 
-        async def _compress_side_effect(*, messages, model, client, target_tokens=None):
+        async def _compress_side_effect(
+            *, messages, model, client, target_tokens=None, **_
+        ):
             call_count[0] += 1
             if client is not None:
                 # Simulate a hang that exceeds the timeout
@@ -1005,113 +800,6 @@ class TestRunCompression:
 class TestCleanupStaleProjectDirs:
     """Tests for cleanup_stale_project_dirs (disk leak prevention)."""
 
-    def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
-        """Directories matching copilot pattern older than threshold are removed."""
-        from backend.copilot.transcript import (
-            _STALE_PROJECT_DIR_SECONDS,
-            cleanup_stale_project_dirs,
-        )
-
-        projects_dir = tmp_path / "projects"
-        projects_dir.mkdir()
-        monkeypatch.setattr(
-            "backend.copilot.transcript.projects_base",
-            lambda: str(projects_dir),
-        )
-
-        # Create a stale dir
-        stale = projects_dir / "-tmp-copilot-old-session"
-        stale.mkdir()
-        # Set mtime to past the threshold
-        import time
-
-        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
-        os.utime(stale, (old_time, old_time))
-
-        # Create a fresh dir
-        fresh = projects_dir / "-tmp-copilot-new-session"
-        fresh.mkdir()
-
-        removed = cleanup_stale_project_dirs()
-        assert removed == 1
-        assert not stale.exists()
-        assert fresh.exists()
-
-    def test_ignores_non_copilot_dirs(self, tmp_path, monkeypatch):
-        """Directories not matching copilot pattern are left alone."""
-        from backend.copilot.transcript import cleanup_stale_project_dirs
-
-        projects_dir = tmp_path / "projects"
-        projects_dir.mkdir()
-        monkeypatch.setattr(
-            "backend.copilot.transcript.projects_base",
-            lambda: str(projects_dir),
-        )
-
-        # Non-copilot dir that's old
-        import time
-
-        other = projects_dir / "some-other-project"
-        other.mkdir()
-        old_time = time.time() - 999999
-        os.utime(other, (old_time, old_time))
-
-        removed = cleanup_stale_project_dirs()
-        assert removed == 0
-        assert other.exists()
-
-    def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
-        """A directory exactly at the TTL boundary should NOT be removed."""
-        from backend.copilot.transcript import (
-            _STALE_PROJECT_DIR_SECONDS,
-            cleanup_stale_project_dirs,
-        )
-
-        projects_dir = tmp_path / "projects"
-        projects_dir.mkdir()
-        monkeypatch.setattr(
-            "backend.copilot.transcript.projects_base",
-            lambda: str(projects_dir),
-        )
-
-        import time
-
-        # Dir that's exactly at the TTL (age == threshold, not >) — should survive
-        boundary = projects_dir / "-tmp-copilot-boundary"
-        boundary.mkdir()
-        boundary_time = time.time() - _STALE_PROJECT_DIR_SECONDS + 1
-        os.utime(boundary, (boundary_time, boundary_time))
-
-        removed = cleanup_stale_project_dirs()
-        assert removed == 0
-        assert boundary.exists()
-
-    def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
-        """Regular files matching the copilot pattern are not removed."""
-        from backend.copilot.transcript import (
-            _STALE_PROJECT_DIR_SECONDS,
-            cleanup_stale_project_dirs,
-        )
-
-        projects_dir = tmp_path / "projects"
-        projects_dir.mkdir()
-        monkeypatch.setattr(
-            "backend.copilot.transcript.projects_base",
-            lambda: str(projects_dir),
-        )
-
-        import time
-
-        # Create a regular FILE (not a dir) with the copilot pattern name
-        stale_file = projects_dir / "-tmp-copilot-stale-file"
-        stale_file.write_text("not a dir")
-        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
-        os.utime(stale_file, (old_time, old_time))
-
-        removed = cleanup_stale_project_dirs()
-        assert removed == 0
-        assert stale_file.exists()
-
     def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
         """If the projects base directory doesn't exist, return 0 gracefully."""
         from backend.copilot.transcript import cleanup_stale_project_dirs
@@ -1122,7 +810,7 @@ class TestCleanupStaleProjectDirs:
             lambda: nonexistent,
         )
 
-        removed = cleanup_stale_project_dirs()
+        removed = cleanup_stale_project_dirs("-tmp-copilot-session-abc")
         assert removed == 0
 
     def test_scoped_removes_only_target_dir(self, tmp_path, monkeypatch):
@@ -1201,229 +889,6 @@ class TestCleanupStaleProjectDirs:
         removed = cleanup_stale_project_dirs(encoded_cwd="some-other-project")
         assert removed == 0
         assert non_copilot.exists()
-
-
-# ---------------------------------------------------------------------------
-# strip_stale_thinking_blocks
-# ---------------------------------------------------------------------------
-
-
-class TestStripStaleThinkingBlocks:
-    """Tests for strip_stale_thinking_blocks — removes thinking/redacted_thinking
-    blocks from non-last assistant entries to reduce transcript bloat."""
-
-    def _asst_entry(
-        self, msg_id: str, content: list, uuid: str = "u1", parent: str = ""
-    ) -> dict:
-        return {
-            "type": "assistant",
-            "uuid": uuid,
-            "parentUuid": parent,
-            "message": {
-                "role": "assistant",
-                "id": msg_id,
-                "type": "message",
-                "content": content,
-            },
-        }
-
-    def _user_entry(self, text: str, uuid: str = "u0", parent: str = "") -> dict:
-        return {
-            "type": "user",
-            "uuid": uuid,
-            "parentUuid": parent,
-            "message": {"role": "user", "content": text},
-        }
-
-    def test_strips_thinking_from_older_assistant(self) -> None:
-        """Thinking blocks in non-last assistant entries should be removed."""
-        old_asst = self._asst_entry(
-            "msg_old",
-            [
-                {"type": "thinking", "thinking": "deep thoughts..."},
-                {"type": "text", "text": "hello"},
-                {"type": "redacted_thinking", "data": "secret"},
-            ],
-            uuid="a1",
-        )
-        new_asst = self._asst_entry(
-            "msg_new",
-            [
-                # Anthropic-shape thinking block (has signature) — preserved
-                # on the last turn.  Signature-less variant covered by
-                # ``test_strips_signatureless_last_turn_thinking``.
-                {
-                    "type": "thinking",
-                    "thinking": "latest thoughts",
-                    "signature": "anthropic-sig",
-                },
-                {"type": "text", "text": "world"},
-            ],
-            uuid="a2",
-            parent="a1",
-        )
-        content = _make_jsonl(old_asst, new_asst)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-
-        # Old assistant should have thinking blocks stripped
-        old_content = lines[0]["message"]["content"]
-        assert len(old_content) == 1
-        assert old_content[0]["type"] == "text"
-
-        # New (last) assistant should be untouched
-        new_content = lines[1]["message"]["content"]
-        assert len(new_content) == 2
-        assert new_content[0]["type"] == "thinking"
-        assert new_content[1]["type"] == "text"
-
-    def test_preserves_last_assistant_thinking(self) -> None:
-        """The last assistant entry's thinking blocks must be preserved
-        when they carry an Anthropic ``signature``.  Signature-less
-        blocks (e.g. from Kimi K2.6 via OpenRouter) are stripped to
-        prevent ``Invalid `signature` in `thinking` block`` errors on
-        a subsequent Anthropic-model turn — covered by
-        ``test_strips_signatureless_last_turn_thinking``."""
-        entry = self._asst_entry(
-            "msg_only",
-            [
-                {"type": "thinking", "thinking": "must keep", "signature": "sig"},
-                {"type": "text", "text": "response"},
-            ],
-        )
-        content = _make_jsonl(entry)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-        assert len(lines[0]["message"]["content"]) == 2
-
-    def test_strips_signatureless_last_turn_thinking(self) -> None:
-        """Cross-model fix (PR #12878): a signature-less thinking block
-        on the last assistant turn must be stripped before a subsequent
-        Anthropic-model dispatch tries to replay it."""
-        entry = self._asst_entry(
-            "msg_kimi",
-            [
-                # No signature → non-Anthropic provider
-                {"type": "thinking", "thinking": "kimi reasoning"},
-                {"type": "text", "text": "answer"},
-            ],
-        )
-        content = _make_jsonl(entry)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-        types = [b["type"] for b in lines[0]["message"]["content"]]
-        assert "thinking" not in types
-        assert "text" in types
-
-    def test_preserves_redacted_thinking_on_last_turn(self) -> None:
-        """``redacted_thinking`` blocks are signature-less by design
-        (encrypted ``data`` field instead).  Stripping them on the last
-        turn would violate Anthropic's value-identity requirement for
-        multi-turn replay.  The signature rule only applies to plain
-        ``thinking`` blocks."""
-        entry = self._asst_entry(
-            "msg_anthropic",
-            [
-                # Anthropic-emitted redacted_thinking: has ``data``,
-                # never has ``signature``.
-                {"type": "redacted_thinking", "data": "encrypted_blob"},
-                {"type": "text", "text": "response"},
-            ],
-        )
-        content = _make_jsonl(entry)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-        types = [b["type"] for b in lines[0]["message"]["content"]]
-        assert "redacted_thinking" in types
-        assert "text" in types
-
-    def test_no_assistant_entries_returns_unchanged(self) -> None:
-        """Transcripts with only user entries should pass through unchanged."""
-        user = self._user_entry("hello")
-        content = _make_jsonl(user)
-        assert strip_stale_thinking_blocks(content) == content
-
-    def test_empty_content_returns_unchanged(self) -> None:
-        assert strip_stale_thinking_blocks("") == ""
-
-    def test_multiple_turns_strips_all_but_last(self) -> None:
-        """With 3 assistant turns, only the last keeps thinking blocks
-        (and only when those blocks carry an Anthropic ``signature``)."""
-        entries = [
-            self._asst_entry(
-                "msg_1",
-                [
-                    {"type": "thinking", "thinking": "t1", "signature": "s1"},
-                    {"type": "text", "text": "a1"},
-                ],
-                uuid="a1",
-            ),
-            self._user_entry("q2", uuid="u2", parent="a1"),
-            self._asst_entry(
-                "msg_2",
-                [
-                    {"type": "thinking", "thinking": "t2", "signature": "s2"},
-                    {"type": "text", "text": "a2"},
-                ],
-                uuid="a2",
-                parent="u2",
-            ),
-            self._user_entry("q3", uuid="u3", parent="a2"),
-            self._asst_entry(
-                "msg_3",
-                [
-                    {"type": "thinking", "thinking": "t3", "signature": "s3"},
-                    {"type": "text", "text": "a3"},
-                ],
-                uuid="a3",
-                parent="u3",
-            ),
-        ]
-        content = _make_jsonl(*entries)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-
-        # msg_1: thinking stripped
-        assert len(lines[0]["message"]["content"]) == 1
-        assert lines[0]["message"]["content"][0]["type"] == "text"
-        # msg_2: thinking stripped
-        assert len(lines[2]["message"]["content"]) == 1
-        # msg_3 (last): thinking preserved
-        assert len(lines[4]["message"]["content"]) == 2
-        assert lines[4]["message"]["content"][0]["type"] == "thinking"
-
-    def test_same_msg_id_multi_entry_turn(self) -> None:
-        """Multiple entries sharing the same message.id (same turn) are
-        preserved when their thinking blocks carry an Anthropic
-        ``signature``."""
-        entries = [
-            self._asst_entry(
-                "msg_old",
-                [{"type": "thinking", "thinking": "old", "signature": "old_sig"}],
-                uuid="a1",
-            ),
-            self._asst_entry(
-                "msg_last",
-                [{"type": "thinking", "thinking": "t_part1", "signature": "p1_sig"}],
-                uuid="a2",
-                parent="a1",
-            ),
-            self._asst_entry(
-                "msg_last",
-                [{"type": "text", "text": "response"}],
-                uuid="a3",
-                parent="a2",
-            ),
-        ]
-        content = _make_jsonl(*entries)
-        result = strip_stale_thinking_blocks(content)
-        lines = [json.loads(ln) for ln in result.strip().split("\n")]
-
-        # Old entry stripped
-        assert lines[0]["message"]["content"] == []
-        # Both entries of last turn (msg_last) preserved
-        assert lines[1]["message"]["content"][0]["type"] == "thinking"
-        assert lines[2]["message"]["content"][0]["type"] == "text"
 
 
 class TestProcessCliRestore:

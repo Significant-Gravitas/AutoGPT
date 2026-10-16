@@ -7,8 +7,7 @@ import pytest
 from backend.copilot.moonshot import (
     is_moonshot_model,
     moonshot_context_window,
-    moonshot_supports_cache_control,
-    override_cost_usd,
+    moonshot_cost_usd,
     rate_card_usd,
 )
 
@@ -77,67 +76,37 @@ class TestRateCardUsd:
         assert rate_card_usd("openai/gpt-4o") is None
 
 
-class TestOverrideCostUsd:
-    """Rate-card override replaces the CLI's Sonnet-rate estimate for
-    Moonshot turns; Anthropic and unknown slugs pass through unchanged."""
+class TestMoonshotCostUsd:
+    """The Moonshot rate card prices a Kimi turn; any other model is not
+    Moonshot's to price, so the answer is None."""
 
-    def test_moonshot_recomputes_from_rate_card(self) -> None:
-        """A 29.5K-prompt Kimi turn should land at ~$0.018 on the
-        Moonshot rate card, not the CLI's $0.09 Sonnet-rate estimate."""
-        recomputed = override_cost_usd(
+    def test_moonshot_prices_from_the_rate_card(self) -> None:
+        """A 29.5K-prompt Kimi turn lands at ~$0.018 on the Moonshot rate
+        card, not the ~$0.09 Anthropic rates would give."""
+        cost = moonshot_cost_usd(
             model="moonshotai/kimi-k2.6",
-            sdk_reported_usd=0.089862,  # What the CLI reported (Sonnet price).
             prompt_tokens=29564,
             completion_tokens=78,
             cache_read_tokens=0,
             cache_creation_tokens=0,
         )
         expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
-        assert recomputed == pytest.approx(expected, rel=1e-9)
-        assert 0.017 < recomputed < 0.019  # Sanity against Moonshot's rate card.
+        assert cost == pytest.approx(expected, rel=1e-9)
+        assert cost is not None and 0.017 < cost < 0.019
 
-    def test_anthropic_passes_through(self) -> None:
-        """Anthropic slugs are priced accurately by the CLI already —
-        the override returns the SDK number unchanged."""
+    @pytest.mark.parametrize(
+        "model", ["anthropic/claude-sonnet-4.6", "deepseek/deepseek-v3", None]
+    )
+    def test_other_models_are_not_moonshots_to_price(self, model) -> None:
         assert (
-            override_cost_usd(
-                model="anthropic/claude-sonnet-4.6",
-                sdk_reported_usd=0.089862,
+            moonshot_cost_usd(
+                model=model,
                 prompt_tokens=29564,
                 completion_tokens=78,
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
             )
-            == 0.089862
-        )
-
-    def test_unknown_non_moonshot_passes_through(self) -> None:
-        """A non-Moonshot, non-Anthropic slug falls back to the SDK value
-        — best-effort rather than leaking a zero or a wrong rate card."""
-        assert (
-            override_cost_usd(
-                model="deepseek/deepseek-v3",
-                sdk_reported_usd=0.05,
-                prompt_tokens=10_000,
-                completion_tokens=500,
-                cache_read_tokens=0,
-                cache_creation_tokens=0,
-            )
-            == 0.05
-        )
-
-    def test_none_model_passes_through(self) -> None:
-        """Subscription mode sets model=None — return the SDK value."""
-        assert (
-            override_cost_usd(
-                model=None,
-                sdk_reported_usd=0.07,
-                prompt_tokens=100,
-                completion_tokens=10,
-                cache_read_tokens=0,
-                cache_creation_tokens=0,
-            )
-            == 0.07
+            is None
         )
 
     def test_cache_tokens_priced_at_input_rate(self) -> None:
@@ -145,44 +114,15 @@ class TestOverrideCostUsd:
         cached-input price — cache_read / cache_creation tokens are
         priced at the full input rate.  The reconcile path has the
         authoritative discount for turns where Moonshot's cache engaged."""
-        recomputed = override_cost_usd(
+        cost = moonshot_cost_usd(
             model="moonshotai/kimi-k2.6",
-            sdk_reported_usd=0.5,
             prompt_tokens=1000,
             completion_tokens=0,
             cache_read_tokens=5000,
             cache_creation_tokens=2000,
         )
         expected = (1000 + 5000 + 2000) * 0.60 / 1_000_000
-        assert recomputed == pytest.approx(expected, rel=1e-9)
-
-
-class TestSupportsCacheControl:
-    """Gate for emitting ``cache_control: {type: ephemeral}`` on message
-    blocks.  True for Moonshot (Anthropic-compat endpoint accepts it)
-    and False for everything else this module knows about — Anthropic
-    callers use their own ``_is_anthropic_model`` check which is
-    combined with this one into a wider gate."""
-
-    def test_moonshot_supports_cache_control(self) -> None:
-        assert moonshot_supports_cache_control("moonshotai/kimi-k2.6") is True
-
-    def test_future_moonshot_sku_supports_cache_control(self) -> None:
-        assert moonshot_supports_cache_control("moonshotai/kimi-k3.0") is True
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "openai/gpt-4o",
-            "google/gemini-2.5-flash",
-            "xai/grok-4",
-            "deepseek/deepseek-v3",
-            "",
-            None,
-        ],
-    )
-    def test_non_moonshot_does_not_support_cache_control(self, model) -> None:
-        assert moonshot_supports_cache_control(model) is False
+        assert cost == pytest.approx(expected, rel=1e-9)
 
 
 class TestMoonshotContextWindow:
