@@ -7,11 +7,6 @@ import {
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -46,6 +41,7 @@ import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
@@ -78,7 +74,11 @@ interface Props {
     workspaceFiles?: WorkspaceAttachment[],
   ) => void | Promise<void>;
   disabled?: boolean;
+  sendDisabled?: boolean;
   isStreaming?: boolean;
+  /** The sent message's turn has not started: a Stop now would cancel nothing
+   *  on the server and drop the message, so the button only shows progress. */
+  isTurnStarting?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
   /** Called to enqueue a message when copilot is streaming and user has typed text. */
@@ -86,6 +86,7 @@ interface Props {
   placeholder?: string;
   className?: string;
   inputId?: string;
+  draftKey?: string;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -124,13 +125,16 @@ interface Props {
 export function ChatInput({
   onSend,
   disabled = false,
+  sendDisabled = false,
   isStreaming = false,
+  isTurnStarting = false,
   isUploadingFiles = false,
   onStop,
   onEnqueue,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
+  draftKey,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -212,9 +216,10 @@ export function ChatInput({
       onEnqueue,
       isStreaming,
       hasAttachments,
-      disabled: isTextareaDisabled,
+      disabled: isTextareaDisabled || sendDisabled,
       canSendEmpty: hasAttachments,
       inputId,
+      draftKey,
     });
 
   const integrations = useConnectedIntegrations(expertId);
@@ -288,6 +293,7 @@ export function ChatInput({
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const canSend =
     !disabled &&
+    !sendDisabled &&
     (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;
@@ -503,7 +509,7 @@ export function ChatInput({
               "relative",
               stacked || isMultiline
                 ? "order-first w-full"
-                : "min-w-0 flex-1 max-md:order-first max-md:w-full",
+                : "min-w-0 flex-1 max-md:order-first max-md:w-full max-md:basis-full",
             )}
           >
             <CredentialMentionEditor
@@ -584,17 +590,14 @@ export function ChatInput({
                 <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
             )}
-            {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PromptInputSubmit
-                    status="streaming"
-                    onStop={onStop}
-                    className={sendButtonClass}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="top">Stop</TooltipContent>
-              </Tooltip>
+            {isStreaming && isTurnStarting ? (
+              <PromptInputSubmit
+                status="submitted"
+                aria-label="Sending"
+                className={sendButtonClass}
+              />
+            ) : isStreaming ? (
+              <StopButton onStop={onStop} className={sendButtonClass} />
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit
                 disabled={!canSend}

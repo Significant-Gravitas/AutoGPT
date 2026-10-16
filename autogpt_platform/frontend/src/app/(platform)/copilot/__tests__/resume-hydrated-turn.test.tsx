@@ -252,6 +252,52 @@ const BACKEND_STARTED_TURN_MESSAGES = [
   sessionMessage(3, "assistant", PERSISTED_HALF),
 ];
 
+const CHECKPOINT = "Halfway through: the numbers are in";
+const CONTINUED = "Back on it: the charts are next";
+const KEEP_GOING_NOTE =
+  "Keep going: pick the task up from the checkpoint above.";
+
+/**
+ * A task that paused at a step check-in and was picked back up with Keep
+ * going. The route saves the continuation note before it dispatches the
+ * turn, so every row predates the running turn's ``started_at``: nothing of
+ * that turn is persisted yet, and none of these rows are the replay's.
+ */
+const PICKED_UP_MESSAGES = [
+  sessionMessage(1, "user", EARLIER_PROMPT),
+  sessionMessage(2, "assistant", CHECKPOINT),
+  {
+    ...sessionMessage(
+      3,
+      "assistant",
+      "[__COPILOT_SYSTEM_e3b0__] Paused: checking in after a long run.",
+    ),
+    metadata: {
+      turn_paused: {
+        reason: "steps",
+        resets_at: null,
+        steps: 450,
+        checkpoint_saved: true,
+        started: true,
+      },
+    },
+  },
+  sessionMessage(
+    4,
+    "assistant",
+    `[__COPILOT_SYSTEM_e3b0__] ${KEEP_GOING_NOTE}`,
+  ),
+];
+
+const CONTINUATION_REPLAY: UIMessageChunk[] = [
+  { type: "data-status", data: { message: "Picking the task back up…" } },
+  { type: "start", messageId: "continued-turn" },
+  { type: "start-step" },
+  { type: "text-start", id: "continued-1" },
+  { type: "text-delta", id: "continued-1", delta: CONTINUED },
+  { type: "text-end", id: "continued-1" },
+];
+
 function renderResumedSession(
   messages: SessionDetailResponseMessagesItem[] = HYDRATED_SESSION_MESSAGES,
   activeStreamStartedAt = "2026-05-13T00:04:00Z",
@@ -527,6 +573,38 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       // The running turn's persisted half is still trimmed, so the replay
       // does not double it.
       expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+    },
+  );
+
+  it(
+    "keeps the paused answer when the turn picking it up has persisted nothing yet",
+    { timeout: 20000 },
+    async () => {
+      renderResumedSession(
+        PICKED_UP_MESSAGES,
+        "2026-05-13T00:05:00Z",
+        CONTINUATION_REPLAY,
+      );
+
+      expect(
+        await screen.findByText(CONTINUED, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+
+      // The replay only appends, so the answer the task paused on stays on
+      // screen while the continuation streams — trimming back to the last
+      // user message would hide it, and its card, until the turn ends.
+      expect(screen.getAllByText(CHECKPOINT)).toHaveLength(1);
+      expect(screen.getAllByText(KEEP_GOING_NOTE)).toHaveLength(1);
+      expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
+      // The pause is history now: one line, not a card with buttons. The
+      // replayed turn's message opens with a copy of the bubble before it,
+      // which must not draw that line a second time.
+      expect(
+        screen.getAllByRole("note", {
+          name: "Paused · checking in after a long run. Picked back up",
+        }),
+      ).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
     },
   );
 });

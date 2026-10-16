@@ -495,6 +495,7 @@ jobs:
             pg_dump -U postgres --data-only --column-inserts \
             --schema=platform \
             --exclude-table='platform._prisma_migrations' \
+            --exclude-table='platform."PaidUsageActivationPolicy"' \
             --exclude-table='platform.apscheduler_jobs' \
             --exclude-table='platform.apscheduler_jobs_batched_notifications' \
             postgres > /tmp/e2e_test_data.sql
