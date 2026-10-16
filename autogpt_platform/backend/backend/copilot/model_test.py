@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -27,6 +28,7 @@ from .model import (
     _save_session_to_db,
     append_and_save_message,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
     get_or_create_builder_session,
     invalidate_session_cache,
@@ -2265,3 +2267,64 @@ async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
     )
 
     assert flushed.stamps_pending_save is True
+
+
+def _mock_delete_dependencies(mocker: MockerFixture, *, deleted: bool):
+    db = mocker.MagicMock()
+    db.delete_chat_session = mocker.AsyncMock(return_value=deleted)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    redis = mocker.MagicMock()
+    redis.delete = mocker.AsyncMock()
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new=mocker.AsyncMock(return_value=redis),
+    )
+    release = asyncio.Event()
+
+    async def wait_for_release(*_args, **_kwargs):
+        await release.wait()
+
+    close_browser = mocker.patch(
+        "backend.copilot.tools.agent_browser.close_browser_session",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    delete_embedding = mocker.patch(
+        "backend.copilot.chat_session_embeddings.delete_chat_session_embedding",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    return redis, release, close_browser, delete_embedding
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_returns_before_cleanup_finishes(
+    mocker: MockerFixture,
+) -> None:
+    redis, release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=True
+    )
+
+    deleted = await asyncio.wait_for(delete_chat_session("sess-1", "user-1"), 1)
+
+    assert deleted is True
+    redis.delete.assert_awaited_once()
+    release.set()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    delete_embedding.assert_awaited_once_with("sess-1", "user-1")
+    close_browser.assert_awaited_once_with("sess-1", user_id="user-1")
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_not_found_runs_no_cleanup(
+    mocker: MockerFixture,
+) -> None:
+    redis, _release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=False
+    )
+
+    deleted = await delete_chat_session("sess-missing", "user-1")
+
+    assert deleted is False
+    redis.delete.assert_not_awaited()
+    close_browser.assert_not_awaited()
+    delete_embedding.assert_not_awaited()

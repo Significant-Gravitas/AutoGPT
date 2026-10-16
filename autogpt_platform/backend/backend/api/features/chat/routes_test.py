@@ -3566,9 +3566,39 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
         return_value=False,
     )
 
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
     response = client.delete("/sessions/sess-missing")
 
     assert response.status_code == 404
+    spawn.assert_not_called()
+
+
+def test_delete_session_kills_sandbox_in_background(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The E2B sandbox kill is handed to a background task, not awaited inline."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=True, e2b_api_key="test-e2b-key"),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_called_once_with("sess-1", "test-e2b-key")
+    kill.assert_not_awaited()
+    spawn.assert_called_once()
+    assert spawn.call_args.kwargs["name"] == "e2b-session-kill-sess-1"
+    spawn.call_args.args[0].close()
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
