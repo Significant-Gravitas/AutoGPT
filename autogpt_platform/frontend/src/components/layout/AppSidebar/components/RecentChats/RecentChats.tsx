@@ -17,6 +17,7 @@ import { useRecentChats } from "./useRecentChats";
 export function RecentChats() {
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
   const { expertsById, activeExpertIds } = useExpertMap();
   const {
     sessions,
@@ -36,6 +37,7 @@ export function RecentChats() {
     exportChat,
     sharingSessionId,
     setSharingSessionId,
+    excludeFromLearning,
     sessionToDelete,
     isDeleting,
     requestDelete,
@@ -75,6 +77,8 @@ export function RecentChats() {
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
+        isLearningEnabled={isLearningEnabled}
+        onExcludeFromLearning={excludeFromLearning}
         onDelete={requestDelete}
       />
     );

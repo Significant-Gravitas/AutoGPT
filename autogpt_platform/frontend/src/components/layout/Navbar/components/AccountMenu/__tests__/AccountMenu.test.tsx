@@ -165,26 +165,24 @@ describe("AccountMenu", () => {
     expect(getFallbackSVG(trigger)).toBe(getFallbackSVG(reference.container));
   });
 
-  test("new layout renders the organization switcher header trigger", () => {
+  test("renders the organization switcher header trigger", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
     expect(screen.getByTestId("account-menu-org-trigger")).toBeDefined();
   });
 
-  test("new layout renders the agent activity row trigger", () => {
+  test("renders the agent activity row trigger", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -192,13 +190,12 @@ describe("AccountMenu", () => {
     expect(screen.getByText("Activity")).toBeDefined();
   });
 
-  test("new layout renders Give feedback right after Activity", () => {
+  test("renders Give feedback right after Activity", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -211,13 +208,12 @@ describe("AccountMenu", () => {
     );
   });
 
-  test("new layout gives feedback without loading another Tally script", () => {
+  test("gives feedback without loading another Tally script", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -225,19 +221,5 @@ describe("AccountMenu", () => {
     expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
       0,
     );
-  });
-
-  test("classic layout does not render org, activity or feedback triggers", () => {
-    render(
-      <AccountMenu
-        userName="Ada"
-        userEmail="ada@example.com"
-        menuItemGroups={baseGroups}
-      />,
-    );
-
-    expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
-    expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });
