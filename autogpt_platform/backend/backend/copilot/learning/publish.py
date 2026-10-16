@@ -34,6 +34,7 @@ from backend.copilot.tools.skills import (
     read_user_skill_files,
     read_user_skill_markdown,
     render_skill_markdown,
+    saved_skill_limit_reached,
     store_user_skill,
     validate_package,
 )
@@ -42,6 +43,7 @@ from backend.data.db_accessors import (
     skill_use_db,
     skill_versions_db,
 )
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
 from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import ReviewStamp, VersionDraft
@@ -79,6 +81,11 @@ from .publication_validation import (
 )
 
 logger = logging.getLogger(__name__)
+
+SKILL_LIMIT_REASON = (
+    f"the skill limit is reached ({MAX_SKILLS_PER_EXPERT} saved skills); "
+    "delete a skill you no longer use to make room"
+)
 
 # ---------------------------------------------------------------------------
 # Automated publication (nightly / requested)
@@ -196,6 +203,12 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     blocked = await _check_bundle(request, rendered, files, approvals)
     if blocked is not None:
         return blocked
+    if current_text is None and await saved_skill_limit_reached(
+        request.user_id, request.expert_id
+    ):
+        # Checked before the head exists, so a new name at the limit leaves
+        # nothing behind. Nightly keeps the paid review for its next retry.
+        return PublishOutcome(status="paused", reason=SKILL_LIMIT_REASON)
 
     versions = skill_versions_db()
     head = await versions.ensure_head(
@@ -589,6 +602,10 @@ async def write_committed_version(
             user_id, version_id=version.id, review_id=review_id, reason=reason
         )
         return PublishOutcome(status="conflict", reason=reason)
+    except SkillLimitError:
+        # The limit was reached after the precheck; the version stays pending
+        # and is written once the owner frees a slot.
+        return PublishOutcome(status="paused", reason=SKILL_LIMIT_REASON)
     except Exception as exc:
         logger.warning(
             "Skill workspace write failed for %s v%s (user %s); left pending",

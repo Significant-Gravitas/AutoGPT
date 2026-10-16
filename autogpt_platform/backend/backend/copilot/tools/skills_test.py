@@ -70,6 +70,7 @@ from backend.copilot.tools.skills import (
     read_user_skill_package,
     render_skill_markdown,
     render_skills_index,
+    saved_skill_limit_reached,
     store_user_skill,
     store_user_skills,
     validate_package,
@@ -672,6 +673,25 @@ async def test_installed_skills_do_not_take_the_owners_saved_slots():
         )
     assert stored.name == "mine" and stored.origin == SKILL_ORIGIN_USER
     assert fake.metadata["/skills/mine/SKILL.md"]["skill_origin"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_the_saved_skill_limit_counts_only_the_owners_saved_skills():
+    """The check learning runs before saving a new skill: the same count the
+    write enforces, so installed skills never fill the owner's slots."""
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        _seed_skill(fake, f"bundled_{i}", origin=SKILL_ORIGIN_MARKETPLACE)
+    for i in range(MAX_SKILLS_PER_EXPERT - 1):
+        _seed_skill(fake, f"saved_{i}", origin=SKILL_ORIGIN_USER)
+    with _patch_skills_path(fake):
+        assert not await saved_skill_limit_reached("user-1", None)
+        fake.files["/skills/unrecorded/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name="unrecorded", description="desc", body="body")
+        ).encode()
+        assert await saved_skill_limit_reached("user-1", None)
+        with pytest.raises(SkillLimitError, match="saved"):
+            await store_user_skill("user-1", name="mine", description="ok", body="ok")
 
 
 @pytest.mark.asyncio

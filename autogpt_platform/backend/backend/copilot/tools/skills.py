@@ -1898,6 +1898,14 @@ async def invalidate_skills_index_cache(
         pass
 
 
+async def saved_skill_limit_reached(user_id: str, expert_id: str | None) -> bool:
+    """Whether the owner's folder already holds ``MAX_SKILLS_PER_EXPERT``
+    saved skills, the count at which :func:`_write_skill` refuses a new one."""
+    skills = await _list_user_skills_from_workspace(user_id, expert_id)
+    saved = sum(1 for skill in skills if budget_origin(skill) == SKILL_ORIGIN_USER)
+    return saved >= MAX_SKILLS_PER_EXPERT
+
+
 async def list_user_skills(
     user_id: str,
     expert_id: str | None = None,

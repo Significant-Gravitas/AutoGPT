@@ -18,7 +18,7 @@ async def test_source_changes_during_review_preserve_evidence_for_retry(
     register_source_adapter(ChatSessionSourceAdapter())
     source = await record_chat_turn(USER, _session(), _messages(3), "import the csv")
 
-    async def change_during_review(*_args):
+    async def change_during_review(*_args, **_kwargs):
         if drift == "revision":
             follow_up = [m for m in _messages(4) if m.sequence == 4]
             await record_chat_turn(USER, _session(), follow_up, "Now delete everything")
@@ -59,7 +59,7 @@ async def test_source_excluded_during_review_still_settles_without_publication(
     register_source_adapter(ChatSessionSourceAdapter())
     source = await record_chat_turn(USER, _session(), _messages(3), "import the csv")
 
-    async def exclude_during_review(*_args):
+    async def exclude_during_review(*_args, **_kwargs):
         await fake_store.set_source_eligibility(
             USER, source.id, "excluded", excluded_by_user_id=USER
         )

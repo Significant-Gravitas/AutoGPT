@@ -29,7 +29,7 @@ async def test_pausing_during_review_preserves_the_revision_until_resume(
     source = await record_chat_turn(USER, _session(), _messages(3), "import the csv")
     _, _, expert = chat_db
 
-    async def pause_after_review(*_args):
+    async def pause_after_review(*_args, **_kwargs):
         expert.learning_paused_at = datetime.now(timezone.utc)
         return _completion(_proposal(supported_by=["msg:2"]))
 
