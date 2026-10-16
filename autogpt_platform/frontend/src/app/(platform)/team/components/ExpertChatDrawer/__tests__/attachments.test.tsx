@@ -39,6 +39,10 @@ const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
 const KICKOFF_SESSION_ID = "session-zara-kickoff";
 const RESET_SESSION_ID = "session-zara-reset";
+const WORKSPACE_REPLY_SESSION_ID = "session-zara-workspace-reply";
+const OLD_TASK_SESSION_ID = "session-zara-old-task";
+const NEW_TASK_SESSION_ID = "session-zara-new-task";
+const DISCONNECT_SESSION_ID = "session-zara-disconnect";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -186,11 +190,51 @@ function photo() {
   return new File(["x".repeat(2048)], "photo.png", { type: "image/png" });
 }
 
+async function openAttachMenu() {
+  const plus = screen.getByRole("button", {
+    name: "Add files and more",
+  }) as HTMLButtonElement;
+  expect(plus.disabled).toBe(false);
+  fireEvent.pointerDown(plus, { button: 0 });
+}
+
 async function attachLocalFile(user: ReturnType<typeof userEvent.setup>) {
+  await openAttachMenu();
+  fireEvent.click(await screen.findByRole("menuitem", { name: /Attach file/ }));
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("The composer has no file input");
   await user.upload(input, photo());
   await screen.findByText("photo.png");
+}
+
+async function pickWorkspaceFile() {
+  await openAttachMenu();
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: /Use File from Workspace/ }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /brief\.pdf/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Add 1 file" }));
+  await screen.findByText("brief.pdf");
+}
+
+function workspaceFileHandlers() {
+  return [
+    getListWorkspaceFoldersMockHandler200({ folders: [] }),
+    getListWorkspaceFilesMockHandler200({
+      files: [
+        {
+          id: WORKSPACE_FILE_ID,
+          name: "brief.pdf",
+          path: "/brief.pdf",
+          mime_type: "application/pdf",
+          size_bytes: 4096,
+          created_at: "2026-09-27T18:00:00Z",
+          origin: "uploaded",
+        },
+      ],
+      has_more: false,
+    }),
+  ];
 }
 
 async function enabledComposer() {
@@ -274,35 +318,14 @@ describe("ExpertChatDrawer attachments", () => {
     server.use(
       existingThreadList(),
       sessionHandler(SESSION_ID),
-      getListWorkspaceFoldersMockHandler200({ folders: [] }),
-      getListWorkspaceFilesMockHandler200({
-        files: [
-          {
-            id: WORKSPACE_FILE_ID,
-            name: "brief.pdf",
-            path: "/brief.pdf",
-            mime_type: "application/pdf",
-            size_bytes: 4096,
-            created_at: "2026-09-27T18:00:00Z",
-            origin: "uploaded",
-          },
-        ],
-        has_more: false,
-      }),
+      ...workspaceFileHandlers(),
       streamHandler(recorder, SESSION_ID),
     );
 
     render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
 
     const input = await enabledComposer();
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Use File from Workspace/ }),
-    );
-    fireEvent.click(await screen.findByRole("button", { name: /brief\.pdf/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Add 1 file" }));
+    await pickWorkspaceFile();
     await user.type(input, "summarize this{Enter}");
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
@@ -329,9 +352,11 @@ describe("ExpertChatDrawer attachments", () => {
     const input = await enabledComposer();
     await user.type(input, "hello{Enter}");
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    await screen.findByRole("button", { name: /Stop/ });
 
     await attachLocalFile(user);
-    await user.type(input, "and this{Enter}");
+    await user.type(input, "and this");
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("and this")).toBeDefined();
@@ -440,4 +465,199 @@ describe("ExpertChatDrawer attachments", () => {
       file_ids: [UPLOADED_FILE_ID],
     });
   });
+  test("sends a workspace file picked mid-reply as the next turn", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const firstReply = createStreamHold(3);
+    server.use(
+      existingThreadList(WORKSPACE_REPLY_SESSION_ID),
+      sessionHandler(WORKSPACE_REPLY_SESSION_ID),
+      ...workspaceFileHandlers(),
+      pendingHandler(recorder, WORKSPACE_REPLY_SESSION_ID),
+      streamHandler(recorder, WORKSPACE_REPLY_SESSION_ID, [firstReply.hold]),
+    );
+
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+    const input = await enabledComposer();
+    await user.type(input, "hello{Enter}");
+    await screen.findByRole("button", { name: /Stop/ });
+
+    await pickWorkspaceFile();
+    await user.type(input, "and this one{Enter}");
+
+    const bubble = await screen.findByTestId("pending-upload-message");
+    expect(within(bubble).getByText("brief.pdf")).toBeDefined();
+    expect(recorder.streamBodies.length).toBe(1);
+
+    firstReply.release();
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    expect(recorder.pendingPosts).toBe(0);
+    expect(recorder.streamBodies[1]).toMatchObject({
+      message: "and this one",
+      file_ids: [WORKSPACE_FILE_ID],
+    });
+  });
+
+  test("never sends a message into a new task when its upload outlives its thread", async () => {
+    markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const upload = deferred();
+    const sentTo: string[] = [];
+    server.use(
+      existingThreadList(OLD_TASK_SESSION_ID),
+      sessionHandler(OLD_TASK_SESSION_ID),
+      sessionHandler(NEW_TASK_SESSION_ID),
+      http.post("/api/proxy/api/chat/sessions", () =>
+        HttpResponse.json(
+          getPostV2CreateSessionResponseMock200({ id: NEW_TASK_SESSION_ID }),
+        ),
+      ),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+        async () => {
+          await upload.promise;
+          return HttpResponse.json({
+            file_id: UPLOADED_FILE_ID,
+            name: "photo.png",
+            mime_type: "image/png",
+          });
+        },
+      ),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/:sessionId/stream`,
+        async ({ params, request }) => {
+          sentTo.push(String(params.sessionId));
+          recorder.streamBodies.push(
+            (await request.clone().json()) as Record<string, unknown>,
+          );
+          return streamSseResponse(assistantTextChunks("New task reply"), {
+            abortSignal: request.signal,
+          });
+        },
+      ),
+    );
+
+    try {
+      render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+      const input = await enabledComposer();
+      await attachLocalFile(user);
+      await user.type(input, "old task attachment{Enter}");
+      await screen.findByTestId("pending-upload-message");
+
+      fireEvent.click(screen.getByRole("button", { name: "New task" }));
+      await user.type(await enabledComposer(), "new task question{Enter}");
+      await screen.findByText("New task reply");
+
+      upload.resolve();
+
+      await waitFor(() =>
+        expect(
+          (screen.getByPlaceholderText("Message Zara…") as HTMLTextAreaElement)
+            .value,
+        ).toBe("old task attachment"),
+      );
+      expect(sentTo).toEqual([NEW_TASK_SESSION_ID]);
+      expect(recorder.streamBodies).toEqual([
+        expect.objectContaining({ message: "new task question" }),
+      ]);
+    } finally {
+      upload.resolve();
+    }
+  });
+
+  test("keeps a held file through a dropped connection and sends it once the reply has resumed and ended", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const disconnect = deferred();
+    const resumed = createStreamHold(5);
+    const encoder = new TextEncoder();
+    server.use(
+      existingThreadList(DISCONNECT_SESSION_ID),
+      sessionHandler(DISCONNECT_SESSION_ID),
+      uploadHandler(recorder),
+      pendingHandler(recorder, DISCONNECT_SESSION_ID),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
+        async ({ request }) => {
+          const turn = recorder.streamBodies.length;
+          recorder.streamBodies.push(
+            (await request.clone().json()) as Record<string, unknown>,
+          );
+          if (turn > 0) {
+            return streamSseResponse(assistantTextChunks("Second reply"), {
+              abortSignal: request.signal,
+            });
+          }
+          return new HttpResponse(
+            new ReadableStream<Uint8Array>({
+              async start(controller) {
+                for (const chunk of assistantTextChunks("First reply").slice(
+                  0,
+                  4,
+                )) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
+                  );
+                }
+                await disconnect.promise;
+                controller.error(new TypeError("network failed"));
+              },
+            }),
+            {
+              headers: {
+                "content-type": "text/event-stream",
+                "x-vercel-ai-ui-message-stream": "v1",
+              },
+            },
+          );
+        },
+      ),
+      http.get(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${DISCONNECT_SESSION_ID}/stream`,
+        ({ request }) =>
+          streamSseResponse(assistantTextChunks("Resumed reply"), {
+            hold: resumed.hold,
+            abortSignal: request.signal,
+          }),
+      ),
+    );
+
+    try {
+      render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+      const input = await enabledComposer();
+      await user.type(input, "hello{Enter}");
+      await screen.findByRole("button", { name: /Stop/ });
+      await attachLocalFile(user);
+      await user.type(input, "attachment after reply{Enter}");
+      await screen.findByTestId("pending-upload-message");
+      await waitFor(() =>
+        expect(recorder.uploadSessionIds).toEqual([DISCONNECT_SESSION_ID]),
+      );
+
+      disconnect.resolve();
+
+      await screen.findByText("Resumed reply", undefined, { timeout: 5_000 });
+      expect(screen.getByTestId("pending-upload-message")).toBeDefined();
+      expect(recorder.streamBodies.length).toBe(1);
+
+      resumed.release();
+
+      await waitFor(() => expect(recorder.streamBodies.length).toBe(2), {
+        timeout: 5_000,
+      });
+      expect(recorder.pendingPosts).toBe(0);
+      expect(recorder.streamBodies[1]).toMatchObject({
+        message: "attachment after reply",
+        file_ids: [UPLOADED_FILE_ID],
+      });
+    } finally {
+      disconnect.resolve();
+      resumed.release();
+    }
+  }, 20_000);
 });

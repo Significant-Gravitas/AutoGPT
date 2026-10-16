@@ -199,17 +199,31 @@ export function useExpertChatDrawer({
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      userId,
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    userId,
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
   const { pendingSend, hold, release, sendNow, sendAfterReply } =
-    useExpertChatSend({ sessionId, status, sendMessage });
+    useExpertChatSend({
+      sessionId,
+      status,
+      isReconnecting,
+      isFinishProbing,
+      sendMessage,
+    });
 
   const hasAssistantReply = messages.some(
     (message) => message.role === "assistant",
@@ -444,12 +458,9 @@ export function useExpertChatDrawer({
     }
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight && hasAttachments(message)) {
-      const generation = generationRef.current;
-      void sendAfterReply(
-        sessionId,
-        message,
-        () => generation === generationRef.current,
-      ).catch((err: unknown) => recoverUnsentMessage(message, err));
+      void sendAfterReply(sessionId, message).catch((err: unknown) =>
+        recoverUnsentMessage(message, err),
+      );
       return;
     }
     if (isInFlight) {

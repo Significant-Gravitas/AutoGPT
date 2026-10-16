@@ -12,10 +12,13 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import type { ChatStatus } from "ai";
 import { useRef, useState } from "react";
+import { useNextCommit } from "./useNextCommit";
 
 interface Args {
   sessionId: string | null;
   status: ChatStatus;
+  isReconnecting: boolean;
+  isFinishProbing: boolean;
   sendMessage: (message: SendInput) => Promise<void>;
 }
 
@@ -26,13 +29,28 @@ interface Args {
  * kickoff, and the session's placeholder takes over once it is sent, for as
  * long as its files upload or it waits for the reply in flight to end.
  */
-export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
+export function useExpertChatSend({
+  sessionId,
+  status,
+  isReconnecting,
+  isFinishProbing,
+  sendMessage,
+}: Args) {
   const [heldMessage, setHeldMessage] = useState<OutgoingMessage | null>(null);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
-  const { waitUntilSettled } = useSettleGate(
-    status === "ready" || status === "error",
-  );
+  // The stream refuses a send while it reconnects, and a send during the
+  // post-finish probe can still land in the backend's pending buffer.
+  const isSettled =
+    (status === "ready" || status === "error") &&
+    !isReconnecting &&
+    !isFinishProbing;
+  const isSettledRef = useRef(isSettled);
+  isSettledRef.current = isSettled;
+  const { waitUntilSettled } = useSettleGate(isSettled);
+  const nextCommit = useNextCommit();
   const placeholder = useCopilotStreamStore((s) =>
     sessionId ? (s.pendingUploadSends[sessionId] ?? null) : null,
   );
@@ -52,12 +70,33 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
     return sendMessageRef.current(input);
   }
 
+  /** Resolves `false` when the drawer closed first. */
+  async function waitForReplyToEnd() {
+    while (await waitUntilSettled()) {
+      if (!(await nextCommit())) return false;
+      if (isSettledRef.current) return true;
+    }
+    return false;
+  }
+
+  /** `latestSendMessage` sends into the thread on screen, so a message whose
+   *  uploads outlived its own thread goes back to the composer instead. */
+  function isStillShown(targetSessionId: string, message: OutgoingMessage) {
+    if (sessionIdRef.current === targetSessionId) return true;
+    returnToComposer(message);
+    return false;
+  }
+
   /** Resolves once the reply to the message has streamed. */
   function sendNow(targetSessionId: string, message: OutgoingMessage) {
     const sent = sendWithAttachments({
       sessionId: targetSessionId,
       message,
       sendMessage: latestSendMessage,
+      waitUntilReady:
+        message.files.length > 0
+          ? async () => isStillShown(targetSessionId, message)
+          : undefined,
     });
     // The send above put the message on screen in this same tick, as the
     // placeholder or as the user's bubble, so the held copy can go.
@@ -70,21 +109,13 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
    * transcript could not show them: a follow-up with files uploads them now
    * and goes out as the next turn once the reply in flight has ended.
    */
-  function sendAfterReply(
-    targetSessionId: string,
-    message: OutgoingMessage,
-    isStillCurrent: () => boolean,
-  ) {
+  function sendAfterReply(targetSessionId: string, message: OutgoingMessage) {
     return sendWithAttachments({
       sessionId: targetSessionId,
       message,
       sendMessage: latestSendMessage,
-      waitUntilReady: async () => {
-        if (!(await waitUntilSettled())) return false;
-        if (isStillCurrent()) return true;
-        returnToComposer(message);
-        return false;
-      },
+      waitUntilReady: async () =>
+        (await waitForReplyToEnd()) && isStillShown(targetSessionId, message),
     });
   }
 
@@ -98,14 +129,15 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   };
 }
 
-/** The user started a new task while the message waited on the reply. */
+/** The user started a new task while the message's files uploaded or it
+ *  waited on the reply. */
 function returnToComposer(message: OutgoingMessage) {
   if (message.text) useCopilotUIStore.getState().setInitialPrompt(message.text);
   toast({
-    title: "Follow-up not sent",
+    title: "Message not sent",
     description: message.text
-      ? "You started a new task before it could go out. It's back in the composer."
-      : "You started a new task before it could go out, so its files weren't sent.",
+      ? "You started a new task before it went out. Its text is back in the composer; attach the files again."
+      : "You started a new task before it went out. Attach the files again to send them.",
   });
 }
 
