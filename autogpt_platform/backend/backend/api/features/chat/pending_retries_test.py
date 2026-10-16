@@ -199,7 +199,10 @@ async def test_full_pending_queue_rejects_new_send_without_eviction(
     for body in bodies[:-1]:
         assert (await client.post(path, json=body)).status_code == 200
 
-    assert (await client.post(path, json=bodies[-1])).status_code == 429
+    rejected = await client.post(path, json=bodies[-1])
+    assert rejected.status_code == 429
+    assert rejected.headers["X-Error-Code"] == "pending_buffer_full"
+    assert rejected.headers["Retry-After"] == "5"
     assert (await client.post(path, json=bodies[0])).status_code == 200
     drained = await drain_pending_messages(session_id)
     assert [m.id for m in drained] == [

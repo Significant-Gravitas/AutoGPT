@@ -322,7 +322,7 @@ async def queue_pending_for_http(
         raise HTTPException(
             status_code=429,
             detail="Pending message buffer is full. Retry after messages are delivered.",
-            headers={"Retry-After": "5"},
+            headers={"Retry-After": "5", "X-Error-Code": "pending_buffer_full"},
         ) from exc
     except BaseException:
         if client_message_id is not None:

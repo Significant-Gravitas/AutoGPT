@@ -685,6 +685,7 @@ class AgentServer(backend.util.service.AppProcess):
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
+            expose_headers=["X-Error-Code"],
         )
 
         # Only add debug in local environment (not supported in all uvicorn versions)

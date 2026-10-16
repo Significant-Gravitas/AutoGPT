@@ -45,6 +45,10 @@ T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
 MAX_PENDING_MESSAGES = 10
+PENDING_BUFFER_FULL_REFUSAL = (
+    "That conversation has too many messages waiting. This message was not sent. "
+    "Wait for the queued messages to be processed, then try again."
+)
 
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"

@@ -425,7 +425,10 @@ async def test_queue_pending_releases_the_claim_when_the_buffer_is_full(
         await _queue_with_client_id()
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.headers == {"Retry-After": "5"}
+    assert exc_info.value.headers == {
+        "Retry-After": "5",
+        "X-Error-Code": "pending_buffer_full",
+    }
     release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
     accept.assert_not_awaited()
     rate.assert_not_awaited()

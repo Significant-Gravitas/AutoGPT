@@ -38,10 +38,12 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
 )
+from backend.copilot.pending_messages import PENDING_BUFFER_FULL_REFUSAL
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
 from backend.data.db_accessors import chat_db
+from backend.data.redis_helpers import RedisListCapacityExceeded
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -234,9 +236,12 @@ async def run_copilot_turn_via_queue(
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(
-            session_id=session_id, message=message, metadata=message_metadata
-        )
+        try:
+            state = await queue_user_message(
+                session_id=session_id, message=message, metadata=message_metadata
+            )
+        except RedisListCapacityExceeded:
+            return "refused", SessionResult(refusal=PENDING_BUFFER_FULL_REFUSAL)
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
