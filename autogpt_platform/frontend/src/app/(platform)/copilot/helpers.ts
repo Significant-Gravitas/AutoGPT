@@ -5,6 +5,7 @@ import type { ChatStatus, UIMessage } from "ai";
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
@@ -130,7 +131,8 @@ export function getVisiblePartKind(
 
 /**
  * Whether the trailing assistant message has at least one part the UI
- * would visibly render (see `getVisiblePartKind`). Used to gate the
+ * would visibly render (see `getVisiblePartKind`), or a Paused card — a
+ * turn refused before it ran streams nothing else. Used to gate the
  * resume-snapshot discard — the replay may stream empty reasoning-start /
  * step-start chunks for minutes before any rendered content (e.g.
  * Perplexity deep research), and we do not want to drop the pre-replay
@@ -139,7 +141,10 @@ export function getVisiblePartKind(
 export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant") return false;
-  return last.parts.some((part) => getVisiblePartKind(part) !== null);
+  return last.parts.some(
+    (part) =>
+      getVisiblePartKind(part) !== null || part.type === TURN_PAUSED_PART_TYPE,
+  );
 }
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */

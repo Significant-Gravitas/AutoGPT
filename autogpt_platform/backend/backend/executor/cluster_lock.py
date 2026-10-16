@@ -184,12 +184,11 @@ class ClusterLock:
 
         Owner-checked: only deletes the Redis key if the stored value still
         matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
+        original key was force-released externally and re-acquired. Runs even
+        after a failed refresh, which may have been a transient Redis error
+        while this holder still owned the key; skipping the delete would leave
+        the key held until its TTL.
         """
-        with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
         try:
             self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id)
         except Exception:
@@ -329,16 +328,7 @@ class AsyncClusterLock:
             return False
 
     async def release(self):
-        """Release the lock.
-
-        Owner-checked: only deletes the Redis key if the stored value still
-        matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
-        """
-        async with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
+        """Release the lock; see :meth:`ClusterLock.release`."""
         try:
             await cast(Any, self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id))
         except Exception:

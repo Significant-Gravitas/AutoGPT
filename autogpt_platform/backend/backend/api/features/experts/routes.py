@@ -45,6 +45,7 @@ from backend.copilot.computer import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
+from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLockError
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -549,6 +550,10 @@ async def update_expert_skills(
         # A listing resolves to its name only inside update_skills, so this
         # attach-and-remove contradiction can't be caught by the request model.
         raise fastapi.HTTPException(status_code=400, detail=str(e))
+    except (SkillWriteLockError, SkillVersionConflictError) as e:
+        # Removing a skill could not be ordered with another write to the
+        # expert's skills; repeating the request is safe.
+        raise fastapi.HTTPException(status_code=409, detail=str(e))
 
 
 @router.patch(

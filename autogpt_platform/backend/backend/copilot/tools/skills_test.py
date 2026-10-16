@@ -12,6 +12,7 @@ import pytest
 
 import backend.copilot.tools.skills as skills
 from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
+from backend.copilot.learning.fingerprint import behavior_fingerprint
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
@@ -44,7 +45,9 @@ from backend.copilot.tools.skills import (
     SkillOwnedError,
     SkillPackage,
     SkillPackageError,
+    SkillVersionConflictError,
     SkillWrite,
+    SkillWriteLockError,
     StoredSkill,
     StoreSkillResponse,
     StoreSkillTool,
@@ -71,6 +74,8 @@ from backend.copilot.tools.skills import (
     store_user_skills,
     validate_package,
 )
+from backend.data.skill_deletion import SkillDeletion
+from backend.data.skill_publication import VersionDraft
 from backend.util.exceptions import ConflictError
 
 # ---------------------------------------------------------------------------
@@ -232,7 +237,7 @@ def test_trigger_caps_are_bounded():
     constants — raising either invites a per-turn token-budget
     regression."""
     assert MAX_TRIGGERS == 10
-    assert MAX_TRIGGER_CHARS == 64
+    assert MAX_TRIGGER_CHARS == 512
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +376,9 @@ class _patch_skills_path:
         self.skill_db.find_version_by_hash = AsyncMock(return_value=None)
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
+            patch(
+                "backend.copilot.learning.publish.reconcile_skill_for_read", AsyncMock()
+            ),
             patch(
                 "backend.copilot.tools.workdir.make_session_path",
                 lambda session_id: self.workdir,
@@ -1124,6 +1132,21 @@ async def test_delete_skill_returns_error_when_missing():
     assert "not found" in result.message.lower()
 
 
+@pytest.mark.asyncio
+async def test_delete_skill_reports_a_held_write_lock_and_deletes_nothing():
+    tool = DeleteSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/my_skill/SKILL.md"] = b"skill"
+    with _patch_skills_path(fake_manager) as patched:
+        patched.lock.try_acquire.return_value = "another-writer"
+        result = await tool._execute(
+            user_id="user-1", session=_make_session(), name="my_skill"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "try again" in result.message
+    assert "/skills/my_skill/SKILL.md" in fake_manager.files
+
+
 # ---------------------------------------------------------------------------
 # ListSkillsTool + list_all_skills + build_skills_context
 # ---------------------------------------------------------------------------
@@ -1648,6 +1671,142 @@ async def test_delete_user_skill_raises_not_found_when_missing():
             await delete_user_skill("user-1", "missing")
 
 
+async def _tracked_skill(store, body: str) -> str:
+    """Publish *body* as the current ready version of ``tracked``; returns
+    the SKILL.md it renders to."""
+    content = render_skill_markdown(
+        ParsedSkill(name="tracked", description="Tracked", body=body)
+    )
+    head = await store.ensure_head("user-1", None, "tracked")
+    result = await store.commit_version_safe(
+        "user-1",
+        head=head,
+        expected_current_version=head.current_version,
+        draft=VersionDraft(
+            content=content,
+            description="Tracked",
+            triggers=[],
+            origin="saved_overnight",
+            base_version_id=head.current_version_id,
+        ),
+    )
+    await store.complete_publication(
+        "user-1", version_id=result.version.id, review_id=None
+    )
+    return content
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_ends_the_history_under_the_write_lock(
+    fake_learning_store,
+):
+    body = "## Steps\n1. Open the file as utf-8\n"
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(fake_learning_store, body)
+    ).encode()
+    with _patch_skills_path(fake_manager) as patched:
+        await delete_user_skill("user-1", "tracked")
+    patched.lock.release.assert_awaited_once()
+    head = await fake_learning_store.get_head("user-1", "personal", "tracked")
+    assert head.current_version_id is None
+    versions = await fake_learning_store.list_versions("user-1", "personal", "tracked")
+    assert [(v.version, v.state) for v in versions] == [(2, "deleted"), (1, "archived")]
+    [suppressed] = await fake_learning_store.list_suppressions(
+        "user-1", "personal", "tracked"
+    )
+    assert suppressed.behavior_fingerprint == behavior_fingerprint("tracked", body)
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_deletes_nothing_without_the_write_lock(
+    fake_learning_store,
+):
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(fake_learning_store, "## Steps\n1. Keep me\n")
+    ).encode()
+    with _patch_skills_path(fake_manager) as patched:
+        patched.lock.try_acquire.return_value = "another-writer"
+        with pytest.raises(SkillWriteLockError):
+            await delete_user_skill("user-1", "tracked")
+    assert "/skills/tracked/SKILL.md" in fake_manager.files
+    head = await fake_learning_store.get_head("user-1", "personal", "tracked")
+    assert head.current_version_id is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_stops_cleaning_up_once_the_lock_is_lost(
+    fake_learning_store,
+):
+    """After the lease is lost, another writer may own the folder: the
+    delete leaves the remaining files rather than risk deleting theirs."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(fake_learning_store, "## Steps\n1. Open the file\n")
+    ).encode()
+    fake_manager.files["/skills/tracked/scripts/run.py"] = b"print(1)"
+    with _patch_skills_path(fake_manager) as patched:
+        patched.lock.refresh.return_value = False
+        await delete_user_skill("user-1", "tracked")
+    assert "/skills/tracked/SKILL.md" not in fake_manager.files
+    assert "/skills/tracked/scripts/run.py" in fake_manager.files
+    head = await fake_learning_store.get_head("user-1", "personal", "tracked")
+    assert head.current_version_id is None
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_rereads_a_head_a_publication_moved(
+    fake_learning_store, monkeypatch
+):
+    """A publication's pointer swap takes no write lock, so it can land
+    between the delete's read and its transaction: the delete reads again
+    and suppresses the newer version too."""
+    store = fake_learning_store
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(store, "## Steps\n1. Open the file\n")
+    ).encode()
+    newer = "## Steps\n1. Open the file\n2. Count the rows\n"
+    record = store.record_skill_deletion
+
+    async def publish_first(*args, **kwargs):
+        monkeypatch.setattr(store, "record_skill_deletion", record)
+        await _tracked_skill(store, newer)
+        return await record(*args, **kwargs)
+
+    monkeypatch.setattr(store, "record_skill_deletion", publish_first)
+    with _patch_skills_path(fake_manager):
+        await delete_user_skill("user-1", "tracked")
+    head = await store.get_head("user-1", "personal", "tracked")
+    assert head.current_version_id is None
+    fingerprints = {
+        s.behavior_fingerprint
+        for s in await store.list_suppressions("user-1", "personal", "tracked")
+    }
+    assert behavior_fingerprint("tracked", newer) in fingerprints
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_gives_up_on_a_head_that_keeps_moving(
+    fake_learning_store, monkeypatch
+):
+    moved = AsyncMock(return_value=SkillDeletion(committed=False))
+    monkeypatch.setattr(fake_learning_store, "record_skill_deletion", moved)
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(fake_learning_store, "## Steps\n1. Keep me\n")
+    ).encode()
+    with (
+        _patch_skills_path(fake_manager) as patched,
+        pytest.raises(SkillVersionConflictError),
+    ):
+        await delete_user_skill("user-1", "tracked")
+    assert moved.await_count == 3
+    patched.lock.release.assert_awaited_once()
+    assert "/skills/tracked/SKILL.md" in fake_manager.files
+
+
 @pytest.mark.asyncio
 async def test_list_user_skills_uses_metadata_fast_path(mocker):
     """When ``WorkspaceFile.metadata`` carries the kind+description tag,
@@ -1668,12 +1827,15 @@ async def test_list_user_skills_uses_metadata_fast_path(mocker):
 
     with _patch_skills_path(fake_manager):
         # Disable cache for this test so we exercise the workspace path.
-        with patch(
-            "backend.copilot.tools.skills._read_skills_cache",
-            new=AsyncMock(return_value=None),
-        ), patch(
-            "backend.copilot.tools.skills._write_skills_cache",
-            new=AsyncMock(),
+        with (
+            patch(
+                "backend.copilot.tools.skills._read_skills_cache",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.tools.skills._write_skills_cache",
+                new=AsyncMock(),
+            ),
         ):
             skills = await list_user_skills("user-1")
 
@@ -1697,12 +1859,15 @@ async def test_list_user_skills_falls_back_to_read_without_metadata(mocker):
     # metadata dict left empty → triggers the fallback path.
 
     with _patch_skills_path(fake_manager):
-        with patch(
-            "backend.copilot.tools.skills._read_skills_cache",
-            new=AsyncMock(return_value=None),
-        ), patch(
-            "backend.copilot.tools.skills._write_skills_cache",
-            new=AsyncMock(),
+        with (
+            patch(
+                "backend.copilot.tools.skills._read_skills_cache",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.tools.skills._write_skills_cache",
+                new=AsyncMock(),
+            ),
         ):
             skills = await list_user_skills("user-1")
 
@@ -1727,12 +1892,15 @@ async def test_list_user_skills_returns_redis_cache_when_warm():
     fake_redis = MagicMock()
     fake_redis.get = AsyncMock(return_value=json.dumps(cached_payload))
     fake_redis.set = AsyncMock()
-    with patch(
-        "backend.copilot.tools.skills.get_redis_async",
-        new=AsyncMock(return_value=fake_redis),
-    ), patch(
-        "backend.copilot.tools.skills._get_user_skill_manager",
-        new=AsyncMock(side_effect=AssertionError("cache hit must skip workspace")),
+    with (
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=fake_redis),
+        ),
+        patch(
+            "backend.copilot.tools.skills._get_user_skill_manager",
+            new=AsyncMock(side_effect=AssertionError("cache hit must skip workspace")),
+        ),
     ):
         skills = await list_user_skills("user-1")
 
@@ -1783,15 +1951,20 @@ async def test_build_skills_context_normal_when_flag_enabled():
     fake_manager.files["/skills/x/SKILL.md"] = render_skill_markdown(
         ParsedSkill(name="x", description="ok", body="b")
     ).encode()
-    with _patch_skills_path(fake_manager), patch(
-        "backend.copilot.tools.skills.is_skills_feature_enabled",
-        new=AsyncMock(return_value=True),
-    ), patch(
-        "backend.copilot.tools.skills._read_skills_cache",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "backend.copilot.tools.skills._write_skills_cache",
-        new=AsyncMock(),
+    with (
+        _patch_skills_path(fake_manager),
+        patch(
+            "backend.copilot.tools.skills.is_skills_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.tools.skills._write_skills_cache",
+            new=AsyncMock(),
+        ),
     ):
         result = await build_skills_context("user-1")
 
