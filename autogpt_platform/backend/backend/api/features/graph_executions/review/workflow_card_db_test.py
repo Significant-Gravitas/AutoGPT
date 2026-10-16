@@ -19,25 +19,29 @@ from backend.api.rest_api import app
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.helpers.review import HITLReviewHelper
 from backend.copilot.constants import step_card_id
-from backend.copilot.gate import chat_rules, held
+from backend.copilot.gate import chat_rules, check_action, held
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import (
     ChatSession,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.tools.run_capability import RunCapabilityTool
 from backend.data.execution import ExecutionContext
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
 )
+from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import BlockExecutionError
 from backend.util.feature_flag import Flag
 
 _ROUTES = "backend.api.features.graph_executions.review.routes"
 _BLOCK = SendDiscordMessageBlock()
 _INPUT = {"channel_name": "general", "message_content": "The digest is out"}
+_KEY = f"block:{_BLOCK.id}"
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
@@ -114,6 +118,19 @@ class _Run:
                 "triggerRef": self.chat_id,
             }
         )
+        await AgentNodeExecution.prisma().create(
+            data={
+                "id": self.node_exec_id,
+                "agentGraphExecutionId": self.graph_exec_id,
+                "agentNodeId": self.node_id,
+                "executionStatus": AgentExecutionStatus.RUNNING,
+            }
+        )
+        return self
+
+    async def next_step(self) -> "_Run":
+        """A later pause of the same block in this run."""
+        self.node_exec_id = str(uuid.uuid4())
         await AgentNodeExecution.prisma().create(
             data={
                 "id": self.node_exec_id,
@@ -301,22 +318,73 @@ async def test_a_card_opened_before_the_flag_went_off_still_resumes_its_run(
     assert paused and await later.card() is None
 
 
-async def test_a_card_approved_with_a_rule_rules_on_the_block_it_named(
-    setup_test_user, test_user_id, flags, client, resumed
-):
-    chat, run = await _parked(test_user_id)
+@pytest_asyncio.fixture(loop_scope="session")
+async def wider_rules_cleared(test_user_id):
+    """A wider rule outlives its test and would let every later step run."""
+    keys = [
+        chat_rules._scoped_key(scope, test_user_id, None, _KEY)
+        for scope in ("expert", "team")
+    ]
+    redis = await get_redis_async()
+    await redis.delete(*keys)
+    yield
+    await redis.delete(*keys)
 
+
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+@pytest.mark.parametrize("rule", ["allow", "judge"])
+async def test_a_rule_from_a_step_card_covers_every_later_call_of_its_block(
+    setup_test_user,
+    test_user_id,
+    flags,
+    client,
+    resumed,
+    wider_rules_cleared,
+    rule,
+    scope,
+):
+    """Answered like an action card: the rule lands on the block itself, so a
+    later step of the run, a later run and a direct call of the block follow it."""
+    chat, run = await _parked(test_user_id)
     response = await client.post(
         "/api/review/action",
         json={
             "reviews": [
-                {"node_exec_id": run.card_id, "approved": True, "chat_rule": "allow"}
+                {
+                    "node_exec_id": run.card_id,
+                    "approved": True,
+                    "chat_rule": rule,
+                    "chat_rule_scope": scope,
+                }
             ]
         },
     )
-
     assert response.status_code == 200, response.text
-    rule = await chat_rules.rule_for(
-        chat.session_id, f"block:{_BLOCK.id}", test_user_id, None
-    )
-    assert rule is not None and rule.rule == "allow"
+
+    later_chat = chat if scope == "chat" else await _chat(test_user_id)
+    args = {"id": _BLOCK.id, "input": _INPUT}
+
+    async def subject():
+        return await RunCapabilityTool().gate_subject(test_user_id, later_chat, args)
+
+    supervise = AsyncMock(return_value=Judgement(allowed=True, reason="ok"))
+    with (
+        patch("backend.copilot.gate.workflow.supervise", supervise),
+        patch("backend.copilot.gate.supervise", supervise),
+    ):
+        same_run = await (await run.next_step()).step()
+        later = await _Run(test_user_id, later_chat.session_id).create()
+        later_run = await later.step()
+        direct = await check_action(
+            "run_capability", args, test_user_id, later_chat, subject_of=subject
+        )
+
+    assert same_run == (False, _INPUT)
+    assert later_run == (False, _INPUT)
+    assert direct.allowed and direct.decided
+    assert supervise.await_count == (3 if rule == "judge" else 0)
+    if scope == "chat":
+        elsewhere = await _Run(
+            test_user_id, (await _chat(test_user_id)).session_id
+        ).create()
+        assert (await elsewhere.step())[0]
