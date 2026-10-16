@@ -10,7 +10,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/FullscreenDialog";
-import { connectedIntegrationsFromCredentials } from "../../helpers";
+import {
+  connectedIntegrationsFromCredentials,
+  type IntegrationMention,
+} from "../../helpers";
 import { MentionDropdown } from "../MentionDropdown";
 import { useChatMentions, type MentionOption } from "../../useChatMentions";
 
@@ -24,17 +27,15 @@ const FILE: WorkspaceFileItem = {
   created_at: "2026-01-01T00:00:00Z",
 };
 const FILE_ITEM: MentionOption = { kind: "file", file: FILE };
-const GOOGLE_ITEM: MentionOption = {
-  kind: "integration",
-  integration: {
-    credentialId: "google-1",
-    providerName: "Google",
-    username: null,
-    provider: "google",
-    name: "Google",
-    token: "@Google",
-  },
+const GOOGLE: IntegrationMention = {
+  credentialId: "google-1",
+  providerName: "Google",
+  username: null,
+  provider: "google",
+  name: "Google",
+  token: "@Google",
 };
+const GOOGLE_ITEM: MentionOption = { kind: "integration", integration: GOOGLE };
 
 type DropdownProps = Parameters<typeof MentionDropdown>[0];
 
@@ -87,7 +88,7 @@ function MentionComposer() {
     value,
     setValue,
     includeWorkspaceFiles: false,
-    integrations: [GOOGLE_ITEM.integration],
+    integrations: [GOOGLE],
     addWorkspaceFile: vi.fn(),
     addWorkspaceFolder: vi.fn(),
   });

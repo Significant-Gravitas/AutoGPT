@@ -5,11 +5,6 @@ import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFo
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "@/components/molecules/Popover/Popover";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject, ReactNode } from "react";
 import {
@@ -20,6 +15,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { IntegrationMention } from "../helpers";
 import type { MentionOption } from "../useChatMentions";
+import { useMentionDropdown } from "./useMentionDropdown";
 
 interface Props {
   /** Integrations first, then folders and files — indices match the
@@ -49,6 +45,7 @@ export function MentionDropdown({
   onSelect,
   onHighlight,
 }: Props) {
+  const { setAnchor, setList, listStyles } = useMentionDropdown();
   const showEmpty = !isLoading && !isError && options.length === 0;
   const integrationCount = options.filter(
     (option) => option.kind === "integration",
@@ -92,26 +89,22 @@ export function MentionDropdown({
   }
 
   return (
-    <Popover open>
-      <PopoverAnchor asChild>
-        <span aria-hidden className="pointer-events-none absolute inset-0" />
-      </PopoverAnchor>
-      <PopoverContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        collisionPadding={8}
+    <>
+      <span
+        ref={setAnchor}
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+      />
+      <div
+        ref={setList}
+        style={listStyles}
         role="listbox"
         aria-label="Mention suggestions"
-        // The textarea's onBlur closes the list, so opening it must not move
-        // focus into the popover.
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        onCloseAutoFocus={(e) => e.preventDefault()}
         // preventDefault on mousedown keeps focus in the textarea when clicking
         // non-interactive areas (padding, empty/loading/error states) so the
         // textarea's onBlur doesn't close the dropdown before a selection.
         onMouseDown={(e) => e.preventDefault()}
-        className="max-h-[min(20rem,var(--radix-popover-content-available-height))] w-80 max-w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-2xl border-zinc-200 bg-white p-1.5 shadow-md data-[state=open]:animate-none"
+        className="z-50 max-h-[min(20rem,var(--mention-available-height,20rem))] w-80 max-w-[var(--mention-anchor-width,100%)] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
       >
         {showHeadings && <SectionHeading label="Integrations" />}
         {options.map((option, index) =>
@@ -165,8 +158,8 @@ export function MentionDropdown({
             {emptyMessage(showFiles, hasIntegrations)}
           </p>
         )}
-      </PopoverContent>
-    </Popover>
+      </div>
+    </>
   );
 }
 

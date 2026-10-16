@@ -39,6 +39,7 @@
     "@better-auth/core": "1.6.33",
     "@faker-js/faker": "10.0.0",
     "@ferrucc-io/emoji-picker": "0.0.48",
+    "@floating-ui/react-dom": "2.1.6",
     "@hookform/resolvers": "5.2.2",
     "@hugeicons/core-free-icons": "^4.2.3",
     "@hugeicons/react": "^1.1.9",
