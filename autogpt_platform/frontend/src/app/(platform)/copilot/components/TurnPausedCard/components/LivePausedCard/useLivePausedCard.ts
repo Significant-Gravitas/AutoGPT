@@ -50,7 +50,12 @@ export function useLivePausedCard({
     : pause;
   const isBudget = isBudgetPause(shown);
   const waitsOnReset = isBudget && !neverResets(shown);
-  const now = useNow(waitsOnReset);
+  // Once the budget is back the card's text stops changing.
+  const now = useNow(
+    waitsOnReset && !isBudgetBack && shown.resets_at
+      ? Date.parse(shown.resets_at)
+      : null,
+  );
   const budgetBack = isBudget && (isBudgetBack || hasReset(shown, now));
   const keep = useKeepGoing({
     sessionId,

@@ -438,6 +438,31 @@ describe("TurnPausedCard — Keep going", () => {
     expect(screen.getByRole("button", { name: "Keep going" })).toBeDefined();
   });
 
+  it("passes on the server's reason when too many tasks are running", async () => {
+    backend();
+    const tooMany =
+      "You have 3 tasks already running. Please wait for one of them to finish before starting a new one.";
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", () =>
+        HttpResponse.json({ detail: tooMany }, { status: 429 }),
+      ),
+    );
+    const { onBackendTurn } = renderCard(
+      pause({ reason: "task", resets_at: null }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep going" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't pick this back up",
+        description: tooMany,
+        variant: "destructive",
+      }),
+    );
+    expect(onBackendTurn).not.toHaveBeenCalled();
+  });
+
   it("turns into the budget pause when the account ran out meanwhile", async () => {
     backend();
     server.use(
@@ -589,6 +614,49 @@ describe("TurnPausedCard — Resume at the reset", () => {
       screen.getByText("Otto saved its progress above. Your budget has reset."),
     ).toBeDefined();
   });
+
+  it.each([
+    {
+      status: 409,
+      detail: "no_reset",
+      title: "This allowance doesn't reset",
+      description: "Upgrade to keep going.",
+    },
+    {
+      status: 503,
+      detail: "Rate limit service degraded, retry shortly",
+      title: "Couldn't check your budget",
+      description: "Try again in a moment.",
+    },
+  ])(
+    "says why it couldn't set the resume ($status $detail)",
+    async ({ status, detail, title, description }) => {
+      backend();
+      server.use(
+        http.post("*/api/chat/sessions/:id/at-reset", () =>
+          HttpResponse.json({ detail }, { status }),
+        ),
+      );
+      renderCard(pause());
+
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: phrase("Resume at 1:00 AM"),
+        }),
+      );
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith({
+          title,
+          description,
+          variant: "destructive",
+        }),
+      );
+      expect(
+        screen.getByRole("button", { name: phrase("Resume at 1:00 AM") }),
+      ).toBeDefined();
+    },
+  );
 });
 
 describe("TurnPausedCard — Continue on ChatGPT", () => {
