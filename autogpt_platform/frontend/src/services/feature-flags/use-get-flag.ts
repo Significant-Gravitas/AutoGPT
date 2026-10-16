@@ -6,68 +6,14 @@ import * as Sentry from "@sentry/nextjs";
 import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { FrontendFlag as Flag } from "@/app/api/__generated__/models/frontendFlag";
 import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
 import { usePwFlagOverrides } from "./pw-flag-overrides";
 
-export enum Flag {
-  MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
-  ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
-  ARTIFACTS_PAGE = "artifacts-page",
-  CHAT_MODE_OPTION = "chat-mode-option",
-  GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
-  CHAT_SEARCH = "chat-search",
-  AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
-  CHAT_WORKSPACE_FILES = "chat-workspace-files",
-  CHAT_PINNING = "chat-pinning",
-  TASK_PROGRESS_BAR = "task-progress-bar",
-  HIRE_EXPERTS = "hire-experts",
-  // Reveals the marketplace Skills shelf and the skill listing pages.
-  SKILLS_HUB = "skills-hub",
-  // Reveals the notification-preferences card on /settings/account. The card
-  // is built but its design is still being reworked, so it ships dark and is
-  // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
-  // /profile/settings stays un-redirected (``useNewSettingsRedirect``) so the
-  // toggles remain reachable for everyone else — flip both together.
-  SETTINGS_NOTIFICATIONS = "settings-notifications",
-  // Replaces the onboarding pillbox step with the voice brain dump.
-  // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
-  // both sides must agree. Off renders the pillbox flow untouched.
-  ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
-  // Child of HIRE_EXPERTS: the greeting page builds a team from the brain
-  // dump. Mirror of the backend ``Flag`` enum; both must be on.
-  ONBOARDING_EXPERT_TEAM = "onboarding-expert-team",
-  // Graphiti memory + dream-system gates. Mirror of the backend
-  // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
-  // them when memory/dream-related UI surfaces ship (P6+ on the
-  // dream-system roadmap). They default false below to match the
-  // backend's fail-closed gating (default=False, opt-in only) — a
-  // LaunchDarkly outage or missing flag key must not switch the
-  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
-  // enable the stack for local-dev / Playwright runs.
-  GRAPHITI_MEMORY = "graphiti-memory",
-  GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
-  DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
-  // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
-  // Bots settings page. Lets ops hide a platform (e.g. Slack while its
-  // Marketplace review is pending) without a deploy. Missing keys default to
-  // visible — only an explicit ``false`` hides a card.
-  COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
-  // Voice mode on /copilot: hands-free listen → send → speak → listen.
-  // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
-  // so both sides must agree. Fail-closed.
-  COPILOT_VOICE_MODE = "copilot-voice-mode",
-  // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
-  // which ignores a sent mode when off. Fail-closed.
-  COPILOT_AUTO_MODE = "copilot-auto-mode",
-  // The share of chat sessions whose stream the converter shadows and checks
-  // against the server, 0 to 1 (a PostHog payload). 0 is off.
-  COPILOT_STREAM_SHADOW = "copilot-stream-shadow",
-  // The chat's own stream runtime in place of the AI SDK's: resume at a
-  // cursor, render from the persisted rows. Frontend only; fail-closed.
-  COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
-}
+// Declared once, on the backend (`FrontendFlag` in `backend/util/feature_flag/frontend.py`),
+// which is also the set `/api/feature-flags` serves.
+export { Flag };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
@@ -102,7 +48,7 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
-};
+} satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
 
@@ -322,6 +268,8 @@ export function resolveFlagValue<T extends Flag>(
 // mocks stub. This is the same question asked of whichever vendor is configured.
 function areFeatureFlagsEnabled() {
   switch (FLAG_BACKEND) {
+    case "server":
+      return true;
     case "posthog":
       return isPostHogFlagsEnabled();
     case "dual":

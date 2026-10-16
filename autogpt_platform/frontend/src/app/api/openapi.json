@@ -7858,6 +7858,46 @@
         }
       }
     },
+    "/api/feature-flags": {
+      "get": {
+        "tags": ["feature-flags"],
+        "summary": "Get Feature Flags",
+        "description": "The frontend's flags for the caller, evaluated as the backend's own reads are.",
+        "operationId": "get_feature_flags",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "visitor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed.",
+              "title": "Visitor Id"
+            },
+            "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FrontendFlagValues" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/files/upload": {
       "post": {
         "tags": ["v1", "files"],
@@ -23246,6 +23286,82 @@
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse"
+      },
+      "FrontendFlag": {
+        "type": "string",
+        "enum": [
+          "marketplace-search-terms",
+          "enable-platform-payment",
+          "artifacts-page",
+          "chat-mode-option",
+          "generic-trigger-agents",
+          "chat-search",
+          "autogpt-new-layout",
+          "chat-workspace-files",
+          "chat-pinning",
+          "task-progress-bar",
+          "hire-experts",
+          "skills-hub",
+          "settings-notifications",
+          "onboarding-brain-dump",
+          "onboarding-expert-team",
+          "graphiti-memory",
+          "graphiti-communities-enabled",
+          "dream-pass-enabled",
+          "dream-pass-invalidate-entity",
+          "copilot-bot-platforms",
+          "copilot-voice-mode",
+          "copilot-auto-mode",
+          "copilot-stream-shadow",
+          "copilot-stream-runtime"
+        ],
+        "title": "FrontendFlag",
+        "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
+        "x-enum-varnames": [
+          "MARKETPLACE_SEARCH_TERMS",
+          "ENABLE_PLATFORM_PAYMENT",
+          "ARTIFACTS_PAGE",
+          "CHAT_MODE_OPTION",
+          "GENERIC_TRIGGER_AGENTS",
+          "CHAT_SEARCH",
+          "AUTOGPT_NEW_LAYOUT",
+          "CHAT_WORKSPACE_FILES",
+          "CHAT_PINNING",
+          "TASK_PROGRESS_BAR",
+          "HIRE_EXPERTS",
+          "SKILLS_HUB",
+          "SETTINGS_NOTIFICATIONS",
+          "ONBOARDING_BRAIN_DUMP",
+          "ONBOARDING_EXPERT_TEAM",
+          "GRAPHITI_MEMORY",
+          "GRAPHITI_COMMUNITIES_ENABLED",
+          "DREAM_PASS_ENABLED",
+          "DREAM_PASS_INVALIDATE_ENTITY",
+          "COPILOT_BOT_PLATFORMS",
+          "COPILOT_VOICE_MODE",
+          "COPILOT_AUTO_MODE",
+          "COPILOT_STREAM_SHADOW",
+          "COPILOT_STREAM_RUNTIME"
+        ]
+      },
+      "FrontendFlagValues": {
+        "properties": {
+          "flags": {
+            "additionalProperties": true,
+            "propertyNames": { "$ref": "#/components/schemas/FrontendFlag" },
+            "type": "object",
+            "title": "Flags",
+            "description": "Each flag the vendor answered, or null for one it has no definition of, which takes the frontend's default; one left out has no answer yet."
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False when no flag vendor is configured or it gave up starting, so every flag is its default."
+          }
+        },
+        "type": "object",
+        "required": ["flags", "configured"],
+        "title": "FrontendFlagValues"
       },
       "GenerateTestDataRequest": {
         "properties": {
