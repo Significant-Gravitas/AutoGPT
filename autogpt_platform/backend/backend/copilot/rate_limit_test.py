@@ -162,6 +162,22 @@ class TestGetUsageStatus:
         assert status.weekly.used == 0
 
     @pytest.mark.asyncio
+    async def test_fails_closed_when_asked_and_redis_unavailable(self):
+        # A caller that acts on the figures mustn't read "no usage" off an
+        # outage.
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await get_usage_status(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    fail_closed=True,
+                )
+
+    @pytest.mark.asyncio
     async def test_partial_none_daily_counter(self):
         """Daily counter is None (new day), weekly has usage."""
         mock_redis = AsyncMock()
@@ -307,6 +323,24 @@ class TestCheckRateLimit:
             assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
+    async def test_both_windows_used_up_names_the_one_that_refills_last(self):
+        """Regression: with both caps hit the user is blocked until the weekly
+        reset, not the next midnight the daily check used to report."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["10000", "50000"])
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+        assert exc_info.value.window == "weekly"
+        assert exc_info.value.resets_at == _weekly_reset_time()
+
+    @pytest.mark.asyncio
     async def test_raises_unavailable_when_redis_connection_error(self):
         """Fail-closed: ConnectionError must surface as RateLimitUnavailable so
         the API layer can map it to HTTP 503 instead of silently letting the
@@ -401,7 +435,8 @@ class TestCheckRateLimit:
         ):
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
-            assert exc_info.value.window == "daily"
+            # Both windows are used up, so the one that refills last is named.
+            assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
     async def test_negative_limit_disables_the_window(self):

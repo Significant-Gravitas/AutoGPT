@@ -32,6 +32,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 from backend.copilot.sdk.retry_scenarios_test import scenario_profile
@@ -169,6 +170,10 @@ def _make_patches(*, hire_experts_enabled: bool):
                 new_callable=AsyncMock,
                 return_value=TurnBudget(usd=100.0, limiting="task"),
             ),
+        ),
+        (
+            f"{_SVC}.gate_auto_continue",
+            dict(new_callable=AsyncMock, return_value=AutoContinueGate(proceed=True)),
         ),
         (f"{_SVC}.drain_pending_safe", dict(new_callable=AsyncMock, return_value=[])),
     ]

@@ -48,6 +48,7 @@ from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.model_router import RoutingSource
+from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
@@ -82,6 +83,7 @@ from backend.copilot.sdk.cost_tracking import (
     read_cli_session_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider
+from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
 from backend.copilot.turn_budget import resolve_turn_budget
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.redis_client import get_redis_async
@@ -5171,10 +5173,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         # Lands the turn with a checkpoint near its budget or step check-in.
         # A route without a USD budget (a ChatGPT subscription pays for its
-        # own turns) gets the check-in only.
+        # own turns) gets the check-in only. A turn billed to credits gets
+        # what its balance covers.
+        credit_turn = credit_billed_turn(user_id)
         governor = TurnGovernor(
             budget=(
-                await resolve_turn_budget(user_id) if profile.row.usd_budget else None
+                None
+                if not profile.row.usd_budget
+                else (
+                    credit_turn.budget
+                    if credit_turn is not None
+                    else await resolve_turn_budget(user_id)
+                )
             ),
             step_checkin=config.sdk_step_checkin,
         )
@@ -6343,6 +6353,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
                 _background_tasks.add(cost_reconcile_task)
                 cost_reconcile_task.add_done_callback(_background_tasks.discard)
+                # A turn billed to credits is charged once this cost is in.
+                wait_for_cost(cost_reconcile_task)
             elif profile is not None:
                 # Priced on the platform's rate card from the tokens the
                 # provider reported; the CLI's own figure is only logged.
@@ -6607,9 +6619,28 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # A paused turn doesn't continue either: it stopped because it ran out of
     # budget or reached its check-in, and the user picks it back up from the
     # Paused card. Anything queued meanwhile stays queued for that turn.
+    #
+    # Nor does a platform turn the allowance can no longer cover: nobody
+    # pressed send for the continuation, so nothing else would check it. The
+    # queued messages stay queued and a not-started pause takes their place.
     # -------------------------------------------------------------------------
     if not ended_with_stream_error and not (governor is not None and governor.landed):
-        _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
+        # A turn on a Codex lease is paid by the user's ChatGPT subscription.
+        # The continuation would have kept this turn's envelope, so a refusal
+        # records its taint.
+        auto_continue = await gate_auto_continue(
+            session,
+            user_id,
+            platform_billed=credential_lease is None,
+            tainted=envelope is not None and envelope.tainted,
+        )
+        if auto_continue.pause is not None:
+            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+        _auto_pending_messages = (
+            await drain_pending_safe(session_id, log_prefix)
+            if auto_continue.proceed
+            else []
+        )
         if _auto_pending_messages:
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",

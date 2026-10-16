@@ -70,6 +70,15 @@ def no_trial_attribution(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
+    )
+
+
 class TestPlatformEngine:
     """Every platform-route turn runs on the SDK engine, whatever the route;
     on ``disabled`` the SDK turn refuses itself."""

@@ -11,20 +11,34 @@ import os
 import subprocess
 import threading
 import time
+import uuid
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
+from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
+from backend.copilot.credit_billing import (
+    CreditBilledTurn,
+    bill_to_credits,
+    credit_billing,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
 from backend.copilot.llm_attribution import set_turn_impersonated
-from backend.copilot.response_model import StreamError, StreamStatus
+from backend.copilot.model import maybe_append_user_message
+from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.response_model import (
+    StreamError,
+    StreamStart,
+    StreamStatus,
+    StreamTurnPaused,
+)
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.sdk.launch_env import inherited_env
@@ -32,6 +46,7 @@ from backend.copilot.session_kind import SessionKind
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_tracing import TurnTrace, turn_transaction
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
@@ -66,6 +81,12 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 
 SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
+)
+# A platform turn whose allowance can't be read doesn't run unmetered.
+RATE_LIMIT_UNAVAILABLE_CODE = "rate_limit_unavailable"
+RATE_LIMIT_UNAVAILABLE_MESSAGE = (
+    "Usage limits can't be checked right now, so this didn't start. "
+    "Please try again in a moment."
 )
 
 # Max time execute() blocks after requesting async turn cancellation. The worker
@@ -224,6 +245,33 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
             )
             return
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+
+
+async def _refuse_turn(
+    entry: CoPilotExecutionEntry, session: "ChatSession", pause: TurnPause
+) -> None:
+    """End a turn the allowance can't cover without running it.
+
+    The chat keeps the turn's message, as a turn that ran would, followed by
+    a not-started marker with the taint the turn would have run with (the
+    resume at the budget reset picks it up); the live stream carries the same
+    pause part the engines end a landed turn with.
+    """
+    maybe_append_user_message(
+        session, entry.message or None, entry.is_user_message, entry.message_metadata
+    )
+    kind = SessionKind.for_turn(session, from_chat_platform=entry.from_chat_platform)
+    tainted = kind.from_chat_platform or (
+        entry.envelope is not None and entry.envelope.tainted
+    )
+    await record_refusal(session, pause, tainted=tainted)
+    for chunk in (
+        StreamStart(messageId=str(uuid.uuid4()), sessionId=entry.session_id),
+        StreamTurnPaused(pause=pause.as_part()),
+    ):
+        await stream_registry.publish_chunk(
+            entry.turn_id, chunk, session_id=entry.session_id
+        )
 
 
 def execute_copilot_turn(
@@ -557,6 +605,7 @@ class CoPilotProcessor:
         credential_lease = None
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
+        credit_turn: CreditBilledTurn | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -583,6 +632,48 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            if entry.llm_auth_provider == "platform":
+                # Every platform-billed turn passes the allowance here, from
+                # whichever path queued it (see backend.copilot.budget_gate).
+                # An AutoPilot block turn the allowance can't cover may run on
+                # the credit balance instead (see backend.copilot.credit_billing).
+                try:
+                    pause = await refusal_for(entry.user_id)
+                    if pause is not None:
+                        # Billed to the tenancy the turn runs under (as
+                        # streamed below), as the graph's other blocks are.
+                        is_expert_session = session.expert_id is not None
+                        credit_turn = await bill_to_credits(
+                            user_id=entry.user_id,
+                            session_id=entry.session_id,
+                            tool_name=entry.tool_name,
+                            refusal=pause,
+                            organization_id=(
+                                session.organization_id
+                                if is_expert_session
+                                else entry.organization_id
+                            ),
+                            team_id=(
+                                session.team_id if is_expert_session else entry.team_id
+                            ),
+                        )
+                except RateLimitUnavailable:
+                    error_msg = RATE_LIMIT_UNAVAILABLE_MESSAGE
+                    error_code = RATE_LIMIT_UNAVAILABLE_CODE
+                    return
+                if pause is not None and credit_turn is None:
+                    log.info(f"Turn not started: the {pause.reason} limit is used up")
+                    await _refuse_turn(entry, session, pause)
+                    return
+                if credit_turn is not None:
+                    log.info(
+                        f"The {credit_turn.refusal.reason} limit is used up: "
+                        f"billing this block turn to credits, up to "
+                        f"{credit_turn.cap_credits} credits"
+                    )
+                    await cost_context_stack.enter_async_context(
+                        credit_billing(credit_turn)
+                    )
             await _wait_for_expert_setup(session)
 
             if entry.llm_auth_provider == "codex":
