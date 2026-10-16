@@ -17,6 +17,7 @@ from backend.data.workspace_skill import (
     WorkspaceSkillFile,
     WorkspaceSkillWrite,
     publish_workspace_skill_file,
+    skill_root_has_room,
 )
 from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import LocalWorkspaceStorage
@@ -556,3 +557,59 @@ async def test_a_package_write_swaps_every_file_or_none(
             "/skills/pkg/c.md": b"c2",
         }
         assert blobs() == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "saved, unreadable, target_origin, origin",
+    [
+        (MAX_SKILLS_PER_EXPERT - 1, 0, None, "user"),
+        (MAX_SKILLS_PER_EXPERT - 1, 1, None, "user"),
+        (MAX_SKILLS_PER_EXPERT, 0, "user", "user"),
+        (MAX_SKILLS_PER_EXPERT, 0, "marketplace", "user"),
+        (MAX_SKILLS_PER_EXPERT, 0, None, "marketplace"),
+    ],
+    ids=[
+        "one-left",
+        "unreadable-root-fills-it",
+        "update",
+        "budget-move",
+        "other-budget",
+    ],
+)
+async def test_room_is_what_the_publication_decides(
+    workspace_id: str, saved: int, unreadable: int, target_origin, origin: str
+):
+    """Learning asks before it saves a new skill; the answer must match the
+    publication's own capacity decision, unreadable roots included."""
+    await seed(workspace_id, saved - (1 if target_origin else 0), origin="user")
+    for i in range(unreadable):
+        await db.prisma.userworkspacefile.create(
+            data={
+                "workspaceId": workspace_id,
+                "name": "SKILL.md",
+                "path": f"/skills/unreadable-{i}/SKILL.md",
+                "storagePath": f"test://unreadable-{i}",
+                "mimeType": "text/markdown",
+                "sizeBytes": 1,
+            }
+        )
+    if target_origin:
+        await db.prisma.userworkspacefile.create(
+            data={
+                "workspaceId": workspace_id,
+                "name": "SKILL.md",
+                "path": "/skills/target/SKILL.md",
+                "storagePath": "test://target",
+                "mimeType": "text/markdown",
+                "sizeBytes": 1,
+                "metadata": Json({"skill_origin": target_origin}),
+            }
+        )
+    room = await skill_root_has_room(workspace_id, "/skills/target/SKILL.md", origin)
+    published = await publish_workspace_skill_file(
+        write(workspace_id, "target").model_copy(
+            update={"metadata": {"skill_origin": origin}}
+        )
+    )
+    assert room == (published.status == "stored")
