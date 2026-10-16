@@ -77,8 +77,8 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   });
 
   describe("stream drift — a second connection onto a live turn", () => {
-    // The AI SDK path holds one response per resume and aborts none of them,
-    // so this case is the bug the runtime's single slot exists to fix.
+    // Both paths open one connection. The AI SDK path paints the first block
+    // twice: the replay after a cut re-draws it (as in W4).
     const runtimeOnly = path === "stream runtime" ? it : it.fails;
     runtimeOnly(
       "W1: two resumes inside the window open one connection and draw one bubble",
@@ -132,13 +132,15 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         });
 
         // Desktop browsers keep a hidden tab's fetch open, so the POST stream is
-        // still healthy when the wake re-sync fires.
+        // still healthy when the wake re-sync fires. The AI SDK path keeps it;
+        // the runtime resumes over it in its single slot.
         vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
         setTabVisibility("hidden");
         vi.setSystemTime(Date.now() + 31_000);
         setTabVisibility("visible");
         vi.useRealTimers();
-        await waitForConnections(sim, 2);
+        if (path === "stream runtime") await waitForConnections(sim, 2);
+        else await turnKeepsRunning();
         sim.publish();
 
         expectDrift(
@@ -148,9 +150,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             painted,
             toast: toastMock,
           }),
-          // AI SDK: the resume replays the turn into the list while the POST
-          // stream still writes it: both copies of the first block are on screen.
-          { today: path === "stream runtime" ? [] : ["paintedTwice"] },
+          {},
         );
       },
     );
@@ -181,9 +181,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             painted,
             toast: toastMock,
           }),
-          // AI SDK: the 60 s stall watchdog reads the silence as a dead stream
-          // and reconnects with a toast.
-          { today: path === "stream runtime" ? [] : ["connectionToast"] },
+          {},
         );
       },
     );
@@ -216,16 +214,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             painted,
             toast: toastMock,
           }),
-          // AI SDK: two resumes attach to one running turn: the once-per-mount
-          // resume, and the post-finish probe's reconnect with "Connection
-          // lost". Neither aborts the other, so the first block is painted
-          // three times.
-          {
-            today:
-              path === "stream runtime"
-                ? []
-                : ["connectionToast", "paintedTwice"],
-          },
+          { today: path === "stream runtime" ? [] : ["paintedTwice"] },
         );
       },
     );
@@ -258,9 +247,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             painted,
             toast: toastMock,
           }),
-          // AI SDK: the probe cannot tell the new turn from a dropped stream
-          // (#15044).
-          { today: path === "stream runtime" ? [] : ["connectionToast"] },
+          {},
         );
       },
     );

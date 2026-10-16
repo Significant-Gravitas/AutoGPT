@@ -24,6 +24,7 @@ vi.mock("../tokenDevtool/usageTap", () => ({
 }));
 
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { createStreamFlight } from "../copilotStreamFlight";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
@@ -43,6 +44,7 @@ function makeRefs() {
   return {
     copilotModeRef: { current: undefined },
     copilotModelRef: { current: undefined },
+    flight: createStreamFlight(),
   };
 }
 

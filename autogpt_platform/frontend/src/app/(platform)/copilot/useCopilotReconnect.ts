@@ -1,6 +1,7 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useEffect, useRef, useState } from "react";
+import type { ResumeReason } from "./copilotStreamFlight";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -25,7 +26,7 @@ interface UseCopilotReconnectArgs {
    * Ref holding `useChat`'s latest `resumeStream`. Kept in a ref so the
    * timer callback always invokes the current value without stale closures.
    */
-  resumeStreamRef: React.MutableRefObject<() => void>;
+  resumeStreamRef: React.MutableRefObject<(reason: ResumeReason) => void>;
   /**
    * Flipped to `true` when a reconnect actually fires, so a deferred
    * page-load resume (queued in `pendingResumeRef` while hydration was in
@@ -121,7 +122,7 @@ export function useCopilotReconnect({
       // pendingResumeRef while hydration was in flight) can't double-fire.
       hasResumedRef.current = true;
       setIsReconnectScheduled(false);
-      resumeStreamRef.current();
+      resumeStreamRef.current("replace");
     }, delay);
   }
 

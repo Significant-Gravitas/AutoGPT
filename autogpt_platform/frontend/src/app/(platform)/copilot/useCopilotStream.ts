@@ -15,6 +15,13 @@ import {
   shouldReloadCopilotChatRuntime,
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
+import {
+  hasHealthyStream,
+  sendThroughFlight,
+  startRequest,
+  stopFlight,
+  type ResumeReason,
+} from "./copilotStreamFlight";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   clearKickoffPending,
@@ -26,6 +33,7 @@ import {
 import {
   deduplicateMessages,
   extractSendMessageText,
+  getActiveBackendTurnId,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -186,7 +194,7 @@ export function useCopilotStream({
   // capture these refs at init and read `.current` at fire time, so the
   // circular "useChat needs handleReconnect and useCopilotReconnect needs
   // resumeStream" is resolved by deferring both through refs.
-  const resumeStreamRef = useRef<() => void>(() => {});
+  const resumeStreamRef = useRef<(reason: ResumeReason) => void>(() => {});
   const handleReconnectRef = useRef<() => void>(() => {});
 
   const {
@@ -210,6 +218,7 @@ export function useCopilotStream({
 
   useEffect(() => {
     if (!chatRuntime) return;
+    const { flight } = chatRuntime;
 
     async function handleFinish({
       isDisconnect,
@@ -226,6 +235,11 @@ export function useCopilotStream({
         return;
       }
 
+      // Read before any await: an ended turn can wake the next one before its
+      // finish arrives, so a refetch may already show the chained turn.
+      const finishedTurnId = getActiveBackendTurnId({
+        data: queryClient.getQueryData(getGetV2GetSessionQueryKey(sessionId)),
+      });
       const attempts = pendingEngineSwitchRef.current
         ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
         : FINISH_REFETCH_ATTEMPTS_DEFAULT;
@@ -239,7 +253,14 @@ export function useCopilotStream({
           const result = await refetchSession();
           if (!isMountedRef.current) return;
           if (hasActiveBackendStream(result)) {
-            handleReconnectRef.current();
+            // Another path (the follow after an approval) already attached.
+            if (hasHealthyStream(flight)) return;
+            if (getActiveBackendTurnId(result) === finishedTurnId) {
+              handleReconnectRef.current();
+            } else {
+              hasResumedRef.current = true;
+              resumeStreamRef.current("attach");
+            }
             return;
           }
         }
@@ -264,38 +285,7 @@ export function useCopilotStream({
       // into the composer (via the same store slot URL pre-fills use) and
       // drop the unsent bubble so the user can edit/resend.
       const restoreUnsentSend = () => {
-        const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-        const unsentText = coord.lastSubmittedMessageText;
-        if (unsentText) {
-          // The expert-kickoff control prompt must never surface in the
-          // user's composer — drop the recovery slot instead of restoring
-          // it. Its bubble below is dropped too; the once-per-expert
-          // pending latch expires so a later visit can retry the kickoff.
-          if (kickoffExpertId) {
-            useCopilotStreamStore.getState().updateCoord(sessionId, {
-              lastSubmittedMessageText: null,
-              lastSubmittedKickoffExpertId: null,
-              lastSubmittedKickoffAttemptToken: null,
-            });
-          } else {
-            // The refusal lands async — by the time it does, the user
-            // may have started typing a new draft. Only restore + clear the
-            // recovery slot when the composer is empty; otherwise leave the
-            // unsent text in the per-session store so a reload / resume can
-            // surface it later instead of silently dropping it.
-            const composer = document.getElementById(
-              "chat-input",
-            ) as HTMLTextAreaElement | null;
-            const composerEmpty = !composer || composer.value.length === 0;
-            if (composerEmpty) {
-              setInitialPrompt(unsentText);
-              useCopilotStreamStore.getState().updateCoord(sessionId, {
-                lastSubmittedMessageText: null,
-                lastSubmittedKickoffExpertId: null,
-                lastSubmittedKickoffAttemptToken: null,
-              });
-            }
-          }
+        if (restoreUnsentText(sessionId, setInitialPrompt)) {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             const next = last?.role === "user" ? prev.slice(0, -1) : prev;
@@ -393,6 +383,7 @@ export function useCopilotStream({
   }, [
     chatRuntime,
     sessionId,
+    queryClient,
     refetchSession,
     setInitialPrompt,
     setMessages,
@@ -438,11 +429,41 @@ export function useCopilotStream({
     }
   }
 
-  function resumeStreamFromStart() {
+  // At most one stream per chat: a resume first ends the live request and
+  // waits for the SDK to clean it up, or leaves a healthy one alone when it
+  // only means to attach. Resumes asked for while one is queued join it.
+  function resumeStreamFromStart(reason: ResumeReason) {
     if (!chatRuntime) return;
-    if (sessionId) {
-      markCopilotChatRuntimeHealthy(sessionId);
-    }
+    const { flight } = chatRuntime;
+    if (flight.resumeQueued) return;
+    if (reason === "attach" && hasHealthyStream(flight)) return;
+    flight.resumeQueued = true;
+    void startRequest(
+      flight,
+      (ticket) => {
+        if (sessionId) {
+          markCopilotChatRuntimeHealthy(sessionId);
+        }
+        // Whatever asked, the page-load resume must not run this turn again.
+        hasResumedRef.current = true;
+        trimReplayedTurn();
+        return resumeStream({
+          metadata: { flightGeneration: ticket.generation },
+        });
+      },
+      {
+        mode: reason,
+        // Checked before anything is aborted: a resume that stands down must
+        // leave the live request alone.
+        ready: () => {
+          flight.resumeQueued = false;
+          return isMountedRef.current && !isUserStoppingRef.current;
+        },
+      },
+    );
+  }
+
+  function trimReplayedTurn() {
     setMessages((prev) => {
       // The GET-resume replays the active turn from its start as a fresh
       // assistant message, so any HYDRATED partial of that turn must be
@@ -498,7 +519,6 @@ export function useCopilotStream({
       }
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
-    resumeStream();
   }
   resumeStreamRef.current = resumeStreamFromStart;
   const sessionIdRef = useRef(sessionId);
@@ -571,7 +591,36 @@ export function useCopilotStream({
     if (isUserStopping) {
       setIsUserStopping(false);
     }
-    return sdkSendMessage(...args);
+    if (!chatRuntime) return sdkSendMessage(...args);
+    // A send beside a live request breaks both (see copilotStreamFlight), so
+    // it waits for the live one to finish, and ends in a POST or in the user
+    // getting their text back.
+    const { chat } = chatRuntime;
+    const [message, options] = args;
+    let before = new Set<string>();
+    await sendThroughFlight(chatRuntime.flight, {
+      send: (ticket) => {
+        before = new Set(chat.messages.map((m) => m.id));
+        return sdkSendMessage(message, {
+          ...options,
+          metadata: {
+            ...(options?.metadata as object | undefined),
+            flightGeneration: ticket.generation,
+          },
+        });
+      },
+      retract: () =>
+        setMessages((prev) => prev.filter((m) => before.has(m.id))),
+      restoreDraft: () => restoreUnsentText(sessionId, setInitialPrompt),
+      notifyNotSent: () =>
+        toast({
+          title: "Message not sent",
+          description:
+            "The connection dropped before it went out. Send it again when you're ready.",
+          variant: "destructive",
+        }),
+      isMounted: () => isMountedRef.current,
+    });
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
@@ -659,7 +708,11 @@ export function useCopilotStream({
 
   const stop = useCopilotStop({
     sessionId,
-    stopStream: sdkStopStream(sdkStop, setMessages),
+    stopStream: sdkStopStream(() => {
+      // `sdkStop` cannot end a resume: the SDK gives its fetch no signal.
+      if (chatRuntime) stopFlight(chatRuntime.flight);
+      return sdkStop();
+    }, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
@@ -672,6 +725,7 @@ export function useCopilotStream({
     sessionId,
     status,
     activityToken: streamActivityToken,
+    getLastStreamActivityAt: () => chatRuntime?.flight.lastActivityAt ?? 0,
     isReconnectScheduled,
     isUserStoppingRef,
     handleReconnectRef,
@@ -795,7 +849,7 @@ export function useCopilotStream({
       if (hasResumedRef.current) return;
       if (isUserStoppingRef.current) return;
       hasResumedRef.current = true;
-      resumeStreamRef.current();
+      resumeStreamRef.current("attach");
     }
 
     // Wait for hydration to complete before resuming to prevent the two
@@ -919,4 +973,45 @@ export function useCopilotStream({
     },
     dismissRateLimit,
   };
+}
+
+/**
+ * Give an unsent message's text back, from the session's recovery slot that
+ * `sendMessage` fills. Both a refused send (429, 402) and a send lost before
+ * the network restore through here, and the slot is cleared once used, so the
+ * same text never comes back twice. Returns whether the slot held one.
+ */
+function restoreUnsentText(
+  sessionId: string | null,
+  setInitialPrompt: (prompt: string) => void,
+) {
+  if (!sessionId) return false;
+  const store = useCopilotStreamStore.getState();
+  const coord = store.getCoord(sessionId);
+  const unsentText = coord.lastSubmittedMessageText;
+  if (!unsentText) return false;
+  const clearSlot = () =>
+    store.updateCoord(sessionId, {
+      lastSubmittedMessageText: null,
+      lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
+    });
+  // The expert-kickoff control prompt must never surface in the user's
+  // composer — drop the recovery slot instead of restoring it. The
+  // once-per-expert pending latch expires so a later visit can retry it.
+  if (coord.lastSubmittedKickoffExpertId) {
+    clearSlot();
+    return true;
+  }
+  // The text comes back async — by then the user may have started a new
+  // draft. Only restore + clear the slot when the composer is empty;
+  // otherwise leave the text in the per-session store so a reload / resume
+  // can surface it later instead of silently dropping it.
+  const composer = document.getElementById(
+    "chat-input",
+  ) as HTMLTextAreaElement | null;
+  if (composer && composer.value.length > 0) return true;
+  setInitialPrompt(unsentText);
+  clearSlot();
+  return true;
 }
