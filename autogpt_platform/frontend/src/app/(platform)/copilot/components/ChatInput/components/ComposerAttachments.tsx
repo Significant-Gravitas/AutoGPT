@@ -3,6 +3,7 @@
 import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useEffect, useRef } from "react";
 import {
   type Attachment,
   attachmentKey,
@@ -30,6 +31,17 @@ export function ComposerAttachments({
   stacked = false,
 }: Props) {
   const reduceMotion = useReducedMotion();
+  const listRef = useRef<HTMLUListElement>(null);
+  const count = attachments.length;
+  const previousCount = useRef(count);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (list && count > previousCount.current)
+      list.scrollTop = list.scrollHeight;
+    previousCount.current = count;
+  }, [count]);
+
   const hidden = reduceMotion
     ? { opacity: 0 }
     : { opacity: 0, scale: 0.96, filter: "blur(4px)" };
@@ -51,9 +63,10 @@ export function ComposerAttachments({
           className="w-full overflow-hidden"
         >
           <ul
+            ref={listRef}
             aria-label="Attachments"
             className={cn(
-              "flex w-full flex-wrap items-center gap-2 px-3 pb-1 pt-3",
+              "flex max-h-[min(40vh,14rem)] w-full flex-wrap items-center gap-2 overflow-y-auto px-3 pb-1 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
               stacked && "p-0",
             )}
           >
