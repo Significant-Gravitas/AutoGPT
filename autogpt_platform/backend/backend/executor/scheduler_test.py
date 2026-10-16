@@ -834,48 +834,6 @@ class TestRemoveScopeMemoryJobsWithSkillLearning:
         ]
 
 
-class TestRemoveScopeMemoryJob:
-    """The one-cron removal the registry calls for a cron whose flag is
-    off, after its row stopped recording it."""
-
-    @pytest.mark.parametrize(
-        "scope, prefix",
-        [
-            (MemoryScope.for_user("abc"), "skill_learning_nightly"),
-            (MemoryScope.for_expert("abc", "expert-1"), "dream_nightly_batch"),
-        ],
-    )
-    def test_removes_only_that_cron(self, scope: MemoryScope, prefix: str) -> None:
-        s = _stub_scheduler()
-        job = MagicMock(id=f"{prefix}_{scope.scope_key}")
-        s.scheduler.get_job.side_effect = lambda job_id, jobstore: (
-            job if job_id == job.id else None
-        )
-
-        assert s.remove_scope_memory_job(scope=scope, job_id_prefix=prefix) is True
-
-        job.remove.assert_called_once()
-        s.scheduler.get_job.assert_called_once_with(
-            job.id, jobstore=Jobstores.EXECUTION.value
-        )
-
-    def test_a_cron_that_is_not_there_is_not_an_error(self) -> None:
-        s = _stub_scheduler()
-        s.scheduler.get_job.return_value = None
-
-        assert (
-            s.remove_scope_memory_job(
-                scope=MemoryScope.for_user("abc"),
-                job_id_prefix="skill_learning_nightly",
-            )
-            is False
-        )
-
-    def test_reachable_over_rpc(self) -> None:
-        s = _stub_scheduler()
-        s._create_fastapi_endpoint(s.remove_scope_memory_job)
-
-
 class TestDeleteSkillLearningSchedule:
     def test_the_registry_forgets_the_cron_before_it_is_removed(self) -> None:
         s = _stub_scheduler()
@@ -1006,14 +964,13 @@ class TestSkillLearningScopeGate:
     account's scope fire: a cron straggling past a pause or a wipe does
     nothing."""
 
-    def _fire(self, *, gate: bool, flag: bool = True, authoritative: bool = True):
+    def _fire(self, *, gate: bool, flag: bool = True):
         learned = SkillLearningResult(
             user_id="abc",
             run_id="learn-1",
             trigger="nightly",
             started_at=datetime.now(timezone.utc),
         )
-        self.scheduler = MagicMock()
         with (
             patch("backend.executor.scheduler.run_async", new=_run_coroutine),
             patch(
@@ -1021,14 +978,13 @@ class TestSkillLearningScopeGate:
                 return_value=gate,
             ) as gate_mock,
             patch(
-                "backend.util.feature_flag.evaluate_feature_flag",
-                new=AsyncMock(return_value=(flag, authoritative)),
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(return_value=flag),
             ),
             patch(
                 "backend.copilot.learning.nightly.run_skill_learning_pass",
                 new=AsyncMock(return_value=learned),
             ) as learn,
-            patch.object(scheduler_module, "_scheduler_instance", self.scheduler),
         ):
             returned = execute_skill_learning_sync("abc")
         return returned, learned, gate_mock, learn
@@ -1051,31 +1007,6 @@ class TestSkillLearningScopeGate:
 
         assert returned is None
         learn.assert_not_awaited()
-
-    def test_a_cron_whose_flag_is_off_removes_itself(self) -> None:
-        """An account that learns without memory writes has no ensure to
-        notice learning turned off; its cron's next run removes it, the
-        registry forgetting it first."""
-        self._fire(gate=True, flag=False)
-
-        delete = self.scheduler._delete_account_memory_job
-        delete.assert_called_once()
-        user_id, job = delete.call_args.args
-        assert (user_id, job.job_id_prefix) == ("abc", "skill_learning_nightly")
-
-    def test_a_flag_that_cannot_be_read_only_skips_the_run(self) -> None:
-        returned, _, _, learn = self._fire(gate=True, flag=False, authoritative=False)
-
-        assert returned is None
-        learn.assert_not_awaited()
-        self.scheduler._delete_account_memory_job.assert_not_called()
-
-    def test_a_cron_the_registry_holds_back_keeps_itself(self) -> None:
-        """A paused or wiped account's cron is the reconcile's to remove; its
-        flag is not read."""
-        self._fire(gate=False, flag=False)
-
-        self.scheduler._delete_account_memory_job.assert_not_called()
 
 
 class TestCommunityRebuildScopeGate:

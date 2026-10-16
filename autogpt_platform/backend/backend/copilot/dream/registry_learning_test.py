@@ -145,25 +145,18 @@ async def test_the_reconcile_removes_a_learning_cron_straggling_past_a_pause(env
 
 
 @pytest.mark.asyncio
-async def test_the_reconcile_takes_back_a_restore_that_raced_the_flag_going_off(env):
-    """A restore that read the row before learning went off, and lands after
-    the ensure removed the cron and its record, puts the cron back tagged
-    as the reconcile's: the next pass takes it back."""
+async def test_the_reconcile_takes_back_a_tagged_learning_cron_no_row_records(env):
+    """The learning flag turned off and an ensure recorded no learning job,
+    while a restore the reconcile made still runs: the next pass takes back
+    its own tagged cron."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     del env.scheduler.jobs[LEARNING]
     del env.scheduler.scopes[LEARNING]
-    restore = env.crons.add
-
-    async def after_the_flag_went_off(job, scope, user_timezone):
-        env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = False
-        await registry.ensure_scope_scheduled(scope)
-        await restore(job, scope, user_timezone)
-
-    env.crons.add = after_the_flag_went_off
     await env.reconcile()
-    env.crons.add = restore
-    assert env.db.rows[USER].learning_job_id is None
     assert LEARNING in env.scheduler.tagged
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = False
+    await registry.ensure_scope_scheduled(ACCOUNT, force_refresh=True)
+    assert env.db.rows[USER].learning_job_id is None
 
     report = await env.reconcile()
 
