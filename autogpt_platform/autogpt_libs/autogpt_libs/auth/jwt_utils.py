@@ -50,6 +50,9 @@ async def get_jwt_payload(
     - Verifying the JWT token's signature
     - Decoding the JWT token's payload
 
+    Reuses validation for the same bearer only within this request. The next
+    request always rechecks session authority, including revocation.
+
     :param credentials: HTTP Authorization credentials from bearer token
     :return: JWT payload dictionary
     :raises HTTPException: 401 if authentication fails
@@ -57,8 +60,20 @@ async def get_jwt_payload(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 
+    validations: dict[str, asyncio.Task[dict[str, Any]]] = request.scope.setdefault(
+        "_autogpt_jwt_payload_tasks", {}
+    )
+    token = credentials.credentials
+    if token not in validations:
+        validations[token] = asyncio.create_task(
+            _validate_request_token(request, token)
+        )
+    return await validations[token]
+
+
+async def _validate_request_token(request: Request, token: str) -> dict[str, Any]:
     try:
-        payload = await parse_jwt_token_async(credentials.credentials)
+        payload = await parse_jwt_token_async(token)
         logger.debug("Token decoded successfully")
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e
