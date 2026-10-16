@@ -300,15 +300,22 @@ Return visits are `$pageview`; account-level retention is computed in
 
 ## LLM analytics
 
-AutoPilot's LLM calls and the ratings of its replies, in PostHog's LLM
-analytics (SECRT-2730). Both are sent server-side for every user, whatever
-their cookie consent, like every backend event. The event names are
-PostHog's own, not the analytics plan's.
+AutoPilot's LLM calls, tool calls and the ratings of its replies, in
+PostHog's LLM analytics (SECRT-2730, SECRT-2979). All are sent server-side
+for every user, whatever their cookie consent, like every backend event. The
+event names are PostHog's own, not the analytics plan's.
+
+Each AutoPilot reply is one trace, whose id is the turn id of the reply
+(`$ai_trace_id`). An expert subtask or sub-session the reply spawns joins the
+same trace. No event carries a tool's input or output, or an error message:
+they can hold Gmail or Drive content (Google Limited Use).
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
-| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `system`), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). |
+| `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools), `$ai_error` = the exception type when it raised; its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span (or the trace root for a spawn promoted from the queue), `depth`, plus the `$ai_trace` turn properties | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
 What joins them:
 
@@ -317,8 +324,12 @@ What joins them:
   both land on the person with their product events and replays.
 - **Chat.** `$ai_session_id` is the chat session id on both, so a chat's
   generations and its ratings group in the Sessions tab and join on it.
-  `message_id` says which reply was rated; a rating carries no
-  `$ai_trace_id`, since Broadcast assigns the generations' trace ids.
+  `message_id` says which reply was rated.
+- **Reply.** `$ai_trace_id` is the reply's turn id on its generations, its
+  spans, its `$ai_trace` and its ratings, so they form one trace.
+  Generations sit at the trace's top level: Broadcast has no field for a
+  generation's parent span, so a subtask's model calls are not nested under
+  its span.
 - **Environment.** OpenRouter forwards our `trace` keys as `metadata_<key>`,
   so a generation's environment is `metadata_environment`, not the
   `environment` base property; `$ai_metric` has both base properties as usual.

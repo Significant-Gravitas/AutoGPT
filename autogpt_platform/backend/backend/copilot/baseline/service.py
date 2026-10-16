@@ -30,6 +30,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -2595,6 +2596,7 @@ async def stream_chat_completion_baseline(
                     # Persist the assistant/tool flush BEFORE the pending append
                     # so a later pending-persist failure can roll back the
                     # pending rows without also discarding LLM output.
+                    stamp_turn_trace_id(current_session.messages, turn_start)
                     current_session = await persist_session_safe(
                         current_session, "[Baseline]"
                     )
@@ -2760,6 +2762,7 @@ async def stream_chat_completion_baseline(
             retryable=failure.retryable if failure is not None else True,
             failure=failure.as_part() if failure is not None else None,
         ):
+            stamp_turn_trace_id(_failed_session.messages, turn_start)
             try:
                 await upsert_chat_session(_failed_session)
             except Exception as marker_err:
@@ -2941,6 +2944,7 @@ async def stream_chat_completion_baseline(
                     llm_credential_id=state.llm_credential_id,
                 )
             )
+        stamp_turn_trace_id(session.messages, turn_start)
         try:
             await upsert_chat_session(session)
             final_checkpoint = turn_checkpoint(session.messages, turn_start)

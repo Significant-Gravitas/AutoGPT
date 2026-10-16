@@ -22,6 +22,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
@@ -376,6 +377,12 @@ class CoPilotExecutionEntry(BaseModel):
     enqueued_at: float = 0.0
     """Unix-epoch seconds when the turn was published, for its queue wait."""
 
+    ai_parent_span_id: str | None = None
+    """The PostHog span of the tool call that spawned this turn, which the
+    turn's own span nests under in the reply's trace (``copilot.ai_spans``).
+    ``None`` for a root turn, a spawn promoted from the turn queue and entries
+    queued before the field existed."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -411,6 +418,7 @@ async def enqueue_copilot_turn(
     scheduled: ScheduledTurnOrigin | None = None,
     tool_name: str | None = None,
     trace_headers: Mapping[str, str] | None = None,
+    ai_parent_span_id: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -469,6 +477,7 @@ async def enqueue_copilot_turn(
         enqueued_at=time.time(),
         cost_context=await capture_cost_context(user_id),
         tool_name=tool_name,
+        ai_parent_span_id=ai_parent_span_id,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -700,6 +709,9 @@ async def dispatch_turn(
             scheduled=scheduled,
             tool_name=tool_name,
             trace_headers=trace_headers,
+            # Same rule as the Sentry trace: a turn derived from the caller's
+            # context nests under the caller's running tool call.
+            ai_parent_span_id=current_span_id() if trace_headers is None else None,
         )
         slot.keep()
         committed = True

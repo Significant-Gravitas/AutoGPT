@@ -16,6 +16,7 @@ from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
+from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
@@ -837,7 +838,9 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
-            set_turn_trace_id(entry.turn_id)
+            # A subtask's calls join the trace of the reply it works for.
+            set_turn_trace_id(trace_id_for(entry.turn_id, entry.envelope))
+            set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
             raw_stream = stream_fn(
@@ -931,7 +934,9 @@ class CoPilotProcessor:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
                 # After the release, which can still fail the turn.
-                turn.set_outcome(error_msg, stream_registry.CANCELLED_MESSAGE)
+                turn.set_outcome(
+                    error_msg, stream_registry.CANCELLED_MESSAGE, error_code
+                )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
                 try:

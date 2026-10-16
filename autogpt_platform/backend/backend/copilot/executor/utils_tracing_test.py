@@ -7,8 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.ai_spans import current_span_id, set_turn_span, tool_span
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.tree import root_envelope
 from backend.util import tracing
 
@@ -113,3 +115,50 @@ async def test_dispatch_continues_only_the_trace_of_the_turns_cause(
 
     trace_headers = enqueue.await_args.kwargs["trace_headers"]
     assert trace_headers == (None if continues_caller else {})
+
+
+@pytest.mark.parametrize(
+    "dispatch_kwargs, nests_under_the_caller",
+    [
+        ({}, True),
+        ({"root": True}, False),
+        ({"envelope": root_envelope("held")}, False),
+    ],
+    ids=["derived-from-caller", "minted-root", "re-admitted"],
+)
+@pytest.mark.asyncio
+async def test_a_spawned_turn_nests_under_the_tool_call_that_started_it(
+    copilot_queue, dispatch_kwargs: dict, nests_under_the_caller: bool
+) -> None:
+    """Same rule as the Sentry trace: only a turn derived from the caller's
+    context is the caller's subtask in PostHog."""
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch.object(utils, "readmit_turn", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(utils, "capture_cost_context", new=AsyncMock(return_value=None)),
+    ):
+        set_turn_trace_id("parent-turn")
+        set_turn_span("parent-turn")
+        try:
+            with tool_span("delegate_to_expert", user_id="u1", session_id="s0"):
+                spawning_tool = current_span_id()
+                await utils.dispatch_turn(
+                    MagicMock(),
+                    session_id="s1",
+                    user_id="u1",
+                    turn_id="t1",
+                    message="hi",
+                    **dispatch_kwargs,
+                )
+        finally:
+            set_turn_trace_id(None)
+            set_turn_span(None)
+
+    entry = _published_entry(copilot_queue.publish_message)
+    expected = spawning_tool if nests_under_the_caller else None
+    assert entry.ai_parent_span_id == expected

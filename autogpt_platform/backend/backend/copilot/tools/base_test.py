@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import ai_spans
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -709,3 +711,79 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+class TestPostHogToolSpans:
+    """Every platform tool call, on either engine, is a PostHog ``$ai_span``
+    in the reply's trace, and none carries the tool's input or output."""
+
+    @staticmethod
+    def _tool(response: ToolResponseBase | None = None, error: bool = False):
+        class _Tool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "gmail_read"
+
+            @property
+            def description(self) -> str:
+                return "reads mail"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                if error:
+                    raise RuntimeError("could not read the inbox")
+                assert response is not None
+                return response
+
+        return _Tool()
+
+    @pytest.fixture
+    def capture(self, mocker):
+        set_turn_trace_id("turn-1")
+        ai_spans.set_turn_span("turn-1")
+        yield mocker.patch.object(ai_spans.posthog_client, "capture")
+        set_turn_trace_id(None)
+        ai_spans.set_turn_span(None)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
+        secret = "Subject: quarterly numbers"
+        tool = self._tool(
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=secret)
+        )
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1", query=secret)
+
+        capture.assert_called_once()
+        _, event, properties = capture.call_args.args
+        assert event == "$ai_span"
+        assert properties["$ai_span_name"] == "gmail_read"
+        assert properties["$ai_trace_id"] == "turn-1"
+        assert properties["$ai_parent_id"] == "turn-1"
+        assert properties["$ai_session_id"] == "s1"
+        assert properties["$ai_is_error"] is False
+        assert secret not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
+        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "no such label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_raises_failed_without_its_message(self, capture):
+        tool = self._tool(error=True)
+
+        result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "inbox" not in repr(properties)

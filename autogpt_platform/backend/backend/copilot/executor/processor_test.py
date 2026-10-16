@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -42,6 +43,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.tree import TurnEnvelope
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -234,6 +236,7 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
             seen["trace_id"] = turn_trace_id()
+            seen["span_id"] = current_span_id()
             return MagicMock()
 
         with (
@@ -281,6 +284,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {"exa": pin},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -292,6 +296,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -310,6 +315,24 @@ class TestExecuteAsyncScheduledTurnContext:
         seen = await self._seen_by_the_turn(entry)
 
         assert seen["trace_id"] == "turn-42"
+
+    @pytest.mark.asyncio
+    async def test_a_subtask_joins_the_trace_of_the_reply_it_works_for(
+        self,
+    ) -> None:
+        """Its model and tool calls group with the reply at its tree's root,
+        and its tool calls nest under the subtask's own span."""
+        entry = _make_entry().model_copy(
+            update={
+                "turn_id": "child-turn",
+                "envelope": TurnEnvelope(tree_id="root-turn", depth=1),
+            }
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "root-turn"
+        assert seen["span_id"] == "child-turn"
 
 
 class TestExecuteAsyncAclose:
