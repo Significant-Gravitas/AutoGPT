@@ -251,10 +251,20 @@ class ChatConfig(BaseSettings):
         default=100,
         ge=1,
         le=10000,
-        description="Maximum number of tool-call rounds per turn on every "
-        "engine, including Codex models on the SDK path, where each Codex "
-        "function call counts as one round. Prevents runaway tool loops from "
-        "burning budget. Override via CHAT_AGENT_MAX_TURNS.",
+        description="Maximum number of tool-call rounds per turn where no "
+        "spend governor runs: the baseline engine and the orchestrator block's "
+        "CLI launch. AutoPilot's SDK turns, Codex models included, check in at "
+        "``sdk_step_checkin`` instead. Override via CHAT_AGENT_MAX_TURNS.",
+    )
+    sdk_step_checkin: int = Field(
+        default=450,
+        ge=1,
+        le=10000,
+        description="Model calls an SDK turn may make before its tools are "
+        "refused for a check-in: the agent writes a progress summary and the "
+        "user can choose to keep going, which starts a fresh count. The CLI's "
+        "own max_turns sits a little above this as a backstop. Spend, not "
+        "steps, is what bounds cost: the governor lands a turn at its budget.",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,

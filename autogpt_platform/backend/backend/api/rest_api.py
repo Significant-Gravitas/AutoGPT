@@ -36,6 +36,8 @@ import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.at_reset as chat_at_reset
+import backend.api.features.chat.continuation as chat_continuation
 import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
@@ -574,6 +576,16 @@ app.include_router(
 )
 app.include_router(
     chat_feedback.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_at_reset.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_continuation.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )

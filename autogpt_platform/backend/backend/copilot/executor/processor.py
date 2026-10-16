@@ -552,6 +552,8 @@ class CoPilotProcessor:
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
+        # Re-published with the error: the client keys its dialogs on the code.
+        error_code: str | None = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
@@ -764,6 +766,7 @@ class CoPilotProcessor:
                     # not publish StreamError — that's done by mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
+                        error_code = chunk.code
                         break
                     if scheduled_watch is not None:
                         scheduled_watch.observe(chunk)
@@ -810,7 +813,10 @@ class CoPilotProcessor:
                     scheduled_watch.report(error_msg)
                 try:
                     await stream_registry.mark_session_completed(
-                        entry.session_id, error_message=error_msg, turn_id=entry.turn_id
+                        entry.session_id,
+                        error_message=error_msg,
+                        error_code=error_code,
+                        turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")

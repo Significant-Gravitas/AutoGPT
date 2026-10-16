@@ -532,6 +532,7 @@ async def schedule_turn(
     delegated: bool = False,
     impersonated: bool = False,
     root: bool = False,
+    tainted: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -600,6 +601,7 @@ async def schedule_turn(
             scheduled=scheduled,
             impersonated=impersonated,
             root=root,
+            tainted=tainted,
         )
 
 
@@ -648,6 +650,7 @@ async def dispatch_turn(
     impersonated: bool = False,
     voice: bool = False,
     from_chat_platform: bool = False,
+    tainted: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -675,6 +678,10 @@ async def dispatch_turn(
     call was held under): it is re-checked instead, narrowed by today's
     ``permissions``, and its node is not released if dispatch fails.
 
+    ``tainted`` mints the envelope tainted, as ``from_chat_platform`` does: a
+    turn that picks a paused one's work back up (Keep going, the resume at the
+    budget reset) keeps that turn's taint.
+
     The same rule decides the turn's Sentry trace: it continues the caller's
     only when it derives its envelope from the caller's context, because a
     root or a re-admitted turn was caused by something other than the code
@@ -694,7 +701,7 @@ async def dispatch_turn(
             permissions,
             spawn,
             root=root,
-            tainted=from_chat_platform,
+            tainted=from_chat_platform or tainted,
         )
     else:
         await readmit_turn(envelope, user_id=user_id)
@@ -897,6 +904,8 @@ async def schedule_chat_turn(
     message_id: str | None = None,
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
+    require_fresh_slot: bool = False,
+    dedupe_content: bool = True,
     is_user_message: bool = True,
     expert_id: str | None = None,
     session_origin: str | None = None,
@@ -904,6 +913,7 @@ async def schedule_chat_turn(
     context: dict[str, str] | None = None,
     voice: bool = False,
     from_chat_platform: bool = False,
+    tainted: bool = False,
     capacity: int | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
@@ -924,6 +934,9 @@ async def schedule_chat_turn(
     subscribe to the existing in-flight turn's stream instead of opening
     a new one). ``message_already_persisted`` re-dispatches an orphaned
     kickoff row only when this caller atomically admits the idle session.
+    ``require_fresh_slot`` applies the same rule to a new message: when
+    another turn already holds the session, return ``None`` before anything
+    is saved. ``dedupe_content`` is passed to :func:`append_and_save_message`.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -953,7 +966,7 @@ async def schedule_chat_turn(
         message = strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
-        if message_already_persisted and not slot.admitted:
+        if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         is_duplicate = False
         if message and not message_already_persisted:
@@ -964,7 +977,9 @@ async def schedule_chat_turn(
                 metadata=message_metadata,
             )
             is_duplicate = (
-                await append_and_save_message(session_id, chat_message)
+                await append_and_save_message(
+                    session_id, chat_message, dedupe_content=dedupe_content
+                )
             ) is None
             if not is_duplicate and is_user_message:
                 track_user_message(
@@ -999,6 +1014,7 @@ async def schedule_chat_turn(
             impersonated=impersonated,
             voice=spoken,
             from_chat_platform=from_chat_platform,
+            tainted=tainted,
         )
         return turn_id
 

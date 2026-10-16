@@ -57,6 +57,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.copilot.turn_budget import TurnBudget
 from backend.util import json
 from backend.util.prompt import CompressResult
 
@@ -742,6 +743,7 @@ def _make_sdk_patches(
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 # A real string: compaction's model; an auto-MagicMock
                 # would leak into the compressor's call.
@@ -749,13 +751,15 @@ def _make_sdk_patches(
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
-        # Bypass dynamic budget resolution — the helper hits Redis via
-        # get_global_rate_limits / get_remaining_usd_budget, which the
-        # retry_scenarios mocks don't stand up.  Static cap is fine for
-        # retry-flow assertions (covered directly in service_test).
+        # Bypass budget resolution — it hits Redis via the rate-limit
+        # helpers, which the retry_scenarios mocks don't stand up. The task
+        # cap is fine for retry-flow assertions (covered in turn_budget_test).
         (
-            f"{_SVC}._resolve_dynamic_max_budget_usd",
-            dict(new_callable=AsyncMock, return_value=100.0),
+            f"{_SVC}.resolve_turn_budget",
+            dict(
+                new_callable=AsyncMock,
+                return_value=TurnBudget(usd=100.0, limiting="task"),
+            ),
         ),
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.

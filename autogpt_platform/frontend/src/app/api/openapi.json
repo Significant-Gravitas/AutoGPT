@@ -4198,6 +4198,141 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/at-reset": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List turns at budget reset",
+        "description": "The chat's pending resume and send at the budget reset.",
+        "operationId": "getV2List turns at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtResetTurnsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Schedule turn at budget reset",
+        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. A chat has\nat most one of each: a resume set again replaces the earlier one, and a\nsend joins the message already waiting, so nothing written meanwhile is\nlost. Sending a message in the chat cancels a pending resume.",
+        "operationId": "postV2Schedule turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AtResetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AtResetTurn" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found, or not writable" },
+          "409": {
+            "description": "\"not_out_of_budget\": nothing to wait for, so carry on now. \"no_reset\": the allowance never refills (a trial)."
+          },
+          "413": {
+            "description": "\"message_too_long\": the message waiting plus this one would be longer than a single message may be"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Usage could not be read; retry shortly" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/at-reset/{kind}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel turn at budget reset",
+        "description": "Cancel the chat's resume or send at the budget reset; one that isn't\nset is already cancelled.",
+        "operationId": "deleteV2Cancel turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": ["resume", "send"],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
@@ -4326,6 +4461,72 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/continue": {
+      "post": {
+        "tags": ["v2", "chat"],
+        "summary": "Continue Session",
+        "description": "Continue the chat's task from the checkpoint it paused at.",
+        "operationId": "postV2ContinueSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ContinueSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "A turn is already running in this chat (turn_in_progress), or the chat runs on a connection that can't continue a task (unsupported_connection)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": {
+            "description": "Usage limit or concurrent-turn limit reached"
+          },
+          "503": {
+            "description": "Chat service degraded; retry after Retry-After"
           }
         }
       }
@@ -6089,6 +6290,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SubscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/subscription/preview": {
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Review the prorated charge for a paid Pro-to-Max upgrade",
+        "operationId": "previewSubscriptionUpgrade",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionUpgradePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionUpgradePreview"
                 }
               }
             }
@@ -18635,6 +18877,31 @@
             "type": "string",
             "format": "date-time",
             "title": "Expires At"
+          },
+          "trial_ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Trial Ends At"
+          },
+          "period_starts_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Period Starts At"
+          },
+          "next_payment_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Payment At"
+          },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
           }
         },
         "type": "object",
@@ -19095,6 +19362,63 @@
         "type": "object",
         "required": ["pod_id"],
         "title": "AssignPodRequest"
+      },
+      "AtResetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind",
+            "description": "\"resume\" picks the paused task back up; \"send\" sends ``message`` as the user's."
+          },
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64000 },
+              { "type": "null" }
+            ],
+            "title": "Message",
+            "description": "What to send. Required for send, ignored for resume."
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "AtResetRequest",
+        "description": "A turn to run when the budget resets."
+      },
+      "AtResetTurn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind"
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "run_at"],
+        "title": "AtResetTurn",
+        "description": "A turn set to run when the budget resets."
+      },
+      "AtResetTurnsResponse": {
+        "properties": {
+          "jobs": {
+            "items": { "$ref": "#/components/schemas/AtResetTurn" },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "type": "object",
+        "required": ["jobs"],
+        "title": "AtResetTurnsResponse",
+        "description": "The chat's turns set for the budget reset, at most one of each kind."
       },
       "AuthEmailRequest": {
         "properties": {
@@ -20967,6 +21291,32 @@
         ],
         "title": "ContentType"
       },
+      "ContinueSessionRequest": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "advanced"] },
+              { "type": "null" }
+            ],
+            "title": "Model",
+            "description": "Model tier the continuation runs on, as for a message."
+          }
+        },
+        "type": "object",
+        "title": "ContinueSessionRequest"
+      },
+      "ContinueSessionResponse": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "The continuation turn; attach to its stream."
+          }
+        },
+        "type": "object",
+        "required": ["turn_id"],
+        "title": "ContinueSessionResponse"
+      },
       "CopilotSkillDetail": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -21117,6 +21467,19 @@
             },
             "type": "object",
             "title": "Credential Pins"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["followup", "resume", "send"],
+            "title": "Purpose",
+            "default": "followup"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -32994,6 +33357,20 @@
             "title": "Billing Cycle",
             "default": "monthly"
           },
+          "proration_date": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Proration Date"
+          },
+          "preview_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+              { "type": "null" }
+            ],
+            "title": "Preview Id"
+          },
           "surface": {
             "anyOf": [
               {
@@ -33009,6 +33386,74 @@
         "type": "object",
         "required": ["tier"],
         "title": "SubscriptionTierRequest"
+      },
+      "SubscriptionUpgradePreview": {
+        "properties": {
+          "preview_id": { "type": "string", "title": "Preview Id" },
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
+          },
+          "tax_included": { "type": "boolean", "title": "Tax Included" },
+          "adjustment_amount": {
+            "type": "integer",
+            "title": "Adjustment Amount"
+          },
+          "currency": { "type": "string", "title": "Currency" },
+          "proration_date": { "type": "integer", "title": "Proration Date" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "expires_at": { "type": "integer", "title": "Expires At" },
+          "recurring_amount": {
+            "type": "integer",
+            "title": "Recurring Amount"
+          },
+          "recurring_tax_included": {
+            "type": "boolean",
+            "title": "Recurring Tax Included"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "lines": {
+            "items": { "$ref": "#/components/schemas/UpgradeProrationLine" },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preview_id",
+          "amount_due",
+          "tax_amount",
+          "tax_included",
+          "adjustment_amount",
+          "currency",
+          "proration_date",
+          "period_end",
+          "expires_at",
+          "recurring_amount",
+          "recurring_tax_included",
+          "billing_cycle",
+          "lines"
+        ],
+        "title": "SubscriptionUpgradePreview"
+      },
+      "SubscriptionUpgradePreviewRequest": {
+        "properties": {
+          "tier": { "type": "string", "const": "MAX", "title": "Tier" },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionUpgradePreviewRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -34194,6 +34639,16 @@
         ],
         "title": "TrialOfferResponse"
       },
+      "TrialPaymentDue": {
+        "properties": {
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "currency": { "type": "string", "title": "Currency" },
+          "payment_url": { "type": "string", "title": "Payment Url" }
+        },
+        "type": "object",
+        "required": ["amount_due", "currency", "payment_url"],
+        "title": "TrialPaymentDue"
+      },
       "TrialRejectionReason": {
         "type": "string",
         "enum": ["intro_offer_already_used", "card_verification_failed"],
@@ -34238,6 +34693,13 @@
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Allowance Used Percent"
           },
+          "usage_policy": {
+            "anyOf": [
+              { "type": "string", "enum": ["lifetime", "rolling"] },
+              { "type": "null" }
+            ],
+            "title": "Usage Policy"
+          },
           "active": { "type": "boolean", "title": "Active", "default": false },
           "converted": {
             "type": "boolean",
@@ -34248,6 +34710,12 @@
             "type": "boolean",
             "title": "Onboarding Credits Previously Received",
             "default": false
+          },
+          "payment_due": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialPaymentDue" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -35104,6 +35572,24 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UpgradeProrationLine": {
+        "properties": {
+          "description": { "type": "string", "title": "Description" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "period_start": { "type": "integer", "title": "Period Start" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "proration": { "type": "boolean", "title": "Proration" }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "amount",
+          "period_start",
+          "period_end",
+          "proration"
+        ],
+        "title": "UpgradeProrationLine"
       },
       "UploadCopilotSkillRequest": {
         "properties": { "content": { "type": "string", "title": "Content" } },
