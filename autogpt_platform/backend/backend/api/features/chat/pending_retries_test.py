@@ -247,12 +247,12 @@ async def test_internal_send_cannot_evict_http_send(
 
 
 @pytest.mark.parametrize("endpoint", ["messages/pending", "stream"])
-@pytest.mark.parametrize("settlement_delay", [0, 0.3])
+@pytest.mark.parametrize("expire_before_settlement", [False, True])
 async def test_restored_receipt_expires_with_undrained_queue(
     pending_client: tuple[AsyncClient, str, str],
     monkeypatch: pytest.MonkeyPatch,
     endpoint: str,
-    settlement_delay: float,
+    expire_before_settlement: bool,
 ) -> None:
     client, user_id, session_id = pending_client
     path = f"/sessions/{session_id}/messages/pending"
@@ -262,17 +262,24 @@ async def test_restored_receipt_expires_with_undrained_queue(
     redis = await get_redis_async()
     await redis.delete(_client_message_key(session_id, message_id))
     await redis.delete(pending_message_receipt_key(session_id, message_id))
-    await redis.pexpire(f"copilot:pending:{{{session_id}}}", 200)
+    queue_key = f"copilot:pending:{{{session_id}}}"
+    await redis.pexpire(queue_key, 2000)
     original_cas = pending_messages.string_compare_and_set
 
+    async def wait_for_expiry() -> None:
+        async with asyncio.timeout(10):
+            while await redis.exists(queue_key):
+                await asyncio.sleep(0.01)
+
     async def delayed_settlement(*args: Any, **kwargs: Any) -> bool:
-        await asyncio.sleep(settlement_delay)
+        if expire_before_settlement:
+            await wait_for_expiry()
         return await original_cas(*args, **kwargs)
 
     with monkeypatch.context() as delay:
         delay.setattr(pending_messages, "string_compare_and_set", delayed_settlement)
         assert (await client.post(path, json=body)).status_code == 200
-    await asyncio.sleep(0.3)
+    await wait_for_expiry()
     assert await drain_pending_messages(session_id) == []
     assert not await pending_message_was_received(session_id, message_id)
     assert (

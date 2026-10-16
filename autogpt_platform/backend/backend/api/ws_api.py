@@ -86,13 +86,13 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     try:
         payload = await parse_jwt_token_async(token)
-        await require_active_auth_session(payload)
         user_id = payload.get("sub")
         if not user_id:
             await _close_authentication_failure(
                 websocket, code=4002, reason="Invalid token"
             )
             return ""
+        await require_active_auth_session(payload)
         return user_id
     except ValueError:
         await _close_authentication_failure(

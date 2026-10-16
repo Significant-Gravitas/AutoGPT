@@ -239,6 +239,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    auth_legacy_token_deadline: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
+            "during auth rollout. Zero rejects them immediately."
+        ),
+    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
