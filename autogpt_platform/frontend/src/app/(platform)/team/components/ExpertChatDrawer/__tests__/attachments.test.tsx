@@ -1,4 +1,5 @@
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
+import { getOrCreateCopilotChatRuntime } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
 import {
   markKickoffDone,
@@ -43,6 +44,8 @@ const RETRY_SESSION_ID = "session-zara-retry";
 const REMOVE_SESSION_ID = "session-zara-remove";
 const LEFT_SESSION_ID = "session-zara-left";
 const NEW_SESSION_ID = "session-zara-new";
+const REOPEN_RETRY_SESSION_ID = "session-zara-reopen-retry";
+const REOPEN_REMOVE_SESSION_ID = "session-zara-reopen-remove";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -588,6 +591,97 @@ describe("ExpertChatDrawer failed uploads", () => {
     expect(uploadedNames.filter((name) => name === "notes.pdf")).toEqual([
       "notes.pdf",
     ]);
+  });
+
+  async function failFollowUpThenReopen(sessionId: string, recorder: Recorder) {
+    const user = userEvent.setup();
+    const uploadedNames: string[] = [];
+    const firstReply = createStreamHold(3);
+    server.use(
+      existingThreadList(sessionId),
+      sessionHandler(sessionId),
+      uploadFailingNotesOnce(uploadedNames),
+      pendingHandler(recorder, sessionId),
+      streamHandler(recorder, sessionId, [firstReply.hold]),
+    );
+    const firstOpen = render(
+      <ExpertChatDrawer target={ZARA} onClose={() => {}} />,
+    );
+
+    const input = await enabledComposer();
+    await user.type(input, "hello{Enter}");
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) throw new Error("The composer has no file input");
+    await user.upload(
+      fileInput,
+      new File(["y".repeat(4096)], "notes.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText("notes.pdf");
+    await user.type(input, "queued with file{Enter}");
+    await screen.findByRole("button", { name: "Retry notes.pdf" });
+
+    firstOpen.unmount();
+    firstReply.release();
+    await waitFor(() =>
+      expect(getOrCreateCopilotChatRuntime(sessionId).chat.status).toBe(
+        "ready",
+      ),
+    );
+
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+    return { user, uploadedNames };
+  }
+
+  test("sends a failed follow-up retried after the panel was closed mid-reply and reopened", async () => {
+    const recorder = newRecorder();
+    const { user, uploadedNames } = await failFollowUpThenReopen(
+      REOPEN_RETRY_SESSION_ID,
+      recorder,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Retry notes.pdf" }),
+    );
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    expect(recorder.streamBodies[1]).toMatchObject({
+      message: "queued with file",
+      file_ids: [NOTES_FILE_ID],
+    });
+    expect(uploadedNames).toEqual(["notes.pdf", "notes.pdf"]);
+    expect(recorder.pendingPosts).toBe(0);
+    await waitFor(() =>
+      expect(
+        useCopilotStreamStore.getState().pendingUploadSends[
+          REOPEN_RETRY_SESSION_ID
+        ],
+      ).toBeUndefined(),
+    );
+  });
+
+  test("sends the text of a follow-up whose failed file is removed after the panel was reopened", async () => {
+    const recorder = newRecorder();
+    const { user } = await failFollowUpThenReopen(
+      REOPEN_REMOVE_SESSION_ID,
+      recorder,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Remove notes.pdf" }),
+    );
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    expect(recorder.streamBodies[1].message).toBe("queued with file");
+    expect(recorder.streamBodies[1].file_ids ?? []).toEqual([]);
+    await waitFor(() =>
+      expect(
+        useCopilotStreamStore.getState().pendingUploadSends[
+          REOPEN_REMOVE_SESSION_ID
+        ],
+      ).toBeUndefined(),
+    );
   });
 
   function startNewTaskIn(sessionId: string, recorder: Recorder) {
