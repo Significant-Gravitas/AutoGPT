@@ -25,6 +25,7 @@ export function RecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
+    completedSessionIDs,
     togglePin,
     editingSessionId,
     editingTitle,
@@ -70,6 +71,9 @@ export function RecentChats() {
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
+        isFinished={
+          completedSessionIDs.has(session.id) && session.id !== activeSessionId
+        }
         chatPinningEnabled={chatPinningEnabled}
         onPin={togglePin}
         onRename={startRename}

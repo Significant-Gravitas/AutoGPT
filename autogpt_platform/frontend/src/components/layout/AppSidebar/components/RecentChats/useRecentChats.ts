@@ -9,6 +9,7 @@ import {
   useSessionList,
 } from "@/app/(platform)/copilot/useSessionList";
 import { useSessionDeletion } from "@/app/(platform)/copilot/useSessionDeletion";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -23,6 +24,7 @@ export function useRecentChats() {
   const searchParams = useSearchParams();
   const activeSessionId =
     pathname === "/home" ? searchParams.get("sessionId") : null;
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -120,6 +122,7 @@ export function useRecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
+    completedSessionIDs,
     togglePin,
     editingSessionId,
     editingTitle,

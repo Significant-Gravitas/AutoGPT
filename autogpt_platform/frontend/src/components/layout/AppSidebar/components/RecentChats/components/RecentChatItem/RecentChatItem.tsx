@@ -17,6 +17,7 @@ import {
 import Link, { useLinkStatus } from "next/link";
 import { useRef } from "react";
 import {
+  CheckmarkCircle02Icon,
   Delete02Icon,
   Download04Icon,
   Loading03Icon,
@@ -48,6 +49,7 @@ interface Props {
   onCancelRename: () => void;
   isExporting: boolean;
   isDeleting: boolean;
+  isFinished: boolean;
   chatPinningEnabled: boolean;
   onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
@@ -81,6 +83,7 @@ export function RecentChatItem({
   onCancelRename,
   isExporting,
   isDeleting,
+  isFinished,
   chatPinningEnabled,
   onPin,
   onRename,
@@ -148,6 +151,13 @@ export function RecentChatItem({
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
           <span className="truncate">{title}</span>
+          {isFinished && !session.is_processing ? (
+            <Icon
+              icon={CheckmarkCircle02Icon}
+              aria-label="Finished"
+              className="ml-auto size-4 shrink-0 text-green-500 md:group-focus-within/menu-item:opacity-0 md:group-hover/menu-item:opacity-0"
+            />
+          ) : null}
           <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>

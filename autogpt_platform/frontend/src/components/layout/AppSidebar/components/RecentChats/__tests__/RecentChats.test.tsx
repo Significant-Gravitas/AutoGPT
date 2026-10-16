@@ -97,6 +97,29 @@ describe("RecentChats — grouped list", () => {
   });
 });
 
+describe("RecentChats — finished chats", () => {
+  afterEach(() => {
+    useCopilotUIStore.setState({ completedSessionIDs: new Set() });
+  });
+
+  it("marks chats that finished since they were last opened", async () => {
+    const sessions = [
+      makeSession({ id: "done", title: "Finished chat", updated_at: TODAY }),
+      makeSession({ id: "seen", title: "Seen chat", updated_at: TODAY }),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    );
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["done"]) });
+    renderRecentChats();
+
+    const finished = (await screen.findByText("Finished chat")).closest("li")!;
+    const seen = screen.getByText("Seen chat").closest("li")!;
+    expect(within(finished).getByLabelText("Finished")).toBeDefined();
+    expect(within(seen).queryByLabelText("Finished")).toBeNull();
+  });
+});
+
 describe("RecentChats — pinned split", () => {
   const pinnedAndDated = [
     makeSession({
