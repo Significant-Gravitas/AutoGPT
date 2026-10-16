@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
 import type { MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
@@ -29,10 +34,10 @@ const GOOGLE_ITEM: MentionOption = {
   },
 };
 
-function renderDropdown(
-  overrides: Partial<Parameters<typeof MentionDropdown>[0]> = {},
-) {
-  const props = {
+type DropdownProps = Parameters<typeof MentionDropdown>[0];
+
+function dropdownProps(overrides: Partial<DropdownProps> = {}): DropdownProps {
+  return {
     options: [] as MentionOption[],
     showFiles: true,
     hasIntegrations: false,
@@ -46,8 +51,31 @@ function renderDropdown(
     onHighlight: vi.fn(),
     ...overrides,
   };
+}
+
+function renderDropdown(overrides: Partial<DropdownProps> = {}) {
+  const props = dropdownProps(overrides);
   render(<MentionDropdown {...props} />);
   return props;
+}
+
+function ComposerWithDropdown({
+  open,
+  onSelect = vi.fn(),
+}: {
+  open: boolean;
+  onSelect?: DropdownProps["onSelect"];
+}) {
+  return (
+    <form className="relative">
+      {open && (
+        <MentionDropdown
+          {...dropdownProps({ options: [FILE_ITEM], onSelect })}
+        />
+      )}
+      <textarea aria-label="Chat message" />
+    </form>
+  );
 }
 
 afterEach(() => {
@@ -209,6 +237,43 @@ describe("MentionDropdown", () => {
     ]);
     expect(screen.getByText("Integrations")).toBeTruthy();
     expect(screen.getByText("Files")).toBeTruthy();
+  });
+
+  it("renders the list outside a scrolling ancestor so it isn't clipped", () => {
+    render(
+      <div data-testid="scroller" className="overflow-y-auto">
+        <form className="relative">
+          <MentionDropdown {...dropdownProps({ options: [FILE_ITEM] })} />
+        </form>
+      </div>,
+    );
+    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
+    expect(screen.getByTestId("scroller").contains(list)).toBe(false);
+  });
+
+  it("keeps focus in the chat textbox when the list opens", () => {
+    const { rerender } = render(<ComposerWithDropdown open={false} />);
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    rerender(<ComposerWithDropdown open />);
+    expect(document.activeElement).toBe(textbox);
+    const list = screen.getByRole("listbox", { name: "Mention suggestions" });
+    expect(
+      within(list).getByRole("option", { name: /alpha\.txt/ }),
+    ).toBeTruthy();
+  });
+
+  it("selects an option on mousedown without moving focus", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ComposerWithDropdown open={false} onSelect={onSelect} />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    rerender(<ComposerWithDropdown open onSelect={onSelect} />);
+    fireEvent.mouseDown(screen.getByRole("option", { name: /alpha\.txt/ }));
+    expect(onSelect).toHaveBeenCalledWith(FILE_ITEM);
+    expect(document.activeElement).toBe(textbox);
   });
 
   it("selects a folder option on mousedown", () => {
