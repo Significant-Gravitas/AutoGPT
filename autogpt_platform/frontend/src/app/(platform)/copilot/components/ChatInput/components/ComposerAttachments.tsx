@@ -66,7 +66,7 @@ export function ComposerAttachments({
             ref={listRef}
             aria-label="Attachments"
             className={cn(
-              "flex max-h-[min(40vh,14rem)] w-full flex-wrap items-center gap-2 overflow-y-auto px-3 pb-1 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+              "relative flex max-h-[min(40vh,14rem)] w-full flex-wrap items-center gap-2 overflow-y-auto px-3 pb-1 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
               stacked && "p-0",
             )}
           >
