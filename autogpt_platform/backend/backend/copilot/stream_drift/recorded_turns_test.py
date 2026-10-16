@@ -169,7 +169,7 @@ async def test_baseline_drain_turn(
     monkeypatch.setattr(
         baseline,
         "drain_pending_safe",
-        AsyncMock(return_value=[PendingMessage(content="Keep it short.")]),
+        AsyncMock(side_effect=[[PendingMessage(content="Keep it short.")], []]),
     )
     monkeypatch.setattr(
         baseline,
