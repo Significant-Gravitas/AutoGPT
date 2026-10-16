@@ -2325,6 +2325,6 @@ async def test_delete_chat_session_not_found_runs_no_cleanup(
     deleted = await delete_chat_session("sess-missing", "user-1")
 
     assert deleted is False
-    redis.delete.assert_not_awaited()
-    close_browser.assert_not_awaited()
-    delete_embedding.assert_not_awaited()
+    redis.delete.assert_not_called()
+    close_browser.assert_not_called()
+    delete_embedding.assert_not_called()
