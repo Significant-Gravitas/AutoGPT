@@ -641,6 +641,7 @@ class CoPilotProcessor:
                 or session.metadata.llm_credential_id != entry.llm_credential_id
             ):
                 raise RuntimeError("codex_session_route_mismatch")
+            turn.describe_chat(session)
 
             session = await _normalize_private_expert_session_tenancy(session)
             if entry.llm_auth_provider == "platform":

@@ -111,6 +111,7 @@ from backend.copilot.response_model import (
     StreamStart,
     StreamStartStep,
     StreamStatus,
+    StreamTextDelta,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.session_permissions import resolve_session_permissions
@@ -2171,6 +2172,7 @@ async def stream_chat_post(
         subscriber_queue = None
         first_chunk_yielded = False
         first_token_yielded = False
+        first_text_yielded = False
         chunks_yielded = 0
         try:
             # Subscribe from the position we captured before enqueuing
@@ -2221,6 +2223,15 @@ async def stream_chat_post(
                         first_token_yielded = True
                         tracing.set_timing(
                             "copilot.stream.ttft_ms",
+                            (time_module.perf_counter() - stream_start_time) * 1000,
+                            span=stream_transaction,
+                        )
+                    # Reasoning and tool calls count as the first token; the
+                    # answer starts with the first text.
+                    if not first_text_yielded and isinstance(chunk, StreamTextDelta):
+                        first_text_yielded = True
+                        tracing.set_timing(
+                            "copilot.stream.first_text_ms",
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )
