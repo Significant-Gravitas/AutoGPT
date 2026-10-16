@@ -23,7 +23,9 @@ import {
 } from "../../../helpers/sendWithAttachments";
 import { classifyArtifact } from "../../ArtifactPanel/helpers";
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
+import { focusAfterRemoving } from "./pendingUploadFocus";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { useRef } from "react";
 
 interface Props {
   pendingSend: PendingUploadSend;
@@ -65,18 +67,32 @@ interface CardProps {
 }
 
 function PendingArtifactCard({ attachment }: CardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const classification = classifyArtifact(
     attachment.mediaType,
     attachment.name,
     attachment.sizeBytes,
   );
   const isFailed = attachment.status === "failed";
+
+  function handleRetry() {
+    cardRef.current?.focus();
+    retryPendingUpload(attachment.id);
+  }
+
+  function handleRemove() {
+    focusAfterRemoving(cardRef.current);
+    removePendingUpload(attachment.id);
+  }
+
   return (
     <div
+      ref={cardRef}
+      tabIndex={-1}
       data-testid="pending-upload-attachment"
       data-status={attachment.status}
       className={cn(
-        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left",
+        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
         isFailed ? "border-red-200" : "border-zinc-200",
       )}
     >
@@ -104,12 +120,21 @@ function PendingArtifactCard({ attachment }: CardProps) {
           </p>
         )}
       </div>
-      <UploadStatus attachment={attachment} />
+      <UploadStatus
+        attachment={attachment}
+        onRetry={handleRetry}
+        onRemove={handleRemove}
+      />
     </div>
   );
 }
 
-function UploadStatus({ attachment }: CardProps) {
+interface StatusProps extends CardProps {
+  onRetry: () => void;
+  onRemove: () => void;
+}
+
+function UploadStatus({ attachment, onRetry, onRemove }: StatusProps) {
   if (attachment.status === "uploading")
     return (
       <span className="flex shrink-0 items-center">
@@ -141,7 +166,8 @@ function UploadStatus({ attachment }: CardProps) {
         size="xs"
         leadingIcon={RefreshIcon}
         aria-label={`Retry ${attachment.name}`}
-        onClick={() => retryPendingUpload(attachment.id)}
+        data-retry-upload
+        onClick={onRetry}
       >
         <span className="hidden sm:inline">Retry</span>
       </Button>
@@ -149,7 +175,7 @@ function UploadStatus({ attachment }: CardProps) {
         variant="ghost"
         size="icon-xs"
         aria-label={`Remove ${attachment.name}`}
-        onClick={() => removePendingUpload(attachment.id)}
+        onClick={onRemove}
       >
         <Icon icon={Cancel01Icon} size={14} aria-hidden />
       </Button>
@@ -215,7 +241,10 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
             {label}
           </span>
           {isWaitingOnUser ? (
-            <p aria-hidden className="text-sm text-zinc-600">
+            <p
+              aria-hidden
+              className="text-sm text-zinc-600 [overflow-wrap:anywhere]"
+            >
               {label}
             </p>
           ) : (

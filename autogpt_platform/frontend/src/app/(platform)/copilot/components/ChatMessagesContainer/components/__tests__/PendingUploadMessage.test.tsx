@@ -190,6 +190,58 @@ describe("PendingUploadMessage", () => {
     );
   });
 
+  it("keeps focus on the card whose upload is retried", () => {
+    render(
+      <PendingUploadMessage
+        pendingSend={pending([
+          { ...attachments[0], status: "failed" },
+          attachments[3],
+        ])}
+      />,
+    );
+
+    const failed = cardFor("talk.pdf");
+    within(failed).getByRole("button", { name: "Retry talk.pdf" }).focus();
+    fireEvent.click(
+      within(failed).getByRole("button", { name: "Retry talk.pdf" }),
+    );
+
+    expect(document.activeElement).toBe(failed);
+  });
+
+  it("moves focus to the next failed file's Retry when a file is removed", () => {
+    render(
+      <PendingUploadMessage
+        pendingSend={pending([
+          { ...attachments[0], status: "failed" },
+          attachments[3],
+          { ...attachments[1], status: "failed" },
+        ])}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove talk.pdf" }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Retry icon.png" }),
+    );
+  });
+
+  it("moves focus to another card when the last failed file is removed", () => {
+    render(
+      <PendingUploadMessage
+        pendingSend={pending([
+          attachments[3],
+          { ...attachments[0], status: "failed" },
+        ])}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove talk.pdf" }));
+
+    expect(document.activeElement).toBe(cardFor("notes.md"));
+  });
+
   it("counts several failed files", () => {
     render(
       <PendingUploadMessage

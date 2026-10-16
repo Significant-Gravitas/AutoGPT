@@ -118,3 +118,19 @@ export const CompactFailed: Story = {
     },
   },
 };
+
+export const LongUnbrokenNameFailed: Story = {
+  args: {
+    pendingSend: {
+      id: "long-name-failed",
+      text: "what is this",
+      attachments: [
+        {
+          ...report,
+          name: `${"Quarterly_revenue_report_operations_team_".repeat(5)}final.pdf`,
+          status: "failed",
+        },
+      ],
+    },
+  },
+};
