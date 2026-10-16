@@ -35,6 +35,7 @@ from backend.data.skill_publication import (
     VersionDraft,
 )
 from backend.data.skill_reviews import (
+    LIVE_REVIEW_SECONDS,
     TERMINAL_REVIEW_DISPOSITIONS,
     LearningReviewRecord,
     LearningRunSummary,
@@ -286,6 +287,7 @@ class FakeLearningStore:
         cost_microdollars: int | None = None,
         completed: bool = True,
         expected_run_id: str | None = None,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord:
         source = await self.require_owned_source(user_id, source_id)
         key = self._review_key(source_id, source_revision, policy_version)
@@ -298,6 +300,7 @@ class FakeLearningStore:
             existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == APPLIED_PENDING_DISPOSITION
             or (expected_run_id is not None and existing.run_id != expected_run_id)
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return existing
         if existing is not None and existing.replay is not None and not completed:
@@ -343,6 +346,7 @@ class FakeLearningStore:
             output_tokens=output_tokens,
             cost_microdollars=cost_microdollars,
             created_at=existing.created_at if existing else _now(),
+            updated_at=_now(),
             completed_at=_now() if completed else None,
         )
         self.reviews[key] = record
@@ -358,6 +362,7 @@ class FakeLearningStore:
         run_id: str,
         max_attempts: int,
         expected_epoch: int,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord | None:
         source = await self.get_source(user_id, source_id)
         if (
@@ -375,6 +380,7 @@ class FakeLearningStore:
             or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == "applied_pending"
             or existing.replay is not None
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return None
         if existing is None:
@@ -395,6 +401,7 @@ class FakeLearningStore:
                 "disposition": "reviewing",
                 "reason": "review started",
                 "completed_at": None,
+                "updated_at": _now(),
             }
         )
         self.reviews[self._review_key(source_id, source_revision, policy_version)] = (
@@ -430,6 +437,7 @@ class FakeLearningStore:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "cost_microdollars": cost_microdollars,
+                "updated_at": _now(),
             }
         )
         return True
@@ -447,7 +455,9 @@ class FakeLearningStore:
             or row.completed_at is not None
         ):
             return False
-        self.reviews[key] = row.model_copy(update={"replay": replay})
+        self.reviews[key] = row.model_copy(
+            update={"replay": replay, "updated_at": _now()}
+        )
         return True
 
     async def get_review_for_revision(
@@ -798,6 +808,7 @@ class FakeLearningStore:
                     "disposition": "applied",
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )
@@ -834,6 +845,7 @@ class FakeLearningStore:
                     "disposition": disposition,
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )

@@ -1,6 +1,8 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import prisma.models
 import pytest
 
 from backend.data import skill_learning as learning
@@ -29,6 +31,7 @@ async def test_replaced_worker_cannot_publish_after_newer_reservation(
             source_revision=source.revision,
             policy_version=1,
             max_attempts=3,
+            live_seconds=0,
             expected_epoch=source.epoch,
         )
         await reviews.reserve_model_review(user, run_id="old", **params)
@@ -74,6 +77,89 @@ async def test_replaced_worker_cannot_publish_after_newer_reservation(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_live_claim_is_left_to_its_run_and_a_dead_one_is_taken_over(server):
+    """A run that lost its lease can still be inside its paid model call;
+    only a claim older than any call can run is taken over."""
+    user = str(uuid4())
+    await _create_user(user)
+    try:
+        source = await _source(user)
+        params = dict(
+            source_id=source.id,
+            source_revision=source.revision,
+            policy_version=1,
+            max_attempts=3,
+            expected_epoch=source.epoch,
+        )
+        claims = await asyncio.gather(
+            *(
+                reviews.reserve_model_review(user, run_id=f"run-{i}", **params)
+                for i in range(3)
+            )
+        )
+        [live] = [claim for claim in claims if claim is not None]
+        assert (
+            await reviews.get_review_for_revision(user, source.id, source.revision, 1)
+            == live
+        )
+        died_at = datetime.now(timezone.utc) - timedelta(
+            seconds=reviews.LIVE_REVIEW_SECONDS + 1
+        )
+        await prisma.models.SkillLearningReview.prisma().update(
+            where={"id": live.id}, data={"updatedAt": died_at}
+        )
+        taken_over = await reviews.reserve_model_review(user, run_id="next", **params)
+        assert taken_over is not None
+        assert (taken_over.run_id, taken_over.model_attempts) == ("next", 2)
+        assert taken_over.updated_at > died_at
+        stored = await reviews.get_review_for_revision(
+            user, source.id, source.revision, 1
+        )
+        assert stored.updated_at == taken_over.updated_at
+    finally:
+        await _cleanup(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_another_runs_write_leaves_a_live_claim_alone(server):
+    """Every ledger write, not only a reservation, leaves a claim another
+    run may still be using as it is; once the claim is older than any
+    call can run, the write applies."""
+    user = str(uuid4())
+    await _create_user(user)
+    try:
+        source = await _source(user)
+        params = dict(
+            source_id=source.id, source_revision=source.revision, policy_version=1
+        )
+        await reviews.reserve_model_review(
+            user, **params, run_id="paid", max_attempts=3, expected_epoch=source.epoch
+        )
+        live = await reviews.get_review_for_revision(
+            user, source.id, source.revision, 1
+        )
+        stopped = dict(
+            **params, run_id="other", disposition="budget_exhausted", completed=False
+        )
+        assert await reviews.upsert_review(user, **stopped) == live
+        assert (
+            await reviews.get_review_for_revision(user, source.id, source.revision, 1)
+            == live
+        )
+        await prisma.models.SkillLearningReview.prisma().update(
+            where={"id": live.id},
+            data={
+                "updatedAt": datetime.now(timezone.utc)
+                - timedelta(seconds=reviews.LIVE_REVIEW_SECONDS + 1)
+            },
+        )
+        applied = await reviews.upsert_review(user, **stopped)
+        assert (applied.run_id, applied.disposition) == ("other", "budget_exhausted")
+    finally:
+        await _cleanup(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_late_standalone_write_cannot_reopen_a_terminal_review(server):
     user = str(uuid4())
     await _create_user(user)
@@ -106,7 +192,9 @@ async def test_lost_claim_cannot_settle_or_charge_the_replacement(server):
         params = dict(
             source_id=source.id, source_revision=source.revision, policy_version=1
         )
-        reservation = dict(**params, max_attempts=3, expected_epoch=source.epoch)
+        reservation = dict(
+            **params, max_attempts=3, live_seconds=0, expected_epoch=source.epoch
+        )
         await reviews.reserve_model_review(user, run_id="old", **reservation)
         current = await reviews.reserve_model_review(user, run_id="new", **reservation)
         late = await reviews.upsert_review(
@@ -115,7 +203,7 @@ async def test_lost_claim_cannot_settle_or_charge_the_replacement(server):
             run_id="old",
             expected_run_id="old",
             disposition="skipped",
-            cost_microdollars=2000
+            cost_microdollars=2000,
         )
         assert late == current
         head = await versions.ensure_head(user, None, "claim-check")
@@ -228,10 +316,15 @@ async def test_deferral_keeps_the_paid_replay_claim_and_missing_claim_cannot_be_
                 run_id="missing",
                 expected_run_id="missing",
                 disposition="provider_error",
-                completed=False
+                completed=False,
             )
         paid = await reviews.reserve_model_review(
-            user, **params, run_id="paid", max_attempts=3, expected_epoch=source.epoch
+            user,
+            **params,
+            run_id="paid",
+            max_attempts=3,
+            live_seconds=0,
+            expected_epoch=source.epoch,
         )
         assert await reviews.set_review_replay(user, paid.id, "paid", {"version": 1})
         deferred = await reviews.upsert_review(
