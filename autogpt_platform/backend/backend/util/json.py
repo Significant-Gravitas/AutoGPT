@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-_has_control_chars = POSTGRES_CONTROL_CHARS.search
 _strip_control_chars = POSTGRES_CONTROL_CHARS.sub
 
 
@@ -286,11 +285,6 @@ def sanitize_string(value: str) -> str:
     newline, and carriage return.  Use this before inserting free-form text
     into PostgreSQL text/varchar columns.
     """
-    # Nearly all strings contain nothing to strip, and on a miss re.sub returns
-    # the string it was given rather than a copy, so the search costs the same
-    # scan and skips the substitution machinery.
-    if type(value) is str and not _has_control_chars(value):
-        return value
     return _strip_control_chars("", value)
 
 
@@ -302,9 +296,13 @@ def _sanitize_encoded(value: Any) -> Any:
     """
     kind = type(value)
     if kind is str:
-        return _strip_control_chars("", value) if _has_control_chars(value) else value
+        return _strip_control_chars("", value)
     if kind is dict:
-        return {_sanitize_encoded(k): _sanitize_encoded(v) for k, v in value.items()}
+        return {
+            _sanitize_encoded(k): _sanitize_encoded(v)
+            for k, v in value.items()
+            if not (isinstance(k, str) and k.startswith("_sa"))
+        }
     if kind is list:
         return [_sanitize_encoded(v) for v in value]
     if isinstance(value, str):
