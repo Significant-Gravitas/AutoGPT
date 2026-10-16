@@ -56,6 +56,31 @@ def test_create_expert_preset_missing_workspace_returns_503(
     }
 
 
+def test_create_preset_from_run_without_saved_credentials_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.library.db.get_graph_execution",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(credential_inputs=None),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(
+            regular_credentials_inputs={"credentials": mocker.MagicMock()}
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={"graph_execution_id": "exec-1", "name": "Preset", "description": ""},
+    )
+
+    assert response.status_code == 400
+    assert "can't be turned into a preset" in response.json()["detail"]
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
