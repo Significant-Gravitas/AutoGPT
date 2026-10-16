@@ -5,6 +5,11 @@ import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFo
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/molecules/Popover/Popover";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject, ReactNode } from "react";
 import {
@@ -87,64 +92,81 @@ export function MentionDropdown({
   }
 
   return (
-    <div
-      role="listbox"
-      aria-label="Mention suggestions"
-      // preventDefault on mousedown keeps focus in the textarea when clicking
-      // non-interactive areas (padding, empty/loading/error states) so the
-      // textarea's onBlur doesn't close the dropdown before a selection.
-      onMouseDown={(e) => e.preventDefault()}
-      className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
-    >
-      {showHeadings && <SectionHeading label="Integrations" />}
-      {options.map((option, index) =>
-        option.kind === "integration"
-          ? renderOption(
+    <Popover open>
+      <PopoverAnchor asChild>
+        <span aria-hidden className="pointer-events-none absolute inset-0" />
+      </PopoverAnchor>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        collisionPadding={8}
+        role="listbox"
+        aria-label="Mention suggestions"
+        // The textarea's onBlur closes the list, so opening it must not move
+        // focus into the popover.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        // preventDefault on mousedown keeps focus in the textarea when clicking
+        // non-interactive areas (padding, empty/loading/error states) so the
+        // textarea's onBlur doesn't close the dropdown before a selection.
+        onMouseDown={(e) => e.preventDefault()}
+        className="max-h-[min(20rem,var(--radix-popover-content-available-height))] w-80 max-w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-2xl border-zinc-200 bg-white p-1.5 shadow-md data-[state=open]:animate-none"
+      >
+        {showHeadings && <SectionHeading label="Integrations" />}
+        {options.map((option, index) =>
+          option.kind === "integration"
+            ? renderOption(
+                option,
+                index,
+                <IntegrationOption integration={option.integration} />,
+              )
+            : null,
+        )}
+        {showFilesHeading && <SectionHeading label="Files" />}
+        {options.map((option, index) => {
+          if (option.kind === "folder") {
+            const count = folderSummary(
+              option.folder.file_count ?? 0,
+              option.subfolderCount,
+            );
+            return renderOption(
               option,
               index,
-              <IntegrationOption integration={option.integration} />,
-            )
-          : null,
-      )}
-      {showFilesHeading && <SectionHeading label="Files" />}
-      {options.map((option, index) => {
-        if (option.kind === "folder") {
-          const count = folderSummary(
-            option.folder.file_count ?? 0,
-            option.subfolderCount,
-          );
-          return renderOption(
-            option,
-            index,
-            <FolderOption folder={option.folder} count={count} />,
-            `Folder ${option.folder.name}, ${count}`,
-          );
-        }
-        if (option.kind === "file") {
-          return renderOption(option, index, <FileOption file={option.file} />);
-        }
-        return null;
-      })}
-      {isError ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
-          <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
-          Couldn&apos;t load files. Try again.
-        </p>
-      ) : isLoading ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
-          <Icon
-            icon={Loading03Icon}
-            className="h-4 w-4 shrink-0 animate-spin"
-          />
-          Searching files…
-        </p>
-      ) : null}
-      {showEmpty && (
-        <p className="px-3 py-2 text-sm text-zinc-500">
-          {emptyMessage(showFiles, hasIntegrations)}
-        </p>
-      )}
-    </div>
+              <FolderOption folder={option.folder} count={count} />,
+              `Folder ${option.folder.name}, ${count}`,
+            );
+          }
+          if (option.kind === "file") {
+            return renderOption(
+              option,
+              index,
+              <FileOption file={option.file} />,
+            );
+          }
+          return null;
+        })}
+        {isError ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
+            <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
+            Couldn&apos;t load files. Try again.
+          </p>
+        ) : isLoading ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
+            <Icon
+              icon={Loading03Icon}
+              className="h-4 w-4 shrink-0 animate-spin"
+            />
+            Searching files…
+          </p>
+        ) : null}
+        {showEmpty && (
+          <p className="px-3 py-2 text-sm text-zinc-500">
+            {emptyMessage(showFiles, hasIntegrations)}
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
