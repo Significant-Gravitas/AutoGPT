@@ -114,7 +114,13 @@ def workflow_subject(
         )
     if schedules and subject.effect is Effect.EXTERNAL_JUDGED:
         # No supervisor reads a scheduled run and no irreversible pause catches one.
-        return subject.model_copy(update={"effect": Effect.EXTERNAL})
+        return subject.model_copy(
+            update={
+                "effect": Effect.EXTERNAL,
+                "reason": f"{subject.reason.removesuffix('.')}; this also creates "
+                "a schedule.",
+            }
+        )
     creates = (
         f"Runs {name} and creates a schedule."
         if schedules

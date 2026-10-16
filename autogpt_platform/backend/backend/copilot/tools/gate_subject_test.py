@@ -476,6 +476,16 @@ def test_a_schedule_of_a_read_workflow_is_a_platform_edit():
     assert workflow_subject(graph, schedules=True).effect is Effect.PLATFORM
 
 
+def test_a_schedule_of_a_judged_workflow_says_it_creates_a_schedule():
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})])
+    subject = workflow_subject(graph, schedules=True)
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.reason == (
+        "Runs Morning digest; its step Send Discord Message reaches outside the "
+        "platform; this also creates a schedule."
+    )
+
+
 @pytest.mark.parametrize("cron", ["", "0 9 * * 1"])
 async def test_a_schedule_of_a_judged_workflow_asks(gate, cron):
     """No supervisor reads a scheduled run and no irreversible pause catches one,
