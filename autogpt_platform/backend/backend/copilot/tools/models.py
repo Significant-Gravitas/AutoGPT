@@ -236,7 +236,7 @@ class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
     type: ResponseType = ResponseType.AGENTS_FOUND
-    title: str = "Available Agents"
+    title: str = "Available Workflows"
     agents: list[AgentInfo]
     count: int
     name: str = "agents_found"
@@ -1069,12 +1069,12 @@ class WebFetchResponse(ToolResponseBase):
 
 
 class WebSearchResult(BaseModel):
-    """One entry in a web_search tool response."""
+    """One source in a web_search tool response.  ``n`` is the number the
+    answer cites it by, as ``[n]``."""
 
+    n: int
     title: str
     url: str
-    snippet: str = ""
-    page_age: str | None = None
 
 
 class WebSearchResponse(ToolResponseBase):

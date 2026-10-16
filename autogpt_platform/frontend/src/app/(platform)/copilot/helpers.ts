@@ -5,6 +5,7 @@ import type { ChatStatus, UIMessage } from "ai";
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
@@ -33,12 +34,20 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
+    throw new CopilotAuthError();
   }
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
   };
+}
+
+/** The server answered and has no session token: signed out, not offline. */
+export class CopilotAuthError extends Error {
+  constructor() {
+    super("Authentication failed — please sign in again.");
+    this.name = "CopilotAuthError";
+  }
 }
 
 /**
@@ -107,8 +116,9 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
 /**
  * Whether the trailing assistant message has at least one part the UI
  * would visibly render: text with non-empty content, reasoning with
- * non-empty content, or any tool part (tool cards render regardless of
- * state). Used to gate the resume-snapshot discard — the replay may stream
+ * non-empty content, any tool part (tool cards render regardless of
+ * state), or a Paused card — a turn refused before it ran streams nothing
+ * else. Used to gate the resume-snapshot discard — the replay may stream
  * empty reasoning-start / step-start chunks for minutes before any
  * rendered content (e.g. Perplexity deep research), and we do not want to
  * drop the pre-replay snapshot until the user actually sees something.
@@ -120,6 +130,7 @@ export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
     if (part.type === "text" && part.text.trim().length > 0) return true;
     if (part.type === "reasoning" && part.text.trim().length > 0) return true;
     if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
+    if (part.type === TURN_PAUSED_PART_TYPE) return true;
     return false;
   });
 }

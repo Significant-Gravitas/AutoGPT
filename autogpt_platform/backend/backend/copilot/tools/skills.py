@@ -34,12 +34,32 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.learning.content_approvals import current_content_approvals
+from backend.copilot.learning.content_checks import (
+    ContentCheckFailure,
+    check_skill_bundle,
+    collect_content_approvals,
+)
+from backend.copilot.learning.history import record_registry_write
+from backend.copilot.learning.retrieval import (
+    mark_index_revision_seen,
+    origin_label,
+    paused_skill_names,
+    read_seen_index_revision,
+    record_skill_loaded,
+    resolve_current_version,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
-from backend.data.db_accessors import experts_db, skill_db, workspace_db
+from backend.data.db_accessors import (
+    experts_db,
+    skill_db,
+    skill_versions_db,
+    workspace_db,
+)
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
 from backend.data.skill_capacity import SKILL_ORIGIN_LABELS as _ORIGIN_LABELS
@@ -50,6 +70,8 @@ from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
 from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.skill_capacity import skill_name_key
+from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
     MergedPackage,
@@ -57,6 +79,8 @@ from backend.data.skill_package import (
     merge_packages,
     package_tree_sha256,
 )
+from backend.data.skill_version_files import SkillVersionFile
+from backend.data.skill_versions import content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -95,7 +119,7 @@ logger = logging.getLogger(__name__)
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
 # (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 66k tokens under the same
+# trigger display to the index caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
 # The cap is per owner folder and per origin: what the owner saves and what
 # the platform installs (a hire's bundle, a marketplace install) each get
@@ -109,11 +133,10 @@ MAX_DESCRIPTION_CHARS = 1024
 # skill-creator's 33 KB SKILL.md, the package authors are told to copy.
 MAX_BODY_CHARS = 50_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
-# so an unbounded list (or one huge trigger) would balloon the prefix
-# the model parses every turn.  Cap both the count and the per-entry
-# length so a misbehaving caller cannot blow the token budget.
+# so rendering bounds the combined hint separately from the saved phrases.
 MAX_TRIGGERS = 10
-MAX_TRIGGER_CHARS = 64
+MAX_TRIGGER_CHARS = 512
+MAX_INDEX_TRIGGER_CHARS = 640
 # Files a skill may carry beside its SKILL.md.  The largest package in the
 # public ``anthropics/skills`` set is 83 files, so 100 clears the ecosystem
 # with room to spare while keeping one activation's copy into the sandbox
@@ -387,6 +410,31 @@ def is_skill_slug(name: str) -> bool:
     return bool(_NAME_RE.fullmatch(name))
 
 
+def canonicalize_skill(skill: ParsedSkill) -> ParsedSkill:
+    """The one normalisation every write path applies before rendering.
+
+    ``store_user_skill`` strips server-injected tags and surrounding
+    whitespace and lower-cases the slug; the learning engine renders a
+    version's content with the same function so the bytes it hashes are
+    exactly the bytes the registry writes. The authored ``version``
+    frontmatter is preserved verbatim — internal version numbers never
+    change a file's content.
+    """
+    triggers = tuple(
+        t
+        for t in (strip_server_injected_tags(str(x).strip()) for x in skill.triggers)
+        if t
+    )
+    return replace(
+        skill,
+        name=skill.name.strip().lower(),
+        description=strip_server_injected_tags(skill.description.strip()),
+        body=strip_server_injected_tags(skill.body.strip()),
+        triggers=triggers,
+        version=skill.version,
+    )
+
+
 def _validate_name(name: str) -> str | None:
     if not _NAME_RE.match(name):
         return (
@@ -399,8 +447,12 @@ def _validate_name(name: str) -> str | None:
 
 
 def validate_skill_content(
-    description: str, body: str, triggers: Iterable[str]
+    description: str, body: str, triggers: Iterable[str], *, name: str | None = None
 ) -> None:
+    if name is not None:
+        name_error = _validate_name(name)
+        if name_error:
+            raise ValueError(name_error)
     trigger_list = list(triggers)
     if not description:
         raise ValueError("description is required")
@@ -757,6 +809,70 @@ async def delete_user_skill(
     return slug
 
 
+class SkillContentBlockedError(ValueError):
+    """Raised by :func:`store_user_skill` when a content check fails.
+
+    Carries the pattern class and ordinal location only — never the
+    matched value — so the message is safe to show and to persist.
+    """
+
+    def __init__(self, failure: ContentCheckFailure) -> None:
+        super().__init__(failure.describe())
+        self.failure = failure
+
+
+class SkillUsePausedError(Exception):
+    """Raised when a skill the owner stopped using is loaded."""
+
+
+class ExpectedHead(BaseModel):
+    """The tracked version a versioned write expects to still be current.
+
+    ``version_id`` is ``None`` for a skill that has no tracked current
+    version yet (never written since history began). The check runs inside
+    the per-owner write lock, after the lock is held, so a writer that was
+    delayed past a newer write (an overnight publication resumed after a
+    human correction, or an editor submitting a stale base) can never put
+    older bytes on top of a newer version.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    version_id: str | None
+
+
+class SkillVersionConflictError(Exception):
+    """Raised by :func:`store_user_skill` when ``expected_head`` no longer
+    matches the skill's current version. Nothing was written."""
+
+    def __init__(self, expected: str | None, actual: str | None) -> None:
+        super().__init__("the skill changed since this write was prepared")
+        self.expected = expected
+        self.actual = actual
+
+
+class SkillWriteLockError(Exception):
+    """Raised when a versioned write cannot take the per-owner write lock.
+
+    An ordinary ``store_skill`` falls back to a best-effort unlocked write;
+    a write that carries ``expected_head`` must not, because only the lock
+    makes the version check and the write one step.
+    """
+
+
+class SkillWritePolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    version_origin: str | None = "saved_during_work"
+    actor_user_id: str | None = None
+    summary: str = ""
+    keep_auto_improve: bool | None = None
+    allowed_pattern_classes: list[str] = Field(default_factory=list)
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
+    seeded_secret_values: list[str] = Field(default_factory=list)
+    expected_head: ExpectedHead | None = None
+
+
 async def store_user_skill(
     user_id: str,
     *,
@@ -772,6 +888,14 @@ async def store_user_skill(
     origin: str = SKILL_ORIGIN_USER,
     skill_markdown: str | None = None,
     baseline: SkillBaseline | None = None,
+    version_origin: str | None = "saved_during_work",
+    actor_user_id: str | None = None,
+    summary: str = "",
+    keep_auto_improve: bool | None = None,
+    allowed_pattern_classes: list[str] | None = None,
+    content_approvals: list[SkillContentApproval] | None = None,
+    seeded_secret_values: list[str] | None = None,
+    expected_head: ExpectedHead | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -808,6 +932,16 @@ async def store_user_skill(
                 files=files,
                 skill_markdown=skill_markdown,
                 baseline=baseline,
+                learning=SkillWritePolicy(
+                    version_origin=version_origin,
+                    actor_user_id=actor_user_id,
+                    summary=summary,
+                    keep_auto_improve=keep_auto_improve,
+                    allowed_pattern_classes=allowed_pattern_classes or [],
+                    content_approvals=content_approvals or [],
+                    seeded_secret_values=seeded_secret_values or [],
+                    expected_head=expected_head,
+                ),
             )
         ],
         expert_id=expert_id,
@@ -839,6 +973,7 @@ class SkillWrite(NamedTuple):
     # For a reconcile: the hash the folder had when this write was decided.
     # The write is refused if the folder has moved since (an edit landed).
     expected_package_sha256: str | None = None
+    learning: SkillWritePolicy = SkillWritePolicy()
 
 
 class StoredSkill(NamedTuple):
@@ -856,6 +991,7 @@ async def store_user_skills(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
     origin: str = SKILL_ORIGIN_USER,
+    notify_updates: bool = True,
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
@@ -916,6 +1052,26 @@ async def store_user_skills(
                     user_id,
                 )
             try:
+                if skill.learning.expected_head is not None:
+                    if not lock_held:
+                        raise SkillWriteLockError(
+                            "could not serialize the versioned write; try again"
+                        )
+                    await _require_current_head(
+                        user_id,
+                        expert_id,
+                        skill.parsed.name,
+                        skill.learning.expected_head,
+                    )
+                if origin == SKILL_ORIGIN_USER:
+                    approvals = await _check_prepared_content(
+                        user_id, expert_id, scope, manager, skill
+                    )
+                    skill = skill._replace(
+                        learning=skill.learning.model_copy(
+                            update={"content_approvals": approvals}
+                        )
+                    )
                 is_new = skill.parsed.name not in same_origin
                 checksums = await _write_skill(
                     manager, skill, expert_id, origin, same_origin, owners, copies
@@ -923,11 +1079,19 @@ async def store_user_skills(
             except Exception as e:
                 outcomes[index] = e
                 continue
+            if skill.learning.version_origin is not None:
+                await _record_package_history(
+                    user_id, expert_id, manager, skill, origin
+                )
             same_origin.add(skill.parsed.name)
             stored.append((index, skill.parsed.name))
             outcomes[index] = StoredSkill(skill.parsed, is_new, checksums)
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
+            if notify_updates:
+                await _remember_updated(
+                    user_id, expert_id, [name for _, name in stored]
+                )
         if expert_id is not None and stored:
             await _record_skill_names(user_id, expert_id, stored, outcomes)
         return cast(list[StoredSkill | Exception], outcomes)
@@ -941,6 +1105,18 @@ async def store_user_skills(
                     user_id,
                     exc_info=True,
                 )
+
+
+async def _require_current_head(
+    user_id: str, expert_id: str | None, name: str, expected: ExpectedHead
+) -> None:
+    """The version check of a versioned write. Runs with the write lock held
+    so no other registry write (which records its version inside the same
+    lock) can land between this read and the file write."""
+    head = await skill_versions_db().get_head(user_id, owner_key_for(expert_id), name)
+    actual = head.current_version_id if head is not None else None
+    if actual != expected.version_id:
+        raise SkillVersionConflictError(expected.version_id, actual)
 
 
 async def _record_skill_names(
@@ -985,6 +1161,56 @@ class _PreparedSkill(NamedTuple):
     scanned_checksums: frozenset[str]
     baseline: SkillBaseline | None = None
     expected_package_sha256: str | None = None
+    learning: SkillWritePolicy = SkillWritePolicy()
+
+
+async def _record_package_history(
+    user_id: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+    origin: str,
+) -> None:
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), skill.parsed.name, complete=True
+        )
+        bundle = {
+            f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
+        }
+        bundle["SKILL.md"] = skill.rendered
+        failure = check_skill_bundle(
+            bundle,
+            approved_matches=skill.learning.content_approvals,
+            seeded_values=skill.learning.seeded_secret_values,
+        )
+        if failure is not None:
+            raise SkillContentBlockedError(failure)
+        await record_registry_write(
+            user_id,
+            expert_id=expert_id,
+            skill_name=skill.parsed.name,
+            rendered=skill.rendered,
+            description=skill.parsed.description,
+            triggers=list(skill.parsed.triggers),
+            origin=(
+                "imported"
+                if origin == SKILL_ORIGIN_MARKETPLACE
+                else skill.learning.version_origin or "saved_during_work"
+            ),
+            actor_user_id=skill.learning.actor_user_id,
+            summary=skill.learning.summary,
+            keep_auto_improve=skill.learning.keep_auto_improve,
+            content_approvals=skill.learning.content_approvals,
+            files=[
+                SkillVersionFile.from_content(
+                    f.relative_path, f.content, f.is_executable
+                )
+                for f in files
+            ],
+        )
+    except Exception:
+        logger.warning("[skills] package history could not be recorded", exc_info=True)
 
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
@@ -1027,7 +1253,13 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=write.files))
     return _PreparedSkill(
-        parsed, rendered, write.files, write.scanned_checksums, write.baseline
+        parsed,
+        rendered,
+        write.files,
+        write.scanned_checksums,
+        write.baseline,
+        write.expected_package_sha256,
+        write.learning,
     )
 
 
@@ -1057,6 +1289,58 @@ def _prepare_exact_package(write: SkillWrite, origin: str) -> _PreparedSkill:
         write.scanned_checksums,
         write.baseline,
         write.expected_package_sha256,
+        write.learning,
+    )
+
+
+async def _check_prepared_content(
+    user_id: str,
+    expert_id: str | None,
+    scope: WorkspaceScope | None,
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+) -> list[SkillContentApproval]:
+    bundle = (
+        await read_skill_bundle_files(
+            user_id,
+            skill.parsed.name,
+            expert_id=expert_id,
+            scope=scope,
+            manager=manager,
+        )
+        if skill.files is None
+        else {}
+    )
+    for entry in skill.files or []:
+        try:
+            bundle[entry.relative_path] = entry.content.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+    bundle["SKILL.md"] = skill.rendered
+    approvals = skill.learning.content_approvals
+    failure = check_skill_bundle(
+        bundle,
+        seeded_values=skill.learning.seeded_secret_values,
+        allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
+    )
+    if failure is not None and not approvals:
+        approvals = await current_content_approvals(
+            user_id, expert_id, skill.parsed.name
+        )
+        failure = check_skill_bundle(
+            bundle,
+            seeded_values=skill.learning.seeded_secret_values,
+            allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+            approved_matches=approvals,
+        )
+    if failure is not None:
+        raise SkillContentBlockedError(failure)
+    return collect_content_approvals(
+        bundle,
+        approved_by_user_id=user_id,
+        allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
     )
 
 
@@ -1136,6 +1420,12 @@ async def _write_skill(
                 scanned_checksums=skill.scanned_checksums,
             )
             checksums.add(digest)
+        await _delete_paths(
+            manager,
+            {f.path for f in stale if f.path not in written},
+            stale,
+            strict=True,
+        )
         skill_md = skill.rendered.encode("utf-8")
         await manager.write_file(
             content=skill_md,
@@ -1153,9 +1443,6 @@ async def _write_skill(
         # the rest would turn a failed write into a lost file.
         await _delete_paths(manager, written - existing_paths)
         raise
-    await _delete_paths(
-        manager, {f.path for f in stale if f.path not in written}, stale
-    )
     return frozenset(checksums)
 
 
@@ -1187,10 +1474,10 @@ async def _delete_paths(
     manager: WorkspaceManager,
     paths: set[str],
     known: list[SkillFileInfo] | None = None,
+    *,
+    strict: bool = False,
 ) -> None:
-    """Delete workspace files by path, best-effort: a file that will not go
-    is logged, never raised, because every caller here has already done the
-    thing the user asked for."""
+    """Require stale-file removal for exact replacements; cleanup is best-effort."""
     ids = {f.path: f.file_id for f in known or []}
     for path in paths:
         try:
@@ -1202,6 +1489,8 @@ async def _delete_paths(
                 file_id = info.id
             await manager.delete_file(file_id)
         except Exception:
+            if strict:
+                raise
             logger.warning("[skills] failed to delete %s", path, exc_info=True)
 
 
@@ -1838,7 +2127,8 @@ async def _write_copy(
 ) -> None:
     """Write a whole package over the copy through the ordinary install path,
     so it is validated, capped, locked and delta-written like any install,
-    and only if the copy still hashes to what the decision was made on."""
+    and only if the copy still hashes to what the decision was made on.
+    Reconciliation owns change notices so baseline-only stamps stay silent."""
     [outcome] = await store_user_skills(
         user_id,
         [
@@ -1864,6 +2154,7 @@ async def _write_copy(
         expert_id=expert_id,
         scope=scope,
         origin=SKILL_ORIGIN_MARKETPLACE,
+        notify_updates=False,
     )
     if isinstance(outcome, Exception):
         raise outcome
@@ -1961,6 +2252,30 @@ async def read_user_skill_with_body(
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
 
 
+async def read_user_skill_markdown(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    strict: bool = False,
+) -> str | None:
+    """Raw ``SKILL.md`` text as stored — the bytes a version hash refers to."""
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id, scope)
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return raw.decode("utf-8")
+    except FileNotFoundError:
+        return None
+    except UnicodeDecodeError:
+        if strict:
+            raise
+        return None
+
+
 async def read_user_skill_package(
     user_id: str,
     name: str,
@@ -2052,6 +2367,61 @@ async def list_user_skill_files(
         return []
 
 
+MAX_BUNDLE_FILE_BYTES = 256 * 1024
+
+
+async def read_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> list[SkillFile]:
+    manager = manager or await _get_user_skill_manager(user_id, scope)
+    return await _read_package_files(
+        manager, skill_folder(expert_id), name, complete=True
+    )
+
+
+async def read_skill_bundle_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> dict[str, str]:
+    """Text of every sibling file in a skill folder, keyed by relative path.
+
+    Used by the content checks so references and snippets are validated
+    with the main body. Binary or oversized files are skipped; a listing
+    failure yields ``{}`` (the SKILL.md itself is always checked).
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return {}
+    try:
+        manager = manager or await _get_user_skill_manager(user_id, scope)
+        files = await _list_package_files(
+            manager, skill_folder(expert_id), slug, cap=None
+        )
+    except Exception:
+        logger.warning("[skills] failed to list bundle for %s", slug, exc_info=True)
+        return {}
+    prefix = f"{skill_folder(expert_id)}/{slug}/"
+    out: dict[str, str] = {}
+    for f in files:
+        if f.path.endswith("/SKILL.md") or f.size_bytes > MAX_BUNDLE_FILE_BYTES:
+            continue
+        try:
+            raw = await manager.read_file(f.path)
+            out[f.path[len(prefix) :]] = raw.decode("utf-8")
+        except (UnicodeDecodeError, Exception):
+            continue
+    return out
+
+
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     """Folder slug of personal Otto's skill called *name*."""
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
@@ -2136,6 +2506,9 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         origin=origin,
         skill_markdown=verbatim,
         baseline=_baseline_from_metadata(meta),
+        version_origin="imported",
+        actor_user_id=user_id,
+        summary="Copied from the personal skill library",
     )
     return stored.name
 
@@ -2249,6 +2622,8 @@ async def list_all_skills(
     user_id: str | None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    *,
+    require_complete: bool = False,
 ) -> list[ParsedSkill]:
     """Default seeded skills first, then the owner's own skills.
 
@@ -2260,10 +2635,18 @@ async def list_all_skills(
     *expert_id* selects whose skills follow the defaults: an expert's own
     folder, or personal Otto's when ``None``. Neither ever sees the
     other's skills.
+
+    ``require_complete`` rejects an unavailable registry so callers cannot
+    mistake a partial index for a confirmed removal of owner skills.
     """
     skills = get_default_skills_for_index()
     if user_id:
-        skills.extend(await list_user_skills(user_id, expert_id, scope))
+        owned = await list_user_skills(user_id, expert_id, scope)
+        paused = await paused_skill_names(user_id, expert_id)
+        if paused is None and require_complete:
+            raise RuntimeError("Skill registry availability could not be verified")
+        if paused is not None:
+            skills.extend(s for s in owned if s.name not in paused)
     return skills
 
 
@@ -2282,7 +2665,10 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
         return ""
     lines = []
     for s in skills:
-        trigger_hint = f" — triggers: {', '.join(s.triggers)}" if s.triggers else ""
+        trigger_text = ", ".join(s.triggers)
+        if len(trigger_text) > MAX_INDEX_TRIGGER_CHARS:
+            trigger_text = trigger_text[:MAX_INDEX_TRIGGER_CHARS].rstrip() + "…"
+        trigger_hint = f" — triggers: {trigger_text}" if trigger_text else ""
         update_hint = (
             f" — note: {_UPDATE_HINTS[s.update]}" if s.update in _UPDATE_HINTS else ""
         )
@@ -2376,6 +2762,8 @@ async def build_skills_update_notice(
     user_id: str | None,
     expert_id: str | None = None,
     prior_contents: Iterable[str] = (),
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Per-turn ``<skills_update>`` notice, or ``""`` when nothing drifted.
 
@@ -2395,7 +2783,7 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        current = await list_all_skills(user_id, expert_id)
+        current = await list_all_skills(user_id, expert_id, require_complete=True)
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
@@ -2408,6 +2796,37 @@ async def build_skills_update_notice(
         for slug in await _consume_updated(user_id, expert_id)
         if slug in current_slugs and slug not in added
     ]
+    if session_id:
+        try:
+            heads = await skill_versions_db().list_heads(
+                user_id, owner_key_for(expert_id)
+            )
+            current_versions = {
+                h.skill_name: h.current_version_id
+                for h in heads
+                if h.skill_name in current_slugs
+            }
+            previous = await read_seen_index_revision(session_id)
+            try:
+                previous_versions = json.loads(previous) if previous else {}
+            except ValueError:
+                previous_versions = {}
+            if isinstance(previous_versions, dict):
+                updated = sorted(
+                    set(updated)
+                    | {
+                        name
+                        for name, version in current_versions.items()
+                        if name in seen
+                        and name in previous_versions
+                        and previous_versions[name] != version
+                    }
+                )
+            await mark_index_revision_seen(session_id, json.dumps(current_versions))
+        except Exception:
+            logger.warning(
+                "[skills] could not check session skill versions", exc_info=True
+            )
     if not added and not removed and not updated:
         return ""
 
@@ -2447,6 +2866,7 @@ async def build_skills_update_notice(
 _EXPERT_ID_PARAM = {
     "type": "string",
     "description": "Manage this expert's skills (Otto only).",
+    "entity": "expert",
 }
 
 
@@ -2471,6 +2891,11 @@ class SkillFileInfo(BaseModel):
 
 
 class ReadSkillResponse(ToolResponseBase):
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
+
     type: ResponseType = ResponseType.SKILL_LOADED
     name: str
     description: str
@@ -2629,6 +3054,67 @@ def _owner_label(expert_id: str | None) -> str:
     return "personal Otto" if expert_id is None else f"expert {expert_id}"
 
 
+class LoadedSkillVersion(BaseModel):
+    """Which learned version a ``read_skill`` call handed to the model."""
+
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
+    files: list[SkillVersionFile] | None = None
+
+    def message(self, name: str) -> str:
+        if self.version is None:
+            return f"Loaded skill '{name}'."
+        return (
+            f"Loaded skill '{name}' v{self.version} ({self.origin_label}). "
+            "Loading is not a success record; report the real outcome."
+        )
+
+
+async def resolve_loaded_skill_version(
+    user_id: str,
+    expert_id: str | None,
+    name: str,
+    text: str,
+    *,
+    manager: WorkspaceManager | None = None,
+) -> LoadedSkillVersion:
+    """Pin the loaded content to its exact version, refusing paused skills.
+
+    Raises :class:`SkillUsePausedError` when the owner stopped this skill
+    and propagates registry errors so the caller fails closed. A body whose
+    hash differs from the head's ready version (a write that bypassed
+    version tracking) is reported unversioned. Unsettled versions are refused.
+    """
+    resolved = await resolve_current_version(user_id, expert_id, name)
+    if resolved is None:
+        return LoadedSkillVersion()
+    head, current = resolved
+    if head.use_paused_at is not None:
+        raise SkillUsePausedError(name)
+    if head.current_version_id is not None and (
+        current is None or current.state != "ready"
+    ):
+        raise SkillWriteLockError("the skill version is not ready to load")
+    if current is None or current.content_hash != content_hash(text):
+        return LoadedSkillVersion()
+    if current.files is not None:
+        manager = manager or await _get_user_skill_manager(user_id)
+        listed = await _list_package_files(manager, skill_folder(expert_id), name)
+        if not _matches_version_files(
+            listed, current.files, f"{skill_folder(expert_id)}/{name}/"
+        ):
+            return LoadedSkillVersion()
+    return LoadedSkillVersion(
+        version=current.version,
+        version_id=current.id,
+        origin=current.origin,
+        origin_label=origin_label(current.origin),
+        files=current.files,
+    )
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
@@ -2715,7 +3201,10 @@ class ReadSkillTool(BaseTool):
             )
 
         try:
+            from backend.copilot.learning.publish import reconcile_skill_for_read
+
             manager = await _get_user_skill_manager(user_id, owner.scope)
+            await reconcile_skill_for_read(user_id, owner.expert_id, name)
             raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
         except WorkspaceAccessDeniedError:
             return ErrorResponse(
@@ -2759,6 +3248,28 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
+        try:
+            loaded = await resolve_loaded_skill_version(
+                user_id, owner.expert_id, name, text, manager=manager
+            )
+        except SkillUsePausedError:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' was stopped by its owner and is not "
+                    "available. Continue with your normal tools."
+                ),
+                error="skill_use_paused",
+                session_id=session_id,
+            )
+        except Exception:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' cannot be checked against the skill "
+                    "registry right now; continue with your normal tools."
+                ),
+                error="skill_registry_unavailable",
+                session_id=session_id,
+            )
         # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
         folder = skill_folder(owner.expert_id)
@@ -2769,8 +3280,23 @@ class ReadSkillTool(BaseTool):
             logger.warning(
                 "[skills] failed to list package files for %s", name, exc_info=True
             )
+            if loaded.files is not None:
+                return ErrorResponse(
+                    message="The skill package is unavailable; retry tool:read_skill.",
+                    error="skill_package_unavailable",
+                    session_id=session_id,
+                )
             package_files = []
             listed = False
+
+        if loaded.files is not None and not _matches_version_files(
+            package_files, loaded.files, f"{folder}/{name}/"
+        ):
+            return ErrorResponse(
+                message="The skill package changed while loading; retry tool:read_skill.",
+                error="skill_changed",
+                session_id=session_id,
+            )
 
         notes: list[str] = []
         # A listing that failed is not an empty package: treating it as one
@@ -2791,6 +3317,7 @@ class ReadSkillTool(BaseTool):
             slug=name,
             session_id=session_id,
             complete=complete,
+            version_files=loaded.files,
         )
         if warning:
             notes.append(warning)
@@ -2801,6 +3328,13 @@ class ReadSkillTool(BaseTool):
                 "directory."
             )
 
+        await record_skill_loaded(
+            user_id,
+            owner.expert_id,
+            name,
+            version_id=loaded.version_id,
+            session_id=session_id,
+        )
         return ReadSkillResponse(
             name=parsed.name,
             description=parsed.description,
@@ -2811,7 +3345,11 @@ class ReadSkillTool(BaseTool):
             package_dir=package_dir,
             is_default=False,
             expert_id=owner.expert_id,
-            message=" ".join([f"Loaded skill '{name}'.", *notes]),
+            version=loaded.version,
+            version_id=loaded.version_id,
+            origin=loaded.origin,
+            origin_label=loaded.origin_label,
+            message=" ".join([loaded.message(name), *notes]),
             session_id=session_id,
         )
 
@@ -3104,6 +3642,18 @@ class _CopiedFile(NamedTuple):
 _COPY_CONCURRENCY = 16
 
 
+def _matches_version_files(
+    files: list[SkillFileInfo], snapshot: list[SkillVersionFile], prefix: str
+) -> bool:
+    actual = {f.path: (f.checksum, f.is_executable) for f in files}
+    expected = {
+        prefix
+        + f.relative_path: (hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in snapshot
+    }
+    return actual == expected
+
+
 async def _sync_skill_package(
     manager: WorkspaceManager,
     files: list[SkillFileInfo],
@@ -3112,6 +3662,7 @@ async def _sync_skill_package(
     slug: str,
     session_id: str,
     complete: bool,
+    version_files: list[SkillVersionFile] | None = None,
 ) -> tuple[str | None, str | None]:
     """Make the turn's working directory match the skill's package.
 
@@ -3127,6 +3678,11 @@ async def _sync_skill_package(
     package_dir = f"{workdir}/skills/{slug}"
     manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
     prefix = f"{folder}/{slug}/"
+    frozen = (
+        {f.relative_path: f.content for f in version_files}
+        if version_files is not None
+        else None
+    )
     manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
@@ -3146,7 +3702,11 @@ async def _sync_skill_package(
             return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
-                content = await manager.read_file(info.path)
+                content = (
+                    frozen[relative]
+                    if frozen is not None
+                    else await manager.read_file(info.path)
+                )
             except Exception:
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None

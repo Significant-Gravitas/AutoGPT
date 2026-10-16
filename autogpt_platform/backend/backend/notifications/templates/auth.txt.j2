@@ -4,7 +4,11 @@
 
 {{ content.action }}:
 {{ action_url }}
-
+{% if content.expiry %}
+The link expires in {{ content.expiry }}.
+{% endif %}{% if content.note %}
+{{ content.note }}
+{% endif %}
 {{ content.reason }}
 Something wrong? Ask in Discord: {{ urls.discord }}
 

@@ -1,47 +1,69 @@
-"""Subscription status and lifecycle dates for the PostHog person (SECRT-2778).
+"""Subscription status and lifecycle dates (SECRT-2778, SECRT-2795).
 
-This module is the mapping only: pure, no I/O. ``posthog_lifecycle_sync``
-reads the inputs and sends the result.
+The one mapping both sinks use: the PostHog person properties, and the
+MailerLite subscriber fields of the same names (``subscription_status`` and
+the ``*_date`` fields, see ``notifications/lifecycle_audience.py``). This
+module is the mapping only: pure, no I/O. ``posthog_lifecycle_sync`` reads the
+inputs and sends the result to both.
 
-The status is worked out from the current state every time (the user row,
-the trial row and all of the customer's Stripe subscriptions), never from the
-event that triggered a sync, so an out-of-order webhook can't leave it wrong.
+The status is worked out from the current state every time (the trial row and
+all of the customer's Stripe subscriptions), never from the event that
+triggered a sync, so an out-of-order webhook can't leave it wrong. The
+subscription tier is not read: only a payment makes a subscriber, so an
+admin-granted plan (ENTERPRISE or any other) with no paid Stripe subscription
+is ``signed``.
 
 Person properties, set on distinct id = platform user id (dates are ISO-8601
 UTC strings of the real lifecycle moment, never the sync time; a date that
 doesn't apply is ``$unset``, never sent as null):
 
 - ``subscription_status``: one of ``signed``, ``in_trial``,
-  ``trial_canceled``, ``subscribed``, ``subscription_canceled`` (canceled,
-  still active until the period ends), ``payment_failed`` (renewal payment
-  failed; Stripe ``past_due`` or ``unpaid``, access lost),
-  ``subscription_ended``. Rules in
+  ``trial_canceled`` (the user canceled their trial), ``trial_expired`` (the
+  trial ended without a payment and without the user canceling it),
+  ``subscribed``, ``subscription_canceled`` (canceled, still active until the
+  period ends), ``payment_failed`` (a payment failed; Stripe ``past_due`` or
+  ``unpaid``, access lost), ``subscription_ended``. Rules in
   ``compute_lifecycle_snapshot``.
 - ``signup_at``: ``User.createdAt``.
 - ``trial_started_at``: ``SubscriptionTrial.startedAt``, for a trial whose
   checkout completed and wasn't rejected; for a Stripe-native trial (one
   created outside our trial flow, e.g. in the dashboard), its ``trial_start``.
-- ``subscription_started_at``: start of the current or most recent paid
-  subscription (Stripe ``start_date``); for a converted trial, the conversion
-  (``SubscriptionTrial.convertedAt``).
-- ``subscription_canceled_at``: Stripe ``canceled_at``, while
-  ``subscription_canceled`` or ``subscription_ended``.
-- ``subscription_ended_at``: Stripe ``ended_at``, while ``subscription_ended``.
+- ``subscription_started_at``: when the person first became a paying
+  subscriber: the earliest start of any paid subscription (Stripe
+  ``start_date``), kept across a resubscribe after a gap. For a converted
+  trial, the conversion (``SubscriptionTrial.convertedAt``), not the trial
+  start. Kept too for a former payer now on a free subscription, who is
+  ``signed``.
+- ``subscription_canceled_at``: Stripe ``canceled_at`` of the current or most
+  recent paid subscription, while ``subscription_canceled`` or
+  ``subscription_ended``.
+- ``subscription_ended_at``: its Stripe ``ended_at``, while
+  ``subscription_ended``.
+
+A paid subscription is one that charges something: a subscription whose
+discounts take the whole price (a 100% coupon, or an amount off at least the
+price, on the subscription or the customer) is treated like a trial that never
+converted, and never makes anyone ``subscribed``, ``subscription_canceled`` or
+``subscription_ended``. So is one whose only invoice so far charged nothing
+(a 100% coupon for the first period, which Stripe takes off the subscription
+once that invoice is made). A partial discount is still paid, and so is a
+subscription whose full discount has ended.
 """
 
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from prisma.enums import SubscriptionTier
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts, utc
 from backend.data.subscription_trial import TrialState
 
 LifecycleStatus = Literal[
     "signed",
     "in_trial",
     "trial_canceled",
+    "trial_expired",
     "subscribed",
     "subscription_canceled",
     "payment_failed",
@@ -50,48 +72,21 @@ LifecycleStatus = Literal[
 
 # Stripe statuses in which a paid subscriber still has a subscription.
 _LIVE_STATUSES = frozenset({"active"})
-# A renewal payment failed. The backend drops the user to NO_TIER, so they have
-# lost access, but they didn't choose to leave (SECRT-2778, question 3).
+# A payment failed. The backend drops the user to NO_TIER, so they have lost
+# access, but they didn't choose to leave (SECRT-2778, question 3).
 _PAYMENT_FAILED_STATUSES = frozenset({"past_due", "unpaid"})
 # A subscription in one of these was never paid for.
 _NEVER_PAID_STATUSES = frozenset({"trialing", "incomplete", "incomplete_expired"})
-_EPOCH = datetime.min.replace(tzinfo=UTC)
 _NEVER = datetime.max.replace(tzinfo=UTC)
-
-
-class StripeSubscriptionFacts(BaseModel):
-    """The fields of a Stripe subscription the mapping reads.
-
-    Validates straight from a Stripe object or dict; Stripe's unix
-    timestamps become UTC datetimes.
-    """
-
-    id: str
-    customer: str | None = None
-    status: str
-    cancel_at_period_end: bool = False
-    start_date: datetime | None = None
-    created: datetime | None = None
-    canceled_at: datetime | None = None
-    ended_at: datetime | None = None
-    trial_start: datetime | None = None
-    trial_end: datetime | None = None
-    metadata: dict[str, str] = Field(default_factory=dict)
-
-    @property
-    def started_at(self) -> datetime | None:
-        return self.start_date or self.created
-
-    @property
-    def trial_enrollment_id(self) -> str | None:
-        return self.metadata.get("trial_enrollment_id") or None
+# A coupon applied at checkout can start a moment after the subscription;
+# one that started later than this left at least the first period charged.
+_FIRST_CHARGE_GRACE = timedelta(days=1)
 
 
 class LifecycleUser(BaseModel):
     id: str
     created_at: datetime | None = None
     stripe_customer_id: str | None = None
-    subscription_tier: SubscriptionTier | None = None
 
 
 class LifecycleSnapshot(BaseModel):
@@ -128,11 +123,6 @@ def compute_lifecycle_snapshot(
 
     First match wins:
 
-    0. ENTERPRISE (admin-managed, never touched by Stripe) -> ``subscribed``.
-       A live Stripe subscription alongside it still supplies the start date.
-       A self-serve paid tier with no Stripe subscription is not treated as a
-       grant: the column defaulted to PRO from 2026-03-26 to 2026-05-01, so
-       most such rows never paid. They follow the rules below.
     1. Live paid subscription set to cancel at period end
        -> ``subscription_canceled``
     2. Live paid subscription (``active``) -> ``subscribed``
@@ -141,18 +131,24 @@ def compute_lifecycle_snapshot(
        between the trial ending and its first invoice being charged, when
        Stripe already says ``active`` but the trial hasn't converted), else a
        Stripe-native ``trialing`` subscription with no trial enrollment.
-    5. The most recent paid subscription is ``past_due`` or ``unpaid``
+    5. A trial's first charge failed and Stripe is still retrying it
        -> ``payment_failed``
-    6. A paid subscription that has ended -> ``subscription_ended``
-    7. A trial that ended without converting -> ``trial_canceled``
-    8. Otherwise -> ``signed``
+    6. Has paid before and now has a live free subscription (a customer
+       given a 100% coupon) -> ``signed``, keeping the first paid start
+    7. The most recent paid subscription is ``past_due`` or ``unpaid``
+       -> ``payment_failed``
+    8. A paid subscription that has ended -> ``subscription_ended``
+    9. A trial that ended without converting -> ``trial_canceled`` if the
+       user canceled it (set it to cancel, or asked for the cancel), else
+       ``trial_expired`` (it ran out, or its first charge never cleared)
+    10. Otherwise -> ``signed``
 
-    A trial's own Stripe subscription counts as paid only once the trial has
-    converted, and its paid start is then the conversion, not the trial start.
-    The subscription dates belong to the subscription statuses; they are
-    unset in every other status.
+    Paid means charging something (see the module docstring). A trial's own
+    Stripe subscription counts as paid only once the trial has converted, and
+    its paid start is then the conversion, not the trial start. The
+    subscription dates belong to the subscription statuses; they are unset in
+    every other status, except the first paid start of rule 6.
     """
-    tier = SubscriptionTier(user.subscription_tier or SubscriptionTier.NO_TIER)
     started = _trial_started(trial)
     all_subs = list(subscriptions)
     common: dict[str, Any] = {
@@ -161,20 +157,16 @@ def compute_lifecycle_snapshot(
             trial.started_at if trial and started else _native_trial_start(all_subs)
         ),
     }
-    paid = [sub for sub in all_subs if _is_paid(sub, trial)]
+    paid = [sub for sub in all_subs if _is_paid(sub, trial, now)]
+    charged = [sub for sub in all_subs if _charged_before_free(sub, trial)]
+    first_paid = _first_paid_start([*paid, *charged], trial, all_subs)
     live = _current_live(paid)
 
-    if tier == SubscriptionTier.ENTERPRISE:
-        return LifecycleSnapshot(
-            subscription_status="subscribed",
-            subscription_started_at=_paid_start(live, trial) if live else None,
-            **common,
-        )
     if live is not None:
         canceling = live.cancel_at_period_end
         return LifecycleSnapshot(
             subscription_status="subscription_canceled" if canceling else "subscribed",
-            subscription_started_at=_paid_start(live, trial),
+            subscription_started_at=first_paid,
             subscription_canceled_at=live.canceled_at if canceling else None,
             **common,
         )
@@ -191,54 +183,91 @@ def compute_lifecycle_snapshot(
     if native is not None:
         status = "trial_canceled" if native.cancel_at_period_end else "in_trial"
         return LifecycleSnapshot(subscription_status=status, **common)
-    ended_native = any(_is_ended_native_trial(sub, trial) for sub in all_subs)
-    return _after_access_ended(paid, trial, started or ended_native, common)
+    if first_paid is not None and _has_live_free(all_subs, now):
+        # Comped: not paying now, but not churned either.
+        return LifecycleSnapshot(
+            subscription_status="signed", subscription_started_at=first_paid, **common
+        )
+    ended = _after_access_ended(paid, first_paid, common)
+    if ended is not None:
+        return ended
+    trial_end = _ended_trial_status(trial, started, all_subs, now)
+    return LifecycleSnapshot(subscription_status=trial_end or "signed", **common)
 
 
-def _is_ended_native_trial(
-    sub: StripeSubscriptionFacts, trial: TrialState | None
+def _has_live_free(
+    subscriptions: Sequence[StripeSubscriptionFacts], now: datetime
 ) -> bool:
-    return (
-        not sub.trial_enrollment_id
-        and sub.trial_start is not None
-        and sub.status != "trialing"
-        and not _is_paid(sub, trial)
+    """A live subscription that charges nothing (see the module docstring)."""
+    return any(
+        sub.status in _LIVE_STATUSES and sub.free_at(now) for sub in subscriptions
     )
 
 
 def _after_access_ended(
     paid: Sequence[StripeSubscriptionFacts],
-    trial: TrialState | None,
-    trial_started: bool,
+    first_paid: datetime | None,
     common: dict[str, Any],
-) -> LifecycleSnapshot:
-    """Rules 5-8: nothing live, no trial running."""
+) -> LifecycleSnapshot | None:
+    """Rules 5-6: nothing live, no trial running, and they have paid."""
     ended = max(paid, key=_ended_order, default=None)
     if ended is not None and ended.status in _PAYMENT_FAILED_STATUSES:
         return LifecycleSnapshot(
             subscription_status="payment_failed",
-            subscription_started_at=_paid_start(ended, trial),
+            subscription_started_at=first_paid,
             **common,
         )
     if ended is not None:
         return LifecycleSnapshot(
             subscription_status="subscription_ended",
-            subscription_started_at=_paid_start(ended, trial),
+            subscription_started_at=first_paid,
             subscription_canceled_at=ended.canceled_at,
             subscription_ended_at=ended.ended_at,
             **common,
         )
-    if trial and trial.converted_at is not None:
+    if first_paid is not None:
         # The converted subscription is missing from Stripe's list, but the
         # conversion alone proves a paid subscription existed and has ended.
         return LifecycleSnapshot(
             subscription_status="subscription_ended",
-            subscription_started_at=trial.converted_at,
+            subscription_started_at=first_paid,
             **common,
         )
-    if trial_started:
-        return LifecycleSnapshot(subscription_status="trial_canceled", **common)
-    return LifecycleSnapshot(subscription_status="signed", **common)
+    return None
+
+
+def _ended_trial_status(
+    trial: TrialState | None,
+    started: bool,
+    subscriptions: Sequence[StripeSubscriptionFacts],
+    now: datetime,
+) -> LifecycleStatus | None:
+    """Rule 7: a trial that ended unpaid, canceled by the user or not."""
+    if trial and started:
+        canceled = trial.cancel_at_period_end or any(
+            sub.id == trial.subscription_id and sub.cancel_requested
+            for sub in subscriptions
+        )
+        return "trial_canceled" if canceled else "trial_expired"
+    native = max(
+        (sub for sub in subscriptions if _is_ended_native_trial(sub, trial, now)),
+        key=lambda sub: utc(sub.trial_start),
+        default=None,
+    )
+    if native is None:
+        return None
+    return "trial_canceled" if native.cancel_requested else "trial_expired"
+
+
+def _is_ended_native_trial(
+    sub: StripeSubscriptionFacts, trial: TrialState | None, now: datetime
+) -> bool:
+    return (
+        not sub.trial_enrollment_id
+        and sub.trial_start is not None
+        and sub.status != "trialing"
+        and not _is_paid(sub, trial, now)
+    )
 
 
 def _trial_started(trial: TrialState | None) -> bool:
@@ -258,7 +287,7 @@ def _in_trial(trial: TrialState, now: datetime) -> bool:
         trial.status == "trialing"
         and trial.converted_at is None
         and trial.ends_at is not None
-        and _utc(trial.ends_at) > now
+        and utc(trial.ends_at) > now
     )
 
 
@@ -270,9 +299,7 @@ def _awaiting_conversion(
     so the trial hasn't converted yet. A failed charge moves the subscription
     to ``past_due`` and ends this."""
     return trial.converted_at is None and any(
-        sub.id == trial.subscription_id
-        and sub.trial_enrollment_id == trial.id
-        and sub.status in _LIVE_STATUSES
+        _is_trial_subscription(sub, trial) and sub.status in _LIVE_STATUSES
         for sub in subscriptions
     )
 
@@ -283,19 +310,43 @@ def _first_charge_failed(
     """The trial's first charge failed and Stripe is still retrying it: the
     same state the backend reports as ``payment_failed``."""
     return trial.converted_at is None and any(
-        sub.id == trial.subscription_id
-        and sub.trial_enrollment_id == trial.id
-        and sub.status in _PAYMENT_FAILED_STATUSES
+        _is_trial_subscription(sub, trial) and sub.status in _PAYMENT_FAILED_STATUSES
         for sub in subscriptions
     )
 
 
-def _is_paid(sub: StripeSubscriptionFacts, trial: TrialState | None) -> bool:
+def _is_trial_subscription(sub: StripeSubscriptionFacts, trial: TrialState) -> bool:
+    return sub.id == trial.subscription_id and sub.trial_enrollment_id == trial.id
+
+
+def _is_paid(
+    sub: StripeSubscriptionFacts, trial: TrialState | None, now: datetime
+) -> bool:
+    if sub.free_at(utc(sub.ended_at) if sub.ended_at else now):
+        return False
+    return _charges(sub, trial)
+
+
+def _charged_before_free(
+    sub: StripeSubscriptionFacts, trial: TrialState | None
+) -> bool:
+    """Free now (or when it ended), but it charged first: the full discount
+    started after its first paid period began. Its paid start still counts
+    as the first paid start."""
+    start = _paid_start(sub, trial)
+    return (
+        start is not None
+        and _charges(sub, trial)
+        and not sub.free_at(utc(start) + _FIRST_CHARGE_GRACE)
+    )
+
+
+def _charges(sub: StripeSubscriptionFacts, trial: TrialState | None) -> bool:
+    """Everything that makes a subscription paid except its discounts."""
     if sub.trial_enrollment_id:
         return (
             trial is not None
-            and trial.id == sub.trial_enrollment_id
-            and trial.subscription_id == sub.id
+            and _is_trial_subscription(sub, trial)
             and trial.converted_at is not None
         )
     if sub.status in _NEVER_PAID_STATUSES:
@@ -310,8 +361,26 @@ def _ended_during_native_trial(sub: StripeSubscriptionFacts) -> bool:
         sub.trial_end is not None
         and sub.status not in _LIVE_STATUSES
         and ended is not None
-        and _utc(ended) <= _utc(sub.trial_end)
+        and utc(ended) <= utc(sub.trial_end)
     )
+
+
+def _first_paid_start(
+    paid: Sequence[StripeSubscriptionFacts],
+    trial: TrialState | None,
+    subscriptions: Sequence[StripeSubscriptionFacts],
+) -> datetime | None:
+    """When they first became a paying subscriber. A converted trial whose
+    subscription is missing from Stripe's list still proves a payment at its
+    conversion; one that is listed but free does not."""
+    starts = [_paid_start(sub, trial) for sub in paid]
+    if (
+        trial is not None
+        and trial.converted_at is not None
+        and not any(sub.id == trial.subscription_id for sub in subscriptions)
+    ):
+        starts.append(trial.converted_at)
+    return min((s for s in starts if s), key=utc, default=None)
 
 
 def _current_live(
@@ -321,7 +390,7 @@ def _current_live(
     # the subscription the user is keeping.
     return max(
         (sub for sub in paid if sub.status in _LIVE_STATUSES),
-        key=lambda sub: (not sub.cancel_at_period_end, _utc(sub.started_at)),
+        key=lambda sub: (not sub.cancel_at_period_end, utc(sub.started_at)),
         default=None,
     )
 
@@ -336,9 +405,9 @@ def _native_trial(
             for sub in subscriptions
             if sub.status == "trialing"
             and not sub.trial_enrollment_id
-            and (sub.trial_end is None or _utc(sub.trial_end) > now)
+            and (sub.trial_end is None or utc(sub.trial_end) > now)
         ),
-        key=lambda sub: _utc(sub.started_at),
+        key=lambda sub: utc(sub.started_at),
         default=None,
     )
 
@@ -352,8 +421,8 @@ def _ended_order(sub: StripeSubscriptionFacts) -> tuple[datetime, datetime]:
     # kept using.
     failed = sub.status in _PAYMENT_FAILED_STATUSES
     return (
-        _utc(sub.started_at),
-        _NEVER if failed else _utc(sub.ended_at or sub.canceled_at),
+        utc(sub.started_at),
+        _NEVER if failed else utc(sub.ended_at or sub.canceled_at),
     )
 
 
@@ -364,7 +433,7 @@ def _native_trial_start(
     kept after it converts or ends, as our own trial's start is."""
     native = max(
         (s for s in subscriptions if not s.trial_enrollment_id and s.trial_start),
-        key=lambda s: _utc(s.trial_start),
+        key=lambda s: utc(s.trial_start),
         default=None,
     )
     return native.trial_start if native else None
@@ -378,11 +447,5 @@ def _paid_start(
     return sub.started_at
 
 
-def _utc(value: datetime | None) -> datetime:
-    if value is None:
-        return _EPOCH
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
-
-
 def _iso(value: datetime) -> str:
-    return _utc(value).astimezone(UTC).isoformat(timespec="seconds")
+    return utc(value).astimezone(UTC).isoformat(timespec="seconds")

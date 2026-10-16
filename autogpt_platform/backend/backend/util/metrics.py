@@ -20,6 +20,8 @@ except ImportError:
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
+from backend.util.tracing import traces_sampler
+from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
 
@@ -135,9 +137,31 @@ def _scrub_sentry_event(event: dict) -> None:
     those here made the SDK drop the whole event as an internal error. ``_meta``
     is the SDK's own annotation tree and is left alone.
     """
+    _redact_request_urls(event)
     for key, value in event.items():
         if key != "_meta":
             event[key] = _scrub_secrets(value)
+
+
+def _redact_request_urls(event: dict) -> None:
+    """Mask credentials in the request URL the ASGI integration attaches.
+
+    EventScrubber only scrubs a request's headers, cookies and body, so the
+    query string, which for the WebSocket holds the user's session JWT, and
+    the path secrets in ``url`` would otherwise be sent with every event.
+    """
+    request = event.get("request") or {}
+    if isinstance(request.get("url"), str):
+        request["url"] = redact_url(request["url"])
+    # The SDK has already decoded the query, so a %26 inside a value reads as a
+    # separator and the rest of the value as a key. None of it can be kept.
+    if request.get("query_string"):
+        request["query_string"] = REDACTED
+    # A request no route matched is named after its raw URL.
+    transaction = event.get("transaction")
+    source = (event.get("transaction_info") or {}).get("source")
+    if source == "url" and isinstance(transaction, str):
+        event["transaction"] = redact_url(transaction)
 
 
 # FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
@@ -265,6 +289,24 @@ def _before_send(event, hint):
     return event
 
 
+def _before_send_transaction(event, hint):
+    """Transactions skip ``before_send`` but carry the same request data, and
+    every WebSocket connection is one."""
+    _redact_request_urls(event)
+    return event
+
+
+def _sentry_environment() -> str:
+    """The environment events are tagged with. A deployment that names itself
+    (a PR preview, say) takes precedence over the one computed from the app
+    environment and behaviour mode. A blank name counts as none."""
+    config = settings.config
+    return (
+        config.sentry_environment.strip()
+        or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
+    )
+
+
 def sentry_init():
     if _running_under_pytest():
         return
@@ -278,9 +320,16 @@ def sentry_init():
     _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
+        traces_sampler=traces_sampler,
+        # Traces reach our own services only, through the RPC client's headers
+        # (backend.util.service); outbound calls to third parties, such as a
+        # block's request to a user-supplied URL, carry no Sentry headers.
+        trace_propagation_targets=[],
         profiles_sample_rate=1.0,
-        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
+        release=settings.config.sentry_release.strip() or None,
+        environment=_sentry_environment(),
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),

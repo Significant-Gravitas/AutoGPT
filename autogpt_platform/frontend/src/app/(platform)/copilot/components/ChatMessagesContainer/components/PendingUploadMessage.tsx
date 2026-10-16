@@ -98,7 +98,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                 : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-              "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+              "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
             )}
           >
             <div className="whitespace-pre-wrap break-words">

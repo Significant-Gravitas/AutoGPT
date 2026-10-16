@@ -7,12 +7,14 @@ from uuid import UUID, uuid4
 import fastapi.exceptions
 import prisma
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from prisma.enums import ResourceVisibility, SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, LibraryAgent, User
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
+from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
@@ -446,7 +448,7 @@ async def test_access_store_listing_graph(
             other_user.id,
         )
     assert exc_info.value.status_code == 404
-    assert "Graph" in str(exc_info.value.detail)
+    assert "Workflow" in str(exc_info.value.detail)
 
     # Now we create a store listing
     store_listing = await server.agent_server.test_create_store_listing(
@@ -909,6 +911,106 @@ async def test_fork_graph_clears_picked_files(
         assert forked.nodes[0].input_default["spreadsheet"] is None
     finally:
         await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
+
+
+def _value_to_output_graph(
+    output_input: dict[str, Any], value_id: str = "value", output_id: str = "output"
+) -> Graph:
+    return Graph(
+        name=f"Value to output {uuid4()}",
+        description="",
+        nodes=[
+            Node(
+                id=value_id,
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id=output_id, block_id=AgentOutputBlock().id, input_default=output_input
+            ),
+        ],
+        links=[
+            Link(
+                source_id=value_id,
+                sink_id=output_id,
+                source_name="output",
+                sink_name="value",
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_saving_an_unnamed_output_names_the_field_and_saves_nothing(
+    server: SpinTestServer,
+):
+    """
+    Saving an Agent Output whose required Name is empty answered with a raw
+    "'Input' object has no attribute 'name'". The caller now hears which field
+    is missing on which of the nodes it sent, and nothing is written.
+    """
+    graph = _value_to_output_graph({})
+
+    with pytest.raises(fastapi.exceptions.HTTPException) as refused:
+        await server.agent_server.test_create_graph(
+            CreateGraph(graph=graph), DEFAULT_USER_ID
+        )
+
+    assert refused.value.status_code == 400
+    assert refused.value.detail == {
+        "type": "validation_error",
+        "message": "Agent Output › Name: This field is required",
+        "node_errors": {"output": {"name": "This field is required"}},
+    }
+    assert await AgentGraph.prisma().find_first(where={"name": graph.name}) is None
+
+    graph.nodes[1].input_default["name"] = "greeting"
+    saved = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), DEFAULT_USER_ID
+    )
+    assert list(saved.output_schema["properties"]) == ["greeting"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "greeting"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    # The builder sends back the node ids it loaded.
+    edited = _value_to_output_graph({}, value_node.id, output_node.id)
+    edited.id = created.id
+
+    with pytest.raises(fastapi.exceptions.HTTPException) as refused:
+        await graphs_routes.update_graph(
+            created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+        )
+
+    assert refused.value.status_code == 400
+    assert refused.value.detail["node_errors"] == {
+        output_node.id: {"name": "This field is required"}
+    }
+    versions = await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    assert [version.version for version in versions] == [created.version]
+
+
+def _owner_context(user_id: str) -> RequestContext:
+    return RequestContext(
+        user_id=user_id,
+        org_id=f"test-org-{user_id}",
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=True,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
 
 
 # ============================================================================
@@ -2410,21 +2512,30 @@ async def test_get_graph_settings_resolves_against_the_running_version(
 
 
 # ============================================================================
-# Tests for _generate_schema AttributeError → ValueError conversion
+# Tests for _generate_schema with an unnamed input or output
 # ============================================================================
 
 
-def test_generate_schema_raises_value_error_when_name_missing():
-    """AgentInputBlock.Input constructed without 'name' should raise ValueError.
+def test_a_blank_output_name_wired_from_a_link_still_counts():
+    """Only the node's own blank value is discounted; a name a link brings in
+    is still provided."""
+    graph = make_graph_model(_value_to_output_graph({"name": ""}), user_id="user-1")
+    graph.links[0].sink_name = "name"
 
-    model_construct() skips validation, so the Input object is created without
-    a 'name' attribute.  The dict comprehension in _generate_schema then hits an
-    AttributeError when it accesses p.name.  That AttributeError must be caught
-    and re-raised as ValueError so the existing 400 handler in rest_api.py fires
-    instead of falling through to the 500 catch-all.
-    """
-    with pytest.raises(ValueError):
-        GraphModel._generate_schema((AgentInputBlock.Input, {}))
+    assert graph.validate_graph_get_errors() == {}
+
+
+def test_generate_schema_leaves_out_an_input_without_a_name():
+    """An unnamed input isn't part of the graph's interface yet, so it isn't in
+    the schema. The schema is computed whenever the graph is dumped, before
+    validate_graph can tell the user which name is missing, so it must not
+    fail: raising here is how "'Input' object has no attribute 'name'" reached
+    the builder as the whole save error."""
+    assert GraphModel._generate_schema((AgentInputBlock.Input, {})) == {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    }
 
 
 # ============================================================================
