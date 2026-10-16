@@ -205,7 +205,12 @@ class HITLReviewHelper:
 
         session = await workflow.review_route(ctx, review["user_id"])
         step = (
-            await workflow.workflow_step(ctx, review["node_exec_id"])
+            await workflow.workflow_step(
+                review["graph_exec_id"],
+                review["graph_id"],
+                review["graph_version"],
+                review["node_exec_id"],
+            )
             if session is not None
             else None
         )

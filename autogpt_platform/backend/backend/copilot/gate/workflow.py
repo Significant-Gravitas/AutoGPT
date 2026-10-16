@@ -247,22 +247,26 @@ def awaiting_whom(card_chat: str | None, session_id: str | None) -> str:
 
 
 async def workflow_step(
-    ctx: ExecutionContext, node_exec_id: str
+    graph_exec_id: str | None,
+    graph_id: str | None,
+    graph_version: int | None,
+    node_exec_id: str,
 ) -> review_store.WorkflowStep | None:
-    """What the card says about the step; None outside a graph execution."""
-    if not (ctx.graph_exec_id and ctx.graph_id and ctx.graph_version is not None):
+    """What the card says about the step, from the pause's own ids: a
+    sub-graph's context still names its parent's run. None outside a run."""
+    if not (graph_exec_id and graph_id and graph_version is not None):
         return None
     try:
-        graph = await graph_db().get_graph_metadata(ctx.graph_id, ctx.graph_version)
+        graph = await graph_db().get_graph_metadata(graph_id, graph_version)
         name = graph.name if graph and graph.name else ""
     except Exception:
-        logger.warning(f"Could not name workflow {ctx.graph_id}", exc_info=True)
+        logger.warning(f"Could not name workflow {graph_id}", exc_info=True)
         name = ""
     return review_store.WorkflowStep(
-        graph_exec_id=ctx.graph_exec_id,
+        graph_exec_id=graph_exec_id,
         node_exec_id=node_exec_id,
-        graph_id=ctx.graph_id,
-        graph_version=ctx.graph_version,
+        graph_id=graph_id,
+        graph_version=graph_version,
         name=name or "Untitled workflow",
     )
 
@@ -342,7 +346,10 @@ async def _ask_from_now_on(user_id: str, card: PendingHumanReviewModel) -> None:
         )
     except Exception:
         # The step already has its answer; a lost rule must not strand its run.
-        logger.warning(f"Could not set an ask rule from card {card.node_exec_id}")
+        logger.warning(
+            f"Could not set an ask rule from card {card.node_exec_id}",
+            exc_info=True,
+        )
 
 
 def _allowed_by(ruling: Ruling, subject: Subject) -> str:

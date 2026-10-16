@@ -204,3 +204,50 @@ async def test_a_human_in_the_loop_pause_never_reaches_the_gate():
             for p in patches:
                 p.stop()
     route.assert_not_awaited()
+
+
+async def test_a_sub_graphs_step_names_its_own_run_not_its_parents():
+    """A sub-graph's context is copied from its parent run, so the step's own
+    ids come from the pause, never from the context."""
+    stubs, patches = _pause()
+    ctx = ExecutionContext(
+        user_id="u1",
+        graph_id="parent-graph",
+        graph_exec_id="parent-run",
+        graph_version=7,
+        sensitive_action_safe_mode=True,
+        approval_chat_id="chat-1",
+    )
+    judge = AsyncMock(return_value=Ruling(run=True, reason="ok", by="mode"))
+    graphs = SimpleNamespace(
+        get_graph_metadata=AsyncMock(return_value=SimpleNamespace(name="Child"))
+    )
+    with (
+        patch(
+            f"{_WORKFLOW}.review_route",
+            AsyncMock(return_value=SimpleNamespace(session_id="chat-1")),
+        ),
+        patch(f"{_WORKFLOW}.judge_step", judge),
+        patch(f"{_WORKFLOW}.graph_db", return_value=graphs),
+    ):
+        for p in patches:
+            p.start()
+        try:
+            await SendDiscordMessageBlock().is_block_exec_need_review(
+                _INPUT,
+                user_id="u1",
+                node_id="n-1",
+                node_exec_id="ne-1",
+                graph_exec_id="ge-1",
+                graph_id="g-1",
+                graph_version=1,
+                execution_context=ctx,
+            )
+        finally:
+            for p in patches:
+                p.stop()
+    step = judge.await_args.args[4]
+    assert (step.graph_exec_id, step.graph_id, step.graph_version) == ("ge-1", "g-1", 1)
+    graphs.get_graph_metadata.assert_awaited_once_with("g-1", 1)
+    recorded = stubs["record_gate_approval"].await_args.kwargs
+    assert (recorded["graph_exec_id"], recorded["graph_id"]) == ("ge-1", "g-1")
