@@ -959,8 +959,13 @@ _at_reset_cancels: dict[str, datetime] = {}
 _at_reset_cancels_lock = threading.Lock()
 _AT_RESET_CANCEL_MEMORY = timedelta(hours=2)
 _AT_RESET_CANCEL_KEY_PREFIX = "copilot:at_reset_cancel:"
-# How long a cancel waits on Redis before going on with only this replica's
-# memory of it.
+# Kept as a sorted set's score, in microseconds since the epoch, and only
+# ever moved later: a write that stalled and lands after a newer cancel can't
+# put the older time back.
+_AT_RESET_CANCEL_MEMBER = "cancelled_at"
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# How long writing or reading a cancel waits on Redis, whose client retries
+# for far longer, before going on with only this replica's memory of it.
 _AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS = 2
 
 # An at-reset turn that can't fire yet (the chat is busy, the budget or the
@@ -1179,7 +1184,8 @@ def _remember_at_reset_cancel(job_id: str) -> None:
         # returns, and a put-back that takes the lock next must find it.
         run_async(
             _share_at_reset_cancel(job_id, now),
-            timeout=_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS,
+            # The write keeps its own deadline; this one only backs it up.
+            timeout=_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS + 1,
         )
     except Exception:
         logger.warning(
@@ -1190,12 +1196,14 @@ def _remember_at_reset_cancel(job_id: str) -> None:
 
 
 async def _share_at_reset_cancel(job_id: str, cancelled_at: datetime) -> None:
-    redis = await get_redis_async()
-    await redis.set(
-        f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}",
-        cancelled_at.isoformat(),
-        ex=_AT_RESET_CANCEL_MEMORY,
-    )
+    key = f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}"
+    micros = (cancelled_at - _EPOCH) // timedelta(microseconds=1)
+    async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+        redis = await get_redis_async()
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zadd(key, {_AT_RESET_CANCEL_MEMBER: micros}, gt=True)
+            pipe.expire(key, _AT_RESET_CANCEL_MEMORY)
+            await pipe.execute()
 
 
 async def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
@@ -1215,15 +1223,17 @@ async def _at_reset_cancelled_at(job_id: str) -> datetime | None:
     with _at_reset_cancels_lock:
         here = _at_reset_cancels.get(job_id)
     try:
-        redis = await get_redis_async()
-        raw = await redis.get(f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}")
-        shared = raw.decode() if isinstance(raw, bytes) else raw
-        anywhere = datetime.fromisoformat(shared) if shared else None
+        async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+            redis = await get_redis_async()
+            micros = await redis.zscore(
+                f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}", _AT_RESET_CANCEL_MEMBER
+            )
     except Exception:
         logger.warning(
             f"Could not read the cancels of at-reset job {job_id}", exc_info=True
         )
         return here
+    anywhere = None if micros is None else _EPOCH + timedelta(microseconds=micros)
     return max((at for at in (here, anywhere) if at is not None), default=None)
 
 

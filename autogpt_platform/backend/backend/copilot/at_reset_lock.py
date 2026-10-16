@@ -28,6 +28,9 @@ _LOCK_TTL_SECONDS = 10
 _LOCK_RENEW_EVERY_SECONDS = 3
 # How long a writer waits for the one ahead of it.
 _LOCK_WAIT_SECONDS = 5
+# How long a lock call also waits on a Redis that doesn't answer. Its client
+# retries for far longer, and each caller has its own way on without the lock.
+_REDIS_DEADLINE_SECONDS = 2
 
 # Renewals under way, held so one isn't collected before it ends.
 _renewals: set[asyncio.Task[None]] = set()
@@ -57,14 +60,15 @@ async def at_reset_job_lock(job_id: str) -> AsyncIterator[bool]:
 
 async def _acquire(job_id: str) -> AsyncRedisLock | None:
     try:
-        redis = await get_redis_async()
-        lock = redis.lock(
-            f"{_KEY_PREFIX}{job_id}",
-            timeout=_LOCK_TTL_SECONDS,
-            blocking_timeout=_LOCK_WAIT_SECONDS,
-        )
-        if await lock.acquire():
-            return lock
+        async with asyncio.timeout(_LOCK_WAIT_SECONDS + _REDIS_DEADLINE_SECONDS):
+            redis = await get_redis_async()
+            lock = redis.lock(
+                f"{_KEY_PREFIX}{job_id}",
+                timeout=_LOCK_TTL_SECONDS,
+                blocking_timeout=_LOCK_WAIT_SECONDS,
+            )
+            if await lock.acquire():
+                return lock
         logger.warning(f"At-reset job {job_id} stayed locked for {_LOCK_WAIT_SECONDS}s")
     except Exception:
         logger.warning(f"Could not lock at-reset job {job_id}", exc_info=True)
@@ -77,7 +81,8 @@ async def _keep_renewed(lock: AsyncRedisLock, job_id: str) -> None:
     while True:
         await asyncio.sleep(_LOCK_RENEW_EVERY_SECONDS)
         try:
-            await lock.reacquire()
+            async with asyncio.timeout(_REDIS_DEADLINE_SECONDS):
+                await lock.reacquire()
         except LockNotOwnedError:
             logger.warning(f"Lost the lock on at-reset job {job_id} while holding it")
             return
@@ -90,7 +95,8 @@ async def _keep_renewed(lock: AsyncRedisLock, job_id: str) -> None:
 
 async def _release(lock: AsyncRedisLock, job_id: str) -> None:
     try:
-        await lock.release()
+        async with asyncio.timeout(_REDIS_DEADLINE_SECONDS):
+            await lock.release()
     except Exception:
         # Held past its expiry, so the next writer may have it now, or Redis
         # went away; the expiry frees it either way.

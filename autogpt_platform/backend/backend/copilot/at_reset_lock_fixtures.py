@@ -2,7 +2,9 @@
 the cancels the scheduler shares between its replicas."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import timedelta
+from types import TracebackType
 
 
 class FakeJobLock:
@@ -32,11 +34,43 @@ class FakeJobLock:
         self._held.release()
 
 
+class FakeTransaction:
+    """A ``pipeline(transaction=True)``: its commands run together on
+    ``execute``."""
+
+    def __init__(self, redis: "FakeAtResetRedis") -> None:
+        self._redis = redis
+        self._queued: list[Callable[[], object]] = []
+
+    async def __aenter__(self) -> "FakeTransaction":
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._queued.clear()
+
+    def zadd(self, key: str, mapping: dict[str, int], *, gt: bool) -> None:
+        self._queued.append(lambda: self._redis.add_scores(key, mapping, gt=gt))
+
+    def expire(self, key: str, ttl: timedelta) -> None:
+        self._queued.append(lambda: self._redis.expiries.update({key: ttl}))
+
+    async def execute(self) -> list[object]:
+        results = [run() for run in self._queued]
+        self._queued.clear()
+        return results
+
+
 class FakeAtResetRedis:
     """What every replica sees in Redis, held in this process."""
 
     def __init__(self) -> None:
-        self.values: dict[str, str] = {}
+        # Each sorted set's members and scores, by key.
+        self.scores: dict[str, dict[str, float]] = {}
         self.expiries: dict[str, timedelta] = {}
         self.lock_options: dict[str, dict[str, float]] = {}
         # When each lock's holder renewed it, by name.
@@ -60,10 +94,21 @@ class FakeAtResetRedis:
         lock = self._locks.get(name)
         return lock is not None and lock.locked()
 
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
+    def pipeline(self, *, transaction: bool) -> FakeTransaction:
+        assert transaction
+        return FakeTransaction(self)
 
-    async def set(self, key: str, value: str, *, ex: timedelta) -> bool:
-        self.values[key] = value
-        self.expiries[key] = ex
-        return True
+    def add_scores(self, key: str, mapping: dict[str, int], *, gt: bool) -> int:
+        """``ZADD``, with ``GT`` only ever moving a member's score up."""
+        members = self.scores.setdefault(key, {})
+        added = 0
+        for member, score in mapping.items():
+            if member not in members:
+                added += 1
+            elif gt and score <= members[member]:
+                continue
+            members[member] = score
+        return added
+
+    async def zscore(self, key: str, member: str) -> float | None:
+        return self.scores.get(key, {}).get(member)

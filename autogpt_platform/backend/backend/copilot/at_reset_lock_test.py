@@ -135,3 +135,42 @@ async def test_a_renewal_redis_misses_is_tried_again(
     async with at_reset_job_lock(JOB):
         await asyncio.sleep(0.05)
     assert lock.reacquire.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_a_redis_that_never_answers_leaves_it_unheld(
+    redis, mocker: pytest_mock.MockerFixture
+):
+    # Its client retries for far longer than a writer should wait.
+    mocker.patch.object(at_reset_lock, "_LOCK_WAIT_SECONDS", 0.01)
+    mocker.patch.object(at_reset_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
+    never = asyncio.Event()
+    lock = MagicMock(acquire=AsyncMock(side_effect=never.wait), release=AsyncMock())
+    mocker.patch.object(redis, "lock", return_value=lock)
+
+    async def hold() -> bool:
+        async with at_reset_job_lock(JOB) as locked:
+            return locked
+
+    assert await asyncio.wait_for(hold(), timeout=5) is False
+    lock.release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_release_redis_never_answers_doesnt_hold_up_the_writer(
+    redis, mocker: pytest_mock.MockerFixture
+):
+    mocker.patch.object(at_reset_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
+    never = asyncio.Event()
+    lock = MagicMock(
+        acquire=AsyncMock(return_value=True),
+        release=AsyncMock(side_effect=never.wait),
+    )
+    mocker.patch.object(redis, "lock", return_value=lock)
+
+    async def hold() -> None:
+        async with at_reset_job_lock(JOB):
+            pass
+
+    await asyncio.wait_for(hold(), timeout=5)
+    lock.release.assert_awaited_once()

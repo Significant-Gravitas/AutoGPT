@@ -16,7 +16,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import at_reset_schedule_id, reset_jitter_seconds
 from backend.copilot.at_reset_lock import at_reset_job_lock
-from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis
+from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis, FakeTransaction
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -32,7 +32,9 @@ from backend.executor.scheduler import (
     CopilotTurnJobArgs,
     Jobstores,
     Scheduler,
+    _at_reset_cancelled_at,
     _execute_copilot_turn,
+    _share_at_reset_cancel,
 )
 
 _SCHEDULER = "backend.executor.scheduler"
@@ -407,8 +409,58 @@ def test_a_cancel_is_kept_in_redis_for_two_hours(live_scheduler, shared_redis):
     before = datetime.now(UTC)
     assert live_scheduler.cancel_at_reset_turn(USER, SESSION, "send") is False
     key = f"copilot:at_reset_cancel:at-reset-send-{SESSION}"
-    assert datetime.fromisoformat(shared_redis.values[key]) >= before
+    micros = shared_redis.scores[key]["cancelled_at"]
+    assert datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=micros) >= before
     assert shared_redis.expiries[key] == timedelta(hours=2)
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_written_late_never_moves_the_time_back():
+    # A write that stalled can land after a newer cancel on another replica.
+    # The newer time has to stand, or a send set between the two would fire.
+    job = at_reset_schedule_id("send", SESSION)
+    newer = datetime.now(UTC)
+    await _share_at_reset_cancel(job, newer)
+    await _share_at_reset_cancel(job, newer - timedelta(seconds=30))
+    assert await _at_reset_cancelled_at(job) == newer
+
+
+@pytest.mark.asyncio
+async def test_a_redis_that_never_answers_leaves_this_replicas_own_cancels(
+    shared_redis,
+):
+    job = at_reset_schedule_id("send", SESSION)
+    here = datetime.now(UTC)
+
+    async def never_answers(*_: object) -> None:
+        await asyncio.Event().wait()
+
+    with (
+        patch.dict(f"{_SCHEDULER}._at_reset_cancels", {job: here}),
+        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+        patch.object(shared_redis, "zscore", never_answers),
+    ):
+        assert await asyncio.wait_for(_at_reset_cancelled_at(job), timeout=2) == here
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_redis_never_takes_gives_up_by_itself():
+    # Its waiter in the request thread gives up too, but the write itself
+    # must not linger and land late.
+    never = asyncio.Event()
+    started = asyncio.get_running_loop().time()
+    with (
+        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+        patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
+        pytest.raises(TimeoutError),
+    ):
+        await asyncio.wait_for(
+            _share_at_reset_cancel(
+                at_reset_schedule_id("send", SESSION), datetime.now(UTC)
+            ),
+            timeout=2,
+        )
+    assert asyncio.get_running_loop().time() - started < 1
 
 
 @pytest.mark.asyncio
