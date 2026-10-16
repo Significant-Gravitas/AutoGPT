@@ -1065,6 +1065,71 @@ class TestCancelDreamPass:
         assert resp.status_code == 500
 
 
+class TestDreamPassList:
+    """``GET /{user_id}/dream/passes`` lists a user's durable pass records,
+    every scope, newest first, the open ones only when asked."""
+
+    def test_lists_the_users_passes_newest_first(self) -> None:
+        newer = _dream_pass_row("abc").model_copy(update={"id": "p2"})
+        read = AsyncMock(return_value=[newer, _dream_pass_row("abc")])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("abc", open_only=False, limit=20)
+        passes = resp.json()["passes"]
+        assert [p["id"] for p in passes] == ["p2", "p1"]
+        assert passes[0]["status"] == "COMPLETE"
+
+    def test_the_open_ones_only_and_a_limit_reach_the_read(self) -> None:
+        read = AsyncMock(return_value=[])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes?status=open&limit=5")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"passes": []}
+        read.assert_awaited_once_with("abc", open_only=True, limit=5)
+
+    def test_me_lists_the_callers_own_passes(self, mock_jwt_admin) -> None:
+        read = AsyncMock(return_value=[])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/me/dream/passes")
+
+        assert resp.status_code == 200
+        assert read.call_args.args == (mock_jwt_admin["user_id"],)
+
+    def test_passes_is_never_read_as_a_job_id(self) -> None:
+        job_status = AsyncMock()
+        with (
+            patch(f"{_MOCK_MODULE}.read_user_passes", new=AsyncMock(return_value=[])),
+            patch(f"{_MOCK_MODULE}.read_status", new=job_status),
+        ):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 200
+        job_status.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "query", ["status=done", "limit=0", "limit=101", "limit=many"]
+    )
+    def test_a_bad_status_or_limit_is_422_before_the_read(self, query) -> None:
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get(f"/admin/memory/abc/dream/passes?{query}")
+
+        assert resp.status_code == 422
+        read.assert_not_awaited()
+
+    def test_non_admin_gets_403_before_the_read(self, mock_jwt_user) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 403
+        read.assert_not_awaited()
+
+
 class TestAdminGating:
     """Non-admin callers must get 403 on every route."""
 

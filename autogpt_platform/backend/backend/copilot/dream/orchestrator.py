@@ -13,12 +13,13 @@ submits the first phase to Anthropic's Message Batches API instead and
 results land.
 
 Every pass, on either route, gets a durable ``DreamPass`` row
-(``store.py``): inserted at the start, advanced after each step, and
-closed with how the pass ended, a write attempted before the pass releases
-its lock. Like every record write it is best-effort: one that fails or
-times out leaves the row open behind a free lock until a later pass's guard
-or a reaper closes it. A pass holding the lock runs ``guard.py`` first, and
-``cancel.py``'s checks before each phase, before its batch submit and apply.
+(``store.py``): inserted with its lease at the start, advanced after each
+step, and closed with how the pass ended, a write attempted before the pass
+releases its lock. Like every record write it is best-effort: one that fails
+leaves the row open behind a free lock until a later pass's guard or the
+reaper (``reaper.py``) closes it. A pass holding the lock runs ``guard.py``
+first, then before each phase and apply checks for a stop (``cancel.py``) and
+renews its lease (``lease.py``); the batch route checks before its submit.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set and, on the sync route, the usage
@@ -51,7 +52,6 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .cancel import stop_before_apply, stop_if_stopped
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -60,8 +60,14 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
-from .guard import guard_dream_pass
-from .locks import DEFAULT_LOCK_TTL_SECONDS, DreamLockHandle, DreamLockHeld, dream_lock
+from .guard import GUARD_BUDGET_SECONDS, guard_dream_pass
+from .lease import admit_sync_apply, checkpoint
+from .locks import (
+    LOCK_CHECK_TIMEOUT_SECONDS,
+    DreamLockHandle,
+    DreamLockHeld,
+    dream_lock,
+)
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
@@ -82,6 +88,7 @@ from .schemas import (
     RecombinationOutput,
 )
 from .store import (
+    RECORD_WRITE_TIMEOUT_SECONDS,
     record_applying,
     record_gathered,
     record_phase_output,
@@ -133,16 +140,24 @@ SANITIZE_MAX_TOKENS = 16384
 #   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
 #   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
 #   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
-#     + demotions + summary + cost logging + the pass's record writes,
-#     EXCLUDING the drain)
+#     + demotions + summary + cost logging, EXCLUDING the drain)
 #   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The pass's own bounded round trips to its record, its guard and its lock
+# come on top: DREAM_STORE_IO_SECONDS, 179s should every one of them run to
+# its deadline (a stalled DatabaseManager or Redis). Then a pass whose phases
+# also run to their ceilings outlasts the scheduler's wait. That wait is not
+# a kill: ``run_async`` stops waiting and leaves the pass running, and its
+# lease renewals keep its lock and its row's lease fresh, so neither a newer
+# pass's guard nor the reaper takes it for dead, and it finishes.
 #
 # The drain no longer counts against the lock TTL: apply renews the dream
 # lock to a fresh budget right before the drain (see
 # apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
-# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
-# with genuine margin, and the drain itself runs under the renewed lock.
-# Both invariants are pinned by
+# LLM + non-drain headroom + store I/O = 1619s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+# (1620s), even with every store round trip at its deadline (and a lease
+# renewal before each phase shortens that stretch further), and the drain
+# itself runs under the renewed lock. Both invariants are pinned by
 # test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
 # bumping any value here fails that test until the budget is re-balanced.
 #
@@ -155,11 +170,25 @@ CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
 # Reserved for the non-LLM segments of the pass OTHER than the ingestion
-# drain (budget check, fetch, enqueue, demotions, summary write, cost
-# logging, and the DreamPass record writes, each capped at
-# store.RECORD_WRITE_TIMEOUT_SECONDS). The drain is budgeted separately as
-# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+# drain and the store round trips below (budget check, fetch, enqueue,
+# demotions, summary write, cost logging). The drain is budgeted separately
+# as apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
 DREAM_NON_LLM_HEADROOM_SECONDS = 120
+# The sync pass's bounded round trips to its record and its lock, each at
+# its own deadline. Record reads and writes: the RUNNING insert, the
+# gathered window, before each phase a stop check, a lease write and the
+# phase's output, the APPLYING write, apply's admission (a stop check and a
+# lease write), and the outcome. Lock round trips: the lease extend before
+# each phase, apply's admission (a lock read and an extend), and apply's own
+# renewals, before its first write and before its drain. Plus the guard's
+# whole budget.
+_RECORD_ROUND_TRIPS = 2 + 3 * 3 + 1 + 2 + 1
+_LOCK_ROUND_TRIPS = 3 + 2 + 2
+DREAM_STORE_IO_SECONDS = (
+    GUARD_BUDGET_SECONDS
+    + _RECORD_ROUND_TRIPS * RECORD_WRITE_TIMEOUT_SECONDS
+    + _LOCK_ROUND_TRIPS * LOCK_CHECK_TIMEOUT_SECONDS
+)
 
 # Per-user marker stamped after a successful (non-skipped) sync apply so
 # the next nightly pass can skip all three LLM phases when no new episode
@@ -419,14 +448,9 @@ async def _execute_dream_pass_async(
     run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
-        await start_pass(
-            run.pass_id,
-            scope,
-            route=run.execution_path,
-            trigger=trigger,
-            started_at=run.started_at,
-        )
-        async with dream_lock(scope, ttl_seconds=DEFAULT_LOCK_TTL_SECONDS) as handle:
+        await start_pass(run, scope, trigger=trigger)
+        async with dream_lock(scope, token=run.lease_token) as handle:
+            run.hold(handle)
             return await _run_locked(
                 run, scope, handle, config=config, status_id=status_id
             )
@@ -480,7 +504,8 @@ async def _run_locked(
     to take the lock normally finds this one's row closed. It is best-effort
     like every record write: one that fails or times out is dropped and the
     lock is released anyway, so a free lock can still have an open row
-    (APPLYING, say) behind it until a reaper closes it."""
+    (APPLYING, say) behind it until a later pass's guard or the reaper
+    closes it."""
     try:
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
@@ -617,12 +642,13 @@ async def _phase(
     phase: DreamPhase,
     call: Callable[[], Awaitable[tuple[_Output, PhaseUsage]]],
 ) -> _Output:
-    """One phase's output, once the pass's row shows no stop. A phase with no
-    usable answer ends the pass (``PassEnded``) with the usage billed so far,
-    the failed attempt's included when its answer came back. A phase whose
-    charge failed (``PhaseChargeError``) joins that usage too, then its error
-    ends the pass as a crash does."""
-    await stop_if_stopped(run)
+    """One phase's output, once the pass's row shows no stop and its lease
+    is renewed (``lease.checkpoint``). A phase with no usable answer ends the
+    pass (``PassEnded``) with the usage billed so far, the failed attempt's
+    included when its answer came back. A phase whose charge failed
+    (``PhaseChargeError``) joins that usage too, then its error ends the pass
+    as a crash does."""
+    await checkpoint(run, phase)
     try:
         output, usage = await call()
     except InferenceError as exc:
@@ -650,19 +676,19 @@ async def _apply(
         known_fact_uuids=input_bundle.known_fact_uuids,
     )
     await record_applying(run.pass_id, ops)
-    await stop_before_apply(run, lock_handle)
+    lease = await admit_sync_apply(run, scope, lock_handle)
     apply_stats = await apply_operations(
         scope,
         run.pass_id,
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
         lock_handle=lock_handle,
+        lease=lease,
     )
-    # Apply succeeded (even as a no-op) — stamp the marker so the
-    # next nightly pass can skip when nothing new has landed.
-    # Stamped with the gather-window end so episodes that arrived
-    # mid-pass still count as new next time. Sync path only: batch
-    # apply runs hours later in batch_callbacks, which doesn't
+    # Apply succeeded (even as a no-op) — stamp the marker so the next nightly
+    # pass can skip when nothing new has landed. Stamped with the gather-window
+    # end so episodes that arrived mid-pass still count as new next time. Sync
+    # path only: batch apply runs hours later in batch_callbacks, which doesn't
     # stamp yet.
     await _stamp_last_completed_marker(scope, input_bundle.window_end)
     return _applied_result(run, apply_stats, ops)
