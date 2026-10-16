@@ -21,6 +21,11 @@ import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { BudgetLowHint } from "../UsageLimits/BudgetLowHint";
+import { ScheduledSendChip } from "../SendAtReset/ScheduledSendChip";
+import { SESSION_COMPOSER_ID, sessionDraftKey } from "../SendAtReset/helpers";
+import { useComposerBudget } from "./useComposerBudget";
+import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
@@ -62,6 +67,12 @@ export interface ChatContainerProps {
   usageFailure?: import("../../providerFailure").ProviderFailure | null;
   onDismissUsage?: () => void;
   usageRefresh?: UsageNoticeContext["refresh"];
+  /** The account's AutoPilot budget: drives Send at reset and the
+   *  running-low hint. */
+  usage?: UsageSnapshot | null;
+  /** The connection the chat runs on, or for a new chat the one it will
+   *  start on. Only a platform chat waits for the AutoPilot budget. */
+  chatAuthProvider?: string | null;
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
@@ -171,6 +182,8 @@ export const ChatContainer = ({
   usageFailure,
   onDismissUsage,
   usageRefresh,
+  usage = null,
+  chatAuthProvider = null,
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
@@ -198,12 +211,9 @@ export const ChatContainer = ({
   // state from the backend).
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
-  const isUsageExhausted = useIsUsageLimitReached(sessionId);
+  const isUsageExhausted = useIsUsageLimitReached(chatAuthProvider);
   const isLimitReached = isUsageExhausted || isUsageRefused;
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
-  useEffect(() => {
-    if (!isLimitReached) setIsUsageTooltipOpen(false);
-  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable || !!isResolvingExpertIdentity || !!isKickoffStarting;
   // A fired (archived) expert's threads stay as read-only history — the
@@ -227,6 +237,25 @@ export const ChatContainer = ({
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isTurnLocked ? NO_OP_SEND : onSend;
+  const composer = useComposerBudget({
+    sessionId,
+    authProvider: chatAuthProvider,
+    budget: usage?.budget,
+    isLimitReached,
+    isOtherwiseLocked: isTurnLocked,
+    onSend,
+    onCreateSession,
+    inputId: SESSION_COMPOSER_ID,
+  });
+  // While a turn still runs, the limit keeps follow-ups from queueing.
+  const atReset = isStreaming ? undefined : composer.atReset;
+  // Send at reset takes the paused tooltip's place. Radix reports no close
+  // for a tooltip held shut, so an open recorded then would show it, unhovered,
+  // once a turn starts: record none, and forget one Send at reset cut short.
+  const canShowUsageTooltip = Boolean(isLimitReached && !atReset);
+  useEffect(() => {
+    if (!canShowUsageTooltip) setIsUsageTooltipOpen(false);
+  }, [canShowUsageTooltip]);
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
@@ -431,7 +460,7 @@ export const ChatContainer = ({
               ) : (
                 <ChatComposerFrame
                   className={cn(hasComposerTab && "max-lg:pt-0")}
-                  paused={isLimitReached}
+                  paused={isLimitReached && !atReset}
                   noticeRef={usageCardRef}
                   notice={
                     isLimitReached ? (
@@ -454,26 +483,38 @@ export const ChatContainer = ({
                       />
                     </div>
                   )}
+                  {composer.scheduled.pending && (
+                    <ScheduledSendChip
+                      job={composer.scheduled.pending}
+                      onEdit={() => void composer.scheduled.edit()}
+                      onCancel={() => void composer.scheduled.cancel()}
+                      isBusy={composer.scheduled.isBusy}
+                    />
+                  )}
                   <Tooltip
-                    open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                    open={canShowUsageTooltip && isUsageTooltipOpen}
                     onOpenChange={(open) =>
-                      setIsUsageTooltipOpen(open && isLimitReached)
+                      setIsUsageTooltipOpen(open && canShowUsageTooltip)
                     }
                   >
                     <TooltipTrigger asChild>
                       <div>
                         <ChatInput
-                          inputId="chat-input-session"
-                          draftKey={`session:${sessionId}`}
+                          inputId={SESSION_COMPOSER_ID}
+                          draftKey={sessionDraftKey(sessionId)}
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
-                          sendDisabled={isLimitReached}
+                          sendDisabled={isLimitReached && !atReset}
+                          atReset={atReset}
                           isStreaming={isStreaming}
                           isTurnStarting={status === "submitted"}
                           isUploadingFiles={isUploadingFiles}
                           onStop={onStop}
                           onEnqueue={onEnqueue}
-                          placeholder="What else can I help with?"
+                          placeholder={
+                            (atReset && composer.placeholder) ||
+                            "What else can I help with?"
+                          }
                           droppedFiles={droppedFiles}
                           onDroppedFilesConsumed={onDroppedFilesConsumed}
                           hasSession={!!sessionId}
@@ -520,6 +561,9 @@ export const ChatContainer = ({
                       editing it.
                     </TooltipContent>
                   </Tooltip>
+                  {composer.showLowHint && usage && (
+                    <BudgetLowHint usage={usage} />
+                  )}
                 </ChatComposerFrame>
               )}
             </div>
@@ -543,7 +587,20 @@ export const ChatContainer = ({
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
-              isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
+              isInteractionLocked={
+                (isSendLocked && !composer.atReset) || !!isAdoptingExpertSession
+              }
+              atReset={composer.atReset}
+              usageNotice={
+                isLimitReached ? (
+                  <UsageLimitReachedCard refresh={usageRefresh} />
+                ) : undefined
+              }
+              lowHint={
+                composer.showLowHint && usage ? (
+                  <BudgetLowHint usage={usage} />
+                ) : undefined
+              }
               isKickoffStarting={isKickoffStarting}
               expertName={expertIdentity?.name}
               expertId={expertIdentity?.id ?? null}
