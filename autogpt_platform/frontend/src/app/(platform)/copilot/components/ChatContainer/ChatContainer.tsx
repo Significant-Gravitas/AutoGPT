@@ -362,6 +362,8 @@ export const ChatContainer = ({
     <CopilotChatActionsProvider
       onSend={guardedOnSend}
       onBackendTurn={onBackendTurn}
+      sessionId={sessionId}
+      assistantName={expertIdentity?.name ?? "Otto"}
     >
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
