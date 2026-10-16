@@ -262,6 +262,19 @@ async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(moc
     assert body["configured"] is False
 
 
+async def test_posthog_with_no_key_leaves_every_flag_to_the_frontend(
+    mocker, monkeypatch: pytest.MonkeyPatch
+):
+    mocker.patch.object(
+        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
+    )
+    mocker.patch.object(ph.settings.secrets, "posthog_api_key", "")
+    monkeypatch.setattr(ph, "_client", None)
+    monkeypatch.setattr(ph, "_init_attempted", False)
+
+    assert await _get_flags(USER_ID) == {"flags": {}, "configured": False}
+
+
 @pytest.mark.parametrize(
     "user_id,visitor_id,terms",
     [("u-other", None, SEARCH_TERMS), (None, VISITOR, VISITOR_TERMS)],
