@@ -36,6 +36,7 @@ from collections.abc import Awaitable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, cast
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -49,7 +50,7 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 from redis.asyncio import Redis
 
-from . import scope_lock
+from . import recall_forget, scope_lock
 from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -148,6 +149,16 @@ def lock_redis(mocker: MockerFixture) -> FakeRedis:
         scope_lock, "get_redis_async", mocker.AsyncMock(return_value=redis)
     )
     return redis
+
+
+@pytest.fixture(autouse=True)
+def dream_copies(mocker: MockerFixture) -> AsyncMock:
+    """No forget here reaches Postgres: a hard forget's blanking of the
+    dream's copies (``dream/forget_copies.py``) does nothing and marks no
+    pass. Tests of that step read or set this mock."""
+    blank = mocker.AsyncMock(return_value=[])
+    mocker.patch.object(recall_forget, "blank_dream_copies", blank)
+    return blank
 
 
 @pytest_asyncio.fixture(loop_scope="function")

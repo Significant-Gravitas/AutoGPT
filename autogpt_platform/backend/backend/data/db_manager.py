@@ -735,6 +735,8 @@ class DatabaseManager(AppService):
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    add_dream_narrative = _(chat_db.add_dream_narrative)
+    blank_dream_narratives = _(chat_db.blank_dream_narratives)
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
@@ -764,6 +766,7 @@ class DatabaseManager(AppService):
     list_expired_dream_passes = _(dream_pass_db.list_expired_dream_passes)
     list_dream_pass_cleanups = _(dream_pass_db.list_dream_pass_cleanups)
     delete_old_dream_passes = _(dream_pass_db.delete_old_dream_passes)
+    erase_dream_passes = _(dream_pass_db.erase_dream_passes)
 
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
@@ -1238,6 +1241,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    add_dream_narrative = d.add_dream_narrative
+    blank_dream_narratives = d.blank_dream_narratives
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
@@ -1263,3 +1268,4 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_expired_dream_passes = d.list_expired_dream_passes
     list_dream_pass_cleanups = d.list_dream_pass_cleanups
     delete_old_dream_passes = d.delete_old_dream_passes
+    erase_dream_passes = d.erase_dream_passes

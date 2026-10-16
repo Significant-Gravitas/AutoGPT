@@ -128,7 +128,9 @@ async def _call_provider_sync(
     try:
         response = await _with_forced_tool_fallback(send, request)
     except Exception as exc:
-        raise InferenceError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
+        raise InferenceError(
+            f"LLM call failed: {type(exc).__name__}: {exc}", code="call_failed"
+        ) from exc
 
     if not isinstance(response, ProviderResponse):
         # ``call_provider`` returns a ``BatchSubmissionRef`` only for

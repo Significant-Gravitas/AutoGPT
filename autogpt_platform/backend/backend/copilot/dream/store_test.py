@@ -147,7 +147,7 @@ class TestWrites:
     ):
         scope = MemoryScope.for_expert("u1", "expert-1")
 
-        await store.start_pass(_run(route), scope, trigger=trigger)
+        assert await store.start_pass(_run(route), scope, trigger=trigger)
 
         db.create_dream_pass.assert_awaited_once_with(
             DreamPassDraft(
@@ -165,10 +165,17 @@ class TestWrites:
             )
         )
 
-    async def test_gathered_records_the_window_and_moves_to_consolidate(self, db):
-        bundle = _bundle()
+    async def test_gathered_records_the_window_and_what_was_read(self, db):
+        """Every fact and episode the bundle holds, sorted: a hard forget
+        marks the pass by them once it has closed."""
+        bundle = _bundle().model_copy(
+            update={
+                "known_fact_uuids": {"f2", "f1"},
+                "known_episode_uuids": {"e1"},
+            }
+        )
 
-        await store.record_gathered("p1", bundle)
+        assert await store.record_gathered("p1", bundle)
 
         assert _update(db) == (
             "p1",
@@ -176,8 +183,18 @@ class TestWrites:
                 phase=DreamPassPhase.CONSOLIDATE,
                 window_start=bundle.window_start,
                 window_end=bundle.window_end,
+                read_uuids=["e1", "f1", "f2"],
             ),
         )
+
+    @pytest.mark.parametrize("written, said", [(False, False), (None, None)])
+    async def test_gathered_says_whether_it_landed(self, db, written, said):
+        if written is None:
+            db.update_dream_pass.side_effect = ConnectionError("db down")
+        else:
+            db.update_dream_pass.return_value = written
+
+        assert await store.record_gathered("p1", _bundle()) is said
 
     @pytest.mark.parametrize(
         "phase, output, next_step",
@@ -388,15 +405,16 @@ class TestAFailedWriteNeverFailsThePass:
             for r in caplog.records
         )
 
-    async def test_an_insert_that_raises_is_logged_at_warning(self, db, caplog):
+    async def test_an_insert_that_raises_is_unconfirmed_and_logged(self, db, caplog):
         db.create_dream_pass.side_effect = ConnectionError("db down")
 
         with caplog.at_level(logging.WARNING, logger=store.logger.name):
-            await store.start_pass(
+            confirmed = await store.start_pass(
                 _run("sync_baseline"), MemoryScope.for_user("u1"), trigger="cron"
             )
 
-        assert "could not insert" in caplog.text
+        assert confirmed is False
+        assert "could not insert its record; the pass stops" in caplog.text
 
     async def test_an_unreachable_accessor_is_logged_at_warning(self, mocker, caplog):
         mocker.patch.object(store, "dream_db", side_effect=RuntimeError("no rpc"))
@@ -619,7 +637,13 @@ class TestReadSide:
 
     async def test_a_sync_outcome_reads_back_as_the_result_it_recorded(self, db):
         """What the orchestrator returned is what the eval driver reads."""
-        result = _complete_result()
+        result = _complete_result(
+            dropped_forgotten=1,
+            uncited_writes_dropped=2,
+            cross_scope_citations_dropped=3,
+            failed_writes=4,
+            provenance_pending=5,
+        )
         await store.record_sync_outcome(result)
         _, update = _update(db)
         assert update.operations is not None
