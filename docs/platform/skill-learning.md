@@ -201,10 +201,11 @@ or improving a version preserves only retained approved occurrences.
 New, duplicated, relocated, and seeded values still require the applicable
 checks.
 
-Ordinary registry package writes use an error-and-retry contract. An
-interrupted ordinary write can leave partial unversioned file changes;
-retry the complete package until the write succeeds. Versioned pending
-writes stay unavailable until recovery completes. Repeating source exclusion
+Every registry package write replaces the whole package in one change:
+every file is stored first, then the package's files are swapped in a
+single database transaction. A failed or interrupted write leaves the
+previous package exactly as it was; retry it to apply the change. Versioned
+pending writes stay unavailable until recovery completes. Repeating source exclusion
 also resumes any interrupted head repair, while preserving an owner use-pause.
 
 ## Not in the first release
