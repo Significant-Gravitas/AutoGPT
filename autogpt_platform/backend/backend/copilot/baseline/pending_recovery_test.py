@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from openai.types.chat import ChatCompletionChunk
 
+from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import ChatMessage, ChatSession
@@ -15,8 +16,9 @@ from backend.copilot.response_model import StreamFinish
 
 
 @pytest.mark.parametrize("count", [MAX_PENDING_MESSAGES + 3, 2 * MAX_PENDING_MESSAGES])
+@pytest.mark.parametrize("refill", [False, True])
 async def test_final_baseline_turn_consumes_all_recovered_messages(
-    monkeypatch: pytest.MonkeyPatch, baseline_io: None, count: int
+    monkeypatch: pytest.MonkeyPatch, baseline_io: None, count: int, refill: bool
 ) -> None:
     session = ChatSession.new("user-1", dry_run=False)
     session.title = "Existing conversation"
@@ -27,11 +29,31 @@ async def test_final_baseline_turn_consumes_all_recovered_messages(
     ]
     pending = [PendingMessage(content=f"Queued payload {i:02}") for i in range(count)]
     queue = deque(pending)
+    late: list[PendingMessage] = []
+    pops = 0
 
-    async def drain(*_: object) -> list[PendingMessage]:
-        return [queue.popleft() for _ in range(min(len(queue), MAX_PENDING_MESSAGES))]
+    async def drain(
+        session_id: str, *, limit: int = MAX_PENDING_MESSAGES
+    ) -> list[PendingMessage]:
+        nonlocal pops
+        pops += 1
+        assert pops <= 2, "New producers must not extend the initial drain"
+        batch = [queue.popleft() for _ in range(min(len(queue), limit))]
+        if refill:
+            arriving = [
+                PendingMessage(content=f"Late payload {pops}:{i}")
+                for i in range(MAX_PENDING_MESSAGES - len(queue))
+            ]
+            late.extend(arriving)
+            queue.extend(arriving)
+        return batch
 
-    monkeypatch.setattr(service, "drain_pending_safe", AsyncMock(side_effect=drain))
+    monkeypatch.setattr(
+        pending_message_helpers, "peek_pending_count", AsyncMock(return_value=count)
+    )
+    monkeypatch.setattr(
+        pending_message_helpers, "drain_pending_messages", AsyncMock(side_effect=drain)
+    )
     mid_turn_drain = AsyncMock(return_value=[])
     monkeypatch.setattr(service, "drain_pending_messages", mid_turn_drain)
     persist = AsyncMock(return_value=True)
@@ -53,7 +75,7 @@ async def test_final_baseline_turn_consumes_all_recovered_messages(
     events = await asyncio.wait_for(collect_events(), timeout=10)
 
     assert isinstance(events[-1], StreamFinish)
-    assert not queue
+    assert list(queue) == late
     mid_turn_drain.assert_not_awaited()
     persist.assert_awaited_once()
     assert persist.await_args is not None

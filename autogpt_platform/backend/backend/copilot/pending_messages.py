@@ -393,7 +393,9 @@ async def push_pending_message_if_session_running(
     return new_length
 
 
-async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
+async def drain_pending_messages(
+    session_id: str, *, limit: int = MAX_PENDING_MESSAGES
+) -> list[PendingMessage]:
     """Atomically pop one batch of pending messages for *session_id*.
 
     Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
@@ -405,7 +407,9 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
 
     # Keep recovery batches bounded even when rollback restored an older batch
     # ahead of a full buffer. Later drains pick up the remaining messages.
-    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
+    lpop_result = await cast(
+        "Any", redis.lpop(key, max(0, min(limit, MAX_PENDING_MESSAGES)))
+    )
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)

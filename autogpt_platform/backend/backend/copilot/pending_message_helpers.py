@@ -436,26 +436,36 @@ async def check_pending_call_rate(user_id: str) -> int:
 
 
 async def drain_pending_safe(
-    session_id: str, log_prefix: str = ""
+    session_id: str, log_prefix: str = "", *, drain_backlog: bool = False
 ) -> list[PendingMessage]:
     """Drain the pending buffer and return the full ``PendingMessage`` objects.
 
-    Returns ``[]`` on any Redis error so callers can always treat the
-    result as a plain list.  Callers that only need the rendered string
+    Preserves already-popped messages if a later Redis call fails.
+    ``drain_backlog`` snapshots the initial length, so new producers cannot
+    extend a turn-start drain. Callers that only need the rendered string
     (turn-start injection, auto-continue combined prompt) wrap this with
     :func:`pending_texts_from` — we return the structured objects so the
     re-queue rollback path can preserve ``file_ids`` / ``context`` that
     would otherwise be stripped by a text-only conversion.
     """
+    messages: list[PendingMessage] = []
     try:
-        return await drain_pending_messages(session_id)
+        if not drain_backlog:
+            return await drain_pending_messages(session_id)
+        count = await peek_pending_count(session_id)
+        for offset in range(0, count, MAX_PENDING_MESSAGES):
+            messages.extend(
+                await drain_pending_messages(
+                    session_id, limit=min(MAX_PENDING_MESSAGES, count - offset)
+                )
+            )
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed, skipping",
             log_prefix or "pending_messages",
             exc_info=True,
         )
-        return []
+    return messages
 
 
 def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
