@@ -52,7 +52,7 @@ export function AppSidebarHeader() {
         )}
       >
         <Link
-          href="/copilot"
+          href="/home"
           aria-label="AutoGPT"
           className={cn(
             "flex items-center",

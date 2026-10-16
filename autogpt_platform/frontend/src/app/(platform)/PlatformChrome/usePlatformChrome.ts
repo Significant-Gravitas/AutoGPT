@@ -42,7 +42,8 @@ export function usePlatformChrome() {
 
   const isMarketplaceRoute = matchesRoute(pathname, "/marketplace");
 
-  const isCopilotRoute = matchesRoute(pathname, "/copilot");
+  const isCopilotRoute =
+    matchesRoute(pathname, "/home") || matchesRoute(pathname, "/copilot");
 
   const isBuilderRoute = matchesRoute(pathname, "/build");
 

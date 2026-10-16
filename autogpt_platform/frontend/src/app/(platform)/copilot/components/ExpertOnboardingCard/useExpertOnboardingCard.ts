@@ -1,23 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   buildOnboardingAnswersMessage,
   type ExpertOnboardingStep,
 } from "./helpers";
+import {
+  clearOnboardingProgress,
+  readOnboardingProgress,
+  writeOnboardingProgress,
+} from "./onboardingProgress";
 
 const SKIP_MESSAGE = "Let's skip the setup questions for now.";
 
 interface Args {
+  callId: string;
   steps: ExpertOnboardingStep[];
   isLive: boolean;
 }
 
-export function useExpertOnboardingCard({ steps, isLive }: Args) {
+export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
   const { onSend } = useCopilotChatActions();
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Seeded from sessionStorage: the card is remounted when the kickoff turn
+  // settles and its row is re-keyed, and again on a reload. Either would
+  // otherwise throw away the answers given so far.
+  const [step, setStep] = useState(
+    () => readOnboardingProgress(callId)?.step ?? 0,
+  );
+  const [answers, setAnswers] = useState<Record<string, string>>(
+    () => readOnboardingProgress(callId)?.answers ?? {},
+  );
   const [isSent, setIsSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
@@ -30,15 +43,13 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
   // went out from this tab or from another one.
   const isDone = isSent || !isLive;
 
+  useEffect(() => {
+    if (isDone) return;
+    writeOnboardingProgress(callId, { step, answers });
+  }, [callId, step, answers, isDone]);
+
   function setAnswer(next: string) {
     setAnswers((previous) => ({ ...previous, [currentStep.keyword]: next }));
-  }
-
-  // A tap on an option is the whole answer, so the pager moves on by itself;
-  // the last question keeps the send button as its explicit final step.
-  function pickAnswer(next: string) {
-    setAnswer(next);
-    if (!isLast) setStep(current + 1);
   }
 
   function goBack() {
@@ -53,6 +64,7 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     setIsSending(true);
     try {
       await onSend(message);
+      clearOnboardingProgress(callId);
       setIsSent(true);
     } catch {
       setIsSent(false);
@@ -85,7 +97,6 @@ export function useExpertOnboardingCard({ steps, isLive }: Args) {
     value,
     advance,
     goBack,
-    pickAnswer,
     setAnswer,
     skip,
   };

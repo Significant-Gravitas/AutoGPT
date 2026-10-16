@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -145,3 +145,14 @@ def build_structured_transcript(
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
+
+
+@pytest.fixture(autouse=True)
+def login_chain_unchanged(request):
+    """Sandbox doubles hold no login files; tests of that check opt out."""
+    if request.node.get_closest_marker("real_login_chain"):
+        yield
+        return
+    unchanged = AsyncMock(return_value={})
+    with (patch("backend.util.sandbox_login.changed_login_files", unchanged),):
+        yield

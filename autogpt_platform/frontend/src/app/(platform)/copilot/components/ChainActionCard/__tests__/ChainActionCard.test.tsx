@@ -731,7 +731,7 @@ describe("ChainActionCard", () => {
       ).toBe("false");
     });
 
-    it("swaps to free text via Type something and clears a picked option", () => {
+    it("opens free text via Type something, clears a picked option and keeps the options on screen", () => {
       const request = questionRequest({
         questions: [
           {
@@ -747,9 +747,8 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByText("Type something…"));
       expect(request.onAnswer).toHaveBeenCalledWith("region", "");
       expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
-
-      fireEvent.click(screen.getByText("Choose from options instead"));
       expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+      expect(screen.getByRole("radio", { name: "Americas" })).toBeDefined();
     });
 
     it("opens in free text when the answer matches no option", () => {
@@ -771,7 +770,7 @@ describe("ChainActionCard", () => {
       expect(screen.getByDisplayValue("Antarctica")).toBeDefined();
     });
 
-    it("clears a custom answer when going back to the options", () => {
+    it("replaces a custom answer and closes the textarea when an option is picked", () => {
       const request = questionRequest({
         questions: [
           {
@@ -784,8 +783,10 @@ describe("ChainActionCard", () => {
       });
       renderCard({ questions: [request] });
 
-      fireEvent.click(screen.getByText("Choose from options instead"));
-      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+      fireEvent.click(screen.getByRole("radio", { name: "Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(screen.queryByDisplayValue("Antarctica")).toBeNull();
+      expect(screen.getByText("Type something…")).toBeDefined();
     });
 
     it("names the option group after the question", () => {
@@ -1164,7 +1165,7 @@ describe("ChainActionCard", () => {
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
-    it("advances to the next question when an option is clicked", () => {
+    it("stays on the question when an option is clicked", () => {
       const request = questionRequest({
         questions: [
           {
@@ -1179,7 +1180,28 @@ describe("ChainActionCard", () => {
 
       fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
       expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
-      expect(screen.getByText("Which format?")).toBeDefined();
+      expect(screen.getByText("Which region?")).toBeDefined();
+      expect(screen.queryByText("Which format?")).toBeNull();
+    });
+
+    it("copies an option into the textarea to edit it", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit Americas" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText("Type your answer"),
+      );
+      expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
     });
 
     it("stays on the last question after an option is clicked", () => {
@@ -1290,9 +1312,9 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
 
       // Remounted: "Email" matches neither option here, so the field opens in
-      // free text with the stray value visible instead of silently hiding it.
+      // free text with the stray value visible next to the new options.
       expect(screen.getByDisplayValue("Email")).toBeDefined();
-      expect(screen.queryByRole("radio", { name: "Notion" })).toBeNull();
+      expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
     });
 
     it("keeps the questions card sendable when an unready sibling exists", () => {

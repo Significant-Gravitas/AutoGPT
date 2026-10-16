@@ -1,0 +1,6 @@
+{% macro lede() -%}
+Hi {{ user_name }}, {% if kind == 'started' %}your card is set up and your trial is ready.{% elif kind == 'ending' %}your trial ends on {{ ends_label }}.{% elif kind == 'canceled' %}your trial will not convert to a paid plan.{% elif kind == 'resumed' %}your trial cancellation has been removed.{% elif kind == 'converted' %}your trial has ended, your payment is confirmed, and your {{ plan.name }} plan is active.{% elif kind == 'payment_failed' %}we couldn't complete the payment after your trial.{% else %}your trial access has ended.{% endif %} {{ preheader }}
+{%- endmacro %}
+{% macro detail() -%}
+{% if kind == 'started' %}Pick a real task, connect the accounts it needs, and give AutoGPT a first run. Unless you cancel before {{ ends_label }}, your plan starts automatically at {{ plan.price_display }}. Applicable tax may be added. Trial access is subject to your trial allowance.{% elif kind in ['ending', 'resumed'] %}Applicable tax may be added. Review your plan or cancel in billing settings before {{ ends_label }}.{% elif kind == 'payment_failed' %}Update your card or complete any verification requested by your bank in billing settings.{% elif kind == 'ended' %}Review your plan and payment status in billing settings if you'd like to continue.{% endif %}
+{%- endmacro %}

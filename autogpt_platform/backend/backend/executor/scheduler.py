@@ -29,12 +29,13 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
-from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
@@ -52,6 +53,7 @@ from backend.monitoring import (
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
+    report_orphaned_auth_identities,
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
@@ -552,6 +554,11 @@ async def _execute_copilot_turn(**kwargs):
             is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
+            # Even when the target is the user's own chat, nobody is there to
+            # answer this turn's questions, e.g. which of two accounts to use.
+            unattended=True,
+            # So the accounts are the ones chosen when the schedule was made.
+            credential_pins=_credential_pins_for_turn(args, routine),
             organization_id=args.organization_id,
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
@@ -564,6 +571,13 @@ async def _execute_copilot_turn(**kwargs):
                 _routine_turn_permissions(routine)
                 if args.routine_id is not None
                 else None
+            ),
+            # Nobody watches a scheduled turn, so the executor alerts when it
+            # fails after this dispatch succeeded (SECRT-2799).
+            scheduled=ScheduledTurnOrigin(
+                schedule_id=args.schedule_id,
+                routine_id=args.routine_id,
+                cron=args.cron,
             ),
         )
         if routine is not None and routine.run_at is not None:
@@ -622,6 +636,26 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+def _credential_pins_for_turn(
+    args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
+) -> CredentialPins:
+    """The accounts this fire runs on, chosen in the chat that made it.
+
+    A routine keeps them on its row, so switching it off and on again, or
+    rewording it, keeps them; a follow-up keeps them in its job. A schedule
+    made before pins existed has none, and its turns take the first saved
+    credential when several fit (SECRT-2804).
+    """
+    pins = routine.credential_pins if routine is not None else args.credential_pins
+    if not pins:
+        logger.info(
+            "Copilot turn schedule %s has no pinned credentials; where several "
+            "fit, its turn uses the first saved one",
+            args.schedule_id,
+        )
+    return pins
 
 
 def _session_id_label(args: "CopilotTurnJobArgs") -> str:
@@ -719,6 +753,9 @@ async def _reschedule_one_shot(
             # an ungranted routine that merely lost a race to the concurrency
             # cap would come back with everything the mute exists to withhold.
             routine_id=args.routine_id,
+            # And the accounts it was set up to run on, or the retry would
+            # take the first saved one instead.
+            credential_pins=args.credential_pins,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1683,6 +1720,10 @@ class CopilotTurnJobArgs(BaseModel):
     # decides whether the turn may touch a connected service at all. None keeps
     # ordinary ``schedule_followup`` jobs on their existing path.
     routine_id: str | None = None
+    # ``{provider: pin}``: the account the user chose for each provider when
+    # the follow-up was made, which every fire runs on (SECRT-2804). A routine
+    # keeps its pins on its row instead. Empty on rows persisted before pins.
+    credential_pins: CredentialPins = Field(default_factory=dict)
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -2049,6 +2090,19 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Auth identity <-> platform User invariant. Heals any auth
+            # identity that has no platform User row and pages when it had to.
+            if config.auth_identity_orphan_sweep_enabled:
+                self.scheduler.add_job(
+                    report_orphaned_auth_identities,
+                    id="report_orphaned_auth_identities",
+                    trigger="interval",
+                    replace_existing=True,
+                    max_instances=1,
+                    seconds=config.auth_identity_orphan_check_interval_secs,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
+
             # Cloud Storage Cleanup - configurable interval
             self.scheduler.add_job(
                 cleanup_expired_files,
@@ -2315,6 +2369,7 @@ class Scheduler(AppService):
         team_id: str | None = None,
         expert_id: str | None = None,
         routine_id: str | None = None,
+        credential_pins: CredentialPins | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2352,6 +2407,7 @@ class Scheduler(AppService):
             team_id=team_id,
             expert_id=expert_id,
             routine_id=routine_id,
+            credential_pins=credential_pins or {},
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
@@ -2692,6 +2748,11 @@ class Scheduler(AppService):
     @expose
     def execute_report_block_error_rates(self):
         return report_block_error_rates()
+
+    @expose
+    def execute_report_orphaned_auth_identities(self):
+        """Manually trigger the auth-identity invariant check and heal."""
+        return report_orphaned_auth_identities()
 
     @expose
     def execute_cleanup_expired_files(self):

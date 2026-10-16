@@ -390,41 +390,10 @@ def test_empty_thinking_block_is_ignored():
     assert [type(r).__name__ for r in results] == ["StreamStartStep"]
 
 
-def test_render_reasoning_in_ui_false_still_emits_adapter_events():
-    """With the persist/render decoupling the adapter is flag-agnostic:
-    it always emits ``StreamReasoning*`` so the session transcript keeps a
-    durable reasoning record.  Wire-level suppression when
-    ``render_reasoning_in_ui=False`` happens at the SDK service yield
-    boundary, not here — see
-    ``backend/copilot/sdk/service.py::_filter_reasoning_events``.
-    """
-    adapter = SDKResponseAdapter(
-        message_id="m",
-        session_id="s",
-        render_reasoning_in_ui=False,
-    )
-    msg = AssistantMessage(
-        content=[ThinkingBlock(thinking="plan", signature="sig")],
-        model="test",
-    )
-    results = adapter.convert_message(msg)
-    types = [type(r).__name__ for r in results]
-    assert "StreamReasoningStart" in types
-    assert "StreamReasoningDelta" in types
-
-
-def test_render_reasoning_off_text_after_thinking_still_closes_reasoning():
-    """Adapter still emits a ``StreamReasoningEnd`` when text follows a
-    thinking block — decoupled from the render flag.  The service layer
-    drops the reasoning events at yield time; the adapter's structural
-    open/close pairing must not depend on the flag or downstream filters
-    would see orphan reasoning starts on the persisted transcript.
-    """
-    adapter = SDKResponseAdapter(
-        message_id="m",
-        session_id="s",
-        render_reasoning_in_ui=False,
-    )
+def test_text_after_thinking_closes_reasoning():
+    """Text following a thinking block closes the reasoning block first, so
+    the transcript never holds an orphan reasoning start."""
+    adapter = SDKResponseAdapter(message_id="m", session_id="s")
     adapter.convert_message(
         AssistantMessage(
             content=[ThinkingBlock(thinking="warming up", signature="sig")],

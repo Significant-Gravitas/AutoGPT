@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
@@ -29,7 +30,6 @@ import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  parseSpecialMarkers,
 } from "./helpers";
 import {
   isMidTurnSegmentRow,

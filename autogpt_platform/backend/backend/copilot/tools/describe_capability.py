@@ -60,6 +60,8 @@ class DescribeCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Inputs and outputs of one capability by id, before its first use. "
+            "Skip ids listed in the <seen_capabilities> block of the current "
+            "user message: those were already described this session. "
             "Blocks return their schema; MCP servers list their tools; platform "
             "tools return their parameters. Large enums are sampled unless "
             "expand=true."
@@ -160,7 +162,7 @@ def describe_skill(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
         capability=entry.listing(),
         parameters=NO_INPUT,
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 def _describe_tool(

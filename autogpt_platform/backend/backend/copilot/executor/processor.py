@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Callable, cast
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
+from backend.copilot.context import set_turn_unattended
+from backend.copilot.credential_selection import set_turn_credential_pins
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -50,6 +52,7 @@ from backend.util.process import set_service_name
 from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from .scheduled_turn_alert import ScheduledTurnWatch
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
@@ -553,6 +556,7 @@ class CoPilotProcessor:
         error_msg = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
+        scheduled_watch = ScheduledTurnWatch.for_entry(entry)
 
         try:
             from backend.copilot.model import get_chat_session
@@ -720,6 +724,8 @@ class CoPilotProcessor:
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
+            set_turn_unattended(session, scheduled=entry.unattended)
+            set_turn_credential_pins(entry.credential_pins)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,
@@ -769,6 +775,8 @@ class CoPilotProcessor:
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         break
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:
@@ -806,6 +814,9 @@ class CoPilotProcessor:
                     except Exception as release_err:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
+                # After the release, which can still fail the turn.
+                if scheduled_watch is not None:
+                    scheduled_watch.report(error_msg)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id, error_message=error_msg, turn_id=entry.turn_id

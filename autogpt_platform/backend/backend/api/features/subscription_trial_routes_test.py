@@ -23,6 +23,14 @@ def billing_return_origin(monkeypatch):
     monkeypatch.setattr(routes, "Settings", lambda: settings)
 
 
+@pytest.fixture(autouse=True)
+def track_checkout_started(monkeypatch) -> AsyncMock:
+    """Keep analytics off the network and let tests assert the event."""
+    track = AsyncMock()
+    monkeypatch.setattr(routes, "track_checkout_started", track)
+    return track
+
+
 @pytest.fixture
 def trial() -> TrialState:
     now = datetime.now(UTC)
@@ -144,6 +152,60 @@ async def test_checkout_uses_authenticated_identity_and_server_return_urls(trial
         == "https://platform.example.com/onboarding?trial=cancelled"
     )
     assert params["metadata"]["datafast_visitor_id"] == "visitor-1"
+
+
+@pytest.mark.asyncio
+async def test_checkout_sends_checkout_started_for_the_reserved_plan(
+    trial, track_checkout_started
+):
+    with (
+        patch.object(
+            routes,
+            "create_trial_checkout",
+            AsyncMock(return_value="https://checkout.stripe.com/test"),
+        ),
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+    ):
+        await routes.start_trial_checkout(
+            routes.TrialCheckoutRequest(
+                offer_token=trial.offer.token, return_to="onboarding"
+            ),
+            trial.user_id,
+        )
+
+    track_checkout_started.assert_awaited_once_with(
+        user_id=trial.user_id,
+        checkout_kind="trial",
+        surface="onboarding",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+    )
+
+
+@pytest.mark.asyncio
+async def test_checkout_started_survives_an_unreadable_trial(
+    trial, track_checkout_started
+):
+    with (
+        patch.object(
+            routes,
+            "create_trial_checkout",
+            AsyncMock(return_value="https://checkout.stripe.com/test"),
+        ),
+        patch.object(
+            routes,
+            "get_subscription_trial",
+            AsyncMock(side_effect=RuntimeError("db down")),
+        ),
+    ):
+        response = await routes.start_trial_checkout(
+            routes.TrialCheckoutRequest(offer_token=trial.offer.token),
+            trial.user_id,
+        )
+
+    assert response.url == "https://checkout.stripe.com/test"
+    assert track_checkout_started.await_args.kwargs["subscription_tier"] is None
+    assert track_checkout_started.await_args.kwargs["surface"] == "billing"
 
 
 @pytest.mark.asyncio

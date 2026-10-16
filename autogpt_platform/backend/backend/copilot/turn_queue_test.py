@@ -223,6 +223,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
     (
         "expert_id",
         "origin",
+        "source_platform",
         "role",
         "claim",
         "dispatch_fails",
@@ -230,18 +231,20 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
         "expected_event",
     ),
     [
-        ("expert-1", "interactive", "user", True, False, False, True),
-        (None, "automation", "user", True, False, False, True),
-        ("expert-1", "interactive", "user", False, False, False, False),
-        ("expert-1", "interactive", "user", True, True, False, False),
-        ("expert-1", "interactive", "assistant", True, False, False, False),
-        ("expert-1", "interactive", "user", True, False, True, True),
+        ("expert-1", "interactive", None, "user", True, False, False, True),
+        (None, "interactive", "discord", "user", True, False, False, True),
+        (None, "automation", None, "user", True, False, False, True),
+        ("expert-1", "interactive", None, "user", False, False, False, False),
+        ("expert-1", "interactive", None, "user", True, True, False, False),
+        ("expert-1", "interactive", None, "assistant", True, False, False, False),
+        ("expert-1", "interactive", None, "user", True, False, True, True),
     ],
 )
 async def test_promoted_turn_tracking_preserves_session_attribution(
     tracked_message: MagicMock,
     expert_id: str | None,
     origin: str,
+    source_platform: str | None,
     role: str,
     claim: bool,
     dispatch_fails: bool,
@@ -253,6 +256,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
     head = _mock_session()
     head.expert_id = expert_id
     head.metadata.origin = origin
+    head.metadata.source_platform = source_platform
     head.metadata.llm_auth_provider = "codex"
     pending = _pyd_message(role=role)
     db = MagicMock()
@@ -284,7 +288,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
             message_length=5,
             expert_id=expert_id,
             origin=origin,
-            surface="chat",
+            source_platform=source_platform,
         )
     else:
         tracked_message.assert_not_called()

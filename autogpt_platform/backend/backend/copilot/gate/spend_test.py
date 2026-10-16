@@ -352,7 +352,7 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
             f"{_RUN}.execution_utils.add_graph_execution",
             AsyncMock(return_value=execution),
         ),
-        patch(f"{_RUN}.track_agent_run_success"),
+        patch(f"{_RUN}.track_chat_outcome"),
     ):
         await RunAgentTool()._run_agent(
             "user-1", _session(), graph, {}, {}, dry_run=False

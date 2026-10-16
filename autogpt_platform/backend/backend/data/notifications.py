@@ -194,7 +194,7 @@ class SubscriptionPlan(BaseModel):
     name: str = Field(description='"Pro" / "Max"')
     cycle: Literal["monthly", "yearly"]
     cycle_noun: Literal["month", "year"]
-    label: str = Field(description='"Pro — monthly"')
+    label: str = Field(description='"Pro · monthly"')
     price_display: str = Field(description='"$50.00 / month"')
 
 
@@ -213,6 +213,7 @@ class LifecycleData(BaseNotificationData):
 
 class SubscriptionWelcomeData(LifecycleData):
     renews_label: str
+    experts_enabled: bool = False
 
 
 class PaymentFailedData(LifecycleData):

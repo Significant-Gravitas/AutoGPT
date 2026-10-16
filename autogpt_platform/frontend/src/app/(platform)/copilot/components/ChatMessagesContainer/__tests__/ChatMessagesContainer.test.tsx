@@ -142,6 +142,9 @@ vi.mock("../helpers", async (importOriginal) => ({
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
+}));
+
+vi.mock("../../../helpers/messageMarkers", () => ({
   parseSpecialMarkers: (text: string) => {
     if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
       return { markerType: "error" };

@@ -779,18 +779,6 @@ export enum SpecialBlockID {
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
-export type AnalyticsMetrics = {
-  metric_name: string;
-  metric_value: number;
-  data_string: string;
-};
-
-export type AnalyticsDetails = {
-  type: string;
-  data: Record<string, any>;
-  index: string;
-};
-
 export type Pagination = {
   total_items: number;
   total_pages: number;

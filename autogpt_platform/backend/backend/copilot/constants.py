@@ -76,6 +76,10 @@ MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
 # "no tool blocks >= idle_timeout" holds by construction.
 STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
 
+# The SDK turn gives up on a tool that is still pending after this long, aborts
+# the stream and pauses the E2B box.
+HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+
 # Redis key prefix for the SDK-stream-level lock that ensures only one
 # active SDK stream per session. Released by the SDK turn's finally block
 # and force-released by mark_session_completed on cancel/error.

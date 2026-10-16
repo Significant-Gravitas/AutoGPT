@@ -43,6 +43,7 @@ from backend.copilot.bot.adapters.base import (
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
@@ -59,10 +60,6 @@ logger = logging.getLogger(__name__)
 EVENTS_PATH = "/api/copilot-webhooks/slack/events"
 COMMANDS_PATH = "/api/copilot-webhooks/slack/commands"
 INTERACTIVE_PATH = "/api/copilot-webhooks/slack/interactive"
-_EXPIRED_NOTICE = "This question has expired — type your answer instead."
-_NOT_YOUR_QUESTION = (
-    "This question was for someone else — they still need to answer it."
-)
 
 # Slack lifecycle events that end a workspace's install — revoke its token.
 _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
@@ -253,36 +250,41 @@ class SlackAdapter(WebhookAdapter):
         return PlainTextResponse("ok")
 
     async def _dispatch_block_action(self, payload: dict[str, Any]) -> None:
-        """Resolve a clicked ask_question choice button and feed the answer
-        back through the normal message pipeline, exactly like a typed
-        reply."""
+        """Resolve a clicked choice or card button and feed the answer back
+        through the normal message pipeline, exactly like a typed reply."""
         actions = payload.get("actions") or []
         if not actions:
             return
         parsed = choice_ui.parse_action_id(actions[0].get("action_id") or "")
         if parsed is None:
             return
-        token, index = parsed
+        kind, token, index = parsed
         team_id = (payload.get("team") or {}).get("id") or ""
-        channel_id = (payload.get("channel") or {}).get("id")
+        channel_id = (payload.get("channel") or {}).get("id") or ""
         client = await self._client_for(team_id)
         clicker_id = (payload.get("user") or {}).get("id", "")
-        resolved = await choices.resolve_choice("slack", token, index, clicker_id)
-        if resolved.text is None:
+        answer = await choices.answer_button(
+            self._api,
+            "slack",
+            kind,
+            token,
+            index,
+            clicker_id,
+            # Keyed as the context keys it: a DM ("D…") bills to the user.
+            None if channel_id.startswith("D") else team_id,
+        )
+        if not answer.answered:
             if client and channel_id:
                 await client.chat_postEphemeral(
-                    channel=channel_id,
-                    user=clicker_id,
-                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
+                    channel=channel_id, user=clicker_id, text=answer.text
                 )
             return
-        option = resolved.text
         message_ts = (payload.get("container") or {}).get("message_ts")
         if client and channel_id and message_ts:
-            # `resolve_choice` already consumed the token, so the answer now
-            # exists only in this call. The ack is cosmetic and the turn is
-            # not: a `message_not_found`/`ratelimited` here must not abort
-            # the dispatch and lose the answer with nothing logged.
+            # The token is already consumed, so the answer now exists only in
+            # this call. The ack is cosmetic and the turn is not: a
+            # `message_not_found`/`ratelimited` here must not abort the
+            # dispatch and lose the answer with nothing logged.
             try:
                 await client.chat_update(
                     channel=channel_id,
@@ -291,7 +293,7 @@ class SlackAdapter(WebhookAdapter):
                     # the same escaper as every other Slack send — otherwise
                     # an option containing `<!channel>` pings the workspace,
                     # bypassing the mentionable_users allowlist.
-                    text=self.localize_markup(f"✅ You answered: {option}"),
+                    text=self.localize_markup(answer.text),
                     blocks=[],
                 )
             except Exception:
@@ -300,8 +302,9 @@ class SlackAdapter(WebhookAdapter):
                 )
         if self._on_message_callback is None:
             return
-        ctx = await self._context_from_block_action(payload, option)
+        ctx = await self._context_from_block_action(payload, answer.reply or "")
         if ctx is not None:
+            ctx.follow = answer.follow
             await self._on_message_callback(ctx, self)
 
     async def _context_from_block_action(
@@ -629,6 +632,7 @@ class SlackAdapter(WebhookAdapter):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         team, channel, thread_ts = _decode_target(channel_id)
         client = await self._client_for(team)
@@ -639,7 +643,7 @@ class SlackAdapter(WebhookAdapter):
             channel=channel,
             text=rendered,
             thread_ts=thread_ts,
-            blocks=choice_ui.choice_blocks(rendered, token, options),
+            blocks=choice_ui.choice_blocks(rendered, token, options, kind),
         )
         return True
 

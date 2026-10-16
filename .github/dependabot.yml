@@ -18,18 +18,27 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path arrives one package per PR (see the backend block).
+        exclude-patterns:
+          - "pyjwt"
+          - "cryptography"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+        # Declared as dev but imported by runtime code.
+        exclude-patterns:
+          - "httpx*"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
     directory: "autogpt_platform/backend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    # Room for one PR per critical-path package on top of the groups: at the limit
+    # Dependabot silently opens nothing new.
+    open-pull-requests-limit: 20
     target-branch: "dev"
     commit-message:
       prefix: "chore(backend/deps)"
@@ -42,11 +51,35 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, OAuth, Google APIs, payments, LLM providers, the copilot's
+        # Claude Code runtime and sandbox, outbound HTTP) arrives one package per PR so each
+        # gets its own review. A default flipped inside google-auth-oauthlib hid in a
+        # 43-package group and broke Google OAuth (SECRT-2754).
+        exclude-patterns:
+          - "google-auth*"
+          - "google-api-python-client"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "claude-agent-sdk"
+          - "e2b*"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+        # Declared as dev but imported by runtime code.
+        exclude-patterns:
+          - "httpx*"
+          - "requests"
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -58,7 +91,7 @@ updates:
     # (ERR_PNPM_NO_MATCHING_VERSION).
     cooldown:
       default-days: 8
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 20
     target-branch: "dev"
     commit-message:
       prefix: "chore(frontend/deps)"
@@ -69,11 +102,87 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, the copilot stream) arrives one package per PR (see the
+        # backend block).
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+          - "ai"
+          - "@ai-sdk/*"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+
+  # Security updates. The entries above set `target-branch`, so none of their options
+  # reach security updates (those always target the default branch), and the
+  # repository setting would bundle them. These entries cover the same directories on
+  # the default branch with version updates off (limit 0), keeping the critical path
+  # out of the security bundle too.
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/autogpt_libs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(libs/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "pyjwt"
+          - "cryptography"
+          - "httpx*"
+
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(backend/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "google-auth*"
+          - "google-api-python-client"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "claude-agent-sdk"
+          - "e2b*"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
+
+  - package-ecosystem: "npm"
+    directory: "autogpt_platform/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(frontend/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+          - "ai"
+          - "@ai-sdk/*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

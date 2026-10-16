@@ -259,11 +259,14 @@ async def _find_owned_personal_org(user_id: str):
     )
 
 
-async def ensure_personal_org(user_id: str) -> None:
+async def ensure_personal_org(user_id: str) -> bool:
     """Ensure *user_id* owns a personal Organization; create one if missing.
 
     Idempotent and race-safe. If the user already owns a personal org this is a
     no-op. Otherwise it bootstraps one via ``create_personal_org``.
+
+    Returns ``True`` only when this call created the org, so exactly one of any
+    number of concurrent callers sees ``True`` for a given user.
 
     On ``UniqueViolationError`` there are two possibilities, distinguished by a
     re-check (same pattern as ``data.user._ensure_user_profile``): a concurrent
@@ -276,20 +279,20 @@ async def ensure_personal_org(user_id: str) -> None:
     propagates and fails the request loudly rather than bricking the account.
     """
     if await _find_owned_personal_org(user_id) is not None:
-        return
+        return False
 
     slug_base, display_name = await _derive_personal_org_identity(user_id)
 
     for _ in range(3):
         try:
             await create_personal_org(user_id, slug_base, display_name)
-            return
+            return True
         except UniqueViolationError:
             existing = await _find_owned_personal_org(user_id)
             if existing is not None:
                 # A concurrent request bootstrapped this user first.
                 logger.debug("Personal org for user %s created concurrently", user_id)
-                return
+                return False
             # A legacy orphan holding this user's index slot blocks every
             # retry — clear it so the next attempt can succeed. Otherwise
             # the slug collided with a *different* user; retry either way.

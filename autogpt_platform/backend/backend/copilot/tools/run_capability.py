@@ -161,11 +161,11 @@ class RunCapabilityTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
         if input is not None and not isinstance(input, dict):
             return ErrorResponse(
                 message="input must be an object", session_id=session_id
-            )
+            ).from_outside()
         payload: dict[str, Any] = dict(input or {})
         entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
@@ -184,9 +184,11 @@ class RunCapabilityTool(BaseTool):
                     "server's secure endpoint."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
         if entry is None:
-            return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
+            return ErrorResponse(
+                message=UNKNOWN_ID_HINT, session_id=session_id
+            ).from_outside()
         if entry.kind == "block":
             return await _run_block(
                 entry, user_id, session, payload, validate_only, approved
@@ -201,14 +203,14 @@ class RunCapabilityTool(BaseTool):
                 return ErrorResponse(
                     message=setup_hint(entry.schema_ref or entry.id),
                     session_id=session_id,
-                )
+                ).from_outside()
             return await _run_mcp(
                 entry, server_url, user_id, session, payload, validate_only
             )
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot run yet.",
             session_id=session_id,
-        )
+        ).from_outside()
 
 
 async def _run_block(
@@ -255,7 +257,9 @@ async def _describe_tool(
     name = entry.implementations[0].ref
     tool = configured_tool(name)
     if tool is None:
-        return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session.session_id)
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session.session_id
+        ).from_outside()
     if gate_denied(name):
         return gate_denied_error(name, session.session_id)
     return CapabilityDetailsResponse(
@@ -263,7 +267,7 @@ async def _describe_tool(
         capability=entry.listing(),
         parameters=tool.parameters,
         session_id=session.session_id,
-    )
+    ).from_outside()
 
 
 async def _run_skill(
@@ -299,7 +303,7 @@ async def _run_mcp(
     if arguments is not None and not isinstance(arguments, dict):
         return ErrorResponse(
             message="input.arguments must be an object", session_id=session.session_id
-        )
+        ).from_outside()
     connect = bool(payload.get("connect", False))
     if validate_only:
         return CapabilityDetailsResponse(
@@ -312,7 +316,7 @@ async def _run_mcp(
             ),
             parameters=MCP_RUN_PARAMETERS,
             session_id=session.session_id,
-        )
+        ).from_outside()
     host = urlsplit(server_url).hostname or server_url
     # With the gate on it has already decided this call on the server's
     # effect map; the verb heuristic is the flag-off path only.
@@ -344,7 +348,7 @@ async def _run_mcp(
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
             input_data=review.model_dump(),
-        )
+        ).from_outside()
     if tool_name:
         emit_tool_display_name(f"{host}: {tool_name}")
     return await RunMCPToolTool()._execute(
