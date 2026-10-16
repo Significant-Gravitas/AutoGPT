@@ -56,6 +56,7 @@ from backend.data import skill_learning as learning_data
 from backend.data import skill_reviews as reviews_data
 from backend.data import skill_use as use_data
 from backend.data import skill_versions as versions_data
+from backend.data.skill_deletion import DELETED_STATE
 from backend.data.skill_learning import owner_key_for
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -243,6 +244,8 @@ async def get_skill_detail(
         state, label = "paused", "Paused (learning)"
     elif current is not None:
         state, label = current.state, state_label(current.state)
+    elif versions and versions[0].state == DELETED_STATE:
+        state, label = DELETED_STATE, state_label(DELETED_STATE)
     else:
         state, label = "candidate", state_label("candidate")
     return SkillLearningDetail(

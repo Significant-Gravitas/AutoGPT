@@ -42,6 +42,7 @@ async def invalidate_versions_for_source(
             actor_user_id=user_id,
             reason="Restored after a source became unavailable",
             suppress_behavior=False,
+            replacing_version_id=head.current_version_id,
         )
         await invalidate_skills_index_cache(user_id, expert_id)
     return [v.id for v in affected]

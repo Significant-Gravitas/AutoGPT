@@ -591,6 +591,33 @@ def test_detail_does_not_lose_current_version_behind_unpublished_history(
     assert resp.json()["state"] == "ready"
 
 
+def test_detail_of_a_deleted_skill_says_deleted(store, test_user_id):
+    _, current = run(_publish(store, test_user_id))
+    run(
+        store.record_skill_deletion(
+            test_user_id,
+            expert_id=EXPERT,
+            skill_name="csv-import-checks",
+            expected_current_version_id=current.id,
+            behaviors=[],
+            actor_user_id=test_user_id,
+        )
+    )
+    resp = client.get(
+        "/skill-learning/skills/csv-import-checks", params={"expert_id": EXPERT}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert (body["state"], body["state_label"]) == ("deleted", "Deleted")
+    assert body["current_version"] is None
+    marker, deleted = body["versions"]
+    assert (marker["origin_label"], marker["summary"]) == (
+        "Deleted by you",
+        f"Deleted v{current.version}",
+    )
+    assert (deleted["id"], deleted["state"]) == (current.id, "archived")
+
+
 @pytest.mark.parametrize("payload", [{}, {"edited_body": ""}, {"edited_body": "  "}])
 def test_apply_edited_requires_an_edited_body(store, test_user_id, payload):
     _, version = run(_publish(store, test_user_id))

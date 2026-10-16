@@ -15,6 +15,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_deletion import (
+    DELETED_ORIGIN,
+    DELETED_REASON,
+    DELETED_STATE,
+    DeletedBehavior,
+    SkillDeletion,
+)
 from backend.data.skill_learning import (
     LearningAccessError,
     LearningSourceRecord,
@@ -950,6 +957,88 @@ class FakeLearningStore:
         ]
         latest = max(rows, key=lambda v: v.version, default=None)
         return latest.id if latest else None
+
+    # ---- deletion ------------------------------------------------------
+
+    async def record_skill_deletion(
+        self,
+        user_id: str,
+        *,
+        expert_id: str | None,
+        skill_name: str,
+        expected_current_version_id: str | None,
+        behaviors: list[DeletedBehavior],
+        actor_user_id: str | None,
+    ) -> SkillDeletion:
+        owner_key = owner_key_for(expert_id)
+        head = await self.get_head(user_id, owner_key, skill_name)
+        current_id = head.current_version_id if head is not None else None
+        if current_id != expected_current_version_id:
+            return SkillDeletion(committed=False)
+        for behavior in behaviors:
+            if not await self.find_suppression(
+                user_id, owner_key, skill_name, behavior.behavior_fingerprint
+            ):
+                await self.add_suppression(
+                    user_id,
+                    expert_id=expert_id,
+                    skill_name=skill_name,
+                    behavior_fingerprint=behavior.behavior_fingerprint,
+                    behavior_tokens=behavior.behavior_tokens,
+                    evidence_fingerprints=behavior.evidence_fingerprints,
+                    actor_user_id=actor_user_id,
+                    reason="deleted by the owner",
+                )
+        if head is None:
+            return SkillDeletion(committed=True)
+        marker = await self.create_version(
+            user_id,
+            head=head,
+            content="",
+            description="",
+            triggers=[],
+            origin=DELETED_ORIGIN,
+            summary=f"Deleted v{head.current_version}" if current_id else "Deleted",
+            state=DELETED_STATE,
+            actor_user_id=actor_user_id,
+        )
+        self._put_head(
+            head.model_copy(
+                update={
+                    "current_version": marker.version,
+                    "current_version_id": None,
+                    "content_hash": None,
+                    "auto_improve": True,
+                    "learning_paused_at": None,
+                    "use_paused_at": None,
+                }
+            )
+        )
+        history = [
+            v
+            for v in self.versions.values()
+            if v.user_id == user_id and v.head_id == head.id
+        ]
+        archived = [v.id for v in history if v.state in ("ready", "needs_decision")]
+        for version_id in archived:
+            await self.set_version_state(
+                user_id, version_id, "archived", DELETED_REASON
+            )
+        pending = [v for v in history if v.state == PENDING_WRITE_STATE]
+        for version in pending:
+            await self.abandon_publication(
+                user_id,
+                version_id=version.id,
+                review_id=version.review_id,
+                reason=DELETED_REASON,
+                disposition="suppressed",
+            )
+        return SkillDeletion(
+            committed=True,
+            marker=marker,
+            archived_version_ids=archived,
+            abandoned_version_ids=[v.id for v in pending],
+        )
 
     # ---- suppressions + use events -------------------------------------
 
