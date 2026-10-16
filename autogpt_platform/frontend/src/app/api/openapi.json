@@ -4198,6 +4198,141 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/at-reset": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List turns at budget reset",
+        "description": "The chat's pending resume and send at the budget reset.",
+        "operationId": "getV2List turns at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtResetTurnsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Schedule turn at budget reset",
+        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. A chat has\nat most one of each: a resume set again replaces the earlier one, and a\nsend joins the message already waiting, so nothing written meanwhile is\nlost. Sending a message in the chat cancels a pending resume.",
+        "operationId": "postV2Schedule turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AtResetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AtResetTurn" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found, or not writable" },
+          "409": {
+            "description": "\"not_out_of_budget\": nothing to wait for, so carry on now. \"no_reset\": the allowance never refills (a trial)."
+          },
+          "413": {
+            "description": "\"message_too_long\": the message waiting plus this one would be longer than a single message may be"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Usage could not be read; retry shortly" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/at-reset/{kind}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel turn at budget reset",
+        "description": "Cancel the chat's resume or send at the budget reset; one that isn't\nset is already cancelled.",
+        "operationId": "deleteV2Cancel turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": ["resume", "send"],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
@@ -19268,6 +19403,63 @@
         "required": ["pod_id"],
         "title": "AssignPodRequest"
       },
+      "AtResetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind",
+            "description": "\"resume\" picks the paused task back up; \"send\" sends ``message`` as the user's."
+          },
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64000 },
+              { "type": "null" }
+            ],
+            "title": "Message",
+            "description": "What to send. Required for send, ignored for resume."
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "AtResetRequest",
+        "description": "A turn to run when the budget resets."
+      },
+      "AtResetTurn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind"
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "run_at"],
+        "title": "AtResetTurn",
+        "description": "A turn set to run when the budget resets."
+      },
+      "AtResetTurnsResponse": {
+        "properties": {
+          "jobs": {
+            "items": { "$ref": "#/components/schemas/AtResetTurn" },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "type": "object",
+        "required": ["jobs"],
+        "title": "AtResetTurnsResponse",
+        "description": "The chat's turns set for the budget reset, at most one of each kind."
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -20803,6 +20995,29 @@
             "title": "Reset Cost",
             "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
             "default": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "low", "exhausted"],
+            "title": "State",
+            "description": "'exhausted' when a turn can't start now (a capped window or the trial allowance is used up), 'low' from 80% of the tightest window (where the meters turn amber), otherwise 'ok'.",
+            "default": "ok"
+          },
+          "limiting_window": {
+            "anyOf": [
+              { "type": "string", "enum": ["daily", "weekly", "trial"] },
+              { "type": "null" }
+            ],
+            "title": "Limiting Window",
+            "description": "The limit behind a 'low' or 'exhausted' state: the used-up window that refills last, 'trial' for the trial allowance, or the fullest window when 'low'. Null when 'ok'."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When the limiting window refills. Null when 'ok', for the trial allowance, and for a window that allows nothing (no plan), none of which refill."
           }
         },
         "type": "object",
@@ -21315,6 +21530,19 @@
             },
             "type": "object",
             "title": "Credential Pins"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["followup", "resume", "send"],
+            "title": "Purpose",
+            "default": "followup"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
