@@ -530,7 +530,11 @@ Adding new flags:
 
 1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
 2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
-3. Configure the flag in the flag vendor
+3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
+   - `launchdarkly`: LaunchDarkly
+   - `posthog`: PostHog
+   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
+   - `server`: whichever the backend's `FEATURE_FLAG_BACKEND` names, by the same rule
 
 ---
 
