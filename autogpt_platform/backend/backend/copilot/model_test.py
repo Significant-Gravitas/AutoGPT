@@ -1383,6 +1383,7 @@ async def test_create_expert_session_forces_personal_tenancy(
     mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
         return_value=("personal-org", "personal-team")
     )
+    mock_experts_db.get_autopilot_mode = mocker.AsyncMock(return_value=None)
     mock_chat_db = mocker.MagicMock()
     mock_chat_db.create_chat_session = mocker.AsyncMock(
         return_value=mocker.MagicMock(expert_id="expert-1")
