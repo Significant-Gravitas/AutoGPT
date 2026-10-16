@@ -378,7 +378,7 @@ describe("Out of AutoPilot budget", () => {
     );
     expect(
       within(notice).getByText(
-        "It resets Monday at 1:00 AM, in 2 days. You can still browse, edit agents and read results.",
+        "It resets Monday at 1:00 AM, in 2 days. You can still browse, edit workflows and read results.",
       ),
     ).toBeDefined();
     for (const meter of ["Today", "This week"]) {

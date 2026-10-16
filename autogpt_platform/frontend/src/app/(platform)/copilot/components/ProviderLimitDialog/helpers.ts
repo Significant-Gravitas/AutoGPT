@@ -30,9 +30,9 @@ export function alternativeConnection(
     (offer) =>
       offer.selectable &&
       !isTheOneThatFailed(offer, failure) &&
-      offer.offer_id.split(":")[0] !== "microsoft_365_copilot" &&
+      offer.auth_provider !== "microsoft_365_copilot" &&
       (failure.authProvider !== "platform" ||
-        offer.offer_id.split(":")[0] === "codex") &&
+        offer.auth_provider === "codex") &&
       (offer.auth_method === "deployment" || offer.credential_id !== null),
   );
   if (usable.length === 0) return null;
@@ -42,9 +42,7 @@ export function alternativeConnection(
 
   return {
     display_name: platform.display_name,
-    auth_provider: platform.offer_id.split(
-      ":",
-    )[0] as ChangeSessionConnectionRequestLlmAuthProvider,
+    auth_provider: platform.auth_provider,
     credential_id: platform.credential_id ?? null,
   };
 }

@@ -136,7 +136,7 @@ describe("budget copy", () => {
         NOW,
       ),
     ).toBe(
-      "It resets Tuesday at 9:00 PM, in 2 days. You can still browse, edit agents and read results.",
+      "It resets Tuesday at 9:00 PM, in 2 days. You can still browse, edit workflows and read results.",
     );
   });
 
@@ -144,7 +144,7 @@ describe("budget copy", () => {
     expect(
       budgetResetSentence({ window: "daily", resetsAt: TONIGHT_1AM }, NOW),
     ).toBe(
-      "It resets at 1:00 AM, in 4 h 12 min. You can still browse, edit agents and read results.",
+      "It resets at 1:00 AM, in 4 h 12 min. You can still browse, edit workflows and read results.",
     );
   });
 

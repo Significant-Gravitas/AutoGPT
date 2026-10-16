@@ -60,7 +60,7 @@ export function budgetOutTitle(window: RecurringWindow) {
 }
 
 export function budgetResetSentence(wait: ResetWait, now = new Date()) {
-  return `It resets ${formatResetMoment(wait, now)}. You can still browse, edit agents and read results.`;
+  return `It resets ${formatResetMoment(wait, now)}. You can still browse, edit workflows and read results.`;
 }
 
 export function budgetLowHint(window: BudgetWindow, percentUsed: number) {

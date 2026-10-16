@@ -137,6 +137,28 @@ describe("alternativeConnection", () => {
     ).toBeNull();
   });
 
+  it("goes by each connection's provider, not the shape of its id", () => {
+    const workAccount = { ...microsoft365(), offer_id: "work-account" };
+    const personal = chatgpt({ offer_id: "personal-account" });
+
+    expect(
+      alternativeConnection(
+        [offer(), workAccount, personal],
+        limitOn("platform"),
+      ),
+    ).toEqual({
+      display_name: "ChatGPT",
+      auth_provider: "codex",
+      credential_id: "cred-1",
+    });
+    expect(
+      alternativeConnection(
+        [offer({ selectable: false }), workAccount],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
+  });
+
   it("has nothing to offer when there are no other connections", () => {
     expect(alternativeConnection([], limitOn("codex", "cred-1"))).toBeNull();
     expect(
