@@ -396,6 +396,37 @@ describe("ChatInput + menu entries", () => {
     expect(await screen.findByText("AutoGPT Platform")).toBeDefined();
   });
 
+  it.each([
+    { isStreaming: true },
+    { stacked: true },
+    { variant: "compact" as const },
+  ])(
+    "keeps the model dialog closed after hiding its control: %o",
+    async (props) => {
+      const { rerender } = render(<ChatInput onSend={mockOnSend} hasSession />);
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession {...props} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+    },
+  );
+
   it("opens Token usage in a dialog", async () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);

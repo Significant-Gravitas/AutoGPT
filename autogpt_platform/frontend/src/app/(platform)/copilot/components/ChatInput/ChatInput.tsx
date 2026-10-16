@@ -366,6 +366,9 @@ export function ChatInput({
   const [plusPanel, setPlusPanel] = useState<"model" | "devtool" | null>(null);
   const showModelControl =
     !stacked && !isCompact && (!hasSession || !isStreaming);
+  if (!showModelControl && plusPanel === "model") {
+    setPlusPanel(null);
+  }
   const plusMenuItems: ComposerMenuItem[] = [
     ...(voiceMode
       ? [
