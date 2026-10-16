@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCopilotUIStore } from "./store";
 import {
+  SESSION_DELETE_MUTATION_KEY,
   SESSION_LIST_QUERY_KEY,
   type SessionListInfiniteData,
   removeSessionFromList,
@@ -11,10 +12,11 @@ import {
 
 /**
  * Session deletion flow: reads the pending `sessionToDelete` from the store,
- * closes the dialog and removes the chat from the list as soon as the user
- * confirms, then fires the delete mutation. On error the list is restored and
- * a toast is shown; on success the active session is cleared if it was the
- * one deleted.
+ * closes the dialog as soon as the user confirms and fires the delete
+ * mutation. `useSessionList` hides the chat while the mutation is pending. On
+ * success it is dropped from the cached list and the active session is
+ * cleared if it was the one deleted; on error the chat shows again and a
+ * toast is shown.
  *
  * Consumed by `ChatSidebar`, `MobileDrawer` and `RecentChats` so each can
  * render its own `DeleteChatDialog` without duplicating the mutation wiring.
@@ -27,18 +29,12 @@ export function useSessionDeletion() {
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
       mutation: {
-        onMutate: async ({ sessionId: id }) => {
-          await queryClient.cancelQueries({ queryKey: SESSION_LIST_QUERY_KEY });
-          const previous = queryClient.getQueryData<SessionListInfiniteData>(
-            SESSION_LIST_QUERY_KEY,
-          );
+        mutationKey: SESSION_DELETE_MUTATION_KEY,
+        onSuccess: (_data, variables) => {
           queryClient.setQueryData<SessionListInfiniteData>(
             SESSION_LIST_QUERY_KEY,
-            (data) => removeSessionFromList(data, id),
+            (data) => removeSessionFromList(data, variables.sessionId),
           );
-          return { previous };
-        },
-        onSuccess: (_data, variables) => {
           // Use the mutation's own `variables` — not the closed-over store
           // value — so a rapid open/cancel/open-different sequence can't
           // accidentally clear the wrong active session after the network
@@ -47,10 +43,7 @@ export function useSessionDeletion() {
             setSessionId(null);
           }
         },
-        onError: (error, _variables, context) => {
-          if (context?.previous) {
-            queryClient.setQueryData(SESSION_LIST_QUERY_KEY, context.previous);
-          }
+        onError: (error) => {
           toast({
             title: "Failed to delete chat",
             description:

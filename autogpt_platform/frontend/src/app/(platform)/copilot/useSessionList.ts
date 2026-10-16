@@ -1,6 +1,10 @@
 import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
-import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutationState,
+} from "@tanstack/react-query";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
 // `refetchInterval` on a `useInfiniteQuery` refetches every loaded page, and
@@ -15,6 +19,13 @@ export const SESSION_LIST_REFETCH_INTERVAL_MS = 10_000;
 // `useQuery` cache shape; keeping the infinite cache on a separate key avoids
 // shape collisions and lets us hand a stable key to invalidation callsites.
 export const SESSION_LIST_QUERY_KEY = ["copilot", "session-list"] as const;
+
+// Chats with a delete in flight stay out of every list, whatever a refetch
+// returns before the server has removed them.
+export const SESSION_DELETE_MUTATION_KEY = [
+  "copilot",
+  "delete-session",
+] as const;
 
 type SessionListPage = Awaited<ReturnType<typeof getV2ListSessions>>;
 export type SessionListInfiniteData = InfiniteData<SessionListPage>;
@@ -40,9 +51,16 @@ export function useSessionList({ enabled = true }: Args = {}) {
     refetchInterval: SESSION_LIST_REFETCH_INTERVAL_MS,
     enabled,
   });
+  const deletingIds = useMutationState({
+    filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
+    select: (mutation) =>
+      (mutation.state.variables as { sessionId: string }).sessionId,
+  });
 
   return {
-    sessions: flattenSessions(query.data),
+    sessions: flattenSessions(query.data).filter(
+      (session) => !deletingIds.includes(session.id),
+    ),
     isLoading: query.isLoading,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
