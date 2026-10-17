@@ -12,6 +12,7 @@ import { AccordionIcon, ToolIcon } from "../FindBlocks/helpers";
 import {
   type CapabilityListing,
   type FindCapabilityToolPart,
+  connectionBadge,
   getAnimationText,
   kindLabel,
   parseOutput,
@@ -23,21 +24,18 @@ interface Props {
 }
 
 function CapabilityCard({ item }: { item: CapabilityListing }) {
-  const connected = item.connected;
+  const badge = connectionBadge(item);
   return (
     <ContentCard className="w-52 shrink-0">
       <div className="flex items-start justify-between gap-2">
         <ContentCardTitle className="truncate">{item.name}</ContentCardTitle>
-        {connected !== undefined && connected !== null && (
+        {badge && (
           <span
             className={
-              "shrink-0 rounded-full px-2 py-0.5 text-[11px] " +
-              (connected
-                ? "bg-green-100 text-green-800"
-                : "bg-zinc-100 text-zinc-500")
+              "shrink-0 rounded-full px-2 py-0.5 text-[11px] " + badge.className
             }
           >
-            {connected ? "connected" : "sign in"}
+            {badge.label}
           </span>
         )}
       </div>

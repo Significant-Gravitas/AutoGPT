@@ -4,7 +4,8 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
@@ -23,7 +24,6 @@ import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
 import { useHomeComposer } from "./useHomeComposer";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 
 interface Props {
   isCreatingSession: boolean;
@@ -45,6 +45,13 @@ interface Props {
   voiceToggle?: ReactNode;
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
+  /** Out of AutoPilot budget with a reset ahead: the composer sets the new
+   *  chat's first message to send at the reset. */
+  atReset?: ComponentProps<typeof ChatInput>["atReset"];
+  /** Shown above the composer while sending is paused. */
+  usageNotice?: ReactNode;
+  /** The running-low hint, shown under the composer. */
+  lowHint?: ReactNode;
 }
 
 export function EmptySession({
@@ -59,6 +66,9 @@ export function EmptySession({
   expertId = null,
   voiceToggle,
   modeSelector,
+  atReset,
+  usageNotice,
+  lowHint,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -130,7 +140,7 @@ export function EmptySession({
               prompts={intro.prompts}
               transcript={intro.transcript}
               onSelectPrompt={onSend}
-              disabled={isComposerDisabled}
+              disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the
@@ -139,18 +149,13 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <NewChatOnboarding
-              expertId={expertId}
-              enabled={!isInteractionLocked}
-            >
-              <EmptyHero
-                name={greetingName}
-                intro={introLine}
-                recipientPicker={recipientPicker}
-                isExpert={Boolean(selectedExpert)}
-                expertRole={selectedExpert?.role}
-              />
-            </NewChatOnboarding>
+            <EmptyHero
+              name={greetingName}
+              intro={introLine}
+              recipientPicker={recipientPicker}
+              isExpert={Boolean(selectedExpert)}
+              expertRole={selectedExpert?.role}
+            />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
@@ -173,24 +178,30 @@ export function EmptySession({
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
               >
+                {usageNotice && (
+                  <div className="mb-3 text-left">{usageNotice}</div>
+                )}
                 <ChatInput
                   inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
                   voiceToggle={voiceToggle}
                   modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}
+                  atReset={atReset}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={
-                    selectedExpert
-                      ? getExpertInputPlaceholder(selectedExpert.name)
-                      : inputPlaceholder
+                    atReset
+                      ? SEND_AT_RESET_PLACEHOLDER
+                      : selectedExpert
+                        ? getExpertInputPlaceholder(selectedExpert.name)
+                        : inputPlaceholder
                   }
-                  className={
-                    isBrainDumpEnabled
-                      ? "w-full [&_textarea]:min-h-[4.5rem]"
-                      : "w-full"
-                  }
+                  className={cn(
+                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+                    isBrainDumpEnabled && "[&_textarea]:min-h-[4.5rem]",
+                  )}
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
@@ -199,6 +210,7 @@ export function EmptySession({
                     intro.isVisible ? recipientPicker : undefined
                   }
                 />
+                {lowHint}
               </div>
             </div>
           )}

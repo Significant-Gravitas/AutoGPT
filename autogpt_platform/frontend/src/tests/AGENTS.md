@@ -88,7 +88,7 @@ test("shows error when submission fails", async () => {
   server.use(getDeleteV2DeleteStoreSubmissionMockHandler422());
 
   render(<MarketplacePage />);
-  await screen.findByText("Featured Agents");
+  await screen.findByText("All AI Workflows");
   // ... assert error UI
 });
 ```

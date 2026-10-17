@@ -238,7 +238,7 @@ describe("Marketplace expert page", () => {
     await waitFor(() =>
       expect(
         funnelCalls().find((body) => body.type === "hire_started")?.data,
-      ).toEqual({ template_id: mariaTemplate.id }),
+      ).toEqual({ template_id: mariaTemplate.id, surface: "expert_page" }),
     );
   });
 

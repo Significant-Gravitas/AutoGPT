@@ -7,8 +7,10 @@ from backend.copilot.gate.policy import (
     MCP_FILE_WRITE_TOOLS,
     Effect,
     Verdict,
+    child_autopilot_mode,
     classified_tools,
     effect_for,
+    strictest_mode,
     verdict_for,
 )
 from backend.copilot.tools import TOOL_REGISTRY
@@ -30,8 +32,10 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("web_search", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("write_workspace_file", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("Write", Verdict.RUN, Verdict.RUN, Verdict.RUN),
-        ("bash_exec", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("bash_exec", Verdict.JUDGE, Verdict.JUDGE, Verdict.RUN),
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("delegate_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
+        ("handoff_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
         ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
     ],
 )
@@ -70,3 +74,23 @@ def test_reading_a_truncated_tool_result_is_a_read():
     from backend.copilot.sdk.tool_adapter import _READ_TOOL_NAME
 
     assert effect_for(_READ_TOOL_NAME) is Effect.READ
+
+
+def test_the_strictest_mode_is_the_one_that_asks_most():
+    assert strictest_mode("auto", "ask_first") == "ask_first"
+    assert strictest_mode("unsupervised", "auto") == "auto"
+    assert strictest_mode("unsupervised") == "unsupervised"
+
+
+def test_a_delegated_thread_follows_its_parent_when_the_expert_has_no_default():
+    assert child_autopilot_mode("ask_first", None) == "ask_first"
+    assert child_autopilot_mode("unsupervised", None) == "unsupervised"
+    assert child_autopilot_mode(None, None) is None
+
+
+def test_a_delegated_thread_is_never_looser_than_its_parent():
+    assert child_autopilot_mode("ask_first", "unsupervised") == "ask_first"
+    # A parent on the platform default cannot hand out an unsupervised thread.
+    assert child_autopilot_mode(None, "unsupervised") == "auto"
+    assert child_autopilot_mode("unsupervised", "ask_first") == "ask_first"
+    assert child_autopilot_mode("auto", "auto") == "auto"

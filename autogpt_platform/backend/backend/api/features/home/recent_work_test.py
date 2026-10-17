@@ -198,7 +198,10 @@ def test_events_from_unfetched_runs_stay_apart() -> None:
 
     assert len(work.groups) == 2
     assert all(group.actor.kind == "workflow" for group in work.groups)
-    assert [group.actor.name for group in work.groups] == ["Agent task", "Agent task"]
+    assert [group.actor.name for group in work.groups] == [
+        "Workflow task",
+        "Workflow task",
+    ]
 
 
 def test_thread_work_without_an_expert_is_autopilots() -> None:

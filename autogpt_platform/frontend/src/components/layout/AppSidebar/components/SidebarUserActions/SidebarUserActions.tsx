@@ -1,12 +1,8 @@
 "use client";
 
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/atoms/Tooltip/BaseTooltip";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
@@ -24,7 +20,12 @@ export function SidebarUserActions() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const logoutInProgress = isLogoutInProgress();
-  const dynamicMenuItems = getAccountMenuItems(user?.role, true);
+  const isBillingEnabled = useIsBillingEnabled();
+  const dynamicMenuItems = getAccountMenuItems(
+    user?.role,
+    true,
+    isBillingEnabled,
+  );
 
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
@@ -55,7 +56,7 @@ export function SidebarUserActions() {
   );
 
   return (
-    <SidebarFooter className="border-t border-zinc-100 px-4">
+    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-sidebar px-4">
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <SidebarTooltip>
@@ -68,14 +69,9 @@ export function SidebarUserActions() {
           accountMenu
         )}
         {profile && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="group-data-[collapsible=icon]:hidden">
-                <Wallet key={profile.username} compact />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="top">Credits</TooltipContent>
-          </Tooltip>
+          <div className="group-data-[collapsible=icon]:hidden">
+            <Wallet key={profile.username} compact />
+          </div>
         )}
       </div>
     </SidebarFooter>

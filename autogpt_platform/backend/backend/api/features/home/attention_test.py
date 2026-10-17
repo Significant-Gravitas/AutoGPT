@@ -587,14 +587,14 @@ def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
 
     item = _one(review)
 
-    assert item.title == "Move agents into library folder “Archive”"
-    assert item.preview == "Agents: Digest, a1, Triage, Notes, Inbox +2 more"
+    assert item.title == "Move workflows into library folder “Archive”"
+    assert item.preview == "Workflows: Digest, a1, Triage, Notes, Inbox +2 more"
 
 
 def test_a_clipped_id_list_still_counts_every_id() -> None:
     """A long enough list outgrows the per-argument clip, which stores it as a
     string; the total is kept from the raw call."""
-    ids = [f"{i:03d}" + "0" * 33 for i in range(120)]
+    ids = [f"{i:03d}" + "0" * 33 for i in range(700)]
     refs = [
         Reference(key="agent_ids", entity="library_agent", id=id, name=f"Agent {i}")
         for i, id in enumerate(ids[:5])
@@ -608,5 +608,5 @@ def test_a_clipped_id_list_still_counts_every_id() -> None:
     review = _gate_review().model_copy(update={"payload": payload})
 
     assert _one(review).preview == (
-        "Agents: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +115 more · Folder: f-9"
+        "Workflows: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +695 more · Folder: f-9"
     )

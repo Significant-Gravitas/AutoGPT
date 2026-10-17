@@ -15,13 +15,12 @@ import {
   getUpdateExpertBudgetMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
-  getGetV2GetLibraryAgentMockHandler200,
+  getGetV2GetLibraryAgentsByIdsMockHandler200,
   getGetV2ListLibraryAgentsMockHandler200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { ExpertActivityDay } from "@/app/api/__generated__/models/expertActivityDay";
-import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -64,6 +63,7 @@ import { format, subDays } from "date-fns";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { heldRead } from "@/app/(platform)/copilot/components/ApprovalQueue/__tests__/fixtures";
 import ExpertDetailPage from "../page";
+import { RECENT_CONVERSATIONS_LIMIT } from "../components/ExpertOverview/useExpertOverview";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -194,36 +194,6 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-const mariaRuns: ExpertRun[] = [
-  {
-    execution_id: "run-1",
-    graph_id: "graph-1",
-    agent_name: "Weekly Report",
-    library_agent_id: "lib-1",
-    status: "completed",
-    output_type: "table",
-    output_key: "result",
-    needs_review: false,
-    source: "scheduled",
-    started_at: "2026-09-06T10:00:00Z" as unknown as Date,
-    ended_at: "2026-09-06T10:01:12Z" as unknown as Date,
-    link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
-  },
-  {
-    execution_id: "run-2",
-    graph_id: "graph-2",
-    agent_name: "SEO Audit",
-    library_agent_id: "lib-2",
-    status: "review",
-    output_type: "doc",
-    output_key: "report",
-    needs_review: true,
-    started_at: null,
-    ended_at: null,
-    link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
-  },
-];
-
 const ACTIVITY_WINDOW_DAYS = 365;
 
 /** The backend sends `day` as a bare `YYYY-MM-DD`, which the client keeps as
@@ -301,7 +271,7 @@ function attentionItem(
     priority: "high",
     title,
     description: "Scheduled work is paused.",
-    why_it_matters: "Upcoming tasks will not run while this agent is paused.",
+    why_it_matters: "Upcoming tasks will not run while this expert is paused.",
     expert: {
       id: expertId,
       name: expertId === "expert-maria" ? "Maria" : "Other",
@@ -323,10 +293,13 @@ describe("ExpertDetailPage", () => {
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
     expect(screen.getByText(/Marketing Manager/)).toBeDefined();
     expect(screen.queryByText("Marketing Strategist")).toBeNull();
-    expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
+    expect(screen.queryByText(maria.tagline!)).toBeNull();
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
+    expect(screen.queryByText("Identity")).toBeNull();
+
+    await openTab("Soul");
     expect(screen.getByText("Identity")).toBeDefined();
     expect(
       screen.getByText("You are Maria, a senior marketing strategist."),
@@ -372,11 +345,11 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const chip = within(header).getByText("Marketing");
-    expect(integrations.parentElement?.contains(chip)).toBe(true);
+    // The category pill now sits on the cover, still inside the header.
+    expect(within(header).getByText("Marketing")).toBeDefined();
   });
 
-  test("keeps the budget above the tabs and the summary in Basics", async () => {
+  test("keeps the budget above the tabs and the summary in Overview", async () => {
     render(<ExpertDetailPage />);
 
     const budget = await screen.findByRole("region", {
@@ -400,7 +373,7 @@ describe("ExpertDetailPage", () => {
     expect(within(summary).queryByText("Skills")).toBeNull();
     expect(within(summary).queryByText("Workflows")).toBeNull();
 
-    await openTab("Work");
+    await openTab("Soul");
     expect(screen.getByRole("region", { name: "Maria budget" })).toBe(budget);
     expect(
       screen.queryByRole("complementary", { name: "Maria at a glance" }),
@@ -425,10 +398,12 @@ describe("ExpertDetailPage", () => {
     const user = userEvent.setup();
     // The chain stands in for a workflow with no image of its own.
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -437,7 +412,7 @@ describe("ExpertDetailPage", () => {
     const [calendar, seo] = screen.getAllByTestId("expert-workflow-row");
     const chain = within(calendar).getByTestId("workflow-chain");
     expect(
-      within(chain).getByRole("img", { name: "Agent input" }),
+      within(chain).getByRole("img", { name: "Workflow input" }),
     ).toBeDefined();
     expect(within(chain).getByRole("img", { name: "google" })).toBeDefined();
     expect(within(chain).getByRole("img", { name: "AI model" })).toBeDefined();
@@ -446,11 +421,13 @@ describe("ExpertDetailPage", () => {
 
   test("shows each workflow's total runs from its library agent", async () => {
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        execution_count: 12,
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          execution_count: 12,
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -479,11 +456,13 @@ describe("ExpertDetailPage", () => {
   test("opens the run dialog from the card's Run button", async () => {
     const user = userEvent.setup();
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        name: "Content Calendar",
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          name: "Content Calendar",
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -541,7 +520,7 @@ describe("ExpertDetailPage", () => {
     expect(await screen.findByTestId("schedule-row")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search schedules" }),
+      screen.getByRole("textbox", { name: "Search schedules" }),
       "nothing-like-this",
     );
     expect(screen.getByText("No schedules match.")).toBeDefined();
@@ -599,20 +578,22 @@ describe("ExpertDetailPage", () => {
 
   test("stacks the credentials a workflow will use beside Run", async () => {
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        credentials_input_schema: {
-          type: "object",
-          properties: {
-            github: { credentials_provider: ["github"] },
-            notion: { credentials_provider: ["notion"] },
-            slack: { credentials_provider: ["slack"] },
-            linear: { credentials_provider: ["linear"] },
-            discord: { credentials_provider: ["discord"] },
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          credentials_input_schema: {
+            type: "object",
+            properties: {
+              github: { credentials_provider: ["github"] },
+              notion: { credentials_provider: ["notion"] },
+              slack: { credentials_provider: ["slack"] },
+              linear: { credentials_provider: ["linear"] },
+              discord: { credentials_provider: ["discord"] },
+            },
           },
-        },
-      } as LibraryAgent),
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -717,7 +698,8 @@ describe("ExpertDetailPage", () => {
     ).toBeDefined();
     expect(within(list).getByText("plan content")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
     expect(within(dialog).queryByText("Content strategy")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
@@ -776,7 +758,8 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     await openTab("Skills");
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
     await user.click(within(dialog).getByRole("tab", { name: "Marketplace" }));
 
@@ -800,7 +783,8 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     await openTab("Skills");
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
 
     expect(
@@ -849,23 +833,21 @@ describe("ExpertDetailPage", () => {
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(2);
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search workflows" }),
+      screen.getByRole("textbox", { name: "Search workflows" }),
       "seo",
     );
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(1);
     expect(screen.getByText("SEO Audit")).toBeDefined();
 
-    await user.clear(
-      screen.getByRole("searchbox", { name: "Search workflows" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Filter workflows" }));
+    await user.clear(screen.getByRole("textbox", { name: "Search workflows" }));
+    await user.click(screen.getByRole("button", { name: /^Filter workflows/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Scheduled" }),
     );
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(1);
     expect(screen.getByText("Content Calendar")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Filter workflows" }));
+    await user.click(screen.getByRole("button", { name: /^Filter workflows/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Manual" }),
     );
@@ -988,70 +970,6 @@ describe("ExpertDetailPage", () => {
 
     await openTab("Schedules");
     expect(await screen.findByText(/No schedules yet/)).toBeDefined();
-  });
-
-  test("shows the expert's recent work with honest status chips", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    const workList = await screen.findByRole("list", { name: "Expert work" });
-    expect(within(workList).getByText("Weekly Report")).toBeDefined();
-    expect(within(workList).getByText("Completed")).toBeDefined();
-    // A run paused for review reads "Waiting for review" — never "Completed"
-    // with a contradictory badge next to it.
-    expect(within(workList).getByText("Waiting for review")).toBeDefined();
-    expect(within(workList).queryByText("Needs review")).toBeNull();
-  });
-
-  test("filters work to runs that need review", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    await screen.findByRole("list", { name: "Expert work" });
-
-    await user.click(screen.getByRole("button", { name: "Filter work" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Needs review" }),
-    );
-
-    const workList = screen.getByRole("list", { name: "Expert work" });
-    expect(within(workList).queryByText("Weekly Report")).toBeNull();
-    expect(within(workList).getByText("SEO Audit")).toBeDefined();
-  });
-
-  test("shows an empty work message when there is no completed work", async () => {
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
-  });
-
-  test("shows a retryable error when recent work fails to load", async () => {
-    let attempts = 0;
-    server.use(
-      http.get("/api/proxy/api/experts/:expertId/runs", () => {
-        attempts += 1;
-        return attempts === 1
-          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
-          : HttpResponse.json(mariaRuns);
-      }),
-    );
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    expect(
-      await screen.findByText("We could not load this expert's recent work."),
-    ).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
-
-    expect(await screen.findByText("Weekly Report")).toBeDefined();
-    expect(attempts).toBe(2);
   });
 
   test("previews an uploaded avatar and saves it after confirmation", async () => {
@@ -1304,9 +1222,12 @@ describe("ExpertDetailPage", () => {
   test("opens a fresh inline chat from the header Chat button", async () => {
     let listedSessions = 0;
     server.use(
-      getGetV2ListSessionsMockHandler200(() => {
-        listedSessions += 1;
-        return { sessions: [], total: 0 };
+      http.get("*/api/chat/sessions", ({ request }) => {
+        // The Overview's recent-conversations card lists a short preview;
+        // only a listing for the chat itself would mean it resumed one.
+        const limit = new URL(request.url).searchParams.get("limit");
+        if (limit !== String(RECENT_CONVERSATIONS_LIMIT)) listedSessions += 1;
+        return HttpResponse.json({ sessions: [], total: 0 });
       }),
     );
     const user = userEvent.setup();
@@ -1468,18 +1389,6 @@ describe("ExpertDetailPage", () => {
         screen.queryByRole("dialog", { name: "Weekly budget" }),
       ).toBeNull(),
     );
-  });
-
-  test("shows how and when a run happened on the Work tab", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    const [scheduledMeta] = await screen.findAllByTestId("expert-run-meta");
-    expect(scheduledMeta.textContent).toContain("Scheduled");
-    expect(scheduledMeta.textContent).toContain("ago");
-    expect(scheduledMeta.textContent).toContain("1m 12s");
-    expect(screen.getAllByTestId("expert-run-meta")).toHaveLength(1);
   });
 
   test("opening the chat closes the Soul panel and vice versa", async () => {

@@ -6,6 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from posthog import Posthog
+from posthog.types import FeatureFlagResult
 
 import backend.util.feature_flag.posthog as ph
 
@@ -18,18 +20,13 @@ def fresh_client(mocker):
     mocker.patch.object(ph, "_shut_down", False)
 
 
-def configure(mocker, *, api_key="phc_test", personal_api_key=""):
+def configure(mocker, *, api_key="phc_test", secret_key=""):
     mocker.patch.object(ph.settings.secrets, "posthog_api_key", api_key)
-    mocker.patch.object(
-        ph.settings.secrets, "posthog_personal_api_key", personal_api_key
-    )
+    mocker.patch.object(ph.settings.secrets, "posthog_secret_key", secret_key)
 
 
-def snapshot(mocker, *, value, payload=None):
-    result = mocker.Mock()
-    result.get_flag.return_value = value
-    result.get_flag_payload.return_value = payload
-    return result
+def answer(*, value, payload=None):
+    return FeatureFlagResult.from_value_and_payload("flag", value, payload)
 
 
 class TestClientConstruction:
@@ -37,14 +34,14 @@ class TestClientConstruction:
         configure(mocker, api_key="")
         assert ph.get_flag_client() is None
 
-    def test_the_personal_key_turns_on_local_evaluation(self, mocker):
-        configure(mocker, personal_api_key="phx_personal")
+    def test_the_secret_key_turns_on_local_evaluation(self, mocker):
+        configure(mocker, secret_key="phx_personal")
         posthog = mocker.patch.object(ph, "Posthog")
 
         ph.get_flag_client()
 
         _, kwargs = posthog.call_args
-        assert kwargs["personal_api_key"] == "phx_personal"
+        assert kwargs["secret_key"] == "phx_personal"
         assert kwargs["enable_local_evaluation"] is True
 
     def test_without_it_evaluation_stays_remote(self, mocker):
@@ -54,7 +51,7 @@ class TestClientConstruction:
         ph.get_flag_client()
 
         _, kwargs = posthog.call_args
-        assert kwargs["personal_api_key"] is None
+        assert kwargs["secret_key"] is None
         assert kwargs["enable_local_evaluation"] is False
 
     def test_the_client_is_built_once(self, mocker):
@@ -152,6 +149,48 @@ class TestClientConstruction:
         assert ph.get_flag_client() is not None
 
 
+class TestInMemoryRead:
+    def test_definitions_not_loaded_yet_are_never_fetched(self, mocker):
+        """Fetching them first is the SDK's default, and a network call per read."""
+        client = Posthog(
+            "phc-test", secret_key="phx-test", enable_local_evaluation=False
+        )
+        fetch = mocker.patch.object(client, "load_feature_flags")
+        remote = mocker.patch.object(client, "_get_flags_decision")
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+        try:
+            values = ph.evaluate_flags_in_memory(["hire-experts"], "visitor:v-1", {})
+        finally:
+            client.shutdown()
+
+        assert (values, fetch.call_count, remote.call_count) == ({}, 0, 0)
+
+    def test_a_matched_payload_is_served_decoded(self, mocker):
+        client = Posthog(
+            "phc-test", secret_key="phx-test", enable_local_evaluation=False
+        )
+        client.feature_flags = [
+            _rolled_out("marketplace-search-terms", 100, payload='["Research"]'),
+            _rolled_out("hire-experts", 100),
+            _rolled_out("chat-search", 0, payload='["unused"]'),
+        ]
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+        try:
+            values = ph.evaluate_flags_in_memory(
+                ["marketplace-search-terms", "hire-experts", "chat-search"],
+                "visitor:v-1",
+                {},
+            )
+        finally:
+            client.shutdown()
+
+        assert values == {
+            "marketplace-search-terms": ["Research"],
+            "hire-experts": True,
+            "chat-search": False,
+        }
+
+
 class TestRawRead:
     @pytest.mark.asyncio
     async def test_an_unconfigured_client_returns_the_default(self, mocker):
@@ -165,7 +204,7 @@ class TestRawRead:
     @pytest.mark.asyncio
     async def test_a_resolved_flag_is_evaluated(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(mocker, value=False)
+        client.get_feature_flag_result.return_value = answer(value=False)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         assert await ph.evaluate_flag("hire-experts", "u-1") == (False, True)
@@ -173,7 +212,7 @@ class TestRawRead:
     @pytest.mark.asyncio
     async def test_an_unresolved_flag_is_not(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(mocker, value=None)
+        client.get_feature_flag_result.return_value = answer(value=None)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         assert await ph.evaluate_flag("hire-experts", "u-1", default=True) == (
@@ -184,8 +223,8 @@ class TestRawRead:
     @pytest.mark.asyncio
     async def test_a_payload_wins_over_the_flag_value(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(
-            mocker, value=True, payload={"daily": 5}
+        client.get_feature_flag_result.return_value = answer(
+            value=True, payload={"daily": 5}
         )
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
@@ -199,8 +238,8 @@ class TestRawRead:
         """Serving the payload here would make an authoritative "off" read as
         a non-boolean, i.e. as "could not evaluate"."""
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(
-            mocker, value=False, payload={"daily": 5}
+        client.get_feature_flag_result.return_value = answer(
+            value=False, payload={"daily": 5}
         )
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
@@ -209,7 +248,7 @@ class TestRawRead:
     @pytest.mark.asyncio
     async def test_a_variant_key_is_returned_as_the_value(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(mocker, value="control")
+        client.get_feature_flag_result.return_value = answer(value="control")
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         assert await ph.evaluate_flag("stripe-product-id-topup", "u-1") == (
@@ -220,20 +259,19 @@ class TestRawRead:
     @pytest.mark.asyncio
     async def test_the_read_is_scoped_to_one_flag(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.return_value = snapshot(mocker, value=True)
+        client.get_feature_flag_result.return_value = answer(value=True)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         await ph.evaluate_flag("hire-experts", "u-1", {"role": "admin"})
 
-        args, kwargs = client.evaluate_flags.call_args
-        assert args[0] == "u-1"
-        assert kwargs["flag_keys"] == ["hire-experts"]
+        args, kwargs = client.get_feature_flag_result.call_args
+        assert args == ("hire-experts", "u-1")
         assert kwargs["person_properties"] == {"role": "admin"}
 
     @pytest.mark.asyncio
     async def test_a_failed_evaluation_returns_the_default(self, mocker):
         client = mocker.Mock()
-        client.evaluate_flags.side_effect = Exception("connection refused")
+        client.get_feature_flag_result.side_effect = Exception("connection refused")
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         assert await ph.evaluate_flag("hire-experts", "u-1", default=True) == (
@@ -252,10 +290,10 @@ class TestRawRead:
             with lock:
                 entered += 1
             release.wait(10)
-            return snapshot(mocker, value=True)
+            return answer(value=True)
 
         client = mocker.Mock()
-        client.evaluate_flags.side_effect = blocking_read
+        client.get_feature_flag_result.side_effect = blocking_read
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
         async def scenario():
@@ -284,3 +322,10 @@ class TestRawRead:
             assert loop.run_until_complete(scenario()) == "probe"
         finally:
             loop.close()
+
+
+def _rolled_out(key: str, percentage: int, payload: str | None = None) -> dict:
+    filters: dict = {"groups": [{"properties": [], "rollout_percentage": percentage}]}
+    if payload is not None:
+        filters["payloads"] = {"true": payload}
+    return {"id": 1, "key": key, "active": True, "filters": filters}
