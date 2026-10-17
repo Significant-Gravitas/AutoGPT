@@ -112,7 +112,7 @@ export function AgentImageItem({
               <Icon
                 icon={PlayIcon}
                 size={20}
-                className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
+                className="text-black sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }
           >

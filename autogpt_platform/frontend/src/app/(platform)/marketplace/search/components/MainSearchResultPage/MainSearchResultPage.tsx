@@ -87,10 +87,10 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <h2 className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <h2 className="text-base font-medium leading-normal text-neutral-800">
               Showing results for:
             </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800">
               &quot;{searchTerm}&quot;
             </h1>
           </div>
@@ -161,10 +161,10 @@ export const MainSearchResultPage = ({
           </>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            <h3 className="mb-2 text-xl font-medium text-neutral-600">
               No results found
             </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            <p className="text-neutral-500">
               Try adjusting your search terms or filters
             </p>
           </div>

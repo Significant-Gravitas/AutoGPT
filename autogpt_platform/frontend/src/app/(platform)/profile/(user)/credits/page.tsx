@@ -153,7 +153,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 sm:mb-8 sm:text-[35px]">
         Billing
       </h1>
 
@@ -167,7 +167,7 @@ export default function CreditsPage() {
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Top-up Credits</h3>
 
-          <p className="mb-6 text-neutral-600 dark:text-neutral-400">
+          <p className="mb-6 text-neutral-600">
             {topupStatus === "success" && (
               <span className="text-green-500">
                 Your payment was successful. Your credits will be updated
@@ -197,7 +197,7 @@ export default function CreditsPage() {
                 min="5"
                 step="1"
                 defaultValue={5}
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-slate-200 px-4 py-2"
                 required
               />
             </div>
@@ -230,7 +230,7 @@ export default function CreditsPage() {
                 placeholder="Refill threshold, minimum $5"
                 min="5"
                 step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-slate-200 px-4 py-2"
                 required
               />
             </div>
@@ -252,7 +252,7 @@ export default function CreditsPage() {
                 placeholder="Refill amount, minimum $5"
                 min="5"
                 step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-slate-200 px-4 py-2"
                 required
               />
             </div>

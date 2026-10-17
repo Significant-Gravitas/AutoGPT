@@ -60,7 +60,7 @@ describe("SharePage (execution share viewer)", () => {
     render(<SharePage />);
 
     // Logo (rendered inside the chrome wrapper at the top of the page).
-    // Both light + dark variants ship in the DOM behind dark: class
+    // Both light + dark variants ship in the DOM behind class
     // selectors, so we look for at least one match.
     const logos = await screen.findAllByAltText("AutoGPT");
     expect(logos.length).toBeGreaterThan(0);

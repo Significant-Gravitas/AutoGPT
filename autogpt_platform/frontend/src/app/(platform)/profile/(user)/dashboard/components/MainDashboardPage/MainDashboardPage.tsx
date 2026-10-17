@@ -38,7 +38,7 @@ export const MainDashboardPage = () => {
             <Text
               variant="h2"
               size="large-medium"
-              className="text-neutral-900 dark:text-neutral-100"
+              className="text-neutral-900"
             >
               Submit a New Workflow
             </Text>
@@ -70,7 +70,7 @@ export const MainDashboardPage = () => {
         <Text
           variant="h2"
           size="large-medium"
-          className="mb-4 text-neutral-900 dark:text-neutral-100"
+          className="mb-4 text-neutral-900"
         >
           Your uploaded workflows
         </Text>

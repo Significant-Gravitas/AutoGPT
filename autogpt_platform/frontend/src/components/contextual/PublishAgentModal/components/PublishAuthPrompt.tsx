@@ -14,7 +14,7 @@ export const PublishAuthPrompt = () => {
           </Text>
           <Text
             variant="lead"
-            className="max-w-[80%] text-neutral-600 dark:text-neutral-400"
+            className="max-w-[80%] text-neutral-600"
           >
             Log in or create an account to publish your workflows to the
             marketplace and join a community of creators

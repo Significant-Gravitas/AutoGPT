@@ -52,9 +52,9 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
           <Icon
             icon={Copy01Icon}
             size={20}
-            className="mr-2 dark:text-gray-100"
+            className="mr-2"
           />
-          <span className="dark:text-gray-100">Copy</span>
+          <span className="">Copy</span>
         </SecondaryDropdownMenuItem>
         <SecondaryDropdownMenuSeparator />
 
@@ -66,9 +66,9 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
               <Icon
                 icon={LinkSquare01Icon}
                 size={20}
-                className="mr-2 dark:text-gray-100"
+                className="mr-2"
               />
-              <span className="dark:text-gray-100">Open workflow</span>
+              <span className="">Open workflow</span>
             </SecondaryDropdownMenuItem>
             <SecondaryDropdownMenuSeparator />
           </>
@@ -78,9 +78,9 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
           <Icon
             icon={Delete02Icon}
             size={20}
-            className="mr-2 text-red-500 dark:text-red-400"
+            className="mr-2 text-red-500"
           />
-          <span className="dark:text-red-400">Delete</span>
+          <span className="">Delete</span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>
     </DropdownMenu>

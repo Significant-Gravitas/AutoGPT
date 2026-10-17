@@ -28,28 +28,28 @@ export const AgentTable: React.FC<AgentTableProps> = ({
     <div className="w-full" data-testid="agent-table">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
-        <div className="border-t border-neutral-300 dark:border-neutral-700" />
+        <div className="border-t border-neutral-300" />
         <div className="flex items-center px-4 py-2">
           <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-sm font-medium text-neutral-800">
               Workflow info
             </div>
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-sm font-medium text-neutral-800">
               Date submitted
             </div>
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-sm font-medium text-neutral-800">
               Status
             </div>
-            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-right text-sm font-medium text-neutral-800">
               Runs
             </div>
-            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-right text-sm font-medium text-neutral-800">
               Reviews
             </div>
             <div></div>
           </div>
         </div>
-        <div className="border-b border-neutral-300 dark:border-neutral-700" />
+        <div className="border-b border-neutral-300" />
       </div>
 
       {/* Table body */}
@@ -73,7 +73,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center font-sans text-base text-neutral-600 dark:text-neutral-400">
+        <div className="py-4 text-center font-sans text-base text-neutral-600">
           No workflows available. Create your first workflow to get started!
         </div>
       )}

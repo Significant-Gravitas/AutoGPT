@@ -6,31 +6,31 @@
   "productFiles": 2567,
   "productFilesWithSemantic": 160,
   "chromeFiles": 2549,
-  "chromeFilesWithColorBypass": 1046,
+  "chromeFilesWithColorBypass": 1044,
   "chromeFilesWithSemantic": 160,
   "chromeFilesOutsideBoth": 136,
   "chromeFamilies": {
-    "custom:red": 399,
-    "custom:green": 209,
-    "custom:slate": 178,
-    "custom:zinc": 3084,
-    "custom:gray": 480,
-    "custom:purple": 208,
-    "custom:amber": 313,
-    "custom:blue": 185,
-    "custom:violet": 206,
+    "custom:red": 368,
+    "custom:green": 204,
+    "custom:slate": 156,
+    "custom:zinc": 3082,
+    "custom:gray": 392,
+    "custom:purple": 207,
+    "custom:amber": 302,
+    "custom:blue": 168,
+    "custom:violet": 197,
     "custom:emerald": 91,
-    "custom:yellow": 90,
-    "custom:orange": 66,
+    "custom:yellow": 87,
+    "custom:orange": 65,
     "custom:pink": 14,
     "custom:rose": 45,
-    "custom:teal": 18,
+    "custom:teal": 17,
     "custom:indigo": 36,
-    "custom:neutral": 791,
+    "custom:neutral": 508,
     "custom:sky": 38,
-    "custom:cyan": 16,
-    "custom:lime": 15,
-    "custom:fuchsia": 15,
+    "custom:cyan": 15,
+    "custom:lime": 14,
+    "custom:fuchsia": 14,
     "custom:stone": 3
   },
   "artworkFiles": 18,
@@ -50,17 +50,17 @@
   "limiter": "Each file is read once. A match is one regex hit. The count cannot include a second pass over compiled CSS. It undercounts classes assembled at runtime.",
   "product": {
     "semantic": 522,
-    "customRamp": 6607,
-    "customFlat": 803,
+    "customRamp": 6128,
+    "customFlat": 790,
     "defaultPalette": 0,
-    "arbitraryColor": 220,
+    "arbitraryColor": 216,
     "arbitraryLength": 1228,
     "arbitraryType": 330,
     "arbitraryFont": 21,
     "hexLiteral": 960,
     "functionalColor": 78,
-    "darkVariant": 467,
-    "darkPrefix": 503,
+    "darkVariant": 0,
+    "darkPrefix": 0,
     "agptClass": 20,
     "legacyImport": 196,
     "radiusNamed": 78,
@@ -68,17 +68,17 @@
   },
   "productChrome": {
     "semantic": 522,
-    "customRamp": 6500,
-    "customFlat": 791,
+    "customRamp": 6023,
+    "customFlat": 778,
     "defaultPalette": 0,
-    "arbitraryColor": 220,
+    "arbitraryColor": 216,
     "arbitraryLength": 1213,
     "arbitraryType": 320,
     "arbitraryFont": 21,
     "hexLiteral": 447,
     "functionalColor": 75,
-    "darkVariant": 465,
-    "darkPrefix": 501,
+    "darkVariant": 0,
+    "darkPrefix": 0,
     "agptClass": 20,
     "legacyImport": 196,
     "radiusNamed": 78,
@@ -86,7 +86,7 @@
   },
   "artwork": {
     "semantic": 0,
-    "customRamp": 107,
+    "customRamp": 105,
     "customFlat": 12,
     "defaultPalette": 0,
     "arbitraryColor": 0,
@@ -95,8 +95,8 @@
     "arbitraryFont": 0,
     "hexLiteral": 513,
     "functionalColor": 3,
-    "darkVariant": 2,
-    "darkPrefix": 2,
+    "darkVariant": 0,
+    "darkPrefix": 0,
     "agptClass": 0,
     "legacyImport": 0,
     "radiusNamed": 0,
@@ -104,7 +104,7 @@
   },
   "testsAndStories": {
     "semantic": 33,
-    "customRamp": 404,
+    "customRamp": 389,
     "customFlat": 32,
     "defaultPalette": 0,
     "arbitraryColor": 3,
@@ -113,8 +113,8 @@
     "arbitraryFont": 0,
     "hexLiteral": 46,
     "functionalColor": 4,
-    "darkVariant": 15,
-    "darkPrefix": 15,
+    "darkVariant": 0,
+    "darkPrefix": 0,
     "agptClass": 1,
     "legacyImport": 5,
     "radiusNamed": 14,
@@ -123,8 +123,8 @@
   "byArea": {
     "designSystem": {
       "semantic": 104,
-      "customRamp": 596,
-      "customFlat": 116,
+      "customRamp": 522,
+      "customFlat": 112,
       "defaultPalette": 0,
       "arbitraryColor": 2,
       "arbitraryLength": 123,
@@ -132,8 +132,8 @@
       "arbitraryFont": 20,
       "hexLiteral": 313,
       "functionalColor": 16,
-      "darkVariant": 69,
-      "darkPrefix": 79,
+      "darkVariant": 0,
+      "darkPrefix": 0,
       "agptClass": 0,
       "legacyImport": 11,
       "radiusNamed": 10,
@@ -141,8 +141,8 @@
     },
     "legacy": {
       "semantic": 19,
-      "customRamp": 313,
-      "customFlat": 28,
+      "customRamp": 154,
+      "customFlat": 26,
       "defaultPalette": 0,
       "arbitraryColor": 0,
       "arbitraryLength": 35,
@@ -150,8 +150,8 @@
       "arbitraryFont": 0,
       "hexLiteral": 13,
       "functionalColor": 0,
-      "darkVariant": 141,
-      "darkPrefix": 162,
+      "darkVariant": 0,
+      "darkPrefix": 0,
       "agptClass": 9,
       "legacyImport": 9,
       "radiusNamed": 1,
@@ -159,8 +159,8 @@
     },
     "app": {
       "semantic": 362,
-      "customRamp": 4856,
-      "customFlat": 517,
+      "customRamp": 4654,
+      "customFlat": 516,
       "defaultPalette": 0,
       "arbitraryColor": 105,
       "arbitraryLength": 886,
@@ -168,8 +168,8 @@
       "arbitraryFont": 1,
       "hexLiteral": 622,
       "functionalColor": 56,
-      "darkVariant": 203,
-      "darkPrefix": 206,
+      "darkVariant": 0,
+      "darkPrefix": 0,
       "agptClass": 11,
       "legacyImport": 143,
       "radiusNamed": 49,
@@ -177,17 +177,17 @@
     },
     "other": {
       "semantic": 37,
-      "customRamp": 842,
-      "customFlat": 142,
+      "customRamp": 798,
+      "customFlat": 136,
       "defaultPalette": 0,
-      "arbitraryColor": 113,
+      "arbitraryColor": 109,
       "arbitraryLength": 184,
       "arbitraryType": 46,
       "arbitraryFont": 0,
       "hexLiteral": 12,
       "functionalColor": 6,
-      "darkVariant": 54,
-      "darkPrefix": 56,
+      "darkVariant": 0,
+      "darkPrefix": 0,
       "agptClass": 0,
       "legacyImport": 33,
       "radiusNamed": 18,
@@ -309,34 +309,14 @@
       "area": "app"
     },
     {
-      "file": "src/lib/utils.ts",
-      "count": 56,
-      "area": "other"
-    },
-    {
       "file": "src/components/atoms/Button/helpers.ts",
       "count": 52,
       "area": "designSystem"
     },
     {
-      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
-      "count": 48,
-      "area": "app"
-    },
-    {
       "file": "src/app/(platform)/marketplace/components/ExpertsSection/helpers.ts",
       "count": 48,
       "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
-      "count": 48,
-      "area": "app"
-    },
-    {
-      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
-      "count": 48,
-      "area": "other"
     },
     {
       "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
@@ -349,13 +329,33 @@
       "area": "other"
     },
     {
-      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
-      "count": 42,
-      "area": "app"
+      "file": "src/lib/utils.ts",
+      "count": 44,
+      "area": "other"
     },
     {
       "file": "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
       "count": 40,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/tutorial/steps/connections.ts",
+      "count": 37,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/tutorial/steps/second-calculator.ts",
+      "count": 37,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/execution-analytics/components/AnalyticsResultsTable.tsx",
+      "count": 36,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/copilot/styleguide/page.tsx",
+      "count": 35,
       "area": "app"
     }
   ],
@@ -411,34 +411,14 @@
       "area": "app"
     },
     {
-      "file": "src/lib/utils.ts",
-      "count": 56,
-      "area": "other"
-    },
-    {
       "file": "src/components/atoms/Button/helpers.ts",
       "count": 52,
       "area": "designSystem"
     },
     {
-      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
-      "count": 48,
-      "area": "app"
-    },
-    {
       "file": "src/app/(platform)/marketplace/components/ExpertsSection/helpers.ts",
       "count": 48,
       "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
-      "count": 48,
-      "area": "app"
-    },
-    {
-      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
-      "count": 48,
-      "area": "other"
     },
     {
       "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
@@ -451,13 +431,33 @@
       "area": "other"
     },
     {
-      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
-      "count": 42,
-      "area": "app"
+      "file": "src/lib/utils.ts",
+      "count": 44,
+      "area": "other"
     },
     {
       "file": "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
       "count": 40,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/tutorial/steps/connections.ts",
+      "count": 37,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/tutorial/steps/second-calculator.ts",
+      "count": 37,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/execution-analytics/components/AnalyticsResultsTable.tsx",
+      "count": 36,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/copilot/styleguide/page.tsx",
+      "count": 35,
       "area": "app"
     }
   ],

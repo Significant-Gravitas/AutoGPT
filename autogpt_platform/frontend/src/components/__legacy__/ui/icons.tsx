@@ -1099,11 +1099,11 @@ export function StarRatingIcons(avgRating: number): JSX.Element[] {
   for (let i = 1; i <= 5; i++) {
     if (i <= rating) {
       stars.push(
-        <IconStarFilled key={i} className="text-black dark:text-yellow-500" />,
+        <IconStarFilled key={i} className="text-black" />,
       );
     } else {
       stars.push(
-        <IconStar key={i} className="text-black dark:text-yellow-500" />,
+        <IconStar key={i} className="text-black" />,
       );
     }
   }

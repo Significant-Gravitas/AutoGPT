@@ -107,12 +107,12 @@ export const AgentInfo = ({
           <div className="flex items-center gap-2">
             <Text
               variant="body"
-              className="font-semibold text-neutral-900 dark:text-neutral-100"
+              className="font-semibold text-neutral-900"
             >
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
                 Current
               </span>
             )}
@@ -120,7 +120,7 @@ export const AgentInfo = ({
           {changelogEntry && (
             <Text
               variant="small"
-              className="text-neutral-500 dark:text-neutral-400"
+              className="text-neutral-500"
             >
               {new Date(changelogEntry.date).toLocaleDateString("en-US", {
                 year: "numeric",
@@ -136,7 +136,7 @@ export const AgentInfo = ({
           <div className="space-y-2">
             <Text
               variant="body"
-              className="text-neutral-700 dark:text-neutral-300"
+              className="text-neutral-700"
             >
               {changelogEntry.changes_summary}
             </Text>
@@ -178,7 +178,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
             {shortDescription}
           </div>
 

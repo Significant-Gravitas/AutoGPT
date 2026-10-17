@@ -41,7 +41,7 @@ export function NavbarLink({ name, href }: Props) {
           <div
             className={cn(
               iconNudgedClass,
-              isActive && "text-white dark:text-black",
+              isActive && "text-white",
             )}
           >
             <MarketplaceIcon />
@@ -51,7 +51,7 @@ export function NavbarLink({ name, href }: Props) {
           <div
             className={cn(
               iconNudgedClass,
-              isActive && "text-white dark:text-black",
+              isActive && "text-white",
             )}
           >
             <BuilderIcon />
@@ -62,7 +62,7 @@ export function NavbarLink({ name, href }: Props) {
             icon={LaptopIcon}
             className={cn(
               iconBaseClass,
-              isActive && "text-white dark:text-black",
+              isActive && "text-white",
             )}
           />
         )}
@@ -70,7 +70,7 @@ export function NavbarLink({ name, href }: Props) {
           <div
             className={cn(
               iconNudgedClass,
-              isActive && "text-white dark:text-black",
+              isActive && "text-white",
             )}
           >
             <HomepageIcon />
@@ -81,7 +81,7 @@ export function NavbarLink({ name, href }: Props) {
             icon={CheckListIcon}
             className={cn(
               "h-5 w-5 shrink-0",
-              isActive && "text-white dark:text-black",
+              isActive && "text-white",
             )}
           />
         )}

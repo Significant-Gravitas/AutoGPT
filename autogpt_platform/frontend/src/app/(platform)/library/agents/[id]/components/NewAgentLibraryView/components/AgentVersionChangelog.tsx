@@ -58,8 +58,8 @@ export function AgentVersionChangelog({
         key={versionInfo.version}
         className={`rounded-lg border p-4 ${
           versionInfo.isCurrentVersion
-            ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
-            : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
+            ? "border-blue-200 bg-blue-50"
+            : "border-neutral-200 bg-white"
         }`}
       >
         <div className="flex items-center justify-between">
@@ -68,7 +68,7 @@ export function AgentVersionChangelog({
               v{versionInfo.version}
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
                 Current
               </span>
             )}
@@ -77,7 +77,7 @@ export function AgentVersionChangelog({
 
         <Text
           variant="small"
-          className="mt-1 text-neutral-600 dark:text-neutral-400"
+          className="mt-1 text-neutral-600"
         >
           Available marketplace version
         </Text>
@@ -113,7 +113,7 @@ export function AgentVersionChangelog({
             <div className="space-y-4">
               <Text
                 variant="small"
-                className="text-neutral-600 dark:text-neutral-400"
+                className="text-neutral-600"
               >
                 View changes and updates across different versions of this
                 workflow.
@@ -124,7 +124,7 @@ export function AgentVersionChangelog({
             <div className="py-8 text-center">
               <Text
                 variant="body"
-                className="text-neutral-600 dark:text-neutral-400"
+                className="text-neutral-600"
               >
                 No version history available for this workflow.
               </Text>

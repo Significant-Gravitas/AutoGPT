@@ -67,7 +67,7 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
@@ -95,7 +95,7 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
+                className="line-clamp-1 text-ellipsis text-neutral-800"
                 size="large-medium"
               >
                 {agentName}
@@ -103,14 +103,14 @@ export const AgentTableRow = ({
               <Text
                 variant="body"
                 size="small"
-                className="text-neutral-500 dark:text-neutral-400"
+                className="text-neutral-500"
               >
                 v{graph_version}
               </Text>
             </div>
             <Text
               variant="body"
-              className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
+              className="line-clamp-1 text-ellipsis text-neutral-600"
             >
               {description}
             </Text>
@@ -118,7 +118,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-sm text-neutral-600">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
@@ -128,7 +128,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Runs column */}
-        <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-right text-sm text-neutral-600">
           {run_count?.toLocaleString() ?? "0"}
         </div>
 
@@ -142,7 +142,7 @@ export const AgentTableRow = ({
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+            <span className="text-sm text-neutral-600">
               No reviews
             </span>
           )}
@@ -157,42 +157,42 @@ export const AgentTableRow = ({
                 className="h-5 w-5 text-neutral-800"
               />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md">
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
                 >
                   <Icon
                     icon={PencilIcon}
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                    className="mr-2 h-4 w-4"
                   />
-                  <span className="dark:text-gray-100">Edit</span>
+                  <span className="">Edit</span>
                 </DropdownMenu.Item>
               ) : (
                 <DropdownMenu.Item
                   onSelect={handleView}
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
                 >
                   <Icon
                     icon={EyeIcon}
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                    className="mr-2 h-4 w-4"
                   />
-                  <span className="dark:text-gray-100">View</span>
+                  <span className="">View</span>
                 </DropdownMenu.Item>
               )}
               {canModify && (
                 <>
-                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300" />
                   <DropdownMenu.Item
                     onSelect={handleDelete}
-                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100"
                   >
                     <Icon
                       icon={Delete02Icon}
-                      className="mr-2 h-4 w-4 text-red-500 dark:text-red-400"
+                      className="mr-2 h-4 w-4 text-red-500"
                     />
-                    <span className="dark:text-red-400">Delete</span>
+                    <span className="">Delete</span>
                   </DropdownMenu.Item>
                 </>
               )}

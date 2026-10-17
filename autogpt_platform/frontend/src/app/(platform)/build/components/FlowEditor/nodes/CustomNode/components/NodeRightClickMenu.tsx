@@ -79,9 +79,9 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
           <Icon
             icon={Copy01Icon}
             size={20}
-            className="mr-2 dark:text-gray-100"
+            className="mr-2"
           />
-          <span className="dark:text-gray-100">Copy</span>
+          <span className="">Copy</span>
         </SecondaryMenuItem>
         <SecondaryMenuSeparator />
 
@@ -93,9 +93,9 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
               <Icon
                 icon={LinkSquare01Icon}
                 size={20}
-                className="mr-2 dark:text-gray-100"
+                className="mr-2"
               />
-              <span className="dark:text-gray-100">Open workflow</span>
+              <span className="">Open workflow</span>
             </SecondaryMenuItem>
             <SecondaryMenuSeparator />
           </>
@@ -105,9 +105,9 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
           <Icon
             icon={Delete02Icon}
             size={20}
-            className="mr-2 text-red-500 dark:text-red-400"
+            className="mr-2 text-red-500"
           />
-          <span className="dark:text-red-400">Delete</span>
+          <span className="">Delete</span>
         </SecondaryMenuItem>
       </SecondaryMenuContent>
     </ContextMenu.Root>
