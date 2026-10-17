@@ -1168,6 +1168,10 @@ class OrchestratorBlock(Block):
             block_id=target_node.block_id,
             inputs=final_input_data or {},
             execution_context=execution_params.execution_context,
+            # Nothing has been collected for this node yet. Without an explicit
+            # baseline, reconciliation re-derives the catalogue pre-flight and
+            # refunds it (minus actual usage) although it was never charged.
+            pre_flight_charge=0,
         )
 
         # Apply node input overrides (credential masks from Library/Otto).
@@ -1186,6 +1190,33 @@ class OrchestratorBlock(Block):
 
         # Use the execution manager to execute the tool node
         try:
+            # Charge the pre-flight cost BEFORE running the tool, as the main
+            # execution queue does. Tools spawned by the orchestrator bypass
+            # that queue, so we must charge here to avoid free tool execution.
+            # charge_node_usage pins node_exec_entry.pre_flight_charge to the
+            # amount spent, so the reconciliation inside on_node_execution
+            # settles against what was actually collected: a failed tool call
+            # is refunded down to its tracked usage, never below what was paid.
+            # Skipped for dry runs.
+            if not execution_params.execution_context.dry_run:
+                try:
+                    await execution_processor.charge_node_usage(node_exec_entry)
+                except InsufficientBalanceError:
+                    # IBE must propagate — see OrchestratorBlock class docstring.
+                    logger.warning(
+                        "Insufficient balance charging for tool node %s; "
+                        "agent loop will be aborted",
+                        sink_node_id,
+                    )
+                    raise
+                except Exception:
+                    # Non-billing charge failures (DB outage, network, etc.)
+                    # are logged, not surfaced as a tool error. The baseline
+                    # stays 0, so reconciliation bills the tracked usage.
+                    logger.exception(
+                        "Unexpected error charging for tool node %s", sink_node_id
+                    )
+
             # Get NodeExecutionProgress from the execution manager's running nodes
             node_exec_progress = execution_processor.running_node_execution[
                 sink_node_id
@@ -1237,54 +1268,6 @@ class OrchestratorBlock(Block):
             except Exception as exec_err:
                 node_exec_future.set_exception(exec_err)
                 raise
-
-            # Charge user credits AFTER successful tool execution. Tools
-            # spawned by the orchestrator bypass the main execution queue
-            # (where _charge_usage is called), so we must charge here to
-            # avoid free tool execution. Charging post-completion (vs.
-            # pre-execution) avoids billing users for failed tool calls.
-            # Skipped for dry runs.
-            #
-            # `error is None` intentionally excludes both Exception and
-            # BaseException subclasses (e.g. CancelledError) so cancelled
-            # or terminated tool runs are not billed.
-            #
-            # Billing errors (including non-balance exceptions) are kept
-            # in a separate try/except so they are never silently swallowed
-            # by the generic tool-error handler below.
-            if (
-                not execution_params.execution_context.dry_run
-                and tool_node_stats.error is None
-            ):
-                # Charge the sub-block for telemetry / wallet debit. The
-                # return value is intentionally discarded: on_node_execution
-                # above ran the sub-block against this graph's own
-                # graph_stats_pair (manager.py:659-668), so its cost already
-                # lands in graph_stats.cost on the sub-block's completion.
-                # Re-merging here would double-count in telemetry / UI / audit.
-                try:
-                    await execution_processor.charge_node_usage(node_exec_entry)
-                except InsufficientBalanceError:
-                    # IBE must propagate — see OrchestratorBlock class docstring.
-                    # Log the billing failure here so the discarded tool result
-                    # is traceable before the loop aborts.
-                    logger.warning(
-                        "Insufficient balance charging for tool node %s after "
-                        "successful execution; agent loop will be aborted",
-                        sink_node_id,
-                    )
-                    raise
-                except Exception:
-                    # Non-billing charge failures (DB outage, network, etc.)
-                    # must NOT propagate to the outer except handler because
-                    # the tool itself succeeded. Re-raising would mark the
-                    # tool as failed (_is_error=True), causing the LLM to
-                    # retry side-effectful operations. Log and continue.
-                    logger.exception(
-                        "Unexpected error charging for tool node %s; "
-                        "tool execution was successful",
-                        sink_node_id,
-                    )
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
