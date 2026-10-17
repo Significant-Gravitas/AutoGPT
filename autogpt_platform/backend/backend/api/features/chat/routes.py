@@ -484,6 +484,9 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    # The approval mode the chat starts on. Leave unset to start on the
+    # expert's default (or the platform default); send only a deliberate pick.
+    autopilot_mode: AutopilotMode | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -882,6 +885,7 @@ async def create_session(
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
+    autopilot_mode = request.autopilot_mode if request else None
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -929,6 +933,7 @@ async def create_session(
             builder_graph_id,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            autopilot_mode=autopilot_mode,
         )
     elif expert_kickoff and expert_id is not None:
         session = await get_or_create_expert_kickoff_session(
@@ -939,6 +944,7 @@ async def create_session(
             team_id=ctx.team_id,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            autopilot_mode=autopilot_mode,
         )
     else:
         try:
@@ -950,6 +956,7 @@ async def create_session(
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
                 expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
             )
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e
@@ -1073,17 +1080,15 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
-    # Best-effort cleanup of the E2B sandbox (if any).
+    # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
     e2b_cfg = ChatConfig()
     if e2b_cfg.e2b_active:
         assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
-        try:
-            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
-        except Exception:
-            logger.warning(
-                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
-            )
+        spawn_background_task(
+            kill_sandbox(session_id, e2b_cfg.e2b_api_key),
+            name=f"e2b-session-kill-{session_id[:12]}",
+        )
 
     return Response(status_code=204)
 

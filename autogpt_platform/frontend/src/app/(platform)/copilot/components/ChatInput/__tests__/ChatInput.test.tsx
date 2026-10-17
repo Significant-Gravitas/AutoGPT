@@ -555,6 +555,35 @@ describe("ChatInput Enter while streaming", () => {
     expect(screen.queryByLabelText(/queue message/i)).toBeNull();
   });
 
+  it("queues files attached during a reply through onSend when the host can hold them", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput
+        onSend={onSend}
+        onEnqueue={onEnqueue}
+        isStreaming
+        canAttachWhileStreaming
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /queue message/i }));
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
   it("falls back to a normal send when nothing can queue", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} isStreaming />);

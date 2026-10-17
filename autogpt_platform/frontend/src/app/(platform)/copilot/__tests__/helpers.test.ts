@@ -8,6 +8,7 @@ import {
   extractSendMessageText,
   formatNotificationTitle,
   getCopilotAuthHeaders,
+  extractSendMessageAttachments,
   getSendSuppressionReason,
   hasVisibleAssistantContent,
   parseSessionIDs,
@@ -359,6 +360,48 @@ describe("getSendSuppressionReason", () => {
         text: "hello",
         isReconnectScheduled: false,
         lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe("duplicate");
+  });
+
+  it("lets the same caption through when it carries other attachments", () => {
+    const messages = [
+      makeMsg("user", "summarize this"),
+      makeMsg("assistant", "ok"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [{ type: "file", mediaType: "image/png", url: "/f/new" }],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
+        messages,
+      }),
+    ).toBeNull();
+  });
+
+  it("still drops a resend of the same caption with the same attachments", () => {
+    const file = { type: "file" as const, mediaType: "image/png", url: "/f/1" };
+    const messages: UIMessage[] = [
+      {
+        id: "msg-with-file",
+        role: "user",
+        parts: [file, { type: "text", text: "summarize this" }],
+      },
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [file],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
         messages,
       }),
     ).toBe("duplicate");

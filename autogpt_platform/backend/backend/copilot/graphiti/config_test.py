@@ -17,6 +17,9 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_PLATFORM_ROUTE",
     "CHAT_LOCAL_BASE_URL",
     "CHAT_LOCAL_API_KEY",
+    "GRAPHITI_LLM_MODEL",
+    "GRAPHITI_RERANKER_MODEL",
+    "GRAPHITI_EMBEDDER_MODEL",
 )
 
 
@@ -98,7 +101,7 @@ class TestResolveLlmApiKey:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """``CHAT_OPENROUTER_API_KEY`` (the Otto-dedicated cloud key)
-        beats the local fallback — covers the mixed-mode case where
+        beats the local fallback â€” covers the mixed-mode case where
         an operator switched the chat layer to local but left a
         cloud key around."""
         monkeypatch.setenv("CHAT_OPENROUTER_API_KEY", "autopilot-cloud-key")
@@ -121,8 +124,8 @@ class TestResolveLlmBaseUrl:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Under local transport, graphiti's entity extraction must
-        hit the same Ollama (or vLLM, …) endpoint as the chat layer
-        — not the OpenRouter default. Otherwise the per-turn graphiti
+        hit the same Ollama (or vLLM, â€¦) endpoint as the chat layer
+        â€” not the OpenRouter default. Otherwise the per-turn graphiti
         ingest 401s against a placeholder key."""
         _patch_chat_cfg(
             monkeypatch,
@@ -178,7 +181,7 @@ class TestResolveEmbedderBaseUrl:
     ) -> None:
         """Local transport directs embeddings to the same self-hosted
         backend. Operators still need to pull an embedding-capable
-        model into Ollama (e.g. ``nomic-embed-text``) — covered in
+        model into Ollama (e.g. ``nomic-embed-text``) â€” covered in
         docs/platform/copilot-local-llm.md."""
         _patch_chat_cfg(
             monkeypatch,
@@ -195,37 +198,42 @@ class TestApplyLocalGraphitiModels:
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
 
+    @pytest.mark.parametrize("reranker_override", [None, "gpt-4.1-mini"])
     def test_rewrites_cloud_defaults_under_local(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, reranker_override: str | None
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
+        if reranker_override is not None:
+            monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", reranker_override)
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
+        # llm_model: gpt-4.1-mini â†’ Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
         assert cfg.reranker_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
-        # embedder: text-embedding-3-small → nomic-embed-text
+        # embedder: text-embedding-3-small â†’ nomic-embed-text
         assert cfg.embedder_model == "nomic-embed-text"
 
     def test_operator_override_passes_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Operators with custom Ollama tags (``qwen3:8b``,
-        ``hf.co/...``) keep their override — the validator only
+        ``hf.co/...``) keep their override â€” the validator only
         rewrites *literal* cloud defaults."""
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         monkeypatch.setenv("GRAPHITI_LLM_MODEL", "qwen3:8b")
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "custom-reranker:tag")
         monkeypatch.setenv("GRAPHITI_EMBEDDER_MODEL", "all-minilm")
         cfg = GraphitiConfig()
         assert cfg.llm_model == "qwen3:8b"
+        assert cfg.reranker_model == "custom-reranker:tag"
         assert cfg.embedder_model == "all-minilm"
 
     def test_cloud_defaults_preserved_under_cloud_transport(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenRouter / direct-Anthropic transports leave the cloud
-        defaults alone — graphiti's ``gpt-4.1-mini`` stays put for
+        defaults alone â€” graphiti's ``gpt-4.1-mini`` stays put for
         anyone who isn't on a self-hosted backend."""
         _patch_chat_cfg(
             monkeypatch,
@@ -233,8 +241,19 @@ class TestApplyLocalGraphitiModels:
         )
         cfg = GraphitiConfig()
         assert cfg.llm_model == "gpt-4.1-mini"
-        assert cfg.reranker_model == "gpt-4.1-nano"
+        assert cfg.reranker_model == "gpt-4.1-mini"
         assert cfg.embedder_model == "text-embedding-3-small"
+
+    def test_reranker_env_override_under_cloud_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(platform_route="openrouter", openrouter_api_key="or-key"),
+        )
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "gpt-5.6-luna")
+        cfg = GraphitiConfig()
+        assert cfg.reranker_model == "gpt-5.6-luna"
 
 
 class TestIsEnabledForUser:

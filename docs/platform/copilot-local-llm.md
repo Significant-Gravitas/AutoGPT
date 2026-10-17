@@ -1,12 +1,12 @@
 # Running AutoPilot on a self-hosted LLM
 
-> **Important**: This page covers the **AutoPilot chat path** — the
+> **Important**: This page covers the **AutoPilot chat path** â€” the
 > conversational agent on `/copilot`. For the *block-layer* AI Text
 > Generator block (used inside agent graphs you build yourself), see
 > [Running Ollama with AutoGPT](ollama.md). The two paths read different
 > env vars, so configuring one does not configure the other.
 >
-> Self-hosting only — the cloud `agpt.co` deployment routes AutoPilot
+> Self-hosting only â€” the cloud `agpt.co` deployment routes AutoPilot
 > through Anthropic / OpenRouter and ignores the variables below.
 
 This guide makes the AutoPilot chat work **without an Anthropic, OpenAI,
@@ -14,7 +14,7 @@ or OpenRouter key** by routing it through any **OpenAI-compatible HTTP
 endpoint you control**.
 
 The route is called `local` because it's the typical case, but
-`CHAT_LOCAL_BASE_URL` is just a URL — every deployment shape below works
+`CHAT_LOCAL_BASE_URL` is just a URL â€” every deployment shape below works
 equally well:
 
 | Scenario | `CHAT_LOCAL_BASE_URL` |
@@ -26,8 +26,8 @@ equally well:
 | [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html), [LocalAI](https://localai.io/), [LM Studio](https://lmstudio.ai/), [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy) | their respective `/v1` URLs |
 | A managed OpenAI-compatible API you don't pay AutoGPT for | its `/v1` URL |
 
-Anything that speaks the OpenAI `/v1/chat/completions` shape — including
-`tools=[...]` for function calling — will work. The rest of this guide
+Anything that speaks the OpenAI `/v1/chat/completions` shape â€” including
+`tools=[...]` for function calling â€” will work. The rest of this guide
 uses Ollama as the running example because it's the easiest, but
 substitute your own endpoint anywhere you see `http://...:11434/v1`.
 
@@ -50,15 +50,15 @@ never configure the chat. With `CHAT_PLATFORM_ROUTE=local`:
 | Context window | `CHAT_LOCAL_CONTEXT_TOKENS` (required): the window the server has loaded |
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), the route's two
-tiers are the *bottom* layer of model resolution: LaunchDarkly per-user
-override → the LLM catalog's routing cell
-(`backend/data/llm_registry/catalog.py`) → the tier, with slugs unknown
+tiers are the *bottom* layer of model resolution: the `copilot-model-routing` flagâ€™s per-user
+override â†’ the LLM catalog's routing cell
+(`backend/data/llm_registry/catalog.py`) â†’ the tier, with slugs unknown
 to the catalog or disabled in it refused at serve time.
 
-**On self-hosted installs — any route — the catalog's routing cells
+**On self-hosted installs â€” any route â€” the catalog's routing cells
 are skipped entirely**: they are the cloud deployment's config traveling
 in the shipped file, and they never override your `CHAT_STANDARD_MODEL`
-/ `CHAT_ADVANCED_MODEL`. Resolution here is LaunchDarkly → your tiers;
+/ `CHAT_ADVANCED_MODEL`. Resolution here is the `copilot-model-routing` flag â†’ your tiers;
 your settings stay authoritative. See
 [Managing LLM Models](contributing/managing-llm-models.md).
 
@@ -98,7 +98,7 @@ In `autogpt_platform/backend/.env`:
 CHAT_PLATFORM_ROUTE=local
 
 # Where the server lives. From inside the docker containers this must
-# NOT be 127.0.0.1 / localhost — use the host's LAN IP (e.g.
+# NOT be 127.0.0.1 / localhost â€” use the host's LAN IP (e.g.
 # 192.168.1.42) or, if you've added the directive to compose,
 # host.docker.internal:host-gateway.
 CHAT_LOCAL_BASE_URL=http://192.168.1.42:11434/v1
@@ -115,7 +115,7 @@ CHAT_LOCAL_ADAPTER=openai_chat
 # window" below. At least 65536.
 CHAT_LOCAL_CONTEXT_TOKENS=262144
 
-# The two tiers. Bare model names ONLY — provider/model slugs (e.g.
+# The two tiers. Bare model names ONLY â€” provider/model slugs (e.g.
 # `anthropic/claude-...`) are passed through verbatim and Ollama can't
 # resolve them. Both are required: set the same model twice if you run
 # one. Set a bigger advanced model only if you have the VRAM for it.
@@ -145,11 +145,11 @@ Pull whichever you choose:
 ollama pull hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 ```
 
-## Context window — set it on the server, then tell AutoPilot
+## Context window â€” set it on the server, then tell AutoPilot
 
 Ollama defaults `num_ctx` to **4096 tokens regardless of the model's
 advertised window** ([ollama/ollama#2714](https://github.com/ollama/ollama/issues/2714)).
-That's smaller than AutoPilot's system prompt + tool schemas — without a
+That's smaller than AutoPilot's system prompt + tool schemas â€” without a
 larger window Ollama only sees the *end* of the instructions and responses
 are incoherent or 500 outright.
 
@@ -189,9 +189,9 @@ Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`.
 ```bash
 launchctl setenv OLLAMA_HOST 0.0.0.0:11434
 launchctl setenv OLLAMA_CONTEXT_LENGTH 262144
-# Then restart Ollama — either:
+# Then restart Ollama â€” either:
 brew services restart ollama        # if installed via the brew formula
-# …or quit the menu-bar app and relaunch it (the .dmg install)
+# â€¦or quit the menu-bar app and relaunch it (the .dmg install)
 ```
 
 **Windows** (user-scope env vars, persists across reboots):
@@ -207,7 +207,7 @@ Verify on any platform with `ollama ps` (the `CONTEXT` column should
 show your value, e.g. 262144). If you change it, set
 `CHAT_LOCAL_CONTEXT_TOKENS` to match and restart the backend.
 
-## Networking — same host, different host, or remote
+## Networking â€” same host, different host, or remote
 
 The endpoint can be on the same machine, on the LAN, or anywhere
 internet-reachable. Pick whichever matches your deployment shape:
@@ -217,7 +217,7 @@ internet-reachable. Pick whichever matches your deployment shape:
 How containers reach the host depends on whether you're on Docker
 Desktop (macOS / Windows) or native Docker (Linux):
 
-**macOS + Windows (Docker Desktop)** — every container already has a
+**macOS + Windows (Docker Desktop)** â€” every container already has a
 `host.docker.internal` entry pointing at the host. No extra wiring:
 
 ```bash
@@ -225,13 +225,13 @@ CHAT_LOCAL_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
 Still set `OLLAMA_HOST=0.0.0.0:11434` so the .app/tray-managed Ollama
-accepts the connection from the Desktop network — by default it binds
+accepts the connection from the Desktop network â€” by default it binds
 only to `127.0.0.1`.
 
-**Linux (native Docker)** — there's no auto-injected
+**Linux (native Docker)** â€” there's no auto-injected
 `host.docker.internal`. Pick one:
 
-1. **Use the LAN IP** in `CHAT_LOCAL_BASE_URL` — simplest, works everywhere.
+1. **Use the LAN IP** in `CHAT_LOCAL_BASE_URL` â€” simplest, works everywhere.
 2. **Bind Ollama to all interfaces:** `OLLAMA_HOST=0.0.0.0:11434` (set
    in the systemd unit or a drop-in), so containers reach it via the
    bridge gateway.
@@ -246,7 +246,7 @@ The bundled installer does these for you on a fresh box:
 | macOS | `installer/setup-autogpt.sh --with-ollama` |
 | Windows | `installer\setup-autogpt.bat /with-ollama` |
 
-### Different LAN box (dedicated GPU server, NAS, …)
+### Different LAN box (dedicated GPU server, NAS, â€¦)
 
 Set `CHAT_LOCAL_BASE_URL` to the box's hostname or IP:
 
@@ -265,7 +265,7 @@ Two approaches, in increasing order of "please do this":
 
 1. **Trusted private network** (Tailscale, WireGuard, ZeroTier,
    corporate VPN). Treat the remote endpoint exactly like a LAN box.
-2. **Public HTTPS with auth** — terminate TLS at a reverse proxy
+2. **Public HTTPS with auth** â€” terminate TLS at a reverse proxy
    (Caddy, nginx, Cloudflare Tunnel) in front of Ollama / vLLM /
    whatever, and require a bearer token. Set:
 
@@ -275,7 +275,7 @@ Two approaches, in increasing order of "please do this":
    ```
 
 > **Do not** expose raw Ollama on the public internet. Ollama itself
-> performs **no authentication** — anyone who can reach `:11434` can
+> performs **no authentication** â€” anyone who can reach `:11434` can
 > use (and exhaust) your model. Always front it with a proxy that
 > enforces a token.
 
@@ -285,15 +285,15 @@ The `local` route isn't just for AutoPilot chat. The same client
 flows to every backend helper that needs an LLM, so a single
 `CHAT_PLATFORM_ROUTE=local` install also covers:
 
-- **Dry-run block simulator** — when a user clicks "Test" in the agent
+- **Dry-run block simulator** â€” when a user clicks "Test" in the agent
   builder, blocks role-play their execution against an LLM rather than
   hitting external APIs. Uses the standard tier (`CHAT_STANDARD_MODEL`).
-- **Onboarding business-understanding extraction** — the post-signup
+- **Onboarding business-understanding extraction** â€” the post-signup
   Tally form is extracted into structured suggestions via the LLM.
   Uses the standard tier too.
-- **Long-run prompt compression** — the chat / agent loop summarizes
+- **Long-run prompt compression** â€” the chat / agent loop summarizes
   message history when context grows beyond a threshold.
-- **Marketplace semantic search** — the store generates embeddings for
+- **Marketplace semantic search** â€” the store generates embeddings for
   agent descriptions to power hybrid (lexical + semantic) ranking.
   Hybrid search degrades gracefully to lexical-only when no embedding
   backend is available.
@@ -303,16 +303,16 @@ flows to every backend helper that needs an LLM, so a single
 The store's embedding model is overridable via env so deployments with
 a compatible backend (vLLM, LiteLLM proxy, Ollama with an embedding
 model pulled, Azure OpenAI) can swap models without a code change.
-**The replacement model must emit 1536-dim vectors** — the pgvector
+**The replacement model must emit 1536-dim vectors** â€” the pgvector
 column is declared `vector(1536)` in `schema.prisma` and inserts with
 any other dim hard-fail.
 
 ```bash
-# Default — OpenAI text-embedding-3-small (1536 dim):
+# Default â€” OpenAI text-embedding-3-small (1536 dim):
 STORE_EMBEDDING_MODEL=text-embedding-3-small
 
 # Example: nomic-embed-text on Ollama emits 768 dims natively, so it
-# DOES NOT fit the existing schema — picking it would break every
+# DOES NOT fit the existing schema â€” picking it would break every
 # publish + reindex. Use a 1536-dim model instead, e.g.
 # text-embedding-ada-002 (OpenAI legacy) or one of the LiteLLM proxy's
 # 1536-dim shims. Custom-dim support would need a schema migration
@@ -323,10 +323,10 @@ STORE_EMBEDDING_MODEL=text-embedding-3-small
 > runtime.** A model that emits a different vector length will succeed
 > at the embedding call and fail at every subsequent `INSERT`. If you
 > need a different dim, you'll need to fork the schema and migrate
-> existing rows — it's not a runtime knob.
+> existing rows â€” it's not a runtime knob.
 
 If you don't configure an embedding backend at all, marketplace
-hybrid search auto-degrades to lexical-only (no semantic ranking) —
+hybrid search auto-degrades to lexical-only (no semantic ranking) â€”
 not fatal, just less smart.
 
 ## Verifying the wiring
@@ -344,7 +344,7 @@ docker exec autogpt_platform-copilot_executor-1 env | grep ^CHAT_
 docker logs autogpt_platform-copilot_executor-1 | grep -E "Using.*service"
 #   [CoPilotExecutor|...] Using SDK service
 
-# 3. Confirm Ollama saw the request — per platform (POST /v1/chat/completions
+# 3. Confirm Ollama saw the request â€” per platform (POST /v1/chat/completions
 #    with CHAT_LOCAL_ADAPTER=openai_chat, /v1/messages with
 #    anthropic_passthrough):
 
@@ -362,38 +362,38 @@ powershell -Command "Get-Content $env:LOCALAPPDATA\Ollama\server.log -Wait | Sel
 ```
 
 If `Using SDK service` appears and Ollama logs a 200, the
-end-to-end path is working — any remaining errors are model / RAM /
+end-to-end path is working â€” any remaining errors are model / RAM /
 quantization concerns rather than config-routing bugs.
 
 ## Troubleshooting
 
-**The backend exits at startup, naming chat settings** — a setting from
+**The backend exits at startup, naming chat settings** â€” a setting from
 the old format is still set (an empty one counts), or the route is
 missing one it needs. Replace or add each setting the list names; see
 the table under "How it works" above.
 
-**Frontend shows "The assistant encountered an error"** — check the
+**Frontend shows "The assistant encountered an error"** â€” check the
 copilot_executor log for the upstream error. Common causes:
 - `model requires more system memory (X GiB) than is available (Y GiB)`
-  → free RAM (stop ClamAV, raise VM memory) or pick a smaller model
-- `model "..." not found` → `ollama pull <slug>` first
-- `connection refused` → containers can't reach the host on `:11434`;
-  see "Container → host networking" above
+  â†’ free RAM (stop ClamAV, raise VM memory) or pick a smaller model
+- `model "..." not found` â†’ `ollama pull <slug>` first
+- `connection refused` â†’ containers can't reach the host on `:11434`;
+  see "Container â†’ host networking" above
 
-**The server gets no key even though I set `OPENAI_API_KEY`** — by
+**The server gets no key even though I set `OPENAI_API_KEY`** â€” by
 design. The local route sends only `CHAT_LOCAL_API_KEY`, so a cloud key
 set for graphiti / embedders never reaches your local server as its
 bearer token. Set `CHAT_LOCAL_API_KEY` if the server checks one.
 
-**Title generation fails / returns "Untitled chat"** — titles run on
+**Title generation fails / returns "Untitled chat"** â€” titles run on
 the standard tier (`CHAT_STANDARD_MODEL`) against the same server; check
 that model is pulled and answers.
 
-**Slow first response** — Ollama loads the model into RAM on the first
+**Slow first response** â€” Ollama loads the model into RAM on the first
 request, which can take 5-15 s for 8 B models on CPU. Subsequent
 requests are much faster while the model stays resident.
 
-**Every AutoPilot turn takes minutes on CPU** — expected on CPU-only
+**Every AutoPilot turn takes minutes on CPU** â€” expected on CPU-only
 hosts, not a hang. AutoPilot ships an ~8 k-token system prompt and the
 model must *prefill* (compute KV-cache state for) every token of that
 prompt before the first output token is emitted. On 4 CPU cores an
@@ -403,7 +403,7 @@ prompt) finishes in seconds because there's almost nothing to prefill.
 A consumer GPU brings this down to seconds. If you're CPU-only and
 just want to validate the install end-to-end, tail the Ollama server
 log (see the per-platform commands in "Verifying the wiring" above)
-and watch for the `POST /v1/chat/completions` line — once it appears
+and watch for the `POST /v1/chat/completions` line â€” once it appears
 with a 200, prefill finished and the model is generating.
 
 ## Dream pass + memory on the local route
@@ -417,7 +417,7 @@ things you should know:
 The dream pass's batch path (Anthropic batch, OpenAI batch) is
 provider-locked and unavailable on local backends.
 `CHAT_PLATFORM_ROUTE=local` forces `execution_path="sync_baseline"`
-regardless of which API keys might be set elsewhere on the box — your
+regardless of which API keys might be set elsewhere on the box â€” your
 local LLM handles all three phases (consolidate / recombine / sanitize)
 on the same endpoint as chat, with the two tiers. Cost-log rows label
 `provider="local"` so the admin platform-costs dashboard distinguishes
@@ -431,12 +431,12 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 | Setting | Cloud default | Local default |
 |---|---|---|
 | `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
 The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`
 installer already pulls for chat, so no extra `ollama pull` is needed
-unless you've overridden them. The embedder is a separate model — see
+unless you've overridden them. The embedder is a separate model â€” see
 the next section.
 
 You can pin your own slugs at any time by setting the matching
@@ -455,7 +455,7 @@ ollama pull nomic-embed-text
 ```
 
 Without it, chat still works, but `graphiti.add_episode(...)` fails
-silently per turn — the agent loses memory of the conversation
+silently per turn â€” the agent loses memory of the conversation
 between sessions. With it pulled, graphiti round-trips
 embeddings against the same Ollama endpoint as the LLM, and
 warm-context retrieval works end-to-end on the local stack.
@@ -472,7 +472,7 @@ is treated as a *request*, not a guarantee. OpenAI's flex tier only
 delivers the ~50% discount through OpenRouter's pass-through to
 OpenAI / Google upstreams, so on the local and Anthropic routes the
 flex client is silently swapped for the regular `OpenAIClient`
-(logged at INFO). The weekly community rebuild still runs — at full
+(logged at INFO). The weekly community rebuild still runs â€” at full
 sync price, which on local Ollama is `$0`.
 
 ### Subscription mode caveat
@@ -490,4 +490,4 @@ A separate Anthropic Agent-SDK credit pool launches **2026-06-15**
 ($20 Pro / $100 Max-5x / $200 Max-20x at standard API rates,
 one-time opt-in). Once that lands, subscription users will have
 the option of routing the dream pass through the Agent SDK instead
-of the Messages API — coverage tracked as a post-Jun-15 follow-up.
+of the Messages API â€” coverage tracked as a post-Jun-15 follow-up.
