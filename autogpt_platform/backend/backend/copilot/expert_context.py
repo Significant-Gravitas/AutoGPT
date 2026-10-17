@@ -29,6 +29,7 @@ from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
+from backend.copilot.expert_tenancy import checked_expert_tenancy
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -92,11 +93,11 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
 
-    db = experts_db()
     try:
-        personal_org_id, personal_team_id = await db.resolve_private_expert_tenancy(
+        # The turn already checked this expert before it got here.
+        personal_org_id, personal_team_id = checked_expert_tenancy(
             user_id, expert_id
-        )
+        ) or await experts_db().resolve_private_expert_tenancy(user_id, expert_id)
     except ExpertNotFoundError as e:
         # Permanent: archived, deleted, or no longer PRIVATE — retrying
         # can never succeed, so don't tell the user to try again.
