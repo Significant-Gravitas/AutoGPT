@@ -1374,17 +1374,12 @@ async def create_raised_expert(
     failed_skill_installs = await raise_attachments.install_marketplace_skills(
         user_id, expert.id, resolved.skills
     )
-    # Keyed on the whole attachment, not the bare id: the same slug can be
-    # attached from both the Hub and the user's own library, and a failed Hub
-    # install must not drop the library copy that succeeded.
-    uninstalled = {(f.kind, f.source, f.id) for f in failed_skill_installs}
-    dropped_skills = set(
+    failed_library_copies = set(
         await _copy_library_skills(user_id, expert.id, resolved.library_skill_names)
-    ) | {
-        s.name
-        for s in resolved.skills
-        if (s.attachment.kind, s.attachment.source, s.attachment.id) in uninstalled
-    }
+    )
+    dropped_skills = raise_attachments._failed_skill_names_without_survivors(
+        resolved.skills, failed_skill_installs, failed_library_copies
+    )
     if dropped_skills:
         expert = (
             await prisma.models.Expert.prisma().update(
@@ -1414,23 +1409,16 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the library skills it
-    was raised with. Defaults have nothing to copy; marketplace skills are
-    installed from their listing instead and never reach here.
-    Returns the names whose copy failed so the caller can drop them from the
-    expert's row rather than list a skill the expert cannot read."""
-    candidates = [
-        name
-        for name in names
-        if get_default_skill_with_body(name.strip().lower()) is None
-    ]
-    folders = await find_user_skill_slugs(user_id, candidates)
+    """Copy custom library skills; confirmed builtins and Hub listings are
+    excluded by resolution. Return names whose sources disappeared or whose
+    copy failed, so reconciliation cannot count an unreadable skill as a survivor.
+    """
+    folders = await find_user_skill_slugs(user_id, names)
     failed: list[str] = []
-    for name in candidates:
+    for name in names:
         folder = folders.get(name.strip().lower())
         if folder is None:
-            # A default listed under a name that differs from its slug: no
-            # folder to copy, and the name is legitimate, so it stays.
+            failed.append(name)
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder) is None:
