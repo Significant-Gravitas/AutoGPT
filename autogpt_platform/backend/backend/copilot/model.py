@@ -28,6 +28,7 @@ from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
@@ -1650,29 +1651,25 @@ async def delete_chat_session(
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Best-effort embedding cleanup so deleted sessions stop appearing in
-    # /search/global hits. Only attempt when we have a user_id since the
-    # embedding row is user-scoped; without it the user-filter would miss
-    # and the orphan row (if any) gets cleaned up by the periodic embedder.
-    if user_id:
-        try:
-            from backend.copilot.chat_session_embeddings import (
-                delete_chat_session_embedding,
-            )
-
-            await delete_chat_session_embedding(session_id, user_id)
-        except Exception as e:
-            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
-
-    # Shut down any local browser daemon for this session (best-effort).
-    # Inline import required: all tool modules import ChatSession from this
+    # Inline imports required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
-    try:
-        from .tools.agent_browser import close_browser_session
+    from backend.copilot.chat_session_embeddings import delete_chat_session_embedding
 
-        await close_browser_session(session_id, user_id=user_id)
-    except Exception as e:
-        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+    from .tools.agent_browser import close_browser_session
+
+    # The cleanups below are best-effort and log their own failures, so they
+    # run after the caller gets its answer instead of holding it up.
+    # The embedding row is user-scoped; without a user_id the filter would
+    # miss and the periodic embedder sweeps the orphan row instead.
+    if user_id:
+        spawn_background_task(
+            delete_chat_session_embedding(session_id, user_id),
+            name=f"chat-embedding-delete-{session_id[:12]}",
+        )
+    spawn_background_task(
+        close_browser_session(session_id, user_id=user_id),
+        name=f"browser-close-{session_id[:12]}",
+    )
 
     return True
 
