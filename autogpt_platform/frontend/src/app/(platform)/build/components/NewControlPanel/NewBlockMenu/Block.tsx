@@ -15,6 +15,11 @@ import {
 } from "@/app/(platform)/build/components/MCPToolDialog";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -42,6 +47,7 @@ export const Block: BlockComponent = ({
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
 
   const isMCPBlock = blockData.uiType === BlockUIType.MCP_TOOL;
+  const isDisabled = blockData.disabled || rest.disabled;
 
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
@@ -79,6 +85,7 @@ export const Block: BlockComponent = ({
   }
 
   function handleClick() {
+    if (isDisabled) return;
     if (isMCPBlock) {
       setMcpDialogOpen(true);
       return;
@@ -95,7 +102,7 @@ export const Block: BlockComponent = ({
   }
 
   function handleDragStart(e: React.DragEvent<HTMLButtonElement>) {
-    if (isMCPBlock) return;
+    if (isMCPBlock || isDisabled) return;
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("application/reactflow", JSON.stringify(blockData));
 
@@ -118,52 +125,80 @@ export const Block: BlockComponent = ({
     ? `block-card-${blockData.id.replace(/[^a-zA-Z0-9]/g, "")}`
     : undefined;
 
+  const button = (
+    <Button
+      draggable={!isMCPBlock && !isDisabled}
+      data-id={blockDataId}
+      className={cn(
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
+        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        isMCPBlock && "hover:cursor-pointer",
+        className,
+      )}
+      onDragStart={handleDragStart}
+      onClick={handleClick}
+      {...rest}
+      disabled={isDisabled}
+    >
+      <div className="flex flex-1 flex-col items-start gap-0.5">
+        {title && (
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+            )}
+          >
+            {highlightText(
+              beautifyString(title).replace(/ Block$/, ""),
+              highlightedText,
+            )}
+          </span>
+        )}
+        {description && (
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+            )}
+          >
+            {highlightText(description, highlightedText)}
+          </span>
+        )}
+      </div>
+      <div
+        className={cn(
+          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+        )}
+      >
+        <Icon icon={PlusSignIcon} className="h-5 w-5 text-zinc-50" />
+      </div>
+    </Button>
+  );
+
   return (
     <>
-      <Button
-        draggable={!isMCPBlock}
-        data-id={blockDataId}
-        className={cn(
-          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
-          "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
-          isMCPBlock && "hover:cursor-pointer",
-          className,
-        )}
-        onDragStart={handleDragStart}
-        onClick={handleClick}
-        {...rest}
-      >
-        <div className="flex flex-1 flex-col items-start gap-0.5">
-          {title && (
+      {isDisabled ? (
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
             <span
-              className={cn(
-                "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-              )}
+              className="block w-full"
+              role="button"
+              tabIndex={0}
+              aria-disabled="true"
+              aria-label={
+                blockData.disabledReason
+                  ? `${title || "Block"}: ${blockData.disabledReason}`
+                  : `${title || "Block"} (unavailable)`
+              }
             >
-              {highlightText(
-                beautifyString(title).replace(/ Block$/, ""),
-                highlightedText,
-              )}
+              {button}
             </span>
-          )}
-          {description && (
-            <span
-              className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-              )}
-            >
-              {highlightText(description, highlightedText)}
-            </span>
-          )}
-        </div>
-        <div
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
-          )}
-        >
-          <Icon icon={PlusSignIcon} className="h-5 w-5 text-zinc-50" />
-        </div>
-      </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {blockData.disabledReason || "This block is currently unavailable."}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
       {isMCPBlock && (
         <MCPToolDialog
           open={mcpDialogOpen}
