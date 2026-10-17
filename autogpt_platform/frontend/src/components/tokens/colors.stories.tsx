@@ -89,11 +89,11 @@ const specialColors = [
         textClass: "text-white",
       },
       {
-        name: "bg-light-grey",
+        name: "bg-bgLightGrey",
         hex: colors.bgLightGrey,
         rgb: hexToRgb(colors.bgLightGrey),
-        class: "bg-light-grey",
-        textClass: "text-light-grey",
+        class: "bg-bgLightGrey",
+        textClass: "text-bgLightGrey",
       },
     ],
   },
@@ -105,13 +105,12 @@ export function AllVariants() {
       {/* Color System Documentation */}
       <div className="space-y-8">
         <div>
-          <Text variant="h1" className="mb-4 text-zinc-800">
-            Color Palette
+          <Text variant="h1" className="mb-4 text-foreground">
+            Color tokens
           </Text>
-          <Text variant="large" className="text-zinc-600">
-            Use only these approved colors in your components. Many are named
-            like Tailwind&apos;s default theme but override those values with
-            our custom palette.
+          <Text variant="large" className="text-muted-foreground">
+            New UI uses role tokens from globals.css. The ramps below are the
+            primitive layer. Feature code does not style with a ramp step.
           </Text>
         </div>
 
@@ -124,20 +123,14 @@ export function AllVariants() {
               How to Use
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <Text variant="body" className="mb-2 text-zinc-600">
-                  Use any of the approved colors combined with{" "}
-                  <a
-                    href="https://tailwindcss.com/docs/colors"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500"
-                  >
-                    tailwind classes
-                  </a>
+              <div className="rounded-lg border border-border p-4">
+                <Text variant="body" className="mb-2 text-muted-foreground">
+                  Paint with a role. bg-background, text-foreground,
+                  border-border, bg-primary, text-muted-foreground, and
+                  bg-destructive are the API.
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
-                  bg-slate-500 → background-color: {colors.slate[500]}
+                <div className="font-mono text-sm text-foreground">
+                  bg-primary → hsl(var(--primary))
                 </div>
               </div>
 
@@ -146,11 +139,11 @@ export function AllVariants() {
                   variant="body-medium"
                   className="mb-2 font-semibold text-red-800"
                 >
-                  ⚠️ Only Use These Colors
+                  Roles, then ramps
                 </Text>
                 <Text variant="body" className="text-red-700">
-                  These are the ONLY approved colors. Don&apos;t use other
-                  Tailwind colors or arbitrary values.
+                  Reach for a role token first. A ramp step is a primitive.
+                  Other palette families and arbitrary values are not the API.
                 </Text>
               </div>
             </div>
@@ -201,10 +194,10 @@ export function AllVariants() {
                 {category.colors.map((color) => (
                   <div
                     key={color.name}
-                    className="flex items-center gap-4 rounded-lg border border-gray-200 p-4"
+                    className="flex items-center gap-4 rounded-lg border border-border p-4"
                   >
                     <div
-                      className="h-12 w-12 flex-shrink-0 rounded border border-gray-300"
+                      className="h-12 w-12 flex-shrink-0 rounded border border-border"
                       style={{ backgroundColor: color.hex }}
                     ></div>
                     <div className="flex-1 space-y-1">
@@ -253,10 +246,10 @@ export function AllVariants() {
               {category.colors.map((color) => (
                 <div
                   key={color.name}
-                  className="space-y-3 rounded-lg border border-gray-200 p-4"
+                  className="space-y-3 rounded-lg border border-border p-4"
                 >
                   <div
-                    className="h-16 w-full rounded border border-gray-300"
+                    className="h-16 w-full rounded border border-border"
                     style={{ backgroundColor: color.hex }}
                   ></div>
                   <div className="space-y-1">
@@ -296,30 +289,31 @@ export function AllVariants() {
           </Text>
         </div>
 
+        <div className="max-w-3xl space-y-3 rounded-lg border border-border p-4">
+          <Text variant="h3" className="text-foreground">
+            Ramp defects, left unchanged
+          </Text>
+          <Text variant="body" className="text-muted-foreground">
+            red 900 in colors.ts has a trailing space, so it is not a valid
+            hex. slate 700 and slate 800 are both #475263. The slate ramp has
+            no 950 step, so a slate 950 utility is still the default scale.
+            customGray in the Tailwind config has no class use under src. The
+            flat key bgLightGrey compiles to bg-bgLightGrey. These values stay
+            as they are in this change.
+          </Text>
+        </div>
+
         <StoryCode
-          code={`// ✅ CORRECT - Use approved design tokens
-<div className="bg-slate-100 text-slate-800">
-  Content with approved colors
+          code={`<div className="bg-background text-foreground">
+  Page surface
 </div>
 
-<button className="bg-green-500 text-white hover:bg-green-600">
-  Success Button
+<button className="bg-primary text-primary-foreground">
+  Primary action
 </button>
 
-// Text colors
-<h1 className="text-black">Primary heading</h1>
-<p className="text-zinc-600">Secondary text</p>
-
-// Semantic usage
-<div className="bg-green-50 border-green-200 text-green-800">Success</div>
-<div className="bg-red-50 border-red-200 text-red-800">Error</div>
-<div className="bg-yellow-50 border-yellow-200 text-yellow-800">Warning</div>
-<div className="bg-purple-50 border-purple-200 text-purple-800">Premium</div>
-<div className="bg-pink-50 border-pink-200 text-pink-800">Special</div>
-
-// ❌ INCORRECT - Don't use these  
-<div className="bg-blue-500 text-purple-600">❌ Not approved</div>
-<div className="bg-[#1234ff]">❌ Arbitrary values</div>`}
+<p className="text-muted-foreground">Secondary text</p>
+<p className="text-destructive">Something went wrong</p>`}
         />
       </div>
     </div>

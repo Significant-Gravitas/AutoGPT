@@ -623,12 +623,12 @@ Control flow:
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
 - Use the `tailwind-scrollbar` utilities for scrollbar styling
-- Keep responsive and dark-mode behavior consistent with the design system
+- Do not add `dark:` utilities. The app forces light mode, and dark variants are not part of the color API.
 
 Additional requirements:
 
 - Do not import shadcn primitives directly in feature code; only use components exposed in our design system under `src/components`. shadcn is a low-level skeleton we style on top of and is not meant to be consumed directly.
-- Prefer design tokens over Tailwind's default theme whenever possible (e.g., color, spacing, radius, and typography tokens). Avoid hardcoded values and default palette if a token exists.
+- New color in feature code uses a role token: `bg-background`, `text-foreground`, `border-border`, `bg-primary`, `text-muted-foreground`, or `bg-destructive`. The ramps in `src/components/styles/colors.ts` are the primitive layer. Do not style new UI with a ramp step, a default palette family, or an arbitrary hex.
 
 ---
 
