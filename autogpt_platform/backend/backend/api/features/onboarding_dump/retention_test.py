@@ -169,18 +169,34 @@ async def test_a_large_backlog_is_spread_over_several_runs(
     client: MagicMock, calls: Calls, mocker: MockerFixture
 ):
     mocker.patch.object(retention, "_MAX_PURGED_PER_RUN", 1)
-    client.list_objects.side_effect = [
-        {
-            "items": [_item(OLD, timedelta(days=60)), _item(RECENT, timedelta(60))],
-            "nextPageToken": "page-2",
-        },
-    ]
+    client.list_objects.return_value = {
+        "items": [_item(OLD, timedelta(days=60)), _item(RECENT, timedelta(days=61))]
+    }
 
     result = await retention.purge_expired_recordings(_clear(calls), now=NOW)
 
     assert result.expired == 1
     assert calls.order == ["clear", f"delete:{OLD}"]
-    client.list_objects.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_newly_due_take_does_not_wait_behind_the_backlog(
+    client: MagicMock, calls: Calls, mocker: MockerFixture
+):
+    """At first deploy every recording ever stored is due, in name (user ID)
+    order. A failed take that just reached its max age must still go this
+    run, or it outlives 48 hours waiting behind recordings long overdue."""
+    mocker.patch.object(retention, "_MAX_PURGED_PER_RUN", 1)
+    failed_take = "uploads/users/user-9/uuid-c/brain-dump-rec-failed.webm"
+    client.list_objects.side_effect = [
+        {"items": [_item(OLD, timedelta(days=60))], "nextPageToken": "page-2"},
+        {"items": [_item(failed_take, MAX_AGE + timedelta(minutes=5))]},
+    ]
+
+    result = await retention.purge_expired_recordings(_clear(calls), now=NOW)
+
+    assert result.expired == 1
+    assert calls.order == ["clear", f"delete:{failed_take}"]
 
 
 @pytest.mark.asyncio

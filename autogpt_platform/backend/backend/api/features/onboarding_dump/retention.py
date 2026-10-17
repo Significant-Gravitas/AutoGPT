@@ -74,9 +74,10 @@ _RECORDING_NAME = re.compile(
 # that release and before this date.
 _UNMARKED_RECORDINGS_BEFORE = datetime(2026, 11, 1, tzinfo=timezone.utc)
 _DELETE_CONCURRENCY = 10
-# Keeps one run well inside the scheduler's 5-minute timeout; the first run
-# after this shipped has every recording ever stored to delete, and the
-# next run picks up the rest.
+# Keeps one run well inside the scheduler's 5-minute timeout. The first runs
+# after this shipped have every recording ever stored to delete; at one run
+# an hour that is 48,000 a day. Each run takes the most recently due first,
+# so a take that just reached its max age never waits behind that backlog.
 _MAX_PURGED_PER_RUN = 2000
 
 ClearAudioPaths = Callable[[list[str]], Awaitable[int]]
@@ -128,21 +129,29 @@ async def purge_expired_recordings(
 async def _list_expired_recordings(
     client: async_gcs_storage.Storage, bucket: str, cutoff: datetime
 ) -> list[str]:
-    names: list[str] = []
+    """Up to ``_MAX_PURGED_PER_RUN`` due recordings, newest first.
+
+    The bucket lists in name (user ID) order, so the whole listing is read
+    before any are picked.
+    """
+    due: list[tuple[datetime, str]] = []
     page_token: str | None = None
     while True:
         params = {"prefix": "uploads/users/", "matchGlob": _RECORDINGS_GLOB}
         if page_token:
             params["pageToken"] = page_token
         page = await client.list_objects(bucket, params=params)
-        names.extend(
-            item["name"]
-            for item in page.get("items", [])
-            if _is_recording(item) and object_created_at(item) <= cutoff
-        )
+        for item in page.get("items", []):
+            if not _is_recording(item):
+                continue
+            created = object_created_at(item)
+            if created <= cutoff:
+                due.append((created, item["name"]))
         page_token = page.get("nextPageToken")
-        if not page_token or len(names) >= _MAX_PURGED_PER_RUN:
-            return names[:_MAX_PURGED_PER_RUN]
+        if not page_token:
+            break
+    due.sort(reverse=True)
+    return [name for _, name in due[:_MAX_PURGED_PER_RUN]]
 
 
 def _is_recording(item: dict) -> bool:
