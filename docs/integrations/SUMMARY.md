@@ -59,6 +59,7 @@
 * [Conductor Routines](block-integrations/conductor/routines.md)
 * [Conductor Sections](block-integrations/conductor/sections.md)
 * [Conductor Send Message](block-integrations/conductor/send_message.md)
+* [Darkmoon Findings](block-integrations/darkmoon/findings.md)
 * [Data](block-integrations/data.md)
 * [DataForB2B Enrich](block-integrations/dataforb2b/enrich.md)
 * [DataForB2B Reasoning](block-integrations/dataforb2b/reasoning.md)
