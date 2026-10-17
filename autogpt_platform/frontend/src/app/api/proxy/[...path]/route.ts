@@ -6,6 +6,8 @@ import {
 } from "@/lib/constants";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { ImpersonationState } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -109,6 +111,7 @@ async function buildForwardHeaders(
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  await keepImpersonationOnlyForItsOwner(req, headers);
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
   // The visitor's country as the edge saw it, signed so the backend can tell
   // it from one a caller typed. Without it the country is unknown, which the
@@ -120,6 +123,30 @@ async function buildForwardHeaders(
     headers.set("authorization", `Bearer ${token}`);
   }
   return headers;
+}
+
+// The browser sends X-Act-As-User-Id itself, so forward it only when the
+// session making the request is the admin who chose that target (per the
+// impersonation cookie). Anything else goes out as the caller themselves.
+async function keepImpersonationOnlyForItsOwner(
+  req: NextRequest,
+  headers: Headers,
+): Promise<void> {
+  const requested = headers.get(IMPERSONATION_HEADER_NAME);
+  if (!requested) return;
+
+  const allowed = await ImpersonationState.getServerSide(
+    async (name) => req.cookies.get(name)?.value ?? null,
+    async () => {
+      const session = await getServerSession();
+      if (!session?.user) return null;
+      return {
+        id: session.user.id,
+        role: (session.user as { role?: string | null }).role,
+      };
+    },
+  );
+  if (allowed !== requested) headers.delete(IMPERSONATION_HEADER_NAME);
 }
 
 function filterResponseHeaders(src: Headers): Headers {

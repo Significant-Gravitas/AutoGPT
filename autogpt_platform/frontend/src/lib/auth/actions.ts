@@ -2,15 +2,26 @@
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import * as Sentry from "@sentry/nextjs";
 import { cookies, headers } from "next/headers";
+import {
+  IMPERSONATION_COOKIE_NAME,
+  IMPERSONATION_OWNER_COOKIE_NAME,
+} from "@/lib/constants";
 import { auth } from "./auth";
 import { getRedirectPath } from "./helpers";
-import { getServerSession } from "./server/getServerSession";
+import {
+  getServerSession,
+  isSessionRejection,
+  readServerSession,
+} from "./server/getServerSession";
 import { mapSessionUser, type User } from "./types";
 
 export interface SessionValidationResult {
   user: User | null;
   isValid: boolean;
   redirectPath?: string;
+  // The auth backend couldn't be reached, so the session's state is unknown.
+  // Callers must keep the user signed in and retry rather than log them out.
+  isUnavailable?: boolean;
 }
 
 export async function validateSession(
@@ -20,30 +31,25 @@ export async function validateSession(
     "validateSession",
     {},
     async () => {
-      try {
-        const session = await getServerSession();
+      const invalid = {
+        user: null,
+        isValid: false,
+        redirectPath: getRedirectPath(currentPath) || undefined,
+      };
 
-        if (!session?.user) {
-          const redirectPath = getRedirectPath(currentPath);
-          return {
-            user: null,
-            isValid: false,
-            redirectPath: redirectPath || undefined,
-          };
-        }
+      try {
+        const session = await readServerSession();
+        if (!session?.user) return invalid;
 
         return {
           user: mapSessionUser(session.user),
           isValid: true,
         };
       } catch (error) {
+        if (isSessionRejection(error)) return invalid;
+
         console.error("Session validation error:", error);
-        const redirectPath = getRedirectPath(currentPath);
-        return {
-          user: null,
-          isValid: false,
-          redirectPath: redirectPath || undefined,
-        };
+        return { user: null, isValid: false, isUnavailable: true };
       }
     },
   );
@@ -164,6 +170,19 @@ async function clearAuthCookies() {
         sameSite: "lax",
         secure: cookie.name.startsWith("__Secure-"),
       });
+    } else if (
+      cookie.name === IMPERSONATION_COOKIE_NAME ||
+      cookie.name === IMPERSONATION_OWNER_COOKIE_NAME
+    ) {
+      // Admin impersonation must not outlive the session, or the next user on
+      // this browser sends X-Act-As-User-Id and every request 403s. Match the
+      // attributes the client sets it with (lib/impersonation.ts).
+      cookieStore.set(cookie.name, "", {
+        maxAge: 0,
+        path: "/",
+        sameSite: "lax",
+        secure: true,
+      });
     }
   }
 }
@@ -176,7 +195,7 @@ export async function refreshSession() {
       try {
         // Cookie sessions don't need an explicit token refresh; re-reading
         // the session is enough to confirm (and slide) it.
-        const session = await getServerSession();
+        const session = await readServerSession();
 
         if (!session?.user) {
           return { user: null, error: "No active session" };
@@ -184,10 +203,15 @@ export async function refreshSession() {
 
         return { user: mapSessionUser(session.user) };
       } catch (error) {
+        if (isSessionRejection(error)) {
+          return { user: null, error: "No active session" };
+        }
+
         console.error("Refresh session error:", error);
         return {
           user: null,
           error: error instanceof Error ? error.message : "Unknown error",
+          isUnavailable: true,
         };
       }
     },
