@@ -533,7 +533,7 @@ Adding new flags:
 3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
    - `launchdarkly`: LaunchDarkly
    - `posthog`: PostHog
-   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/feature_flag_sync.py`
+   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
    - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
 
 ---
