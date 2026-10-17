@@ -201,9 +201,10 @@ class FindInDictionaryBlock(Block):
                 yield "output", []
             elif isinstance(obj[0], dict) and key in obj[0]:
                 yield "output", [item[key] for item in obj if key in item]
-            elif key.strip().isdigit():
+            elif key.strip().isascii() and key.strip().isdigit():
                 # Builder inputs send `str | int` keys as strings by default,
-                # so treat a numeric string as a list index.
+                # so treat a numeric string as a list index. isdigit() alone
+                # also accepts characters like "²" that int() rejects.
                 index = int(key.strip())
                 if index < len(obj):
                     yield "output", obj[index]

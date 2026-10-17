@@ -28,6 +28,13 @@ async def test_list_lookup_by_numeric_string_key(obj, key, expected):
     assert await _find(obj, key) == expected
 
 
+@pytest.mark.parametrize("key", ["²", "٣", "1²"])
+async def test_non_ascii_digit_keys_are_not_list_indexes(key):
+    # These pass str.isdigit(); they must not be used as indexes (int("²")
+    # raises) and fall back to the attribute lookup as before.
+    assert await _find([10, 20, 30], key) == [("output", [])]
+
+
 async def test_list_of_dicts_still_plucks_matching_key():
     obj = [{"1": "a"}, {"2": "b"}, {"1": "c"}]
     assert await _find(obj, "1") == [("output", ["a", "c"])]
