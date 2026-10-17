@@ -136,6 +136,11 @@ class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
+class GraphInUseError(Exception):
+    """The graph can't be permanently deleted because other users, or a store
+    listing, still reference it."""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
