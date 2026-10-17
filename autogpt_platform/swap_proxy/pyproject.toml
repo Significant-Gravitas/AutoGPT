@@ -18,10 +18,10 @@ redis = "^8.1.0"
 zstandard = ">=0.23.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.10.0"
+black = ">=24.10,<27.0"
 isort = "^5.13.2"
 pyright = "^1.1.407"
-pytest = "^8.4.1"
+pytest = ">=8.4.1,<10.0.0"
 pytest-asyncio = "^1.1.0"
 ruff = "^0.15.0"
 
