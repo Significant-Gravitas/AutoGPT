@@ -948,8 +948,26 @@ export interface OnboardingNotificationPayload {
   step: OnboardingStep | null;
 }
 
+export interface CopilotCompletionNotificationPayload {
+  type: "copilot_completion";
+  event: "session_completed";
+  session_id: string;
+  status: "completed" | "failed";
+  // Rich display fields composed by the backend (completion_notify.py):
+  // `title` names who did it, `body` says what happened, `icon` is the
+  // expert's avatar, `url` the click-through path. Absent on older
+  // payloads — clients fall back to their generic copy.
+  title?: string | null;
+  body?: string | null;
+  icon?: string | null;
+  url?: string | null;
+  expert_name?: string | null;
+  session_title?: string | null;
+}
+
 export type WebSocketNotification =
   | OnboardingNotificationPayload
+  | CopilotCompletionNotificationPayload
   | {
       type: string;
       event: string;

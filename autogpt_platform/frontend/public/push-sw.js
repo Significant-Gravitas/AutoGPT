@@ -38,6 +38,70 @@ function getNotificationConfig(data) {
   };
 }
 
+var DEFAULT_ICON = "/notification-icon-192.png";
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+// A same-origin relative path, safe to navigate to or match clients
+// against. Absolute URLs are never accepted — the click target must stay
+// inside the app. Backslashes and control characters are refused outright:
+// browsers treat "\" as "/" for special schemes, so "/\evil.example/a"
+// would resolve to a third-party origin despite looking site-relative.
+function isSafeRelativeUrl(value) {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !/[\\\u0000-\u001F\u007F]/.test(value) &&
+    value.length <= 2048
+  );
+}
+
+// Resolve a server-provided icon to an absolute URL the notification can
+// load, or null to use the default. Accepts the same values the expert API
+// stores: site-relative paths and absolute https URLs. Anything else —
+// notably data:, javascript: and protocol-relative URLs — is refused.
+function resolveIconUrl(icon) {
+  if (!isNonEmptyString(icon)) return null;
+  try {
+    if (isSafeRelativeUrl(icon)) {
+      return new URL(icon, self.location.origin).href;
+    }
+    var parsed = new URL(icon);
+    if (parsed.protocol === "https:") return parsed.href;
+  } catch (_) {
+    // fall through to null
+  }
+  return null;
+}
+
+// Merge the push payload into the click-through data with the sanitized URL
+// winning: `data` arrives carrying the server's raw `url`, which must never
+// override the validated target (open redirect on notification click).
+function buildNotificationData(data, targetUrl) {
+  return Object.assign({}, data, { url: targetUrl });
+}
+
+// Merge server-provided rich content over the static fallback map. Any
+// notification type whose push payload carries title/body/icon/url renders
+// richly; older payloads without them keep the hardcoded copy.
+function resolvePushContent(data, fallback) {
+  var url = fallback.url;
+  if (isSafeRelativeUrl(data.url)) {
+    url = data.url;
+  } else if (data.type === "copilot_completion" && data.session_id) {
+    url = "/copilot?sessionId=" + data.session_id;
+  }
+  return {
+    title: isNonEmptyString(data.title) ? data.title : fallback.title,
+    body: isNonEmptyString(data.body) ? data.body : fallback.body,
+    icon: resolveIconUrl(data.icon) || DEFAULT_ICON,
+    url: url,
+  };
+}
+
 self.addEventListener("install", function () {
   self.skipWaiting();
 });
@@ -66,10 +130,9 @@ self.addEventListener("message", function (event) {
     // Only accept same-origin relative paths. Defends against a hostile
     // (e.g. XSS-injected) page pinning an attacker-controlled URL that
     // would later be passed to clients.openWindow on notification click.
-    if (!event.data.url.startsWith("/") || event.data.url.startsWith("//")) {
+    if (!isSafeRelativeUrl(event.data.url)) {
       return;
     }
-    if (event.data.url.length > 2048) return;
     _clientUrls[event.source.id] = event.data.url;
     return;
   }
@@ -116,11 +179,8 @@ self.addEventListener("push", function (event) {
   }
 
   var config = getNotificationConfig(data);
-
-  var targetUrl = config.url;
-  if (data.type === "copilot_completion" && data.session_id) {
-    targetUrl = "/copilot?sessionId=" + data.session_id;
-  }
+  var content = resolvePushContent(data, config);
+  var targetUrl = content.url;
 
   event.waitUntil(
     self.clients
@@ -151,15 +211,15 @@ self.addEventListener("push", function (event) {
         var tag = data.type + ":" + data.event + ":" + (data.id || Date.now());
 
         var options = {
-          body: config.body,
-          icon: "/notification-icon-192.png",
+          body: content.body,
+          icon: content.icon,
           badge: "/notification-badge-96.png",
           tag: tag,
-          data: Object.assign({ url: targetUrl }, data),
+          data: buildNotificationData(data, targetUrl),
           renotify: true,
         };
 
-        return self.registration.showNotification(config.title, options);
+        return self.registration.showNotification(content.title, options);
       }),
   );
 });

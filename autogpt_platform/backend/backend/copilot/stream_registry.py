@@ -26,14 +26,10 @@ import orjson
 from pydantic import BaseModel, ValidationError
 from redis.exceptions import RedisError, ResponseError
 
-from backend.api.model import CopilotCompletionPayload
 from backend.copilot.active_turns import release_turn_slot
+from backend.copilot.completion_notify import publish_copilot_completion
 from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import chat_db
-from backend.data.notification_bus import (
-    AsyncRedisNotificationEventBus,
-    NotificationEvent,
-)
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str, hash_compare_and_set
 from backend.util import tracing
@@ -77,7 +73,6 @@ logger = logging.getLogger(__name__)
 # The error a turn ends with when the user stopped it.
 CANCELLED_MESSAGE = "Operation cancelled"
 config = ChatConfig()
-_notification_bus = AsyncRedisNotificationEventBus()
 
 StreamEntries = list[tuple[str, list[tuple[str, dict[str, str]]]]]
 StreamEntry = tuple[str | None, StreamBaseResponse]
@@ -1144,27 +1139,19 @@ async def mark_session_completed(
     # Clean up local session reference if exists
     _local_sessions.pop(session_id, None)
 
-    # Publish copilot completion notification via WebSocket
+    # Publish copilot completion notification via WebSocket + web push.
+    # Enrichment (expert name/avatar, session summary) and error handling
+    # live in completion_notify; this call never raises. A user-initiated
+    # Stop notifies nothing — same as it already skips StreamError above.
     if meta:
         parsed = _parse_session_meta(meta, session_id)
         if parsed.user_id:
-            try:
-                await _notification_bus.publish(
-                    NotificationEvent(
-                        user_id=parsed.user_id,
-                        payload=CopilotCompletionPayload(
-                            type="copilot_completion",
-                            event="session_completed",
-                            session_id=session_id,
-                            status=status,
-                        ),
-                    )
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to publish copilot completion notification "
-                    f"for session {session_id}: {e}"
-                )
+            await publish_copilot_completion(
+                session_id,
+                parsed.user_id,
+                status,
+                cancelled=error_message == CANCELLED_MESSAGE,
+            )
 
     return True
 

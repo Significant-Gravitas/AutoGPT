@@ -122,3 +122,17 @@ class OnboardingNotificationPayload(NotificationPayload):
 class CopilotCompletionPayload(NotificationPayload):
     session_id: str
     status: Literal["completed", "failed"]
+    # Rich display fields, composed by the backend so desktop and PWA surfaces
+    # render them verbatim. All optional: older payloads (and enrichment
+    # failures) omit them and clients fall back to their generic copy.
+    # ``title`` names who did it (the expert, or AutoPilot); ``body`` says
+    # what happened in a few words; ``icon`` is the expert's avatar URL
+    # (absolute https or site-relative); ``url`` is the click-through path.
+    title: str | None = None
+    body: str | None = None
+    icon: str | None = None
+    url: str | None = None
+    # Structured context behind the display fields, for clients that render
+    # their own copy (notification centers, title badges).
+    expert_name: str | None = None
+    session_title: str | None = None
