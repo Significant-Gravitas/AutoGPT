@@ -201,7 +201,7 @@ def get_event_loop():
     return _event_loop
 
 
-def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+def run_async(coro, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
     """Run a coroutine in the shared event loop and wait for completion."""
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
@@ -1854,8 +1854,10 @@ def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
 
 
 def refresh_near_expiry_credentials() -> None:
-    """Refresh third-party OAuth credentials before their access tokens expire."""
-    run_async(IntegrationCredentialsManager().refresh_near_expiry_credentials())
+    """Keep max_instances guarding the sweep until every refresh finishes."""
+    run_async(
+        IntegrationCredentialsManager().refresh_near_expiry_credentials(), timeout=None
+    )
 
 
 def cleanup_oauth_tokens():

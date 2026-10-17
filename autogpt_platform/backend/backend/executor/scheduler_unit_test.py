@@ -9,6 +9,7 @@ import asyncio
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,6 +26,7 @@ from backend.copilot.permissions import (
     ROUTINE_SELF_ESCALATION_TOOLS,
 )
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
@@ -1758,6 +1760,45 @@ def test_refresh_near_expiry_credentials_job_is_registered_every_minute(monkeypa
     assert call.kwargs["replace_existing"] is True
     assert call.kwargs["max_instances"] == 1
     assert call.kwargs["jobstore"] == "execution"
+
+
+def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    started, release, completed = (threading.Event() for _ in range(3))
+    run_async = scheduler_module.run_async
+
+    async def refresh():
+        started.set()
+        await asyncio.to_thread(release.wait)
+        completed.set()
+
+    def short_timeout(coro, timeout=0.01):
+        return run_async(coro, timeout=timeout)
+
+    monkeypatch.setattr(scheduler_module, "_event_loop", loop)
+    monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(
+        scheduler_module,
+        "IntegrationCredentialsManager",
+        lambda: MagicMock(refresh_near_expiry_credentials=refresh),
+    )
+    thread.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job = pool.submit(refresh_near_expiry_credentials)
+            try:
+                assert started.wait(timeout=2)
+                assert not completed.wait(timeout=0.1)
+                assert not job.done()
+            finally:
+                release.set()
+                assert completed.wait(timeout=2)
+            job.result(timeout=2)
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2)
+        loop.close()
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
