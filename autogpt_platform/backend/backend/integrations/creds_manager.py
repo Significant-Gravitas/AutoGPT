@@ -273,7 +273,12 @@ class IntegrationCredentialsManager:
         # the copilot runs across threads with separate event loops, where
         # entering a Redis lock raises "Future attached to a different loop".
         handler = await self._get_oauth_handler(credentials)
-        if lock or getattr(handler, "ROTATES_REFRESH_TOKEN", False):
+        if lock:
+            return await self._refresh_locked(user_id, credentials, handler=handler)
+        # Lock-free callers pay for the lock only when a refresh will happen.
+        if not handler.needs_refresh(credentials):
+            return credentials
+        if handler.ROTATES_REFRESH_TOKEN:
             # A provider that rotates its refresh token cannot take the
             # unlocked path: "last writer wins" is safe when the refresh token
             # is static, but two workers replaying the same rotated token can

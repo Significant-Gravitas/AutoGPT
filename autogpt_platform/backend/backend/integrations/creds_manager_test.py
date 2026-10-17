@@ -1,10 +1,15 @@
 """Tests for credential hooks and provider-runtime credential leases."""
 
+import time
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.airtable._oauth import AirtableOAuthHandler
+from backend.blocks.linear._oauth import LinearOAuthHandler
+from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.user import get_near_expiry_oauth_credentials
 from backend.integrations.creds_manager import (
@@ -14,6 +19,10 @@ from backend.integrations.creds_manager import (
     unregister_creds_changed_hook,
 )
 from backend.integrations.oauth.github import GitHubOAuthHandler
+from backend.integrations.oauth.google import GoogleOAuthHandler
+from backend.integrations.oauth.notion import NotionOAuthHandler
+from backend.integrations.oauth.todoist import TodoistOAuthHandler
+from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.encryption import JSONCryptor
 
 
@@ -354,28 +363,77 @@ async def test_locked_refresh_reloads_after_waiting_for_a_lease(
     lock.release.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_linear_refresh_uses_locked_path_even_when_copilot_requests_unlocked(
-    mocker,
-):
-    from backend.blocks.linear._oauth import LinearOAuthHandler
+_HANDLER_ARGS = ("client", "secret", "redirect")
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "make_handler,rotates",
+    [
+        pytest.param(partial(LinearOAuthHandler, *_HANDLER_ARGS), True, id="linear"),
+        pytest.param(
+            partial(AirtableOAuthHandler, *_HANDLER_ARGS), True, id="airtable"
+        ),
+        pytest.param(
+            partial(
+                MCPOAuthHandler,
+                *_HANDLER_ARGS,
+                authorize_url="https://auth.example.com/authorize",
+                token_url="https://auth.example.com/token",
+            ),
+            True,
+            id="mcp",
+        ),
+        pytest.param(partial(GitHubOAuthHandler, *_HANDLER_ARGS), True, id="github"),
+        pytest.param(partial(TwitterOAuthHandler, *_HANDLER_ARGS), True, id="twitter"),
+        pytest.param(partial(NotionOAuthHandler, *_HANDLER_ARGS), True, id="notion"),
+        pytest.param(partial(TodoistOAuthHandler, *_HANDLER_ARGS), True, id="todoist"),
+        pytest.param(partial(GoogleOAuthHandler, *_HANDLER_ARGS), False, id="google"),
+    ],
+)
+async def test_copilot_refresh_takes_the_lock_only_for_rotating_providers(
+    mocker, make_handler, rotates
+):
     manager = IntegrationCredentialsManager()
     credentials = _provider_runtime_credentials().model_copy(
-        update={"provider": "linear", "refresh_strategy": "oauth_handler"}
+        update={"refresh_strategy": "oauth_handler"}
     )
-    handler = LinearOAuthHandler("client", "secret", "redirect")
+    handler = make_handler()
     mocker.patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=handler))
     locked = mocker.patch.object(
         manager, "_refresh_locked", AsyncMock(return_value=credentials)
     )
-    unlocked = mocker.patch.object(manager, "_refresh_unlocked", AsyncMock())
+    unlocked = mocker.patch.object(
+        manager, "_refresh_unlocked", AsyncMock(return_value=credentials)
+    )
 
     result = await manager.refresh_if_needed("user-a", credentials, lock=False)
 
     assert result is credentials
-    locked.assert_awaited_once_with("user-a", credentials, handler=handler)
-    unlocked.assert_not_awaited()
+    taken, skipped = (locked, unlocked) if rotates else (unlocked, locked)
+    taken.assert_awaited_once_with("user-a", credentials, handler=handler)
+    skipped.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_copilot_read_of_an_unexpired_rotating_credential_takes_no_lock(
+    mocker,
+):
+    manager = IntegrationCredentialsManager()
+    credentials = _provider_runtime_credentials().model_copy(
+        update={
+            "refresh_strategy": "oauth_handler",
+            "access_token_expires_at": int(time.time()) + 3600,
+        }
+    )
+    handler = GitHubOAuthHandler(*_HANDLER_ARGS)
+    mocker.patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=handler))
+    locked = mocker.patch.object(manager, "_refresh_locked", AsyncMock())
+
+    result = await manager.refresh_if_needed("user-a", credentials, lock=False)
+
+    assert result is credentials
+    locked.assert_not_awaited()
 
 
 @pytest.mark.asyncio
