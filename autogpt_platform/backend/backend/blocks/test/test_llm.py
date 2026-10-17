@@ -258,6 +258,54 @@ class TestLLMStatsTracking:
         assert block.execution_stats.llm_retry_count == 1
 
     @pytest.mark.asyncio
+    async def test_retry_loop_uses_shrinking_shared_deadline(self, monkeypatch):
+        """Retry attempts share one total deadline instead of a fresh timeout each.
+
+        Regression test for #14293: with retries x full timeout, a retried call
+        could burn its whole node budget inside retries of one logical call.
+        """
+        import backend.blocks.llm as llm
+
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.5)
+        block = llm.AIStructuredResponseGeneratorBlock()
+        timeouts: list[float] = []
+
+        async def mock_llm_call(*args, **kwargs):
+            """Record per-attempt timeout and return a validation-miss response."""
+            timeouts.append(kwargs["timeout_seconds"])
+            await asyncio.sleep(0.3)  # eat most of the shared budget per attempt
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response='<json_output id="test123456">{"wrong": "format"}</json_output>',
+                tool_calls=None,
+                prompt_tokens=10,
+                completion_tokens=15,
+                reasoning=None,
+            )
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key1": "desc1", "key2": "desc2"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=3,
+        )
+
+        with patch("secrets.token_hex", return_value="test123456"):
+            with pytest.raises(RuntimeError, match="retry budget exhausted"):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        # The third attempt never runs: the shared 0.5s budget is spent.
+        assert len(timeouts) == 2
+        # First attempt gets (about) the full budget, the second only the rest.
+        assert timeouts[0] == pytest.approx(0.5, abs=0.05)
+        assert timeouts[1] < timeouts[0]
+
+    @pytest.mark.asyncio
     async def test_retry_cost_accumulates_across_attempts(self):
         """provider_cost accumulates across all retry attempts.
 
