@@ -58,6 +58,7 @@ const toastMock = vi.hoisted(() => vi.fn());
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
+const autoModeFlag = vi.hoisted(() => ({ enabled: false }));
 
 function libraryResponse(
   agents: LibraryAgent[],
@@ -114,6 +115,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  autoModeFlag.enabled = false;
   toastMock.mockReset();
 });
 
@@ -136,6 +138,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
       flag === "hire-experts"
         ? setFlagStatusMock()
         : actual.useFlagStatus(flag as never),
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.COPILOT_AUTO_MODE
+        ? autoModeFlag.enabled
+        : actual.useGetFlag(flag as never),
   };
 });
 
@@ -255,6 +261,33 @@ describe("TeamPage", () => {
     expect(within(card).queryByText("Skills")).toBeNull();
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("badges an expert whose new chats start unsupervised", async () => {
+    autoModeFlag.enabled = true;
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, autopilot_mode: "unsupervised" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).getByText("Unsupervised")).toBeDefined();
+  });
+
+  test("hides the unsupervised badge while approval modes are off", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, autopilot_mode: "unsupervised" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).queryByText("Unsupervised")).toBeNull();
   });
 
   test("links the card content to the expert page", async () => {

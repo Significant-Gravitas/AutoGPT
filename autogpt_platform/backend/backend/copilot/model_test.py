@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 from openai.types.chat import (
@@ -1382,6 +1383,7 @@ async def test_create_expert_session_forces_personal_tenancy(
     mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
         return_value=("personal-org", "personal-team")
     )
+    mock_experts_db.get_autopilot_mode = mocker.AsyncMock(return_value=None)
     mock_chat_db = mocker.MagicMock()
     mock_chat_db.create_chat_session = mocker.AsyncMock(
         return_value=mocker.MagicMock(expert_id="expert-1")
@@ -1906,6 +1908,38 @@ async def test_get_or_create_builder_session_writes_pointer_on_create(
 
 
 @pytest.mark.asyncio
+async def test_get_or_create_builder_session_creates_on_the_picked_mode(
+    mocker: MockerFixture,
+) -> None:
+    """A builder session opened with an explicit mode is created on it."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=ChatSession.new(
+            "u1", dry_run=False, builder_graph_id="graph-mine"
+        ),
+    )
+
+    await get_or_create_builder_session("u1", "graph-mine", autopilot_mode="ask_first")
+
+    assert create_mock.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+@pytest.mark.asyncio
 async def test_get_or_create_builder_session_recreates_when_pointer_stale(
     mocker: MockerFixture,
 ) -> None:
@@ -2341,3 +2375,147 @@ async def test_delete_chat_session_not_found_runs_no_cleanup(
     redis.delete.assert_not_called()
     close_browser.assert_not_called()
     delete_embedding.assert_not_called()
+
+
+def _mock_session_creation(
+    mocker: MockerFixture, *, flag_on: bool, expert_default: str | None = None
+) -> tuple[MagicMock, MagicMock]:
+    mock_experts_db = mocker.MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mock_experts_db.get_autopilot_mode = mocker.AsyncMock(return_value=expert_default)
+    mock_chat_db = mocker.MagicMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock(
+        side_effect=lambda **kwargs: mocker.MagicMock(expert_id=kwargs.get("expert_id"))
+    )
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.is_feature_enabled",
+        new_callable=mocker.AsyncMock,
+        return_value=flag_on,
+    )
+    return mock_experts_db, mock_chat_db
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_expert_thread_starts_on_the_experts_default_mode(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, mock_chat_db = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session("owner-1", dry_run=False, expert_id="e-1")
+
+    assert session.metadata.autopilot_mode == "ask_first"
+    mock_experts_db.get_autopilot_mode.assert_awaited_once_with("owner-1", "e-1")
+    stored = mock_chat_db.create_chat_session.await_args.kwargs["metadata"]
+    assert stored.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_explicit_mode_beats_the_experts_default(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", autopilot_mode="unsupervised"
+    )
+
+    assert session.metadata.autopilot_mode == "unsupervised"
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_expert_without_a_default_leaves_the_platform_default(
+    mocker: MockerFixture,
+) -> None:
+    _mock_session_creation(mocker, flag_on=True, expert_default=None)
+
+    session = await create_chat_session("owner-1", dry_run=False, expert_id="e-1")
+
+    assert session.metadata.autopilot_mode is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_plain_chat_never_consults_the_flag_or_an_expert(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(mocker, flag_on=True)
+    flag = mocker.patch(
+        "backend.copilot.model.is_feature_enabled", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session("owner-1", dry_run=False)
+
+    assert session.metadata.autopilot_mode is None
+    flag.assert_not_awaited()
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_stored_default_is_ignored_while_the_flag_is_off(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=False, expert_default="unsupervised"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", autopilot_mode="ask_first"
+    )
+
+    assert session.metadata.autopilot_mode is None
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_automation_session_never_reads_the_experts_default(
+    mocker: MockerFixture,
+) -> None:
+    """Routines and block-opened sessions are not gated, so the default
+    chosen for web chats must not be looked up for them."""
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", origin="automation"
+    )
+
+    assert session.metadata.autopilot_mode is None
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_inherited_mode_is_stored_as_is_without_the_flag_or_a_lookup(
+    mocker: MockerFixture,
+) -> None:
+    """Delegation hands over a constraint, not a pick: it survives the flag
+    being off and never re-reads the expert, so a default written to the
+    expert in between cannot loosen the thread."""
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=False, expert_default="unsupervised"
+    )
+    flag = mocker.patch(
+        "backend.copilot.model.is_feature_enabled", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session(
+        "owner-1",
+        dry_run=False,
+        expert_id="e-1",
+        inherited_autopilot_mode="ask_first",
+    )
+
+    assert session.metadata.autopilot_mode == "ask_first"
+    flag.assert_not_awaited()
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
