@@ -18,6 +18,21 @@ vi.mock("react", async (importActual) => {
   };
 });
 
+// happy-dom 20.14 rejects `Animation.finished` in cancel() without marking it
+// handled, so every framer-motion animation cancelled during a test surfaces
+// as an "Unhandled Rejection" AbortError. The Web Animations spec sets
+// [[PromiseIsHandled]] on that promise when cancelling, so browsers never
+// report it: https://drafts.csswg.org/web-animations-1/#cancel-an-animation
+if (typeof Animation !== "undefined") {
+  const cancel = Animation.prototype.cancel;
+  Animation.prototype.cancel = function cancelWithHandledFinished(
+    this: Animation,
+  ) {
+    this.finished.catch(() => {});
+    cancel.call(this);
+  };
+}
+
 beforeAll(() => {
   mockNextjsModules();
   mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]

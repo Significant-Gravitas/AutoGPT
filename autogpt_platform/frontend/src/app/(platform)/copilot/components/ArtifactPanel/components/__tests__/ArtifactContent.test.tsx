@@ -1090,9 +1090,8 @@ describe("ArtifactContent", () => {
   });
 
   it("renders invalid JSON as fallback pre tag", async () => {
-    const { globalRegistry } = await import(
-      "@/components/contextual/OutputRenderers"
-    );
+    const { globalRegistry } =
+      await import("@/components/contextual/OutputRenderers");
     const originalImpl = vi
       .mocked(globalRegistry.getRenderer)
       .getMockImplementation();
@@ -1556,9 +1555,8 @@ describe("ArtifactContent", () => {
   });
 
   it("falls back to pre tag when no renderer matches", async () => {
-    const { globalRegistry } = await import(
-      "@/components/contextual/OutputRenderers"
-    );
+    const { globalRegistry } =
+      await import("@/components/contextual/OutputRenderers");
     const originalImpl = vi
       .mocked(globalRegistry.getRenderer)
       .getMockImplementation();

@@ -436,9 +436,8 @@ describe("PostHog storage on a parent domain", () => {
     setPageURL("https://platform.agpt.co/");
     configureCookiebot();
     installCookiebot();
-    const { forgetPostHogStorageWithoutConsent } = await import(
-      "@/providers/posthog/posthog-consent"
-    );
+    const { forgetPostHogStorageWithoutConsent } =
+      await import("@/providers/posthog/posthog-consent");
     document.cookie = `ph_${POSTHOG_KEY}_posthog=x; Path=/; Domain=.agpt.co`;
     const writes = recordCookieWrites();
 

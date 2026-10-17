@@ -58,8 +58,10 @@ export function Avatar({
   );
 }
 
-export interface AvatarImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+export interface AvatarImageProps extends Omit<
+  React.ImgHTMLAttributes<HTMLImageElement>,
+  "width" | "height"
+> {
   as?: "NextImage" | "img";
   width?: number;
   height?: number;
