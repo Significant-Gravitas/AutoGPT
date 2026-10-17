@@ -7,6 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot.gate import ALLOW
+from backend.copilot.google_data_redaction import REDACTED, redact_google_data
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -21,6 +25,7 @@ from backend.copilot.tools.base import (
 from backend.copilot.tools.models import (
     BlockDetails,
     BlockDetailsResponse,
+    BlockOutputResponse,
     ErrorResponse,
     ResponseType,
     ToolResponseBase,
@@ -709,3 +714,85 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+# ---------------------------------------------------------------------------
+# The gate's traces of a Google call
+# ---------------------------------------------------------------------------
+
+
+class TestGateTracesOfGoogleCalls:
+    """The supervisor and the content judge quote a call's arguments and
+    result in prompts of their own, so for a Google call whatever they trace
+    is redacted whole."""
+
+    @staticmethod
+    def _block_tool(provider: str | None):
+        class _Block(BaseTool):
+            @property
+            def name(self) -> str:
+                return "run_capability"
+
+            @property
+            def description(self) -> str:
+                return "Runs a block"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return BlockOutputResponse(
+                    message="ran",
+                    block_id="b",
+                    block_name="b",
+                    outputs={"result": ["the email"]},
+                    provider=provider,
+                )
+
+        return _Block()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "names_google_block, provider, action_redacted, read_redacted",
+        [
+            (True, None, True, True),
+            (False, "google", False, True),
+            (False, None, False, False),
+        ],
+        ids=["names a Google block", "returns Google data", "neither"],
+    )
+    async def test_redacted_while_the_gate_runs(
+        self, names_google_block, provider, action_redacted, read_redacted
+    ):
+        block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
+        traced: dict[str, object] = {}
+
+        async def action(*args, **kwargs):
+            traced["action"] = redact_google_data({"text": "the email"})
+            return ALLOW
+
+        async def read(*args, **kwargs):
+            traced["read"] = redact_google_data({"text": "the email"})
+
+        with (
+            patch("backend.copilot.gate.check_action", side_effect=action),
+            patch(
+                "backend.copilot.gate.reads.release_held_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.gate.reads.screen_read", side_effect=read),
+            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+        ):
+            await self._block_tool(provider).execute(
+                "u1", MagicMock(session_id="s1"), "call-1", id=block.id
+            )
+
+        def expected(redacted: bool) -> dict[str, str]:
+            return {"text": REDACTED if redacted else "the email"}
+
+        assert traced == {
+            "action": expected(action_redacted),
+            "read": expected(read_redacted),
+        }
+        assert redact_google_data({"text": "the email"}) == expected(False)

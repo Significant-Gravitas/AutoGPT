@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.context import get_current_envelope
-from backend.copilot.google_data_redaction import remember_google_output
+from backend.copilot.google_data_redaction import (
+    is_google_call,
+    remember_google_output,
+    tracing_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.turn_tracing import tool_transaction
@@ -502,7 +506,11 @@ class BaseTool:
         # ``_execute_tool_sync`` — so there is one place to add, not two.
         # Must stay AFTER the envelope and name gates: a call the envelope refuses can
         # never run, so approving it would spend a user's decision on nothing.
-        gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
+        # The gate's model calls quote the call's arguments and result in
+        # prompts of their own, so for a Google call their traces are redacted.
+        google_call = is_google_call(kwargs)
+        with tracing_google_data(google_call):
+            gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
         if gated is not None:
             return gated
         run_kwargs = kwargs
@@ -552,9 +560,10 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
-        return await self._screen_read(
-            user_id, session, tool_call_id, kwargs, output, result.outside, full
-        )
+        with tracing_google_data(google_call or result.holds_google_data):
+            return await self._screen_read(
+                user_id, session, tool_call_id, kwargs, output, result.outside, full
+            )
 
     async def _gate(
         self,

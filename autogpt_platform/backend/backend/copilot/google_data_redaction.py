@@ -22,14 +22,21 @@ Within a conversation, the result answering a Google call is redacted whatever
 it says, and so is the input of a call whose result was Google data, so the
 history a later turn sends carries neither. Tool names, call ids, block ids,
 timings and token counts stay readable.
+
+The approval gate's model calls (the action supervisor and the content judge)
+quote a call's arguments or result inside a prompt of their own, where none of
+the above can find it, so a Google call's gate runs inside
+:func:`tracing_google_data`, which redacts every text those calls trace.
 """
 
+import contextlib
 import functools
 import hashlib
 import json
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator
+from contextvars import ContextVar
 from typing import Any
 
 import langsmith
@@ -49,11 +56,29 @@ _REMEMBERED_LIMIT = 4096
 _remembered: OrderedDict[str, None] = OrderedDict()
 _remembered_lock = threading.Lock()
 
+_redacting_every_text: ContextVar[bool] = ContextVar(
+    "google_data_redacting_every_text", default=False
+)
+
 
 def redact_google_data(data: Any) -> Any:
     """Return *data* with Google block calls and results replaced by
-    :data:`REDACTED`. Everything else is returned unchanged."""
+    :data:`REDACTED`. Everything else is returned unchanged, unless
+    :func:`tracing_google_data` is active, when every text is replaced."""
+    if _redacting_every_text.get():
+        return _redact_every_text(data)
     return _redact(data, _google_call_ids(data))
+
+
+@contextlib.contextmanager
+def tracing_google_data(active: bool = True) -> Iterator[None]:
+    """While active, redact every text traced in this context, for model
+    calls handed a Google call's arguments or result as plain text."""
+    token = _redacting_every_text.set(_redacting_every_text.get() or active)
+    try:
+        yield
+    finally:
+        _redacting_every_text.reset(token)
 
 
 def mask_langfuse_data(*, data: Any, **kwargs: Any) -> Any:
@@ -90,6 +115,16 @@ def remember_google_output(output: str) -> None:
             _remembered.popitem(last=False)
 
 
+def is_google_call(arguments: dict[str, Any] | None) -> bool:
+    """Whether a tool call's arguments name a block on the ``google``
+    provider, as ``run_block``'s ``block_id`` or ``run_capability``'s ``id``."""
+    if not arguments:
+        return False
+    return is_google_block_ref(arguments.get("block_id")) or is_google_block_ref(
+        arguments.get("id")
+    )
+
+
 def is_google_block_ref(ref: object) -> bool:
     """Whether *ref* names a block on the ``google`` provider, by id,
     ``block:<id>`` capability id or class name."""
@@ -106,7 +141,7 @@ def _google_call_ids(data: Any) -> set[str]:
     ids: set[str] = set()
     for node in _dicts(data):
         call_id = node.get("id")
-        if isinstance(call_id, str) and _is_google_call(_call_arguments(node)):
+        if isinstance(call_id, str) and is_google_call(_call_arguments(node)):
             ids.add(call_id)
         answered = _answered_call_id(node)
         if answered is not None and _holds_google_output(node.get("content")):
@@ -127,9 +162,20 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
         redacted["content"] = REDACTED
     if node.get("id") in google_ids:
         _redact_call_arguments(redacted)
-    if _is_google_call(node):
+    if is_google_call(node):
         redacted = _without_payload(redacted)
     return redacted
+
+
+def _redact_every_text(node: Any) -> Any:
+    node = _plain(node)
+    if isinstance(node, str):
+        return REDACTED
+    if isinstance(node, list):
+        return [_redact_every_text(item) for item in node]
+    if isinstance(node, dict):
+        return {key: _redact_every_text(value) for key, value in node.items()}
+    return node
 
 
 def _redact_call_arguments(call: dict[str, Any]) -> None:
@@ -173,14 +219,6 @@ def _call_arguments(node: dict[str, Any]) -> dict[str, Any] | None:
     except ValueError:
         return None
     return parsed if isinstance(parsed, dict) else None
-
-
-def _is_google_call(arguments: dict[str, Any] | None) -> bool:
-    if not arguments:
-        return False
-    return is_google_block_ref(arguments.get("block_id")) or is_google_block_ref(
-        arguments.get("id")
-    )
 
 
 def _answered_call_id(node: dict[str, Any]) -> str | None:

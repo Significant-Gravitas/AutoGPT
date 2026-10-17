@@ -24,6 +24,7 @@ from .google_data_redaction import (
     mask_langfuse_data,
     redact_google_data,
     remember_google_output,
+    tracing_google_data,
 )
 
 GMAIL_BLOCK_ID = GmailReadBlock().id
@@ -237,3 +238,24 @@ def test_install_trace_redaction_masks_both_tracers():
     inputs = {"input": {"block_id": GMAIL_BLOCK_ID, "input_data": {"q": "x"}}}
     assert client._hide_run_inputs(inputs)["input"]["input_data"] == REDACTED
     assert client._hide_run_outputs({"output": GMAIL_OUTPUT}) == {"output": REDACTED}
+
+
+def test_tracing_google_data_redacts_every_text(langfuse_spans: InMemorySpanExporter):
+    """A gate prompt quoting a Google result has no structure to find it by."""
+    prompt = [{"role": "user", "content": f"Judge this read:\n{EMAIL}"}]
+    client = get_client()
+
+    # An inner scope that is not a Google call keeps the outer one's redaction.
+    with tracing_google_data(), tracing_google_data(False):
+        generation = client.start_observation(
+            name="OpenAI-generation", as_type="generation", input=prompt
+        )
+        generation.update(output={"role": "assistant", "content": EMAIL})
+        generation.end()
+    assert redact_google_data(prompt) == prompt
+
+    sent = json.dumps(
+        [dict(span.attributes or {}) for span in langfuse_spans.get_finished_spans()]
+    )
+    assert "quarterly numbers" not in sent
+    assert REDACTED in sent
