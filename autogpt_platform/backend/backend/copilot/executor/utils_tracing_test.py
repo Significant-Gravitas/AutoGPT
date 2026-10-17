@@ -118,51 +118,83 @@ async def test_dispatch_continues_only_the_trace_of_the_turns_cause(
 
 
 @pytest.mark.parametrize(
-    "dispatch_kwargs, nests_under_the_caller",
+    "root, in_a_turn, nests_under_the_caller",
     [
-        ({}, True),
-        ({"root": True}, False),
-        ({"envelope": root_envelope("held")}, False),
+        (False, True, True),
+        (True, True, False),
+        (False, False, False),
     ],
-    ids=["derived-from-caller", "minted-root", "re-admitted"],
+    ids=["derived-from-caller", "minted-root", "outside-a-turn"],
 )
 @pytest.mark.asyncio
-async def test_a_spawned_turn_nests_under_the_tool_call_that_started_it(
-    copilot_queue, dispatch_kwargs: dict, nests_under_the_caller: bool
+async def test_a_spawned_turns_envelope_records_the_tool_call_that_started_it(
+    root: bool, in_a_turn: bool, nests_under_the_caller: bool
 ) -> None:
     """Same rule as the Sentry trace: only a turn derived from the caller's
-    context is the caller's subtask in PostHog."""
+    context is the caller's subtask in PostHog. The envelope keeps it, so a
+    queued child and an approval wake that start under it later keep it too."""
+    spawner = root_envelope("parent-turn") if in_a_turn else None
     with (
-        patch.object(
-            utils,
-            "_admitted_turn_envelope",
-            new=AsyncMock(return_value=root_envelope("t1")),
-        ),
-        patch.object(utils, "readmit_turn", new=AsyncMock()),
-        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
-        patch.object(utils, "capture_cost_context", new=AsyncMock(return_value=None)),
+        patch.object(utils, "get_current_envelope", return_value=spawner),
+        patch.object(utils, "admit_turn", new=AsyncMock()),
     ):
         set_turn_trace_id("parent-turn")
         set_turn_span("parent-turn")
         try:
             with tool_span("delegate_to_expert", user_id="u1", session_id="s0"):
                 spawning_tool = current_span_id()
-                await utils.dispatch_turn(
-                    MagicMock(),
-                    session_id="s1",
-                    user_id="u1",
-                    turn_id="t1",
-                    message="hi",
-                    **dispatch_kwargs,
+                envelope = await utils._admitted_turn_envelope(
+                    "t1", "s1", "u1", None, None, root=root
                 )
         finally:
             set_turn_trace_id(None)
             set_turn_span(None)
 
-    entry = _published_entry(copilot_queue.publish_message)
     if nests_under_the_caller:
-        assert entry.ai_trace_id == "parent-turn"
-        assert entry.ai_parent_span_id == spawning_tool
+        assert envelope.depth == 1
+        assert envelope.ai_trace_id == "parent-turn"
+        assert envelope.ai_parent_span_id == spawning_tool
     else:
-        assert entry.ai_trace_id is None
-        assert entry.ai_parent_span_id is None
+        assert envelope.depth == 0
+        assert envelope.ai_trace_id is None
+        assert envelope.ai_parent_span_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_re_admitted_turn_keeps_the_trace_its_envelope_recorded(
+    copilot_queue,
+) -> None:
+    """An approval wake starts under the envelope its call was held under, so
+    a woken subtask stays in the trace of the turn that held the call, not
+    the trace of whatever turn dispatches the wake."""
+    held = root_envelope("tree-a").model_copy(
+        update={
+            "depth": 1,
+            "ai_trace_id": "reply-b",
+            "ai_parent_span_id": "delegate-span",
+        }
+    )
+    with (
+        patch.object(utils, "readmit_turn", new=AsyncMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(utils, "capture_cost_context", new=AsyncMock(return_value=None)),
+    ):
+        set_turn_trace_id("unrelated-turn")
+        set_turn_span("unrelated-turn")
+        try:
+            await utils.dispatch_turn(
+                MagicMock(),
+                session_id="s1",
+                user_id="u1",
+                turn_id="woken-c",
+                message="hi",
+                envelope=held,
+            )
+        finally:
+            set_turn_trace_id(None)
+            set_turn_span(None)
+
+    envelope = _published_entry(copilot_queue.publish_message).envelope
+    assert envelope is not None
+    assert envelope.ai_trace_id == "reply-b"
+    assert envelope.ai_parent_span_id == "delegate-span"

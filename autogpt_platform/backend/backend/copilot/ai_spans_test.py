@@ -79,8 +79,7 @@ def test_a_reply_is_its_own_trace():
 def test_a_subtask_joins_the_trace_of_the_turn_that_spawned_it():
     entry = _entry(
         turn_id="child-turn",
-        envelope=TurnEnvelope(tree_id="root-turn", depth=1),
-        ai_trace_id="root-turn",
+        envelope=TurnEnvelope(tree_id="root-turn", depth=1, ai_trace_id="root-turn"),
     )
 
     assert trace_id_for(entry) == "root-turn"
@@ -91,15 +90,30 @@ def test_a_subtask_of_a_woken_reply_joins_that_reply_not_its_tree_root():
     in (A), so its subtasks belong to B's trace."""
     entry = _entry(
         turn_id="child-turn",
-        envelope=TurnEnvelope(tree_id="held-turn-a", depth=1),
-        ai_trace_id="woken-turn-b",
+        envelope=TurnEnvelope(
+            tree_id="held-turn-a", depth=1, ai_trace_id="woken-turn-b"
+        ),
     )
 
     assert trace_id_for(entry) == "woken-turn-b"
 
 
-def test_a_queued_subtask_falls_back_to_its_tree_root():
-    """The turn queue does not keep the spawner's trace."""
+def test_a_woken_subtask_stays_in_the_trace_of_the_turn_that_held_the_call():
+    """Reply A is woken as reply B, B delegates to C, and C holds a call. The
+    wake C' starts under C's envelope, so it joins B's trace, not A's."""
+    held_by_c = TurnEnvelope(
+        tree_id="reply-a",
+        depth=1,
+        ai_trace_id="reply-b",
+        ai_parent_span_id="b-delegate-span",
+    )
+
+    assert trace_id_for(_entry(turn_id="woken-c", envelope=held_by_c)) == "reply-b"
+
+
+def test_a_subtask_from_before_the_trace_was_recorded_falls_back_to_its_tree_root():
+    """An envelope stored before it kept the trace (a queued child, a held
+    call), or one rebuilt from its tree id alone."""
     entry = _entry(
         turn_id="child-turn", envelope=TurnEnvelope(tree_id="root-turn", depth=1)
     )
@@ -426,9 +440,12 @@ def test_a_subtask_is_a_span_under_the_tool_call_that_started_it(capture: MagicM
     entry = _entry(
         turn_id="child-turn",
         session_id="expert-sess",
-        envelope=TurnEnvelope(tree_id="root-turn", depth=1),
-        ai_trace_id="root-turn",
-        ai_parent_span_id="spawn-tool-span",
+        envelope=TurnEnvelope(
+            tree_id="root-turn",
+            depth=1,
+            ai_trace_id="root-turn",
+            ai_parent_span_id="spawn-tool-span",
+        ),
     )
 
     _end(entry)
@@ -444,7 +461,7 @@ def test_a_subtask_is_a_span_under_the_tool_call_that_started_it(capture: MagicM
 
 
 def test_a_subtask_of_unknown_origin_hangs_off_the_trace_root(capture: MagicMock):
-    """A spawn promoted from the turn queue does not keep its tool's span."""
+    """An envelope stored before it kept the spawning tool's span."""
     entry = _entry(
         turn_id="child-turn", envelope=TurnEnvelope(tree_id="root-turn", depth=1)
     )

@@ -64,15 +64,16 @@ def trace_id_for(entry: "CoPilotExecutionEntry") -> str:
     """The trace a turn's events join.
 
     A spawned turn (an expert subtask, a sub-session) joins the trace of the
-    turn that spawned it, recorded at dispatch (``ai_trace_id``). That is not
-    always its tree's root: an approval wake is a reply of its own under the
-    tree it was held in. A spawn promoted from the turn queue has no record,
-    so it falls back to its tree's root. Every other turn is a reply of its
-    own.
+    turn that spawned it, which its envelope records when it is derived
+    (``TurnEnvelope.ai_trace_id``). That is not always its tree's root: an
+    approval wake is a reply of its own under the tree it was held in. A
+    queued child and a woken subtask start under their stored envelope, so
+    they keep that trace. An envelope stored before it kept the trace falls
+    back to its tree's root. Every other turn is a reply of its own.
     """
-    if entry.ai_trace_id:
-        return entry.ai_trace_id
     envelope = entry.envelope
+    if envelope is not None and envelope.ai_trace_id:
+        return envelope.ai_trace_id
     if envelope is not None and envelope.depth > 0 and envelope.tree_id:
         return envelope.tree_id
     return entry.turn_id
@@ -254,8 +255,11 @@ def capture_turn(
         else:
             properties["$ai_span_name"] = SUBTASK_SPAN_NAME
             properties["$ai_span_id"] = entry.turn_id
-            properties["$ai_parent_id"] = entry.ai_parent_span_id or trace_id
-            properties["depth"] = entry.envelope.depth if entry.envelope else None
+            envelope = entry.envelope
+            properties["$ai_parent_id"] = (
+                envelope.ai_parent_span_id if envelope else None
+            ) or trace_id
+            properties["depth"] = envelope.depth if envelope else None
             event = PostHogEvent.AI_SPAN
         posthog_client.capture(entry.user_id, event, properties, source=SOURCE)
     except Exception:
