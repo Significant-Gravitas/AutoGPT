@@ -46,7 +46,7 @@ FROM rabbitmq:4.3.6@sha256:42b190dffdd0cdb656f989f5404c30e1049d6b7d9c987089669b1
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
-FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
+FROM falkordb/falkordb-server:6.0.2@sha256:8e4fe29e6646890a9deaf2f009ad2bc5e592d79fe9cd718810c3a97a8bcd34c0 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend
 # Dockerfile's server target. The appliance takes only AutoGPT's code from it
