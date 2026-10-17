@@ -3,7 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SRC = path.resolve(import.meta.dirname, "../src");
-const SKIP = new Set(["node_modules", ".next", "__generated__", "coverage", "dist"]);
+const SKIP = new Set([
+  "node_modules",
+  ".next",
+  "__generated__",
+  "coverage",
+  "dist",
+]);
 
 function walk(dir, files) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
