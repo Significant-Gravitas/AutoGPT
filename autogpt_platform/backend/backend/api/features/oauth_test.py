@@ -18,6 +18,7 @@ import hashlib
 import secrets
 import uuid
 from typing import AsyncGenerator
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -134,6 +135,41 @@ def generate_pkce() -> tuple[str, str]:
         .rstrip("=")
     )
     return verifier, challenge
+
+
+async def authorize_and_exchange_code(
+    client: httpx.AsyncClient, test_oauth_app: dict, state: str
+) -> dict:
+    """Run the authorize + authorization_code exchange and return the tokens."""
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": state,
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    token_response = await client.post(
+        "/api/oauth/token",
+        json={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+            "code_verifier": verifier,
+        },
+    )
+    return token_response.json()
 
 
 @pytest.fixture
@@ -854,41 +890,9 @@ async def test_refresh_token_creates_new_tokens(
     test_oauth_app: dict,
 ):
     """Test that refresh token grant creates new access and refresh tokens."""
-    from urllib.parse import parse_qs, urlparse
-
-    verifier, challenge = generate_pkce()
-
-    # Get initial tokens
-    auth_response = await client.post(
-        "/api/oauth/authorize",
-        json={
-            "client_id": test_oauth_app["client_id"],
-            "redirect_uri": test_oauth_app["redirect_uri"],
-            "scopes": ["EXECUTE_GRAPH"],
-            "state": "refresh_test",
-            "response_type": "code",
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-        },
-        follow_redirects=False,
+    initial_tokens = await authorize_and_exchange_code(
+        client, test_oauth_app, "refresh_test"
     )
-
-    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
-        0
-    ]
-
-    initial_response = await client.post(
-        "/api/oauth/token",
-        json={
-            "grant_type": "authorization_code",
-            "code": auth_code,
-            "redirect_uri": test_oauth_app["redirect_uri"],
-            "client_id": test_oauth_app["client_id"],
-            "client_secret": test_oauth_app["client_secret"],
-            "code_verifier": verifier,
-        },
-    )
-    initial_tokens = initial_response.json()
 
     # Use refresh token to get new tokens
     refresh_response = await client.post(
@@ -968,37 +972,9 @@ async def test_token_endpoint_concurrent_refresh_issues_one_token_pair(
     layer, and checks the database: a lost race must not leave an extra
     active refresh token.
     """
-    from urllib.parse import parse_qs, urlparse
-
-    verifier, challenge = generate_pkce()
-    auth_response = await client.post(
-        "/api/oauth/authorize",
-        json={
-            "client_id": test_oauth_app["client_id"],
-            "redirect_uri": test_oauth_app["redirect_uri"],
-            "scopes": ["EXECUTE_GRAPH"],
-            "state": "concurrent_refresh_test",
-            "response_type": "code",
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-        },
-        follow_redirects=False,
+    initial_tokens = await authorize_and_exchange_code(
+        client, test_oauth_app, "concurrent_refresh_test"
     )
-    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
-        0
-    ]
-    initial_response = await client.post(
-        "/api/oauth/token",
-        json={
-            "grant_type": "authorization_code",
-            "code": auth_code,
-            "redirect_uri": test_oauth_app["redirect_uri"],
-            "client_id": test_oauth_app["client_id"],
-            "client_secret": test_oauth_app["client_secret"],
-            "code_verifier": verifier,
-        },
-    )
-    initial_tokens = initial_response.json()
 
     refresh = {
         "grant_type": "refresh_token",
