@@ -13,7 +13,8 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   sub-agents, compaction, the chat title) groups into one trace.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,
-  ``metadata_impersonated``).
+  ``metadata_impersonated``, and ``metadata_revision``: the deployed build's
+  git sha, the ``revision`` every other PostHog event carries).
 
 Only calls that go through OpenRouter are covered. Direct Anthropic, Claude
 Code subscription and user-connected (Codex) routes never pass OpenRouter, so
@@ -60,6 +61,9 @@ def openrouter_attribution(
             "impersonated": is_turn_impersonated(),
         }
     }
+    revision = settings.config.sentry_release.strip()
+    if revision:
+        body["trace"]["revision"] = revision
     trace_id = turn_trace_id()
     if trace_id:
         body["trace"]["trace_id"] = trace_id[:_MAX_ID_CHARS]
