@@ -522,6 +522,17 @@ jobs:
             exit 1
           }
 
+      # On a fresh database, parallel logins can each create a signing key.
+      # Publish one first, before PyJWT's refresh cooldown caches a partial set.
+      - name: Set up Platform - Initialize auth signing keys
+        run: |
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server python - <<'PY'
+          import os
+          from jwt import PyJWKClient
+
+          PyJWKClient(os.environ["JWT_JWKS_URL"], timeout=5).get_signing_keys()
+          PY
+
       - name: Copy source maps from Docker for E2E coverage
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)

@@ -1,3 +1,4 @@
+import { QueueFollowUpFullError } from "../../../helpers/queueFollowUpMessage";
 import {
   render,
   screen,
@@ -472,10 +473,11 @@ describe("ChatInput Enter while streaming", () => {
     expect(textarea.value).toBe("");
   });
 
-  it("puts the text back and toasts when queueing fails", async () => {
-    const onEnqueue = vi
-      .fn()
-      .mockRejectedValue(new Error("Session has no active turn"));
+  it.each([
+    new Error("Session has no active turn"),
+    new QueueFollowUpFullError(),
+  ])("puts the text back and toasts when queueing fails: %s", async (error) => {
+    const onEnqueue = vi.fn().mockRejectedValue(error);
     render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "and then?" } });
@@ -486,6 +488,7 @@ describe("ChatInput Enter while streaming", () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Couldn't send message",
+        description: expect.stringContaining(error.message),
         variant: "destructive",
       }),
     );

@@ -118,6 +118,18 @@ async def chat_message_has_assistant_reply(
     return assistant_reply is not None
 
 
+async def get_chat_messages_by_ids(
+    session_id: str, message_ids: list[str]
+) -> list[ChatMessage]:
+    if not message_ids:
+        return []
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={"sessionId": session_id, "id": {"in": message_ids}},
+        order={"sequence": "asc"},
+    )
+    return [ChatMessage.from_db(row) for row in rows]
+
+
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 

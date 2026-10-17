@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
@@ -74,6 +74,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
+)
+from backend.copilot.pending_message_receipts import (
+    PendingMessageReceiptUnavailable,
+    pending_message_was_received,
 )
 from backend.copilot.pending_messages import (
     accept_client_message,
@@ -320,8 +324,8 @@ async def _try_release_orphan_running(session_id: str, user_id: str) -> bool:
     # change can't make this subtraction raise ``TypeError``.
     updated_at = meta.updated_at
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+        updated_at = updated_at.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - updated_at).total_seconds()
     if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
         return False
     await active_turns.release_turn_slot(user_id, session_id)
@@ -422,12 +426,10 @@ class QueuePendingMessageRequest(BaseModel):
     folder_ids: list[str] | None = Field(default=None, max_length=5)
     message_id: str | None = Field(
         default=None,
+        min_length=1,
         max_length=64,
-        description=(
-            "Optional per-send UUID, scoped like ``StreamChatRequest."
-            "message_id``. A retransmit of a follow-up already queued is "
-            "answered as accepted without queueing it again."
-        ),
+        description="Per-send idempotency key, scoped to the user and session. "
+        "Reuse on retries; use a new key for a separate send.",
     )
 
 
@@ -1919,10 +1921,14 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
+        if request.is_user_message and await pending_message_was_received(
+            session_id, message_id
+        ):
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         turn_in_flight = (
             request.is_user_message and message and await is_turn_in_flight(session_id)
         )
-    except StreamRegistryUnavailable as exc:
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
         # so a Redis brown-out at this step would otherwise surface as a raw
@@ -1932,6 +1938,14 @@ async def stream_chat_post(
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+
+    if (
+        turn_in_flight
+        and message_id is not None
+        and not request.expert_kickoff
+        and await chat_message_has_assistant_reply(message_id, session_id) is not None
+    ):
+        turn_in_flight = False
 
     if turn_in_flight:
         if request.expert_kickoff:
@@ -2240,7 +2254,7 @@ async def stream_chat_post(
                         )
                         break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
@@ -2342,12 +2356,19 @@ async def queue_pending_message(
             raise client_message_in_progress_error()
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as exc:
+        received = await pending_message_was_received(session_id, client_message_id)
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         raise HTTPException(
             status_code=503,
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+    if received or (
+        client_message_id is not None
+        and await chat_message_has_assistant_reply(client_message_id, session_id)
+        is not None
+    ):
+        return await already_accepted_response(session_id)
     if not turn_in_flight:
         raise HTTPException(
             status_code=409,
@@ -2490,7 +2511,7 @@ def _resume_response(
             while True:
                 try:
                     entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
                     continue
                 frame_id, chunk = entry

@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import threading
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
 
 import jwt
-from fastapi import HTTPException, Security
+from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import get_settings
@@ -36,7 +37,10 @@ _jwks_client_lock = threading.Lock()
 
 
 async def get_jwt_payload(
-    credentials: HTTPAuthorizationCredentials | None = Security(bearer_jwt_auth),
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_jwt_auth)
+    ] = None,
 ) -> dict[str, Any]:
     """
     Extract and validate JWT payload from HTTP Authorization header.
@@ -46,6 +50,9 @@ async def get_jwt_payload(
     - Verifying the JWT token's signature
     - Decoding the JWT token's payload
 
+    Reuses validation for the same bearer only within this request. The next
+    request always rechecks session authority, including revocation.
+
     :param credentials: HTTP Authorization credentials from bearer token
     :return: JWT payload dictionary
     :raises HTTPException: 401 if authentication fails
@@ -53,12 +60,30 @@ async def get_jwt_payload(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 
+    validations: dict[str, asyncio.Task[dict[str, Any]]] = request.scope.setdefault(
+        "_autogpt_jwt_payload_tasks", {}
+    )
+    token = credentials.credentials
+    if token not in validations:
+        validations[token] = asyncio.create_task(
+            _validate_request_token(request, token)
+        )
+    return await validations[token]
+
+
+async def _validate_request_token(request: Request, token: str) -> dict[str, Any]:
     try:
-        payload = await parse_jwt_token_async(credentials.credentials)
+        payload = await parse_jwt_token_async(token)
         logger.debug("Token decoded successfully")
-        return payload
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e
+
+    validator: Callable[[dict[str, Any]], Awaitable[None]] | None = getattr(
+        request.app.state, "jwt_payload_validator", None
+    )
+    if validator is not None:
+        await validator(payload)
+    return payload
 
 
 async def parse_jwt_token_async(
@@ -95,7 +120,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     try:
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
     # Validate the algorithm before touching the JWK set: a non-string or
     # unsupported `alg` must fail as a 401, not surface as a server error or
@@ -111,7 +136,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     try:
         key = _get_jwks_client().get_signing_key_from_jwt(token).key
     except jwt.PyJWKClientError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
     try:
         payload = jwt.decode(
@@ -124,7 +149,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:

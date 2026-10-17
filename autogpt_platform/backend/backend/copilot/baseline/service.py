@@ -1822,7 +1822,9 @@ async def stream_chat_completion_baseline(
     # inserting a new row, because routes.py has already saved the user message
     # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
-    drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
+    drained_at_start_pending = await drain_pending_safe(
+        session_id, "[Baseline]", drain_backlog=True
+    )
     if drained_at_start_pending:
         logger.info(
             "[Baseline] Draining %d pending message(s) at turn start for session %s",
