@@ -20,7 +20,7 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="floating"
+          variant="secondary"
           size="icon-sm"
           leadingIcon={MoreVerticalIcon}
           aria-label={`${expertName} actions`}

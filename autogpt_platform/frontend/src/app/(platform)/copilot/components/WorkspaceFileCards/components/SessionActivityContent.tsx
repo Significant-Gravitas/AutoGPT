@@ -75,7 +75,7 @@ function RunRow({ run }: { run: SessionRun }) {
       },
     },
   );
-  const name = run.name ?? fetchedName ?? "Agent run";
+  const name = run.name ?? fetchedName ?? "Workflow run";
   const meta = run.startedAt ? formatWhen(run.startedAt) : null;
   // The leading icon carries the status on its own — a tick, a cross, or a
   // spinner reads faster than the word did, so the label is gone.

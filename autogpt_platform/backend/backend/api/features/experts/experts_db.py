@@ -296,10 +296,34 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        learning_paused_at=row.learningPausedAt,
         pod_id=row.podId,
         setup_status=_setup_status(row),
         setup_failures=row.setupFailures or [],
     )
+
+
+async def set_expert_learning_paused(
+    user_id: str, expert_id: str, paused: bool
+) -> Expert | None:
+    """Pause or resume nightly skill learning for one owned expert.
+
+    Only future automated learning is affected: existing skills stay
+    available and ordinary work continues. Returns ``None`` when the caller
+    does not own an active expert with this id.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+        data={"learningPausedAt": datetime.now(timezone.utc) if paused else None},
+    )
+    if updated == 0:
+        return None
+    return await get_expert(user_id, expert_id, include_workflows=False)
 
 
 def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
@@ -349,6 +373,7 @@ def _template_where(
         where["OR"] = [
             {"name": {"contains": needle, "mode": "insensitive"}},
             {"role": {"contains": needle, "mode": "insensitive"}},
+            {"jobTitle": {"contains": needle, "mode": "insensitive"}},
             {"tagline": {"contains": needle, "mode": "insensitive"}},
             {"bio": {"contains": needle, "mode": "insensitive"}},
         ]
@@ -1955,7 +1980,7 @@ async def _install_preloads(
             continue
         try:
             library_agent = await library_db.add_store_agent_to_library(
-                preload.storeListingVersionId, user_id
+                preload.storeListingVersionId, user_id, track_listing_added=False
             )
             row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
@@ -2123,7 +2148,7 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(existing)
 
     library_agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id, user_id
+        store_listing_version_id, user_id, track_listing_added=False
     )
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(

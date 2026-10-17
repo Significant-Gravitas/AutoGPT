@@ -105,6 +105,19 @@ def search():
     return search
 
 
+def embeddings_db():
+    if db.is_connected():
+        from backend.api.features.search import embeddings as _embeddings_db
+
+        embeddings_db = _embeddings_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        embeddings_db = get_database_manager_async_client()
+
+    return embeddings_db
+
+
 def execution_db():
     if db.is_connected():
         from backend.data import execution as _execution_db
@@ -283,6 +296,84 @@ def bot_analytics_db():
     return bot_analytics_db
 
 
+def skill_learning_db():
+    if db.is_connected():
+        from backend.data import skill_learning as _skill_learning_db
+
+        skill_learning_db = _skill_learning_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_learning_db = get_database_manager_async_client()
+
+    return skill_learning_db
+
+
+def skill_reviews_db():
+    if db.is_connected():
+        from backend.data import skill_reviews as _skill_reviews_db
+
+        skill_reviews_db = _skill_reviews_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_reviews_db = get_database_manager_async_client()
+
+    return skill_reviews_db
+
+
+def skill_publication_db():
+    if db.is_connected():
+        from backend.data import skill_publication as _skill_publication_db
+
+        skill_publication_db = _skill_publication_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_publication_db = get_database_manager_async_client()
+
+    return skill_publication_db
+
+
+def skill_use_db():
+    if db.is_connected():
+        from backend.data import skill_use as _skill_use_db
+
+        skill_use_db = _skill_use_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_use_db = get_database_manager_async_client()
+
+    return skill_use_db
+
+
+def skill_deletion_db():
+    if db.is_connected():
+        from backend.data import skill_deletion as _skill_deletion_db
+
+        skill_deletion_db = _skill_deletion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_deletion_db = get_database_manager_async_client()
+
+    return skill_deletion_db
+
+
+def skill_versions_db():
+    if db.is_connected():
+        from backend.data import skill_versions as _skill_versions_db
+
+        skill_versions_db = _skill_versions_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_versions_db = get_database_manager_async_client()
+
+    return skill_versions_db
+
+
 def bot_installs_db():
     if db.is_connected():
         from backend.data import bot_installs as _bot_installs_db
@@ -294,3 +385,27 @@ def bot_installs_db():
         bot_installs_db = get_database_manager_async_client()
 
     return bot_installs_db
+
+
+def pro_activation_db():
+    if db.is_connected():
+        from backend.data import pro_activation
+
+        return pro_activation
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def posthog_lifecycle_db():
+    if db.is_connected():
+        from backend.data import posthog_lifecycle_sync as _posthog_lifecycle_db
+
+        posthog_lifecycle_db = _posthog_lifecycle_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # Best-effort and asked for after the work is queued: fail fast.
+        posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
+
+    return posthog_lifecycle_db

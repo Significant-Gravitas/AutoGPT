@@ -46,19 +46,20 @@ four chat transports. When `CHAT_USE_LOCAL=true`:
 
 The downgrade is logged at WARNING when an `extended_thinking` request
 arrives — there is no 500. The frontend toggle should already be hidden
-because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
+because the `CHAT_MODE_OPTION` feature flag defaults off in
 self-hosted deployments.
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
-vars are the *bottom* layer of model resolution: LaunchDarkly per-user
-override → the LLM catalog's routing cell
+vars are the *bottom* layer of model resolution: the `copilot-model-routing`
+flag's per-user override → the LLM catalog's routing cell
 (`backend/data/llm_registry/catalog.py`) → env default, with slugs
 unknown to the catalog or disabled in it refused at serve time.
 
 **On self-hosted installs — any transport — the catalog's routing cells
 are skipped entirely**: they are the cloud deployment's config traveling
 in the shipped file, and they never override your `CHAT_*_MODEL`
-configuration. Resolution here is LaunchDarkly → `CHAT_*_MODEL`, exactly
+configuration. Resolution here is the `copilot-model-routing` flag →
+`CHAT_*_MODEL`, exactly
 the pre-catalog behavior; your env vars stay authoritative. See
 [Managing LLM Models](contributing/managing-llm-models.md).
 

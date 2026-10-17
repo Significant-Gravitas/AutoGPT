@@ -3,17 +3,19 @@
 // Note that this config is unrelated to the Vercel Edge Runtime and is also required when running locally.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { stripRequestCredentials } from "@/lib/sentry-filters";
+import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const shouldEnable = environment.isSentryEnabled();
+const dsn = environment.getSentryDSN();
 
 Sentry.init({
-  dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
+  dsn,
 
-  environment: environment.getEnvironmentStr(),
+  environment: environment.getSentryEnvironment(),
 
-  enabled: shouldEnable,
+  enabled: Boolean(dsn),
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
@@ -24,11 +26,19 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
+  beforeSend: stripRequestCredentials,
+  beforeSendTransaction(event) {
+    return isSentryTunnelTransaction(event)
+      ? null
+      : stripRequestCredentials(event);
+  },
+
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
   enableLogs: true,
   integrations: [
+    Sentry.requestDataIntegration({ include: { cookies: false, data: false } }),
     Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     Sentry.extraErrorDataIntegration(),
   ],

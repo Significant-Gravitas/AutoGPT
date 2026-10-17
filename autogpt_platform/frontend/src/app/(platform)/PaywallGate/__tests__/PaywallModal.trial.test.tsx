@@ -165,9 +165,11 @@ test.each([
       offer_token: trialOffer.token,
       return_to: "billing",
     });
-    expect(posthog.capture).toHaveBeenCalledWith(
+    // The backend sends checkout_started (checkout_kind: trial) once the
+    // Checkout session exists, so the browser sends no checkout event.
+    expect(posthog.capture).not.toHaveBeenCalledWith(
       "subscription_trial_checkout_started",
-      { trial_offer_version: trialOffer.version, surface: "billing" },
+      expect.anything(),
     );
   },
 );
@@ -184,13 +186,13 @@ test("reports the offer impression against the billing surface", async () => {
   );
 });
 
-test("keeps paid checkout reporting against the upgrade_modal surface", async () => {
+test("labels paid signup Start Max and keeps checkout reporting against the upgrade_modal surface", async () => {
   server.use(getGetTrialsGetTrialStatusMockHandler200(eligible()));
 
   render(<PaywallModal />);
 
   const max = within(await screen.findByRole("region", { name: "Max plan" }));
-  const paid = max.getByRole("button", { name: "Upgrade to Max" });
+  const paid = max.getByRole("button", { name: "Start Max" });
   expect(paid.getAttribute("data-fast-goal")).toBe("plan_cta_click");
   expect(paid.getAttribute("data-fast-goal-surface")).toBe("upgrade_modal");
 
@@ -208,7 +210,7 @@ test("leaves the paid CTAs alone when the user is not eligible", async () => {
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 
@@ -222,7 +224,7 @@ test("leaves the paid CTAs alone when the trial status fails to load", async () 
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 
@@ -239,7 +241,7 @@ test("hides an offer for a tier the backend isn't pricing on this paywall", asyn
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 

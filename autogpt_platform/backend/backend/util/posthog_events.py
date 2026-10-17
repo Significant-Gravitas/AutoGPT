@@ -1,6 +1,6 @@
 """Every PostHog event name the backend sends, in one place.
 
-``docs/platform/tracking-plan.md`` says what each event means, which side
+``docs/engineering/tracking-plan.md`` says what each event means, which side
 sends it and which properties it carries. This module is the code half of
 that plan: emitters take the name from here instead of spelling it out.
 The names follow the product analytics plan ("Every Second Counts"). The
@@ -62,20 +62,28 @@ class PostHogEvent(StrEnum):
     TRIAL_CONVERTED = "trial_converted"
     PAYMENT_FAILED = "payment_failed"
 
-    # Person properties: backend/data/posthog_lifecycle_sync.py. PostHog's own
-    # person-update event, not a user action; keep it out of funnels.
+    # Person properties: backend/data/posthog_lifecycle_sync.py,
+    # product_analytics.set_onboarding_role and
+    # backend/notifications/posthog_audience.py. PostHog's own person-update
+    # event, not a user action; keep it out of funnels.
     SET_PERSON_PROPERTIES = "$set"
 
+    # LLM analytics (SECRT-2730): backend/copilot/feedback.py. PostHog's own
+    # event for a score on a generative AI trace, named by PostHog rather
+    # than the analytics plan; a thumbs up/down or copy of an AutoPilot reply.
+    AI_METRIC = "$ai_metric"
 
-class PlannedPostHogEvent(StrEnum):
-    """Planned in the tracking plan and NOT emitted yet (SECRT-2723).
-
-    Move a member into ``PostHogEvent`` in the change that starts sending it.
-    """
-
+    # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
     CHECKOUT_STARTED = "checkout_started"
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
+
+
+class PlannedPostHogEvent(StrEnum):
+    """Planned in the tracking plan and NOT emitted yet.
+
+    Move a member into ``PostHogEvent`` in the change that starts sending it.
+    """

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Same reasoning as the provider job: matching needs against a roster is
 # a matching task, and the onboarding loading screen waits on it.
-_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 
 MAX_EXPERTS = 16

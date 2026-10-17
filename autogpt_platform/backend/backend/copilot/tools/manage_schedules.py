@@ -5,13 +5,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from backend.api.features.library.db import get_library_agent
 from backend.api.features.schedule_visibility import (
     hidden_expert_ids,
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import library_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -26,7 +26,10 @@ def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
     """Personal AutoPilot manages every schedule on the account; an expert
-    only its own."""
+    only its own. Neither sees a chat's resume or send at the budget reset:
+    the user set those from the chat, and cancels them there."""
+    if isinstance(job, CopilotTurnJobInfo) and job.purpose != "followup":
+        return False
     return session.expert_id is None or job.expert_id == session.expert_id
 
 
@@ -185,12 +188,12 @@ class ListSchedulesTool(BaseTool):
         # Resolve library_agent_id → graph_id (also verifies ownership)
         if library_agent_id:
             try:
-                lib_agent = await get_library_agent(
+                lib_agent = await library_db().get_library_agent(
                     id=library_agent_id, user_id=user_id
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -255,6 +258,7 @@ class DeleteScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],
@@ -355,6 +359,7 @@ class _ToggleScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],
