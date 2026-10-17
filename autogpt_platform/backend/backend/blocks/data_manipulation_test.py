@@ -35,6 +35,12 @@ async def test_non_ascii_digit_keys_are_not_list_indexes(key):
     assert await _find([10, 20, 30], key) == [("output", [])]
 
 
+async def test_very_long_digit_key_is_missing_not_an_error():
+    # int() rejects digit strings over the interpreter's limit (4300 by
+    # default since Python 3.11); such a key can't be a valid index anyway.
+    assert await _find([10, 20, 30], "1" * 5000) == [("missing", [10, 20, 30])]
+
+
 async def test_list_of_dicts_still_plucks_matching_key():
     obj = [{"1": "a"}, {"2": "b"}, {"1": "c"}]
     assert await _find(obj, "1") == [("output", ["a", "c"])]

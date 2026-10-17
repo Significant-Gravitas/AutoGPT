@@ -205,7 +205,12 @@ class FindInDictionaryBlock(Block):
                 # Builder inputs send `str | int` keys as strings by default,
                 # so treat a numeric string as a list index. isdigit() alone
                 # also accepts characters like "²" that int() rejects.
-                index = int(key.strip())
+                try:
+                    index = int(key.strip())
+                except ValueError:
+                    # Python 3.11+ refuses to convert very long digit strings.
+                    yield "missing", input_data.input
+                    return
                 if index < len(obj):
                     yield "output", obj[index]
                 else:
