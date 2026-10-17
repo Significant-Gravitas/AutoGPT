@@ -200,15 +200,13 @@ async def test_recordings_are_stored_marked_with_a_backstop_expiry(
     assert kwargs["user_id"] == USER_ID
 
 
-def test_recordings_are_due_one_cleanup_interval_before_48_hours(
-    mocker: MockerFixture,
-):
-    """The sweep runs once per interval, so it has to start that much early
-    for "within 48 hours" to hold."""
-    config = MagicMock(cloud_storage_cleanup_interval_hours=6)
-    mocker.patch.object(storage, "Config", return_value=config)
+def test_a_recording_due_just_after_one_sweep_goes_within_48_hours():
+    """The sweep runs once per ``RECORDING_PURGE_INTERVAL``, so a recording
+    just short of the max age at one run goes at the next, and that run
+    needs time to finish."""
+    deleted_by = storage.audio_max_age() + storage.RECORDING_PURGE_INTERVAL
 
-    assert storage.audio_max_age() == timedelta(hours=42)
+    assert deleted_by + timedelta(minutes=10) <= timedelta(hours=48)
 
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)

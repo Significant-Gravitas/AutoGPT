@@ -1,11 +1,17 @@
-"""The scheduled cloud-storage cleanup: voice recordings, then the rest."""
+"""The scheduled cloud-storage cleanups: voice recordings, and the rest."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump.retention import RecordingPurgeResult
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 
 # Imported here, not in the test: the executor conftest patches a function
 # ``db_manager`` wraps at import, and an import under that patch would wrap
@@ -19,38 +25,10 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def test_recordings_are_purged_before_the_generic_cleanup(mocker: MockerFixture):
-    order: list[str] = []
-    db = MagicMock()
-    mocker.patch.object(scheduler, "get_database_manager_async_client", return_value=db)
-
-    async def purge(clear):
-        order.append("recordings")
-        assert clear is db.clear_brain_dump_audio_paths
-        return RecordingPurgeResult()
-
-    async def generic():
-        order.append("generic")
-        return 0
-
-    mocker.patch.object(scheduler, "purge_expired_recordings", side_effect=purge)
-    mocker.patch.object(scheduler, "cleanup_expired_files_async", side_effect=generic)
-    mocker.patch.object(scheduler, "run_async", side_effect=_run)
-
-    scheduler.cleanup_expired_files()
-
-    assert order == ["recordings", "generic"]
-
-
-def test_a_failed_recording_purge_does_not_stop_the_generic_cleanup(
+def test_the_generic_cleanup_leaves_recordings_to_their_own_job(
     mocker: MockerFixture,
 ):
-    mocker.patch.object(scheduler, "get_database_manager_async_client")
-    mocker.patch.object(
-        scheduler,
-        "purge_expired_recordings",
-        AsyncMock(side_effect=RuntimeError("gcs down")),
-    )
+    purge = mocker.patch.object(scheduler, "purge_expired_recordings", AsyncMock())
     generic = mocker.patch.object(
         scheduler, "cleanup_expired_files_async", AsyncMock(return_value=0)
     )
@@ -59,6 +37,84 @@ def test_a_failed_recording_purge_does_not_stop_the_generic_cleanup(
     scheduler.cleanup_expired_files()
 
     generic.assert_awaited_once()
+    purge.assert_not_called()
+
+
+def test_the_purge_job_clears_rows_through_the_database_manager(
+    mocker: MockerFixture,
+):
+    db = MagicMock()
+    mocker.patch.object(scheduler, "get_database_manager_async_client", return_value=db)
+    purge = mocker.patch.object(
+        scheduler,
+        "purge_expired_recordings",
+        AsyncMock(return_value=RecordingPurgeResult()),
+    )
+    mocker.patch.object(scheduler, "run_async", side_effect=_run)
+
+    scheduler.purge_expired_recordings_job()
+
+    purge.assert_awaited_once_with(db.clear_brain_dump_audio_paths)
+
+
+class TestRecordingPurgeRegistration:
+    """ "Within 48 hours" holds only if the sweep really runs every
+    ``RECORDING_PURGE_INTERVAL``. Re-adding an interval job on every start
+    re-arms it at start + interval, so restarts would postpone the sweep;
+    an unchanged job is left alone instead, and an overdue run fires on
+    start."""
+
+    @pytest.fixture
+    def sched(self):
+        background = BackgroundScheduler(
+            jobstores={scheduler.Jobstores.EXECUTION.value: MemoryJobStore()},
+            timezone=timezone.utc,
+        )
+        background.start(paused=True)
+        sched = scheduler.Scheduler.__new__(scheduler.Scheduler)
+        sched.scheduler = background
+        yield sched
+        background.shutdown(wait=False)
+
+    def _job(self, sched):
+        return sched.scheduler.get_job(
+            scheduler.RECORDING_PURGE_JOB_ID,
+            jobstore=scheduler.Jobstores.EXECUTION.value,
+        )
+
+    def test_registers_the_purge_at_its_interval(self, sched):
+        sched._register_recording_purge()
+
+        job = self._job(sched)
+        assert job.func is scheduler.purge_expired_recordings_job
+        assert isinstance(job.trigger, IntervalTrigger)
+        assert job.trigger.interval == RECORDING_PURGE_INTERVAL
+
+    def test_a_restart_does_not_postpone_an_overdue_purge(self, sched):
+        sched._register_recording_purge()
+        overdue = datetime.now(timezone.utc) - timedelta(minutes=30)
+        sched.scheduler.modify_job(
+            scheduler.RECORDING_PURGE_JOB_ID,
+            jobstore=scheduler.Jobstores.EXECUTION.value,
+            next_run_time=overdue,
+        )
+
+        sched._register_recording_purge()
+
+        assert self._job(sched).next_run_time == overdue
+
+    def test_a_job_at_another_interval_is_replaced(self, sched):
+        sched.scheduler.add_job(
+            scheduler.purge_expired_recordings_job,
+            "interval",
+            hours=6,
+            id=scheduler.RECORDING_PURGE_JOB_ID,
+            jobstore=scheduler.Jobstores.EXECUTION.value,
+        )
+
+        sched._register_recording_purge()
+
+        assert self._job(sched).trigger.interval == RECORDING_PURGE_INTERVAL
 
 
 def test_the_purge_reaches_the_database_manager_endpoint_it_calls():

@@ -25,6 +25,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -35,6 +36,7 @@ from backend.api.features.onboarding_dump.retention import (
     RecordingPurgeResult,
     purge_expired_recordings,
 )
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -1247,17 +1249,14 @@ async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None
 
 
 def cleanup_expired_files():
-    """Clean up expired files from cloud storage, voice recordings first.
-
-    Recordings go first so their rows are cleared before the generic
-    cleanup can delete the blob under them; a failure there must not stop
-    the generic cleanup.
-    """
-    try:
-        run_async(_purge_expired_recordings())
-    except Exception:
-        logger.exception("Failed to purge expired brain-dump recordings")
+    """Clean up expired files from cloud storage."""
+    # Wait for completion
     run_async(cleanup_expired_files_async())
+
+
+def purge_expired_recordings_job():
+    """Delete brain-dump voice recordings that reached their max age."""
+    run_async(_purge_expired_recordings())
 
 
 async def _purge_expired_recordings() -> RecordingPurgeResult:
@@ -1319,6 +1318,7 @@ def _morning_briefing_crontab(user_id: str) -> str:
 
 
 _POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+RECORDING_PURGE_JOB_ID = "purge_expired_brain_dump_recordings"
 
 
 def _job_timezone_name(job: JobObj) -> str | None:
@@ -2722,6 +2722,7 @@ class Scheduler(AppService):
             # After start: until then get_job only sees pending jobs, not the
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_posthog_lifecycle_sweep()
+            self._register_recording_purge()
         self._report_parked_jobs()
 
         global _scheduler_instance
@@ -3792,6 +3793,33 @@ class Scheduler(AppService):
             sync_posthog_lifecycles,
             trigger,
             id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_recording_purge(self) -> None:
+        """The brain-dump recording sweep, which keeps "deleted within 48
+        hours" by running every ``RECORDING_PURGE_INTERVAL``.
+
+        Registered like the PostHog sweep: replacing an interval job re-arms
+        it at start + interval, so restarts closer together than the
+        interval would postpone the sweep indefinitely. An unchanged job is
+        left with the next run it has, and an overdue run fires on start.
+        """
+        trigger = IntervalTrigger(
+            seconds=int(RECORDING_PURGE_INTERVAL.total_seconds()),
+            timezone=timezone.utc,
+        )
+        existing = self.scheduler.get_job(
+            RECORDING_PURGE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            purge_expired_recordings_job,
+            trigger,
+            id=RECORDING_PURGE_JOB_ID,
             replace_existing=True,
             max_instances=1,
             jobstore=Jobstores.EXECUTION.value,

@@ -25,7 +25,6 @@ from backend.util.gcs_utils import (
     is_not_found_error,
     parse_gcs_path,
 )
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +54,24 @@ RECORDING_MARKER_KEY = "brain_dump_recording"
 RECORDING_MARKER_VALUE = "true"
 
 
+# How often the scheduler runs the sweep. It is its own job rather than part
+# of the generic file cleanup, which every scheduler start re-arms at start +
+# interval, so frequent deploys could postpone it past 48 hours. This job
+# keeps its next run across restarts (``Scheduler._register_recording_purge``).
+RECORDING_PURGE_INTERVAL = timedelta(hours=1)
+
+# A recording just short of the max age at one run goes at the next, once
+# that run reaches it. The scheduler gives a run 5 minutes.
+_PURGE_RUN_ALLOWANCE = timedelta(minutes=15)
+
+
 def audio_max_age() -> timedelta:
     """The age at which a recording is deleted and no longer served.
 
-    The sweep runs once per cleanup interval, so a recording just short of
-    this age at one run goes at the next. Taking the interval off the
-    retention keeps the deletion inside ``AUDIO_RETENTION``.
+    Taking the sweep's interval and run time off the retention keeps the
+    deletion inside ``AUDIO_RETENTION``.
     """
-    interval = timedelta(hours=Config().cloud_storage_cleanup_interval_hours)
-    return AUDIO_RETENTION - interval
+    return AUDIO_RETENTION - RECORDING_PURGE_INTERVAL - _PURGE_RUN_ALLOWANCE
 
 
 def _buffer_key(user_id: str, recording_id: str, suffix: str) -> str:
