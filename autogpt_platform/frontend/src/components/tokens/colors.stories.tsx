@@ -294,12 +294,12 @@ export function AllVariants() {
             Ramp defects, left unchanged
           </Text>
           <Text variant="body" className="text-muted-foreground">
-            red 900 in colors.ts has a trailing space, so it is not a valid
-            hex. slate 700 and slate 800 are both #475263. The slate ramp has
-            no 950 step, so a slate 950 utility is still the default scale.
-            customGray in the Tailwind config has no class use under src. The
-            flat key bgLightGrey compiles to bg-bgLightGrey. These values stay
-            as they are in this change.
+            red 900 in colors.ts has a trailing space, so it is not a valid hex.
+            slate 700 and slate 800 are both #475263. The slate ramp has no 950
+            step, so a slate 950 utility is still the default scale. customGray
+            in the Tailwind config has no class use under src. The flat key
+            bgLightGrey compiles to bg-bgLightGrey. These values stay as they
+            are in this change.
           </Text>
         </div>
 
