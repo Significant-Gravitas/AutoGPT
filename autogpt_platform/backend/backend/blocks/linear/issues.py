@@ -1,3 +1,5 @@
+from pydantic import field_validator
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -45,6 +47,19 @@ class LinearCreateIssueBlock(Block):
             default=None,
         )
 
+        parent_id: str | None = SchemaField(
+            description="Parent issue UUID or identifier (for example ENG-123). Omit to create a top-level issue.",
+            default=None,
+            min_length=1,
+        )
+
+        @field_validator("parent_id")
+        @classmethod
+        def validate_parent_id(cls, value: str | None) -> str | None:
+            if value is not None and not value.strip():
+                raise ValueError("Parent issue ID must not be blank")
+            return value.strip() if value is not None else None
+
     class Output(BlockSchemaOutput):
         issue_id: str = SchemaField(description="ID of the created issue")
         issue_title: str = SchemaField(description="Title of the created issue")
@@ -81,6 +96,7 @@ class LinearCreateIssueBlock(Block):
         description: str | None = None,
         priority: int | None = None,
         project_name: str | None = None,
+        parent_id: str | None = None,
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         team_id = await client.try_get_team_by_name(team_name=team_name)
@@ -97,6 +113,7 @@ class LinearCreateIssueBlock(Block):
             description=description,
             priority=priority,
             project_id=project_id,
+            parent_id=parent_id,
         )
         return response.issue.identifier, response.issue.title
 
@@ -116,6 +133,7 @@ class LinearCreateIssueBlock(Block):
                 description=input_data.description,
                 priority=input_data.priority,
                 project_name=input_data.project_name,
+                parent_id=input_data.parent_id,
             )
 
             yield "issue_id", issue_id
