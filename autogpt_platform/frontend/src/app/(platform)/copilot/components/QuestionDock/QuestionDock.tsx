@@ -25,22 +25,47 @@ interface FormProps {
 
 /** The clarifying-question answer form — rendered inline in the tool chain
  *  on the ask_question row (and reused by the legacy QuestionDock). */
-export function QuestionsForm({ dockId, questions }: FormProps) {
+export function QuestionsForm({
+  dockId,
+  questions: incomingQuestions,
+}: FormProps) {
   const actions = useContext(CopilotChatActionsContext);
   const chainActions = useContext(ChainActionsContext);
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
+  // The questions are rebuilt from the messages on every render upstream, so
+  // the incoming array is a new reference each time. Hold one snapshot per
+  // dock: registering on a fresh reference re-renders the chain, which hands
+  // us yet another reference — an update loop React aborts (error #185).
+  const [questions, setQuestions] = useState(incomingQuestions);
   const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
   const formId = useId();
+
+  if (renderedDockId !== dockId) {
+    setRenderedDockId(dockId);
+    setAnswers({});
+    setQuestions(incomingQuestions);
+  }
 
   const dismissed = dockId === dismissedId;
   const allAnswered = questions.every((q) => isAnswered(answers[q.keyword]));
 
+  // Leave the chain only when this dock goes away — not on every update, which
+  // would delete and re-add the entry (two chain re-renders per keystroke).
+  useEffect(() => {
+    if (!chainActions) return;
+    return () => chainActions.unregister(dockId);
+  }, [chainActions, dockId]);
+
   // Inside a tool chain the Answer button is replaced by the chain's single
   // Proceed step — register readiness + message instead.
   useEffect(() => {
-    if (!chainActions || dismissed) return;
+    if (!chainActions) return;
+    if (dismissed) {
+      chainActions.unregister(dockId);
+      return;
+    }
     chainActions.register({
       id: dockId,
       ready: allAnswered,
@@ -59,13 +84,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
         onSkip: () => setDismissedId(dockId),
       },
     });
-    return () => chainActions.unregister(dockId);
   }, [chainActions, dismissed, dockId, allAnswered, answers, questions]);
-
-  if (renderedDockId !== dockId) {
-    setRenderedDockId(dockId);
-    setAnswers({});
-  }
 
   if (!actions || dismissed) return null;
   // Inside a chain the inputs live in the action card below it, not on the
