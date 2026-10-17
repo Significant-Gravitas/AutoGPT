@@ -34,22 +34,22 @@ describe("getPostHogBaseProperties", () => {
     expect(getPostHogBaseProperties().environment).toBe("preview");
   });
 
-  it("carries the build's release", () => {
+  it("carries the build's revision", () => {
     stubDeployment("prod", "production", "production");
-    vi.stubEnv("NEXT_PUBLIC_RELEASE", "0123abcd");
+    vi.stubEnv("NEXT_PUBLIC_REVISION", "0123abcd");
 
     expect(getPostHogBaseProperties()).toEqual({
       source: "web",
       environment: "prod",
-      release: "0123abcd",
+      revision: "0123abcd",
     });
   });
 
-  it("leaves the release out of a build that has none", () => {
+  it("leaves the revision out of a build that has none", () => {
     stubDeployment("prod", "production", "production");
-    vi.stubEnv("NEXT_PUBLIC_RELEASE", "");
+    vi.stubEnv("NEXT_PUBLIC_REVISION", "");
 
-    expect(getPostHogBaseProperties()).not.toHaveProperty("release");
+    expect(getPostHogBaseProperties()).not.toHaveProperty("revision");
   });
 
   it("reports the dev deployment as dev although Vercel calls its staging environment a preview", () => {

@@ -250,10 +250,10 @@ def test_a_client_of_its_own_gets_the_options_the_shared_one_lacks(
 
 @pytest.mark.parametrize(
     ("sentry_release", "expected"),
-    [("0123abcd\n", {"release": "0123abcd"}), ("", {})],
-    ids=["release set", "no release"],
+    [("0123abcd\n", {"revision": "0123abcd"}), ("", {})],
+    ids=["revision set", "no revision"],
 )
-def test_every_event_a_client_sends_carries_the_release(
+def test_every_event_a_client_sends_carries_the_revision(
     monkeypatch: pytest.MonkeyPatch, sentry_release: str, expected: dict[str, str]
 ) -> None:
     settings = Mock()
@@ -271,7 +271,7 @@ def test_every_event_a_client_sends_carries_the_release(
     client.shutdown()
 
     assert [
-        {k: v for k, v in event["properties"].items() if k == "release"}
+        {k: v for k, v in event["properties"].items() if k == "revision"}
         for event in sent
     ] == [expected, expected]
 

@@ -56,10 +56,10 @@ class TestClientConstruction:
 
     @pytest.mark.parametrize(
         ("sentry_release", "expected"),
-        [("0123abcd", {"release": "0123abcd"}), ("", {})],
-        ids=["release set", "no release"],
+        [("0123abcd", {"revision": "0123abcd"}), ("", {})],
+        ids=["revision set", "no revision"],
     )
-    def test_its_events_carry_the_release(self, mocker, sentry_release, expected):
+    def test_its_events_carry_the_revision(self, mocker, sentry_release, expected):
         """``$feature_flag_called`` comes from this client, not ``capture``."""
         configure(mocker)
         mocker.patch.object(ph.settings.config, "sentry_release", sentry_release)

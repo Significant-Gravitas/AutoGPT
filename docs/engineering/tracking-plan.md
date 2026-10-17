@@ -59,12 +59,12 @@ Every event must carry:
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
-| `release` | The deployed build's git sha, the release Sentry reports: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one. |
+| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one. |
 
 Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies `environment` and `source`
-last, so a caller cannot overwrite them. `release` is a super property of
-every backend PostHog client instead (`release_properties()`), so the flag
+last, so a caller cannot overwrite them. `revision` is a super property of
+every backend PostHog client instead (`revision_properties()`), so the flag
 client's `$feature_flag_called` carries it too. The browser registers all
 three once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
