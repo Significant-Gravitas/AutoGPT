@@ -5990,6 +5990,23 @@ async def _template(name: str, **fields) -> prisma.models.Expert:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_template_reads_one_live_template_and_nothing_else(
+    server: SpinTestServer, test_user
+):
+    """The gate names a held hire's template inside a 1 s budget, so it reads
+    that one row; a retired template or a hired expert is not a template."""
+    suffix = uuid.uuid4().hex[:8]
+    live = await _template(f"Ada {suffix}")
+    retired = await _template(f"Old {suffix}", isArchived=True)
+    hired = await experts_db.hire_expert(test_user.id, live.id, None)
+
+    found = await experts_db.get_template(live.id)
+    assert found is not None and found.name == live.name and found.is_template
+    assert await experts_db.get_template(retired.id) is None
+    assert await experts_db.get_template(hired.expert.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_templates_filters_by_category(server: SpinTestServer):
     """A category chip narrows the roster, and never widens it: an expert
     filed under another category must not surface under an unrelated chip."""
