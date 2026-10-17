@@ -19,11 +19,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 @pytest.mark.parametrize(
     "answer, choice, other, label",
     [
