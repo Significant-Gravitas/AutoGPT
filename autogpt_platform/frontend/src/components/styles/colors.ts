@@ -104,4 +104,5 @@ export const colors = {
   textGrey: "#505057",
   textBlack: "#1F1F20",
   bgLightGrey: "#F3F4F6",
+  page: "#F6F7F8",
 };

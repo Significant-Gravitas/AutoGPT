@@ -30,6 +30,7 @@ const CUSTOM_FLATS = new Set([
   "textGrey",
   "textBlack",
   "bgLightGrey",
+  "page",
 ]);
 const DEFAULT_PALETTE = new Set([
   "gray",
