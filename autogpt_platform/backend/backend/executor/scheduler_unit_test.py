@@ -51,6 +51,7 @@ from backend.executor.scheduler import (
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
+    refresh_near_expiry_credentials,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -1738,6 +1739,25 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_refresh_near_expiry_credentials_job_is_registered_every_minute(monkeypatch):
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    matches = [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "refresh_near_expiry_credentials"
+    assert call.kwargs["trigger"] == "interval"
+    assert call.kwargs["seconds"] == 60
+    assert call.kwargs["replace_existing"] is True
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == "execution"
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):

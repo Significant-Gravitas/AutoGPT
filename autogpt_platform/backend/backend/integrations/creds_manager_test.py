@@ -87,6 +87,56 @@ class TestInvokeCredsChangedHook:
 
 
 @pytest.mark.asyncio
+async def test_refresh_near_expiry_credentials_refreshes_each_candidate(mocker):
+    manager = IntegrationCredentialsManager()
+    first = _provider_runtime_credentials().model_copy(
+        update={"id": "cred-1", "refresh_strategy": "oauth_handler"}
+    )
+    second = first.model_copy(update={"id": "cred-2"})
+    get_candidates = mocker.patch.object(
+        manager.store.db_manager,
+        "get_near_expiry_oauth_credentials",
+        AsyncMock(return_value=[("user-1", first), ("user-2", second)]),
+    )
+    refresh = mocker.patch.object(manager, "refresh_if_needed", AsyncMock())
+
+    with patch("backend.integrations.creds_manager.time.time", return_value=1_000):
+        await manager.refresh_near_expiry_credentials()
+
+    get_candidates.assert_awaited_once_with(1_300)
+    assert refresh.await_args_list == [
+        (("user-1", first), {}),
+        (("user-2", second), {}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_refresh_near_expiry_credentials_continues_after_a_failure(mocker):
+    manager = IntegrationCredentialsManager()
+    first = _provider_runtime_credentials().model_copy(
+        update={"id": "cred-1", "refresh_strategy": "oauth_handler"}
+    )
+    second = first.model_copy(update={"id": "cred-2"})
+    mocker.patch.object(
+        manager.store.db_manager,
+        "get_near_expiry_oauth_credentials",
+        AsyncMock(return_value=[("user-1", first), ("user-2", second)]),
+    )
+    refresh = mocker.patch.object(
+        manager,
+        "refresh_if_needed",
+        AsyncMock(side_effect=[RuntimeError("provider unavailable"), None]),
+    )
+
+    await manager.refresh_near_expiry_credentials()
+
+    assert refresh.await_args_list == [
+        (("user-1", first), {}),
+        (("user-2", second), {}),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_provider_runtime_refresh_never_resolves_generic_handler(mocker):
     manager = IntegrationCredentialsManager()
     resolve_handler = mocker.patch.object(

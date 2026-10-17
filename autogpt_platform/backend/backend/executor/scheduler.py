@@ -52,6 +52,7 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
 from backend.monitoring import (
@@ -1571,6 +1572,11 @@ def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
         )
 
 
+def refresh_near_expiry_credentials() -> None:
+    """Refresh third-party OAuth credentials before their access tokens expire."""
+    run_async(IntegrationCredentialsManager().refresh_near_expiry_credentials())
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -2283,6 +2289,17 @@ class Scheduler(AppService):
                 replace_existing=True,
                 seconds=config.cloud_storage_cleanup_interval_hours
                 * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Credential Refresh - keep third-party OAuth credentials valid before use.
+            self.scheduler.add_job(
+                refresh_near_expiry_credentials,
+                id="refresh_near_expiry_credentials",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,
+                seconds=60,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

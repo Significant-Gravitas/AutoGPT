@@ -21,6 +21,7 @@ from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -460,6 +461,42 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
                 exc_info=True,
             )
     return credentials
+
+
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return user OAuth credentials that can safely be refreshed before expiry."""
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active"}
+    )
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping",
+                exc_info=True,
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and credential.access_token_expires_at < refresh_before
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
 
 
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:

@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -237,6 +238,24 @@ class IntegrationCredentialsManager:
             return await self.refresh_if_needed(user_id, credential)
 
         return get_credentials
+
+    async def refresh_near_expiry_credentials(self) -> None:
+        """Refresh eligible OAuth credentials that enter the five-minute window."""
+        refresh_before = int(time.time()) + 300
+        candidates = await self.store.db_manager.get_near_expiry_oauth_credentials(
+            refresh_before
+        )
+
+        for user_id, credentials in candidates:
+            try:
+                await self.refresh_if_needed(user_id, credentials)
+            except Exception:
+                logger.warning(
+                    "Proactive refresh failed for credential #%s belonging to user %s",
+                    credentials.id,
+                    user_id[:12],
+                    exc_info=True,
+                )
 
     async def refresh_if_needed(
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
