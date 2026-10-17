@@ -52,6 +52,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
@@ -6526,6 +6527,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 start_index=pre_turn_message_count,
                 trace_id=langfuse_trace_id,
             )
+            stamp_turn_trace_id(session.messages, pre_turn_message_count)
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
             stamp_segment(

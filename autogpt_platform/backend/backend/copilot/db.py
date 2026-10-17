@@ -733,6 +733,8 @@ async def add_chat_messages_batch(
                         data["llmCredentialId"] = msg["llm_credential_id"]
                     if msg.get("langfuse_trace_id") is not None:
                         data["langfuseTraceId"] = msg["langfuse_trace_id"]
+                    if msg.get("trace_id") is not None:
+                        data["traceId"] = msg["trace_id"]
 
                     # Per-row bag. The single-message path already persisted
                     # this; the batch path silently dropped it, so anything
@@ -1271,6 +1273,7 @@ async def update_chat_message_stamps(
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
     langfuse_trace_id: str | None = None,
+    trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
 
@@ -1294,6 +1297,8 @@ async def update_chat_message_stamps(
         data["llmCredentialId"] = llm_credential_id
     if langfuse_trace_id is not None:
         data["langfuseTraceId"] = langfuse_trace_id
+    if trace_id is not None:
+        data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
         data=data,
