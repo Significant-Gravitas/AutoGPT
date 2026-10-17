@@ -199,7 +199,7 @@
       "context_window": 200000,
       "creator_name": "Anthropic",
       "display_name": "Claude Sonnet 4.6",
-      "max_output_tokens": 64000,
+      "max_output_tokens": 128000,
       "price_tier": 3,
       "provider": "anthropic",
       "provider_name": "Anthropic"
