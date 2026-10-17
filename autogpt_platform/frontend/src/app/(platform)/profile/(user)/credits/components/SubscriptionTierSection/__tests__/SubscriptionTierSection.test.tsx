@@ -328,10 +328,17 @@ describe("SubscriptionTierSection", () => {
       expect(mockLocation.href).toBe("https://checkout.stripe.com/pay/cs_test"),
     );
     expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(mutateFn).toHaveBeenCalledTimes(1);
 
     restoreFromBackForwardCache();
 
     expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue to checkout/i }),
+    );
+    await waitFor(() => expect(mutateFn).toHaveBeenCalledTimes(2));
     vi.unstubAllGlobals();
   });
 
