@@ -1,12 +1,18 @@
+import asyncio
 import logging
 from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
 import prisma
 import pytest
+from autogpt_libs.auth.models import User as AuthUser
 
 import backend.api.features.library.model
 import backend.api.features.store.model
+from backend.api.features.admin.diagnostics_admin_routes import (
+    StopExecutionRequest,
+    requeue_single_execution,
+)
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
@@ -15,6 +21,7 @@ from backend.blocks.io import AgentInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
 from backend.data.model import User
+from backend.executor.utils import ExecutionNotRequeuedError, add_graph_execution
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -570,6 +577,75 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     await assert_sample_graph_executions(test_graph, alt_test_user, graph_exec_id)
     logger.info("Completed test_agent_execution")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_admin_requeue_runs_a_stuck_queued_execution_once(
+    server: SpinTestServer,
+):
+    """#15282: a run whose queue message was lost sits in QUEUED for good.
+    Admin requeue must publish it again, and the run must happen exactly once
+    even when a second message for it is in flight: each node executes once,
+    so each node is charged once."""
+    test_user = await create_test_user()
+    test_graph = await create_graph(server, create_test_graph(), test_user)
+
+    # Lose the queue message: the row is QUEUED but nothing will pick it up.
+    with patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=AsyncMock(return_value=AsyncMock()),
+    ):
+        graph_exec = await server.agent_server.test_execute_graph(
+            user_id=test_user.id,
+            graph_id=test_graph.id,
+            graph_version=test_graph.version,
+            node_input={"input_1": "Hello", "input_2": "World"},
+        )
+    stuck = await execution.get_graph_execution_meta(
+        user_id=test_user.id, execution_id=graph_exec.id
+    )
+    assert stuck and stuck.status == execution.ExecutionStatus.QUEUED
+
+    admin = AuthUser(user_id="admin-user-id", email="", phone_number="", role="admin")
+    response = await requeue_single_execution(
+        StopExecutionRequest(execution_id=graph_exec.id), user=admin
+    )
+    assert response.success and response.requeued_count == 1
+
+    # A second requeue while the first message is in flight: either it is
+    # refused because the run already left QUEUED, or it publishes a duplicate
+    # that the executor must drop or skip.
+    try:
+        await add_graph_execution(
+            graph_id=test_graph.id,
+            user_id=test_user.id,
+            graph_version=test_graph.version,
+            graph_exec_id=graph_exec.id,
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+    except ExecutionNotRequeuedError:
+        pass
+
+    node_execs = await wait_execution(test_user.id, graph_exec.id, 30)
+    assert len(node_execs) == len(test_graph.nodes)
+
+    # Give a duplicate delivery time to be consumed; it must not run again.
+    for _ in range(5):
+        await asyncio.sleep(1)
+        graph_run = await execution.get_graph_execution(
+            test_user.id, graph_exec.id, include_node_executions=True
+        )
+        assert graph_run
+        assert graph_run.status == execution.ExecutionStatus.COMPLETED
+        assert len(graph_run.node_executions) == len(test_graph.nodes)
+    assert sorted(ne.node_id for ne in graph_run.node_executions) == sorted(
+        node.id for node in test_graph.nodes
+    )
+    assert all(
+        ne.status == execution.ExecutionStatus.COMPLETED
+        for ne in graph_run.node_executions
+    )
 
 
 def _run_completions(status: str) -> float:

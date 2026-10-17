@@ -101,6 +101,83 @@ def test_failed_execution_is_not_continued():
     db_client.update_graph_execution_start_time.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "status",
+    [ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE],
+)
+def test_admin_requeue_message_does_not_resume_a_parked_run(status: ExecutionStatus):
+    """The original message of a run an admin requeued may not have been lost.
+    If that run went on to park for review, the admin's duplicate must not
+    resume it."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        admin_requeue=True,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock()
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.update_graph_execution_state") as update,
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_not_called()
+    db_client.update_graph_execution_start_time.assert_not_called()
+    update.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "admin_requeue, status",
+    [
+        (False, ExecutionStatus.RUNNING),
+        (True, ExecutionStatus.QUEUED),
+        (True, ExecutionStatus.RUNNING),
+    ],
+)
+def test_redelivered_running_run_continues(
+    admin_requeue: bool, status: ExecutionStatus
+):
+    """A RUNNING run whose pod died comes back as a redelivery and must carry
+    on, whether its message was the original or an admin requeue. QUEUED is
+    the run the admin recovered."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        admin_requeue=admin_requeue,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock(
+        return_value=(
+            TimingInfo(cpu_time=0.0, wall_time=0.0),
+            ExecutionStatus.TERMINATED,
+        )
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update"),
+        patch("backend.executor.manager.update_graph_execution_state"),
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post"),
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_called_once()
+
+
 def test_execution_credit_balance_uses_organization_aware_lookup():
     execution = GraphExecutionEntry(
         user_id="user-1",

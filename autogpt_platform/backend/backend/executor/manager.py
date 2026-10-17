@@ -1046,6 +1046,19 @@ class ExecutionProcessor:
             )
             return
 
+        # An admin requeue starts a QUEUED run, or continues the RUNNING one it
+        # started when a dead pod's delivery comes back. It never resumes a
+        # run that went on to REVIEW under the original message.
+        if graph_exec.admin_requeue and exec_meta.status not in (
+            ExecutionStatus.QUEUED,
+            ExecutionStatus.RUNNING,
+        ):
+            log_metadata.warning(
+                f"Skipped admin requeue of graph execution "
+                f"{graph_exec.graph_exec_id}: it is `{exec_meta.status}`."
+            )
+            return
+
         if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
