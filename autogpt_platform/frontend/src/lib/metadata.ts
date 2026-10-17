@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 const SITE_NAME = "AutoGPT";
+// X truncates around 200 characters, the tightest of the platforms we target.
+const DESCRIPTION_MAX_LENGTH = 200;
 
 interface PageMetadataOptions {
   title: string;
@@ -23,7 +25,7 @@ export function buildPageMetadata({
   const cardImages = (images ?? []).filter(
     (image): image is string => typeof image === "string" && image.length > 0,
   );
-  const summary = description || undefined;
+  const summary = toCardDescription(description);
 
   return {
     title,
@@ -44,6 +46,19 @@ export function buildPageMetadata({
       ...(cardImages.length > 0 ? { images: cardImages } : {}),
     },
   };
+}
+
+// Unfurlers cut a long description at their own limit, mid-word; cutting on a
+// word boundary first keeps the last word of the card whole.
+function toCardDescription(description?: string | null): string | undefined {
+  const text = description?.trim();
+  if (!text) return undefined;
+  if (text.length <= DESCRIPTION_MAX_LENGTH) return text;
+
+  const clipped = text.slice(0, DESCRIPTION_MAX_LENGTH);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const body = lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped;
+  return `${body.trimEnd()}…`;
 }
 
 // Falls back rather than returning a value `new URL()` would reject: the root

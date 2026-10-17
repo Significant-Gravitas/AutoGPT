@@ -88,11 +88,12 @@ describe("generateMetadata", () => {
     );
   });
 
-  test("previews the agent's own name, description and image", async () => {
+  test("previews the agent's own name, sub-heading and image", async () => {
     mockGetSpecificAgent.mockResolvedValue({
       data: {
         agent_name: "An Agent",
-        description: "What the agent does",
+        sub_heading: "Summarises yesterday's runs",
+        description: "- a bullet\n- another bullet\nand a long tail",
         agent_image: ["https://cdn.example.com/agent.png"],
       },
     });
@@ -103,12 +104,35 @@ describe("generateMetadata", () => {
 
     expect(metadata.title).toBe("An Agent - AutoGPT Marketplace");
     expect(metadata.openGraph?.title).toBe("An Agent - AutoGPT Marketplace");
-    expect(metadata.openGraph?.description).toBe("What the agent does");
+    expect(metadata.openGraph?.description).toBe("Summarises yesterday's runs");
     expect(metadata.openGraph?.images).toEqual([
       "https://cdn.example.com/agent.png",
     ]);
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
   });
+
+  test.each([
+    ["missing", undefined],
+    ["empty", ""],
+  ])(
+    "falls back to the agent name when sub_heading is %s",
+    async (_label, sub_heading) => {
+      mockGetSpecificAgent.mockResolvedValue({
+        data: {
+          agent_name: "An Agent",
+          sub_heading,
+          description: "The long listing description",
+          agent_image: [],
+        },
+      });
+
+      const metadata = await generateMetadata({
+        params: Promise.resolve(params),
+      });
+
+      expect(metadata.openGraph?.description).toBe("An Agent");
+    },
+  );
 
   test("uses only the first image when the listing carries several", async () => {
     mockGetSpecificAgent.mockResolvedValue({
