@@ -59,7 +59,9 @@ def card_for(row: PendingHumanReviewModel) -> CardView:
     reason = _reason_line(payload)
     if reason:
         lines.append(reason)
-    passage = str(payload.get("passage") or "")[:_PASSAGE_CHARS]
+    # A held read with no quotable passage shows what was flagged instead.
+    passage = str(payload.get("passage") or payload.get("excerpt") or "")
+    passage = passage[:_PASSAGE_CHARS]
     if _is_held_read(payload) and passage:
         lines.append("\n".join(f"> {line}" for line in passage.splitlines()))
     return CardView(
@@ -144,6 +146,11 @@ def _reason_line(payload: dict[str, Any]) -> str | None:
     if _is_held_read(payload) and payload.get("judged") is False:
         return (
             f"{AUTOPILOT_NAME} could not check this, so he asks. "
+            f"{reader} hasn't seen it."
+        )
+    if _is_held_read(payload) and not payload.get("passage"):
+        return (
+            "A check flagged this, but couldn't point to an instruction in it. "
             f"{reader} hasn't seen it."
         )
     if _is_held_read(payload):

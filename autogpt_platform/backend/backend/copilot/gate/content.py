@@ -106,6 +106,8 @@ class ContentVerdict(BaseModel):
     held: bool
     passage: str = ""
     judged: bool = True
+    # What a first-stage hold flagged, for the card when no passage could be quoted.
+    excerpt: str = ""
 
 
 async def judge_content(
@@ -126,7 +128,7 @@ async def judge_content(
     quoted = await _llm_verdict(source, first.chunk, (), flagged=True)
     if quoted.held and quoted.judged and quoted.passage != _NO_PASSAGE:
         return quoted
-    return ContentVerdict(held=True, passage=_FLAGGED_UNQUOTED)
+    return ContentVerdict(held=True, passage=_FLAGGED_UNQUOTED, excerpt=first.chunk)
 
 
 class JevContentVerdict(BaseModel):
