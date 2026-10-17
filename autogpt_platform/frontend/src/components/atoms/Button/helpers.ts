@@ -21,7 +21,7 @@ export const extendedButtonVariants = cva(
         destructive:
           "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
         outline:
-          "bg-transparent border-[#a6a6a6] text-black hover:bg-zinc-100 hover:border-[#a6a6a6] rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
+          "bg-transparent border-outlineBorder text-black hover:bg-zinc-100 hover:border-outlineBorder rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
         icon: "bg-white text-zinc-800 border border-zinc-200 shadow-sm hover:bg-zinc-50 hover:border-zinc-300 rounded-[96px] disabled:shadow-none disabled:opacity-1 !min-w-0",
@@ -49,7 +49,7 @@ export const extendedButtonVariants = cva(
       {
         variant: "outline",
         size: ["xs", "icon-xs", "icon-sm"],
-        class: "border-[#a6a6a6] hover:border-[#a6a6a6]",
+        class: "border-outlineBorder hover:border-outlineBorder",
       },
       {
         variant: "icon",
