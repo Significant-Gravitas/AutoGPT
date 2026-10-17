@@ -15,7 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from graphiti_core.llm_client import LLMConfig
 
-from backend.copilot.graphiti.reranker import DEFAULT_MODEL, CompatOpenAIRerankerClient
+from backend.copilot.graphiti import client as client_mod
+from backend.copilot.graphiti.config import GraphitiConfig
+from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
 
 
 def _logprob_response(token: str, logprob: float) -> SimpleNamespace:
@@ -105,27 +107,30 @@ async def test_rank_handles_empty_logprobs_without_desync():
     assert dict(ranked)["no_response"] == 0.0
 
 
-def test_default_model_is_gpt_4_1_mini():
-    assert DEFAULT_MODEL == "gpt-4.1-mini"
-
-
 @pytest.mark.asyncio
-async def test_rank_falls_back_to_default_model_when_config_omits_model():
+@pytest.mark.parametrize(
+    "model, expected_model",
+    [
+        (None, "gpt-4.1-mini"),
+        ("", "gpt-4.1-mini"),
+        ("custom-reranker", "custom-reranker"),
+    ],
+)
+async def test_rank_uses_configured_model_or_default(model, expected_model):
     client, captured = _client_with([_logprob_response("True", -0.1)])
     reranker = CompatOpenAIRerankerClient(
-        config=LLMConfig(api_key="k", model=""), client=client
+        config=LLMConfig(api_key="k", model=model), client=client
     )
 
     await reranker.rank("query", ["passage"])
 
-    assert captured[0]["model"] == "gpt-4.1-mini"
+    assert captured[0]["model"] == expected_model
 
 
-def test_build_graphiti_uses_compat_reranker(mocker):
+@pytest.mark.asyncio
+async def test_build_graphiti_uses_compat_reranker(mocker):
     """client.py must construct the patched reranker, not the stock
     one — otherwise the 400s come back on the next refactor."""
-    from backend.copilot.graphiti import client as client_mod
-
     captured: dict = {}
 
     class _FakeGraphiti:
@@ -133,11 +138,26 @@ def test_build_graphiti_uses_compat_reranker(mocker):
             captured.update(kwargs)
 
     mocker.patch("graphiti_core.Graphiti", _FakeGraphiti)
-    mocker.patch(
-        "backend.copilot.graphiti.falkordb_driver.AutoGPTFalkorDriver",
-        MagicMock(),
+    mocker.patch.object(
+        client_mod,
+        "graphiti_config",
+        GraphitiConfig.model_construct(
+            llm_api_key="k", llm_base_url="https://openrouter.ai/api/v1"
+        ),
     )
 
-    client_mod._build_graphiti("user_test", llm_client=MagicMock())
+    client_mod._build_graphiti(
+        "user_test",
+        llm_client=MagicMock(),
+        embedder=MagicMock(),
+        graph_driver=MagicMock(),
+    )
 
-    assert isinstance(captured["cross_encoder"], CompatOpenAIRerankerClient)
+    reranker = captured["cross_encoder"]
+    assert isinstance(reranker, CompatOpenAIRerankerClient)
+    client, requests = _client_with([_logprob_response("True", -0.1)])
+    reranker.client = client
+
+    await reranker.rank("query", ["passage"])
+
+    assert requests[0]["model"] == "gpt-4.1-mini"
