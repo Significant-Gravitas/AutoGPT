@@ -13,6 +13,8 @@ from fastapi import WebSocket
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
+    WS_CLOSE_EVENT_STREAM_LOST,
+    WS_CLOSE_EVENT_STREAM_LOST_REASON,
     ConnectionManager,
     _graph_execs_channel_key,
     event_bus_channel,
@@ -27,7 +29,13 @@ from backend.data.execution import (
     exec_channel,
     graph_all_channel,
 )
-from backend.util.testing import is_tcp_port_reachable
+from backend.util.testing import (
+    ShardProxy,
+    is_tcp_port_reachable,
+    shard_proxies_routed,
+    shard_subscribers,
+    spublish_on_shard,
+)
 
 
 def _has_live_cluster() -> bool:
@@ -377,3 +385,106 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
         redis_client.disconnect()
+
+
+@pytest.fixture
+async def shard_proxies(monkeypatch):
+    async with shard_proxies_routed(monkeypatch) as proxy_for:
+        yield proxy_for
+
+
+async def _subscribe_through_proxy(
+    monkeypatch, shard_proxies, user_id: str
+) -> tuple[ConnectionManager, AsyncMock, list[str], str, str, str, ShardProxy]:
+    graph_id = f"graph-{uuid4().hex[:8]}"
+    exec_id = f"exec-{uuid4().hex[:8]}"
+
+    async def _fake_meta(_uid, gex_id):
+        return _meta(user_id, graph_id, gex_id)
+
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    chan = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
+    proxy = await shard_proxies(chan)
+
+    cm = ConnectionManager()
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    sent: list[str] = []
+    ws.send_text = AsyncMock(side_effect=lambda m: sent.append(m))
+    await cm.subscribe_graph_exec(user_id=user_id, graph_exec_id=exec_id, websocket=ws)
+    return cm, ws, sent, chan, graph_id, exec_id, proxy
+
+
+@pytest.mark.asyncio
+async def test_subscribe_returns_only_once_redis_has_the_subscription(
+    monkeypatch, shard_proxies
+) -> None:
+    """The subscribe ack the client waits for before refetching must mean the
+    shard already holds the SSUBSCRIBE, or an event between the refetch and
+    the subscription would be lost."""
+    user_id = "user-conn-int-7"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    try:
+        assert shard_subscribers(proxy.upstream, chan) == 1
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
+
+
+@pytest.mark.asyncio
+async def test_an_event_lost_in_a_brief_redis_blip_never_goes_unnoticed(
+    monkeypatch, shard_proxies
+) -> None:
+    """A blip short enough for redis-py to reconnect by itself must still
+    close the socket: the one COMPLETED published while the connection was
+    down is gone, and only a client reconnect + refetch recovers it. A
+    silently resubscribed socket would show the run as running forever."""
+    user_id = "user-conn-int-5"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    completed = _graph_event_payload(
+        user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker="done"
+    ).decode()
+    try:
+        await proxy.stop()
+        assert await _wait_until(
+            lambda: shard_subscribers(proxy.upstream, chan) == 0, timeout=5.0
+        ), "the shard never noticed the dropped subscriber"
+        # Published exactly once, with nobody subscribed: Redis drops it.
+        assert spublish_on_shard(proxy.upstream, chan, completed) == 0
+        await proxy.start()
+
+        assert await _wait_until(
+            lambda: ws.close.await_count > 0, timeout=20.0, interval=0.1
+        ), "socket stayed open after silently losing an event"
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+        )
+        assert sent == []
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
+
+
+@pytest.mark.asyncio
+async def test_socket_is_closed_when_its_shard_stays_unreachable(
+    monkeypatch, shard_proxies
+) -> None:
+    """When the shard stays unreachable, the server must close the socket so
+    the client reconnects and resubscribes, instead of answering heartbeats on
+    a socket that will never receive another event."""
+    user_id = "user-conn-int-6"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    try:
+        await proxy.stop()
+
+        assert await _wait_until(
+            lambda: ws.close.await_count > 0, timeout=30.0, interval=0.1
+        ), "socket was left open with a dead event stream"
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+        )
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)

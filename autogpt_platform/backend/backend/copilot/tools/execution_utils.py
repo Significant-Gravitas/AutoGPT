@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 
 from backend.blocks import get_block
 from backend.data.db_accessors import execution_db
+from backend.data.event_bus import EventStreamLostError
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -38,7 +39,7 @@ PAUSED_STATUSES = frozenset(
 # Statuses that mean "stop waiting" (terminal or paused)
 STOP_WAITING_STATUSES = TERMINAL_STATUSES | PAUSED_STATUSES
 
-_POST_SUBSCRIBE_RECHECK_DELAY = 0.1  # seconds to wait for subscription to establish
+_RESUBSCRIBE_DELAY = 1.0  # seconds between resubscribes while Redis is down
 
 
 async def wait_for_execution(
@@ -139,47 +140,67 @@ async def _subscribe_and_wait(
     To avoid the race condition where the execution completes between the
     initial DB check and the Redis subscription, we:
     1. Start listening (which subscribes internally)
-    2. Re-check the DB after subscription is active
+    2. Re-check the DB once Redis has confirmed the subscription
     3. If still running, wait for pubsub events
     """
-    listen_iter = event_bus.listen_events(channel_key).__aiter__()
+    subscribed = asyncio.Event()
+    listen_iter = event_bus.listen_events(
+        channel_key, on_subscribed=subscribed.set
+    ).__aiter__()
 
     done = asyncio.Event()
     result_execution: GraphExecution | None = None
 
-    async def _consume() -> None:
+    async def _recheck_when(subscribed: asyncio.Event) -> None:
         nonlocal result_execution
-        try:
-            async for event in listen_iter:
-                if isinstance(event, GraphExecutionEvent):
-                    logger.debug(f"Received execution update: {event.status}")
-                    if event.status in STOP_WAITING_STATUSES:
-                        result_execution = await exec_db.get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution_id,
-                            include_node_executions=False,
-                        )
-                        done.set()
-                        return
-        except Exception as e:
-            logger.error(f"Error in execution consumer: {e}", exc_info=True)
+        await subscribed.wait()
+        execution = await exec_db.get_graph_execution(
+            user_id=user_id,
+            execution_id=execution_id,
+            include_node_executions=False,
+        )
+        if execution and execution.status in STOP_WAITING_STATUSES:
+            result_execution = execution
             done.set()
 
-    consume_task = asyncio.create_task(_consume())
-    task_holder.append(consume_task)
+    async def _consume() -> None:
+        nonlocal result_execution
+        events = listen_iter
+        while True:
+            try:
+                async for event in events:
+                    if isinstance(event, GraphExecutionEvent):
+                        logger.debug(f"Received execution update: {event.status}")
+                        if event.status in STOP_WAITING_STATUSES:
+                            result_execution = await exec_db.get_graph_execution(
+                                user_id=user_id,
+                                execution_id=execution_id,
+                                include_node_executions=False,
+                            )
+                            done.set()
+                            return
+            except EventStreamLostError as e:
+                # Events sent while the stream was down are gone: listen
+                # again, then check the database.
+                logger.warning(f"Execution {execution_id} event stream lost: {e}")
+            except Exception as e:
+                logger.error(f"Error in execution consumer: {e}", exc_info=True)
+                done.set()
+                return
+            await asyncio.sleep(_RESUBSCRIBE_DELAY)
+            resubscribed = asyncio.Event()
+            events = event_bus.listen_events(
+                channel_key, on_subscribed=resubscribed.set
+            ).__aiter__()
+            # Checked only once the new subscription is live, so a status
+            # change can't fall between the check and the subscription.
+            task_holder.append(asyncio.create_task(_recheck_when(resubscribed)))
 
-    # Give the subscription a moment to establish, then re-check DB
-    await asyncio.sleep(_POST_SUBSCRIBE_RECHECK_DELAY)
+    task_holder.append(asyncio.create_task(_consume()))
+    task_holder.append(asyncio.create_task(_recheck_when(subscribed)))
 
-    execution = await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
-    )
-    if execution and execution.status in STOP_WAITING_STATUSES:
-        return execution
-
-    # Wait for the pubsub consumer to find a terminal event
+    # Done when the confirmed-subscription DB check or a pubsub event finds a
+    # terminal status.
     await done.wait()
     return result_execution
 

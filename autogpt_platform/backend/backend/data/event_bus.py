@@ -1,32 +1,32 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    AsyncGenerator,
-    Generator,
-    Generic,
-    Optional,
-    TypeVar,
-)
+from contextlib import aclosing
+from typing import Any, AsyncGenerator, Callable, Generator, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
+from redis.exceptions import RedisError
 
 from backend.data import redis_client as redis
 from backend.util import json
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as AsyncRedis
 
 logger = logging.getLogger(__name__)
 config = Settings().config
 
 
 M = TypeVar("M", bound=BaseModel)
+
+# Opening a shard-pinned subscription retries for minutes while Redis is down;
+# give up sooner so the listener's owner can react.
+_LISTEN_OPEN_TIMEOUT_S = 15.0
+
+
+class EventStreamLostError(Exception):
+    """An event stream stopped delivering. Pub/sub keeps no history, so events
+    published meanwhile are gone: resubscribe and refetch current state."""
 
 
 def _assert_no_wildcard(channel_key: str) -> None:
@@ -174,7 +174,12 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         except Exception:
             logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
-    async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
+    async def listen_events(
+        self, channel_key: str, on_subscribed: Callable[[], None] | None = None
+    ) -> AsyncGenerator[M, None]:
+        """Yield the channel's events. ``on_subscribed`` runs once Redis has
+        confirmed the subscription: state read after it can't miss an event,
+        so that is the moment to (re)fetch."""
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
 
@@ -182,17 +187,24 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         # a plain AsyncRedis to that node. Both client and pubsub stay
         # generator-local — concurrent listen_events on the same instance
         # (e.g. the singleton _webhook_event_bus) must not share state.
-        client: "AsyncRedis" = await redis.connect_sharded_pubsub_async(
-            full_channel_name
-        )
-        pubsub: AsyncPubSub = client.pubsub()
+        # Confirmed SSUBSCRIBE on a connection that never reconnects silently:
+        # a drop surfaces below instead of quietly losing events.
         try:
-            await pubsub.execute_command("SSUBSCRIBE", full_channel_name)
-            # redis-py 6.x async PubSub.listen() exits when ``channels`` is
-            # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
-            pubsub.channels[full_channel_name] = None  # type: ignore[index]
-            async for message in pubsub.listen():
-                if event := self._deserialize_message(message, channel_key):
+            client, pubsub = await asyncio.wait_for(
+                redis.subscribe_sharded_async(full_channel_name),
+                _LISTEN_OPEN_TIMEOUT_S,
+            )
+        except (asyncio.TimeoutError, ConnectionError, OSError, RedisError) as e:
+            raise EventStreamLostError(
+                f"could not subscribe to {full_channel_name}: {e!r}"
+            ) from e
+        try:
+            if on_subscribed is not None:
+                on_subscribed()
+            async with aclosing(
+                self._listen_subscribed(pubsub, full_channel_name, channel_key)
+            ) as events:
+                async for event in events:
                     yield event
         finally:
             try:
@@ -206,6 +218,24 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                     "Failed to close shard-pinned Redis connection", exc_info=True
                 )
 
+    async def _listen_subscribed(
+        self, pubsub: AsyncPubSub, full_channel_name: str, channel_key: str
+    ) -> AsyncGenerator[M, None]:
+        try:
+            async for message in pubsub.listen():
+                # Server-pushed sunsubscribe: the slot moved to another shard.
+                if message["type"] == "sunsubscribe":
+                    raise EventStreamLostError(
+                        f"shard revoked the subscription to {full_channel_name}"
+                    )
+                if event := self._deserialize_message(message, channel_key):
+                    yield event
+        except (asyncio.TimeoutError, ConnectionError, OSError, RedisError) as e:
+            raise EventStreamLostError(
+                f"event stream {full_channel_name} lost: {e!r}"
+            ) from e
+        raise EventStreamLostError(f"event stream {full_channel_name} ended")
+
     async def wait_for_event(
         self, channel_key: str, timeout: Optional[float] = None
     ) -> M | None:
@@ -214,4 +244,11 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                 anext(aiter(self.listen_events(channel_key))), timeout
             )
         except TimeoutError:
+            return None
+        except EventStreamLostError:
+            logger.warning(
+                "Event stream for %s lost while waiting for an event",
+                channel_key,
+                exc_info=True,
+            )
             return None

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from backend.data.event_bus import (
     AsyncRedisEventBus,
+    EventStreamLostError,
     RedisEventBus,
     _assert_no_wildcard,
 )
@@ -393,11 +394,12 @@ async def test_async_listen_events_swallows_aclose_errors():
     fake_client.aclose = AsyncMock(side_effect=RuntimeError("client broke"))
 
     with patch(
-        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
+        "backend.data.event_bus.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(fake_client, fake_pubsub)),
     ):
-        async for _ in bus.listen_events("chan"):
-            pass  # pragma: no cover — never yields
+        with pytest.raises(EventStreamLostError):
+            async for _ in bus.listen_events("chan"):
+                pass  # pragma: no cover — never yields
 
     # Both aclose attempts must have run despite raising.
     fake_pubsub.aclose.assert_awaited_once()
@@ -436,17 +438,18 @@ async def test_async_listen_events_concurrent_does_not_share_state():
         return pubsub, client
 
     async def _factory(_chan: str):
-        _, client = _make_pair()
-        return client
+        pubsub, client = _make_pair()
+        return client, pubsub
 
     with patch(
-        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
+        "backend.data.event_bus.redis.subscribe_sharded_async",
         AsyncMock(side_effect=_factory),
     ):
 
         async def _run():
-            async for _ in bus.listen_events("chan"):
-                pass  # pragma: no cover — never yields
+            with pytest.raises(EventStreamLostError):
+                async for _ in bus.listen_events("chan"):
+                    pass  # pragma: no cover — never yields
 
         task_a = asyncio.create_task(_run())
         task_b = asyncio.create_task(_run())
@@ -509,8 +512,8 @@ async def test_async_listen_events_closes_on_exception():
     fake_client.aclose = AsyncMock()
 
     with patch(
-        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
+        "backend.data.event_bus.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(fake_client, fake_pubsub)),
     ):
         with pytest.raises(_Boom):
             async for _ in bus.listen_events("chan"):
@@ -519,3 +522,101 @@ async def test_async_listen_events_closes_on_exception():
     # close() must have fired (both aclose calls).
     fake_pubsub.aclose.assert_awaited_once()
     fake_client.aclose.assert_awaited_once()
+
+
+async def _listen_until_lost(listen) -> EventStreamLostError:
+    """Run listen_events over a pubsub whose listen() is ``listen`` and
+    return the error it ended with."""
+    pubsub = MagicMock()
+    pubsub.aclose = AsyncMock()
+    pubsub.listen = listen
+    client = MagicMock()
+    client.aclose = AsyncMock()
+    with patch(
+        "backend.data.event_bus.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(client, pubsub)),
+    ):
+        with pytest.raises(EventStreamLostError) as lost:
+            async for _ in _BusUnderTest().listen_events("chan"):
+                pass
+    pubsub.aclose.assert_awaited_once()
+    client.aclose.assert_awaited_once()
+    return lost.value
+
+
+@pytest.mark.asyncio
+async def test_async_listen_events_raises_when_the_shard_revokes_it():
+    """A server-pushed sunsubscribe (slot moved) means nothing more arrives."""
+
+    async def _listen():
+        yield {"type": "sunsubscribe", "data": 0}
+
+    assert "revoked" in str(await _listen_until_lost(_listen))
+
+
+@pytest.mark.asyncio
+async def test_async_listen_events_raises_when_the_connection_drops():
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    async def _listen():
+        raise RedisConnectionError("Connection closed by server.")
+        yield  # pragma: no cover — unreachable
+
+    assert isinstance(
+        (await _listen_until_lost(_listen)).__cause__, RedisConnectionError
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_listen_events_raises_when_it_cannot_subscribe():
+    async def _hang(_channel: str):
+        await asyncio.sleep(10)
+
+    with (
+        patch("backend.data.event_bus.redis.subscribe_sharded_async", _hang),
+        patch("backend.data.event_bus._LISTEN_OPEN_TIMEOUT_S", 0.05),
+    ):
+        with pytest.raises(EventStreamLostError):
+            async for _ in _BusUnderTest().listen_events("chan"):
+                pass  # pragma: no cover — never yields
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_event_returns_none_when_the_stream_is_lost():
+    async def _lost(self, channel_key):
+        raise EventStreamLostError("gone")
+        yield  # pragma: no cover — unreachable
+
+    with patch.object(_BusUnderTest, "listen_events", _lost):
+        assert await _BusUnderTest().wait_for_event("chan", timeout=1) is None
+
+
+@pytest.mark.asyncio
+async def test_async_listen_events_reports_the_confirmed_subscription_first():
+    """on_subscribed fires once the subscription is confirmed and before any
+    event, so a refetch started from it can't miss one."""
+    order: list[str] = []
+    message = _BusUnderTest().Message(payload=SampleEvent(message="hi"))
+
+    async def _subscribe(_channel: str):
+        order.append("subscribed")
+        return client, pubsub
+
+    async def _listen():
+        yield {"type": "smessage", "data": message.model_dump_json()}
+        raise ConnectionError("dropped")
+
+    pubsub = MagicMock()
+    pubsub.aclose = AsyncMock()
+    pubsub.listen = _listen
+    client = MagicMock()
+    client.aclose = AsyncMock()
+
+    with patch("backend.data.event_bus.redis.subscribe_sharded_async", _subscribe):
+        with pytest.raises(EventStreamLostError):
+            async for _ in _BusUnderTest().listen_events(
+                "chan", on_subscribed=lambda: order.append("on_subscribed")
+            ):
+                order.append("event")
+
+    assert order == ["subscribed", "on_subscribed", "event"]

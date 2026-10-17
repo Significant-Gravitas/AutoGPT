@@ -157,6 +157,9 @@ export function useSidebarRunsList({
       // queries for this specific graph's executions
       queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
     },
+    onSubscribed: () => {
+      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+    },
   });
 
   // Notify parent about counts and loading state

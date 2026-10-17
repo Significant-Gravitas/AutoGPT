@@ -7,11 +7,16 @@ import { COPILOT_COMPLETION_NOTIFICATION } from "../helpers";
 
 type WSHandler = (notification: unknown) => void;
 let capturedHandler: WSHandler | null = null;
+let capturedConnectHandler: (() => void) | null = null;
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: () => ({
     onWebSocketMessage: (_event: string, handler: WSHandler) => {
       capturedHandler = handler;
+      return () => {};
+    },
+    onWebSocketConnect: (handler: () => void) => {
+      capturedConnectHandler = handler;
       return () => {};
     },
   }),
@@ -106,6 +111,30 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
 
     await waitFor(() => {
       expect(NotificationCtor).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("useCopilotNotifications — reconnect", () => {
+  it("refetches the session list every time the socket opens", () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    }
+    renderHook(() => useCopilotNotifications(null), { wrapper: Wrapper });
+
+    // A completion before the first connect, or while the socket was down,
+    // is never delivered.
+    act(() => capturedConnectHandler?.());
+    act(() => capturedConnectHandler?.());
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["copilot", "session-list"],
     });
   });
 });

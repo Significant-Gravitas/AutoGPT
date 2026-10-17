@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { getAdminMock } from "@/app/api/__generated__/endpoints/admin/admin.msw";
 import { getAnalyticsMock } from "@/app/api/__generated__/endpoints/analytics/analytics.msw";
 import { getApiKeysMock } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
@@ -89,4 +90,8 @@ export const mockHandlers = [
   ...getSkillsMock(),
   ...getStoreMock(),
   ...getWorkspaceMock(),
+  // No session token: page tests run without a live WebSocket (the client
+  // treats a 401 as signed out and doesn't connect). Tests that need a
+  // socket stub the token themselves.
+  http.get("*/api/auth/token", () => new HttpResponse(null, { status: 401 })),
 ];

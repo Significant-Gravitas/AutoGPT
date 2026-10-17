@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Optional
 
 from backend.blocks._base import (
@@ -10,10 +12,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockType,
 )
+from backend.data.event_bus import EventStreamLostError
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     ExecutionTrigger,
+    GraphExecutionEvent,
     NodesInputMasks,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
@@ -21,9 +25,24 @@ from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
 
 if TYPE_CHECKING:
+    from backend.data.execution import (
+        ExecutionEvent,
+        GraphExecution,
+        NodeExecutionResult,
+    )
     from backend.executor.utils import LogMetadata
 
 _logger = logging.getLogger(__name__)
+
+TERMINAL_STATUSES = (
+    ExecutionStatus.COMPLETED,
+    ExecutionStatus.TERMINATED,
+    ExecutionStatus.FAILED,
+)
+# How long the sub-agent's stream may stay quiet before the database is
+# checked, bounding how long a missed completion can leave this block waiting.
+_QUIET_STREAM_RECHECK_S = 30.0
+_RESUBSCRIBE_DELAY_S = 1.0
 
 
 class AgentExecutorBlock(Block):
@@ -149,81 +168,172 @@ class AgentExecutorBlock(Block):
         user_id: str,
         logger: "LogMetadata",
     ) -> BlockOutput:
+        log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
+        logger.info(f"Starting execution of {log_id}")
+        yielded_node_exec_ids: set[str] = set()
 
-        from backend.blocks import get_block
-        from backend.data.execution import ExecutionEventType
+        # This block has no execution timeout, so the sub-agent's completion
+        # must not hinge on a single pub/sub message: whenever the stream is
+        # lost or goes quiet, the database says where the sub-agent is.
+        events: asyncio.Queue["ExecutionEvent | Exception | None"] = asyncio.Queue()
+        reader = asyncio.create_task(
+            self._read_events(events, user_id, graph_id, graph_exec_id, log_id, logger)
+        )
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(
+                        events.get(), _QUIET_STREAM_RECHECK_S
+                    )
+                except asyncio.TimeoutError:
+                    event = None
+
+                if isinstance(event, Exception):
+                    raise event
+
+                if event is None:
+                    outputs, finished = await self._catch_up(
+                        user_id, graph_exec_id, yielded_node_exec_ids, log_id, logger
+                    )
+                    for output in outputs:
+                        yield output
+                    if finished is not None:
+                        self._record_sub_graph_stats(finished.stats)
+                        return
+                    continue
+
+                if event.status not in TERMINAL_STATUSES:
+                    logger.info(
+                        f"Execution {log_id} skipping event {event.event_type} status={event.status} "
+                        f"node={getattr(event, 'node_exec_id', '?')}"
+                    )
+                    continue
+
+                if isinstance(event, GraphExecutionEvent):
+                    logger.info(
+                        f"Execution {log_id} graph completed with status {event.status}, "
+                        f"yielded {len(yielded_node_exec_ids)} outputs"
+                    )
+                    self._record_sub_graph_stats(event.stats)
+                    return
+
+                for output in self._outputs_of(
+                    event, yielded_node_exec_ids, log_id, logger
+                ):
+                    yield output
+        finally:
+            reader.cancel()
+            with suppress(asyncio.CancelledError):
+                await reader
+
+    async def _read_events(
+        self,
+        events: asyncio.Queue["ExecutionEvent | Exception | None"],
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+        log_id: str,
+        logger: "LogMetadata",
+    ) -> None:
+        """Feed the sub-agent's events into ``events``, resubscribing whenever
+        the stream is lost; ``None`` marks a gap to catch up on. Any other
+        error is handed to ``_run`` to raise rather than retried."""
         from backend.executor import utils as execution_utils
 
         event_bus = execution_utils.get_async_execution_event_bus()
+        while True:
+            try:
+                # Once subscribed, a catch-up from the database can't miss
+                # anything: earlier events are stored, later ones stream in.
+                async for event in event_bus.listen(
+                    user_id=user_id,
+                    graph_id=graph_id,
+                    graph_exec_id=graph_exec_id,
+                    on_subscribed=lambda: events.put_nowait(None),
+                ):
+                    events.put_nowait(event)
+            except EventStreamLostError as e:
+                logger.warning(f"Execution {log_id} lost its event stream: {e}")
+            except Exception as e:
+                events.put_nowait(e)
+                return
+            await asyncio.sleep(_RESUBSCRIBE_DELAY_S)
 
-        log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
-        logger.info(f"Starting execution of {log_id}")
-        yielded_node_exec_ids = set()
+    async def _catch_up(
+        self,
+        user_id: str,
+        graph_exec_id: str,
+        yielded_node_exec_ids: set[str],
+        log_id: str,
+        logger: "LogMetadata",
+    ) -> tuple[list[tuple[str, Any]], "GraphExecution | None"]:
+        """Outputs the stream may have missed, and the sub-agent's execution
+        if it has finished."""
+        from backend.util.clients import get_database_manager_async_client
 
-        async for event in event_bus.listen(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_exec_id=graph_exec_id,
-        ):
-            if event.status not in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.TERMINATED,
-                ExecutionStatus.FAILED,
-            ]:
-                logger.info(
-                    f"Execution {log_id} skipping event {event.event_type} status={event.status} "
-                    f"node={getattr(event, 'node_exec_id', '?')}"
-                )
-                continue
-
-            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
-                # If the graph execution is COMPLETED, TERMINATED, or FAILED,
-                # we can stop listening for further events.
-                logger.info(
-                    f"Execution {log_id} graph completed with status {event.status}, "
-                    f"yielded {len(yielded_node_exec_ids)} outputs"
-                )
-                self.merge_stats(
-                    NodeExecutionStats(
-                        # Sub-graph already debited each of its own nodes; we
-                        # roll up its total so graph_stats.cost reflects the
-                        # full sub-graph spend.
-                        reconciled_cost_delta=(event.stats.cost if event.stats else 0),
-                        extra_steps=event.stats.node_exec_count if event.stats else 0,
-                    )
-                )
-                break
-
-            logger.debug(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+        db = get_database_manager_async_client()
+        graph_exec = await db.get_graph_execution(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        if graph_exec is None:
+            return [], None
+        finished = graph_exec.status in TERMINAL_STATUSES
+        # Ownership was checked above; node rows belong to that execution.
+        nodes = await db.get_node_executions(
+            graph_exec_id=graph_exec_id, statuses=[ExecutionStatus.COMPLETED]
+        )
+        outputs = [
+            output
+            for node in nodes
+            for output in self._outputs_of(node, yielded_node_exec_ids, log_id, logger)
+        ]
+        if finished:
+            logger.info(
+                f"Execution {log_id} found finished ({graph_exec.status}) "
+                "in the database"
             )
+        return outputs, graph_exec if finished else None
 
-            if event.node_exec_id in yielded_node_exec_ids:
-                logger.warning(
-                    f"{log_id} received duplicate event for node execution {event.node_exec_id}"
-                )
-                continue
-            else:
-                yielded_node_exec_ids.add(event.node_exec_id)
+    def _outputs_of(
+        self,
+        node: "NodeExecutionResult",
+        yielded_node_exec_ids: set[str],
+        log_id: str,
+        logger: "LogMetadata",
+    ) -> list[tuple[str, Any]]:
+        from backend.blocks import get_block
 
-            if not event.block_id:
-                logger.warning(f"{log_id} received event without block_id {event}")
-                continue
+        if node.node_exec_id in yielded_node_exec_ids:
+            logger.debug(f"{log_id} already yielded node execution {node.node_exec_id}")
+            return []
+        yielded_node_exec_ids.add(node.node_exec_id)
 
-            block = get_block(event.block_id)
-            if not block or block.block_type != BlockType.OUTPUT:
-                continue
+        if not node.block_id:
+            logger.warning(f"{log_id} received event without block_id {node}")
+            return []
 
-            output_name = event.input_data.get("name")
-            if not output_name:
-                logger.warning(f"{log_id} produced an output with no name {event}")
-                continue
+        block = get_block(node.block_id)
+        if not block or block.block_type != BlockType.OUTPUT:
+            return []
 
-            for output_data in event.output_data.get("output", []):
-                logger.debug(
-                    f"Execution {log_id} produced {output_name}: {output_data}"
-                )
-                yield output_name, output_data
+        output_name = node.input_data.get("name")
+        if not output_name:
+            logger.warning(f"{log_id} produced an output with no name {node}")
+            return []
+
+        logger.debug(f"Execution {log_id} produced {output_name}")
+        return [(output_name, data) for data in node.output_data.get("output", [])]
+
+    def _record_sub_graph_stats(self, stats: "GraphExecution.Stats | None") -> None:
+        self.merge_stats(
+            NodeExecutionStats(
+                # Sub-graph already debited each of its own nodes; we
+                # roll up its total so graph_stats.cost reflects the
+                # full sub-graph spend.
+                reconciled_cost_delta=(stats.cost if stats else 0),
+                extra_steps=stats.node_exec_count if stats else 0,
+            )
+        )
 
     @func_retry
     async def _stop(
