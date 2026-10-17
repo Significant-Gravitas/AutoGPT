@@ -337,6 +337,7 @@ export function useChatSession({
       else {
         const request = JSON.stringify(sessionData);
         if (pendingCreateRef.current?.request !== request) {
+          // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
           pendingCreateRef.current = { id: uuidv4({}), request };
         }
         sessionData.session_id = pendingCreateRef.current.id;
