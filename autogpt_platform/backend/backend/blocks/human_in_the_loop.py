@@ -133,30 +133,35 @@ class HumanInTheLoopBlock(Block):
         execution_context: ExecutionContext,
         **_kwargs,
     ) -> BlockOutput:
-        if not execution_context.human_in_the_loop_safe_mode:
-            logger.info(
-                f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
+        if execution_context.human_in_the_loop_safe_mode:
+            decision = await self.handle_review_decision(
+                input_data=input_data.data,
+                user_id=user_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                block_name=input_data.name,  # Use user-provided name instead of block type
+                editable=input_data.editable,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
             )
-            yield "approved_data", input_data.data
-            yield "review_message", "Auto-approved (safe mode disabled)"
-            return
-
-        decision = await self.handle_review_decision(
-            input_data=input_data.data,
-            user_id=user_id,
-            node_id=node_id,
-            node_exec_id=node_exec_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            block_name=input_data.name,  # Use user-provided name instead of block type
-            editable=input_data.editable,
-            organization_id=execution_context.organization_id,
-            team_id=execution_context.team_id,
-        )
-
-        if decision is None:
-            return
+            if decision is None:
+                return
+        else:
+            # Safe mode switched off after this node was held for review: the
+            # answer the human already gave still decides which branch runs.
+            decision = await HITLReviewHelper.get_existing_decision(
+                node_exec_id=node_exec_id, user_id=user_id
+            )
+            if decision is None:
+                logger.info(
+                    f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
+                )
+                yield "approved_data", input_data.data
+                yield "review_message", "Auto-approved (safe mode disabled)"
+                return
 
         status = decision.review_result.status
         if status == ReviewStatus.APPROVED:

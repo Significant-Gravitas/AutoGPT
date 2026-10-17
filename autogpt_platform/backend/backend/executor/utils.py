@@ -1455,6 +1455,10 @@ async def _add_graph_execution(
                 f"Expert scope does not match graph execution #{graph_exec.id}"
             )
         expert_id = graph_exec.expert_id
+        # Same for a dry run. No resume caller (review approval, admin
+        # requeue) passes the flag back, so without this the rest of a dry
+        # run would execute for real and be charged.
+        dry_run = graph_exec.is_dry_run
 
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
@@ -1499,8 +1503,27 @@ async def _add_graph_execution(
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
 
-        # Use existing execution's compiled input masks
+        # The row stores the caller's raw masks and the run-time credential
+        # inputs separately; rebuild the credential masks the same way the
+        # create path compiles them, or nodes that get their credentials from
+        # the run dialog fail validation and are silently skipped (#15266).
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+        if graph_exec.credential_inputs:
+            resumed_graph = await gdb.get_graph(
+                graph_id=graph_exec.graph_id,
+                version=graph_exec.graph_version,
+                user_id=user_id,
+                include_subgraphs=True,
+                skip_access_check=True,
+            )
+            if resumed_graph:
+                # Same precedence as create: explicit masks override credentials.
+                compiled_nodes_input_masks = _merge_nodes_input_masks(
+                    make_node_credentials_input_map(
+                        resumed_graph, graph_exec.credential_inputs
+                    ),
+                    compiled_nodes_input_masks,
+                )
         # For resumed executions, nodes_to_skip was already determined at creation time
         # TODO: Consider storing nodes_to_skip in DB if we need to preserve it across resumes
         nodes_to_skip: set[str] = set()
@@ -1684,10 +1707,29 @@ async def _add_graph_execution(
             }
         )
 
+    # Identity always comes from the persisted row. A caller-supplied context
+    # (review-resume builds one with only safety/user settings) would
+    # otherwise reach the executor with graph_exec_id=None, which skips the
+    # review gate for irreversible blocks and breaks file blocks (#15300).
+    execution_context = execution_context.model_copy(
+        update={
+            "user_id": graph_exec.user_id,
+            "graph_id": graph_exec.graph_id,
+            "graph_exec_id": graph_exec.id,
+            "graph_version": graph_exec.graph_version,
+            "root_execution_id": execution_context.root_execution_id or graph_exec.id,
+        }
+    )
+
     if pause_irreversible_actions:
         execution_context = execution_context.model_copy(
             update={"sensitive_action_safe_mode": True}
         )
+
+    # A caller-supplied context does not decide whether the run is a dry run;
+    # the executor reads only the context, to simulate blocks and skip charges.
+    if execution_context.dry_run != dry_run:
+        execution_context = execution_context.model_copy(update={"dry_run": dry_run})
 
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(
