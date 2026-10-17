@@ -206,12 +206,17 @@
   "themeOverlap": {
     "source": "https://github.com/shadcn-ui/ui/commit/d5920cc3c1c12ed7d54c384e86fd207b648b6e42",
     "light": {
-      "same": 20,
+      "same": 19,
       "different": [
         {
           "token": "background",
-          "actual": "0 0% 98%",
+          "actual": "210 14% 97%",
           "shadcn": "0 0% 100%"
+        },
+        {
+          "token": "primary",
+          "actual": "240 6% 11%",
+          "shadcn": "240 5.9% 10%"
         },
         {
           "token": "accent",
@@ -238,8 +243,29 @@
       "compared": 25
     },
     "dark": {
-      "same": 24,
-      "different": [],
+      "same": 20,
+      "different": [
+        {
+          "token": "background",
+          "actual": "240 8% 6%",
+          "shadcn": "240 10% 3.9%"
+        },
+        {
+          "token": "primary",
+          "actual": "0 0% 96%",
+          "shadcn": "0 0% 98%"
+        },
+        {
+          "token": "accent",
+          "actual": "262 83% 58%",
+          "shadcn": "240 3.7% 15.9%"
+        },
+        {
+          "token": "accent-foreground",
+          "actual": "0 0% 100%",
+          "shadcn": "0 0% 98%"
+        }
+      ],
       "missing": [],
       "compared": 24
     },
