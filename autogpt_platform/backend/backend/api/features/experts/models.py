@@ -557,10 +557,11 @@ class ExpertBudgetUpdate(BaseModel):
 class ExpertModeUpdate(BaseModel):
     """Set the approval mode new web chats with an expert start on.
 
-    ``None`` clears it back to the platform default.
+    ``None`` clears it back to the platform default. The field is required,
+    so an empty body cannot clear it by accident.
     """
 
-    autopilot_mode: AutopilotMode | None = None
+    autopilot_mode: AutopilotMode | None
 
 
 class ExpertAvatarUpdate(BaseModel):

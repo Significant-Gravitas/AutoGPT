@@ -2245,6 +2245,22 @@ def test_update_expert_mode_rejects_an_unknown_mode(
     mock_update.assert_not_awaited()
 
 
+def test_update_expert_mode_rejects_a_body_without_a_mode(
+    mocker: pytest_mock.MockerFixture,
+    auto_mode_on: AsyncMock,
+) -> None:
+    """Only an explicit null clears the default; an empty body is not a clear."""
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_autopilot_mode",
+        new_callable=AsyncMock,
+    )
+
+    response = client.patch("/experts/expert-1/mode", json={})
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
 def test_update_expert_mode_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
     auto_mode_on: AsyncMock,

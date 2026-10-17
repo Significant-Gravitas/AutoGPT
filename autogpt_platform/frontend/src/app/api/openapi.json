@@ -24099,8 +24099,9 @@
           }
         },
         "type": "object",
+        "required": ["autopilot_mode"],
         "title": "ExpertModeUpdate",
-        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default."
+        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default. The field is required,\nso an empty body cannot clear it by accident."
       },
       "ExpertOnboardingResponse": {
         "properties": {
