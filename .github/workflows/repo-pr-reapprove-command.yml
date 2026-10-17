@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify commenter and a prior approver have write access
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             async function hasWriteAccess(username) {
@@ -130,7 +130,7 @@ jobs:
             return;
 
       - name: Approve PR
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             await github.rest.pulls.createReview({
@@ -144,7 +144,7 @@ jobs:
             });
 
       - name: React to command comment
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
