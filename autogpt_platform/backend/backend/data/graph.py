@@ -1875,6 +1875,15 @@ async def delete_graph(
     return entries_count
 
 
+async def user_owns_graph(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> bool:
+    """Whether the user owns any version of the graph, scoped the same way
+    `delete_graph` scopes its delete."""
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    return bool(await AgentGraph.prisma().count(where=where))
+
+
 # Whether anything outside the owner's own rows still points at the graph:
 # another user's library entry, preset or run, or any store listing version
 # (the StoreListingVersion → AgentGraph FK is RESTRICT whoever owns the
@@ -1901,7 +1910,10 @@ async def assert_graph_deletable(
     graph_id: str, user_id: str, *, tx: Prisma | None = None
 ) -> None:
     """Raise `GraphInUseError` if permanently deleting the graph would take
-    other users' data with it or is blocked by a store listing."""
+    other users' data with it or is blocked by a store listing.
+
+    Call this for the graph's owner only (see `user_owns_graph`): "other
+    users" means anyone but `user_id`."""
     rows = await query_raw_with_schema(
         _GRAPH_SHARED_QUERY, graph_id, user_id, client=tx
     )

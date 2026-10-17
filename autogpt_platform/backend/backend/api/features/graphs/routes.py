@@ -138,6 +138,13 @@ async def delete_graph(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> DeleteGraphResponse:
+    # A caller who owns no version of the graph gets what they always got:
+    # nothing deleted, no conflict, and no hint whether the graph exists.
+    if not await graph_db.user_owns_graph(
+        graph_id, user_id=user_id, organization_id=ctx.org_id
+    ):
+        return {"version_counts": 0}
+
     try:
         # Refuse before touching anything, so a rejected delete leaves the
         # graph's triggers, schedules and webhooks running.

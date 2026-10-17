@@ -162,3 +162,21 @@ async def test_delete_graph_with_store_listing_is_refused(server: SpinTestServer
     assert not isinstance(listing, fastapi.responses.JSONResponse)
 
     await _assert_refused(server, created.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_graph_by_non_owner_changes_nothing(server: SpinTestServer):
+    created = await _create_graph(server)
+    other_user = await create_test_user(alt_user=True)
+
+    with patch.object(
+        graphs_routes,
+        "on_graph_deactivate",
+        wraps=graphs_routes.on_graph_deactivate,
+    ) as deactivate:
+        result = await server.agent_server.test_delete_graph(created.id, other_user.id)
+
+    assert result == {"version_counts": 0}
+    deactivate.assert_not_called()
+    assert await _graph_exists(created.id)
+    assert await _library_rows(created.id, DEFAULT_USER_ID) == 1
