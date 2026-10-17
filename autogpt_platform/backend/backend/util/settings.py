@@ -620,6 +620,26 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    scheduler_shutdown_grace_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        description=(
+            "On SIGTERM, how long the scheduler waits for jobs it already started "
+            "before cancelling them. Jobs not yet started stay due in the jobstore "
+            "and run when the next scheduler starts."
+        ),
+    )
+
+    scheduler_rpc_drain_seconds: int = Field(
+        default=10,
+        gt=0,
+        description=(
+            "On SIGTERM, how long the scheduler's RPC server waits for in-flight "
+            "calls. It refuses new connections meanwhile, which callers see as "
+            "the scheduler being down, so this is kept short."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(

@@ -423,6 +423,7 @@ class AppService(BaseAppService, ABC):
                 port=self.get_port(),
                 log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
+                timeout_graceful_shutdown=self.rpc_graceful_shutdown_seconds(),
             )
         )
         self.run_and_wait(self.http_server.serve())
@@ -500,6 +501,15 @@ class AppService(BaseAppService, ABC):
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
+
+    @classmethod
+    def rpc_graceful_shutdown_seconds(cls) -> int | None:
+        """How long the RPC server waits for in-flight calls on shutdown.
+
+        ``None`` waits for all of them. While it waits it refuses new
+        connections, so a service whose callers retry should bound it.
+        """
+        return None
 
     async def health_check(self) -> str:
         """A method to check the health of the process."""

@@ -22,7 +22,6 @@ from apscheduler.events import (
 )
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
@@ -31,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -65,6 +65,20 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.executor.scheduler_runs import (
+    LedgerThreadPoolExecutor,
+    RunAbandoned,
+    RunLedger,
+    ScheduledRun,
+    committing,
+    current_run,
+    dispatching,
+)
+from backend.executor.scheduler_shutdown import (
+    DrainingBackgroundScheduler,
+    exit_if_jobs_hung,
+    stop_scheduler,
+)
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -132,6 +146,8 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+# Shutdown: how long to wait for the job event loop's thread once stopped.
+EVENT_LOOP_JOIN_TIMEOUT_SECONDS = 5
 # Dream / nightly / community-rebuild operations call into OpenRouter
 # with 50K-token prompts and FalkorDB-backed Leiden passes that
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
@@ -214,28 +230,36 @@ def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
 def execute_graph(**kwargs):
     """Execute graph in the shared event loop and wait for completion."""
     # Wait for completion to ensure job doesn't exit prematurely
-    run_async(_execute_graph(**kwargs))
+    try:
+        run_async(_execute_graph(run=current_run(), **kwargs))
+    except RunAbandoned:
+        logger.info("Scheduled graph run handed back at shutdown")
 
 
-async def _execute_graph(**kwargs):
+async def _execute_graph(run: ScheduledRun | None = None, **kwargs):
+    dispatching(run)
     args = GraphExecutionJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     db = get_database_manager_async_client()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
-        graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
-            user_id=args.user_id,
-            graph_id=args.graph_id,
-            graph_version=args.graph_version,
-            inputs=args.input_data,
-            graph_credentials_inputs=args.input_credentials,
-            organization_id=args.organization_id,
-            team_id=args.team_id,
-            expert_id=args.expert_id,
-            trigger=ExecutionTrigger.SCHEDULE,
-            trigger_ref=args.schedule_id,
-            schedule_id=args.schedule_id,
-        )
+        # Creating and queueing the execution is this run taking effect.
+        with committing():
+            graph_exec: GraphExecutionWithNodes = (
+                await execution_utils.add_graph_execution(
+                    user_id=args.user_id,
+                    graph_id=args.graph_id,
+                    graph_version=args.graph_version,
+                    inputs=args.input_data,
+                    graph_credentials_inputs=args.input_credentials,
+                    organization_id=args.organization_id,
+                    team_id=args.team_id,
+                    expert_id=args.expert_id,
+                    trigger=ExecutionTrigger.SCHEDULE,
+                    trigger_ref=args.schedule_id,
+                    schedule_id=args.schedule_id,
+                )
+            )
         await db.increment_onboarding_runs(args.user_id)
         product_analytics.track_schedule_fired(
             user_id=args.user_id,
@@ -257,6 +281,11 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except RunAbandoned:
+        logger.info(
+            f"Scheduled run for graph #{args.graph_id} handed back at shutdown; "
+            "the next scheduler runs it"
+        )
     except GraphNotFoundError as e:
         await _handle_graph_not_available(e, args, start_time)
     except GraphNotInLibraryError as e:
@@ -300,7 +329,31 @@ def execute_copilot_turn(**kwargs):
     APScheduler dispatches scheduled copilot-turn jobs here. ``kwargs``
     is the serialized form of :class:`CopilotTurnJobArgs`.
     """
-    run_async(_execute_copilot_turn(**kwargs))
+    try:
+        run_async(_execute_copilot_turn(run=current_run(), **kwargs))
+    except RunAbandoned:
+        logger.info("Scheduled copilot turn handed back at shutdown")
+
+
+def _load_block_registry() -> None:
+    """Load every block before the RPC server starts, and so before readiness.
+
+    Creating a schedule validates the graph, which needs the block registry.
+    Loaded lazily, the first create after each deploy paid for importing every
+    block, tens of seconds on a fresh pod, long enough for the caller to give
+    up on a create that then landed anyway.
+    """
+    load_started = time.monotonic()
+    block_count = len(get_blocks())
+    logger.info(
+        f"Loaded {block_count} blocks in {time.monotonic() - load_started:.1f}s"
+    )
+
+
+def _dispatch_marks_its_commit(job: JobObj) -> bool:
+    """Whether a job marks where its run takes effect (``committing``), so a
+    run cut short at shutdown can be handed back instead of lost."""
+    return job.func in (execute_graph, execute_copilot_turn)
 
 
 async def _expert_scope_status(
@@ -406,7 +459,8 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
     return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
 
 
-async def _execute_copilot_turn(**kwargs):
+async def _execute_copilot_turn(run: ScheduledRun | None = None, **kwargs):
+    dispatching(run)
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
     if args.purpose != "followup":
@@ -566,41 +620,42 @@ async def _execute_copilot_turn(**kwargs):
         # point: it acquires a per-user concurrency slot AND registers the
         # session in the stream registry before queue-publishing, so the
         # executor's streamed output reaches a known consumer instead of
-        # being orphaned.
-        await schedule_turn(
-            session_id=target_session_id,
-            user_id=args.user_id,
-            turn_id=str(uuid.uuid4()),
-            message=args.message,
-            is_user_message=persist_as_user_turn,
-            tool_call_id="scheduled_followup",
-            tool_name="schedule_followup",
-            # Even when the target is the user's own chat, nobody is there to
-            # answer this turn's questions, e.g. which of two accounts to use.
-            unattended=True,
-            # So the accounts are the ones chosen when the schedule was made.
-            credential_pins=_credential_pins_for_turn(args, routine),
-            organization_id=args.organization_id,
-            team_id=args.team_id,
-            llm_auth_provider=target_session.metadata.llm_auth_provider,
-            llm_credential_id=target_session.metadata.llm_credential_id,
-            # Per turn, not per session: a PINNED routine fires into a chat the
-            # user also drives themselves, and muting the conversation would
-            # take capabilities away from the person sitting in it. What is
-            # unattended is this turn.
-            permissions=(
-                _routine_turn_permissions(routine)
-                if args.routine_id is not None
-                else None
-            ),
-            # Nobody watches a scheduled turn, so the executor alerts when it
-            # fails after this dispatch succeeded (SECRT-2799).
-            scheduled=ScheduledTurnOrigin(
-                schedule_id=args.schedule_id,
-                routine_id=args.routine_id,
-                cron=args.cron,
-            ),
-        )
+        # being orphaned. Queueing the turn is this run taking effect.
+        with committing():
+            await schedule_turn(
+                session_id=target_session_id,
+                user_id=args.user_id,
+                turn_id=str(uuid.uuid4()),
+                message=args.message,
+                is_user_message=persist_as_user_turn,
+                tool_call_id="scheduled_followup",
+                tool_name="schedule_followup",
+                # Even when the target is the user's own chat, nobody is there to
+                # answer this turn's questions, e.g. which of two accounts to use.
+                unattended=True,
+                # So the accounts are the ones chosen when the schedule was made.
+                credential_pins=_credential_pins_for_turn(args, routine),
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+                llm_auth_provider=target_session.metadata.llm_auth_provider,
+                llm_credential_id=target_session.metadata.llm_credential_id,
+                # Per turn, not per session: a PINNED routine fires into a chat the
+                # user also drives themselves, and muting the conversation would
+                # take capabilities away from the person sitting in it. What is
+                # unattended is this turn.
+                permissions=(
+                    _routine_turn_permissions(routine)
+                    if args.routine_id is not None
+                    else None
+                ),
+                # Nobody watches a scheduled turn, so the executor alerts when it
+                # fails after this dispatch succeeded (SECRT-2799).
+                scheduled=ScheduledTurnOrigin(
+                    schedule_id=args.schedule_id,
+                    routine_id=args.routine_id,
+                    cron=args.cron,
+                ),
+            )
         if routine is not None and routine.run_at is not None:
             # APScheduler drops a one-shot job once it fires, so without this
             # the row would go on describing itself as scheduled for a time
@@ -627,6 +682,11 @@ async def _execute_copilot_turn(**kwargs):
         logger.info(
             f"Dispatched scheduled copilot turn for session "
             f"{target_session_id[:12]} (took {elapsed:.2f}s)"
+        )
+    except RunAbandoned:
+        logger.info(
+            f"Scheduled copilot turn for session {_session_id_label(args)} handed "
+            "back at shutdown; the next scheduler runs it"
         )
     except (ExpertPrivateTenancyNotFoundError, ExpertNotFoundError):
         # ExpertNotFoundError covers the race where the expert is archived,
@@ -825,46 +885,49 @@ async def _reschedule_one_shot(
         new_run_at = datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
-        await get_scheduler_client().add_copilot_turn_schedule(
-            user_id=args.user_id,
-            session_id=args.session_id,
-            message=args.message,
-            run_at=new_run_at,
-            name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
-            cap_retry_count=counts["cap"],
-            expert_lookup_retry_count=counts["expert_lookup"],
-            plan_lookup_retry_count=counts["plan_lookup"],
-            limits_retry_count=counts["limits"],
-            # Preserve the user's timezone across the reschedule so the new
-            # one-shot job's trigger/timezone matches the original request.
-            user_timezone=args.user_timezone,
-            # Same for tenancy — dropping these would re-home a fresh-session
-            # turn to the user's default org after a cap retry.
-            organization_id=args.organization_id,
-            team_id=args.team_id,
-            # And for expert attribution — dropping it would fire the retried
-            # turn into a plain session, escaping the expert's thread/budget
-            # and its isolated memory scope.
-            expert_id=args.expert_id,
-            # And for the routine behind it. Dropping this was the worst of
-            # the three: the retried turn resolves no routine, so it runs
-            # with the session's own permissions instead of the routine's —
-            # an ungranted routine that merely lost a race to the concurrency
-            # cap would come back with everything the mute exists to withhold.
-            routine_id=args.routine_id,
-            # The retry gets a new schedule_id; this is the one the routine's
-            # row holds, so the retry can still switch the routine off.
-            routine_schedule_id=args.routine_schedule_id or args.schedule_id,
-            # And the accounts it was set up to run on, or the retry would
-            # take the first saved one instead.
-            credential_pins=args.credential_pins,
-        )
+        with committing():
+            await get_scheduler_client().add_copilot_turn_schedule(
+                user_id=args.user_id,
+                session_id=args.session_id,
+                message=args.message,
+                run_at=new_run_at,
+                name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
+                cap_retry_count=counts["cap"],
+                expert_lookup_retry_count=counts["expert_lookup"],
+                plan_lookup_retry_count=counts["plan_lookup"],
+                limits_retry_count=counts["limits"],
+                # Preserve the user's timezone across the reschedule so the new
+                # one-shot job's trigger/timezone matches the original request.
+                user_timezone=args.user_timezone,
+                # Same for tenancy — dropping these would re-home a fresh-session
+                # turn to the user's default org after a cap retry.
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+                # And for expert attribution — dropping it would fire the retried
+                # turn into a plain session, escaping the expert's thread/budget
+                # and its isolated memory scope.
+                expert_id=args.expert_id,
+                # And for the routine behind it. Dropping this was the worst of
+                # the three: the retried turn resolves no routine, so it runs
+                # with the session's own permissions instead of the routine's —
+                # an ungranted routine that merely lost a race to the concurrency
+                # cap would come back with everything the mute exists to withhold.
+                routine_id=args.routine_id,
+                # The retry gets a new schedule_id; this is the one the routine's
+                # row holds, so the retry can still switch the routine off.
+                routine_schedule_id=args.routine_schedule_id or args.schedule_id,
+                # And the accounts it was set up to run on, or the retry would
+                # take the first saved one instead.
+                credential_pins=args.credential_pins,
+            )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
             f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
         return True
+    except RunAbandoned:
+        raise
     except Exception:
         logger.warning(
             f"Failed to reschedule one-shot copilot turn for session "
@@ -890,15 +953,17 @@ async def _best_effort_unschedule(
     """
     try:
         if schedule_id:
-            await get_scheduler_client().delete_schedule(
-                schedule_id=schedule_id, user_id=user_id
-            )
+            with committing():
+                await get_scheduler_client().delete_schedule(
+                    schedule_id=schedule_id, user_id=user_id
+                )
         elif graph_id is not None:
             logger.warning(
                 f"Old scheduled job for graph {graph_id} (user {user_id}) "
                 f"has no schedule_id, attempting targeted cleanup"
             )
-            await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
+            with committing():
+                await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
         else:
             logger.warning(
                 f"Cannot unschedule (reason: {reason}) — no schedule_id "
@@ -906,6 +971,8 @@ async def _best_effort_unschedule(
             )
             return
         logger.info(f"Unscheduled job {schedule_id} (reason: {reason})")
+    except RunAbandoned:
+        raise
     except Exception:
         logger.warning(
             f"Failed to unschedule job {schedule_id} (reason: {reason})",
@@ -938,7 +1005,10 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
     # Most often this is a PINNED routine whose chat the owner deleted, or a
     # one-shot that fired while its owner could not pay.
     try:
-        await experts_db().mark_routine_unscheduled(args.routine_id, schedule_id)
+        with committing():
+            await experts_db().mark_routine_unscheduled(args.routine_id, schedule_id)
+    except RunAbandoned:
+        raise
     except Exception:
         logger.warning(
             f"Could not switch off routine {args.routine_id[:12]} after removing "
@@ -2380,7 +2450,7 @@ def _index_entry(
 
 
 class Scheduler(AppService):
-    scheduler: BackgroundScheduler
+    scheduler: DrainingBackgroundScheduler
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     # Sidecar index for filtered schedule reads. ``None`` (not set up or
@@ -2434,7 +2504,6 @@ class Scheduler(AppService):
 
         db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         # Configure executors to limit concurrency without skipping jobs
-        from apscheduler.executors.pool import ThreadPoolExecutor
 
         # Shared between the EXECUTION jobstore and the schedule index so
         # both live in the same pool/database.
@@ -2481,11 +2550,14 @@ class Scheduler(AppService):
         # unrestorable row rather than deleting it.
         self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
 
-        self.scheduler = BackgroundScheduler(
+        ledger = RunLedger(commit_aware=_dispatch_marks_its_commit)
+        self.scheduler = DrainingBackgroundScheduler(
+            ledger=ledger,
             executors={
-                "default": ThreadPoolExecutor(
-                    max_workers=self.db_pool_size()
-                ),  # Match DB pool size to prevent resource contention
+                # Match DB pool size to prevent resource contention
+                "default": LedgerThreadPoolExecutor(
+                    max_workers=self.db_pool_size(), ledger=ledger
+                ),
             },
             job_defaults={
                 "coalesce": True,  # Skip redundant missed jobs - just run the latest
@@ -2691,6 +2763,7 @@ class Scheduler(AppService):
         global _scheduler_instance
         _scheduler_instance = self
         self._start_schedule_index_backfill()
+        _load_block_registry()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
@@ -2717,22 +2790,33 @@ class Scheduler(AppService):
                     f"not run until repaired: {parked}"
                 )
 
+    @classmethod
+    def rpc_graceful_shutdown_seconds(cls) -> int | None:
+        return config.scheduler_rpc_drain_seconds
+
     def cleanup(self):
+        # By now the RPC server has stopped. Stop the scheduler before the event
+        # loop its jobs run on, and bound the wait so a stuck job can't hold the
+        # pod until it is killed.
+        global _event_loop, _event_loop_thread
+        stopped = True
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
-            self.scheduler.shutdown(wait=True)
+            stopped = stop_scheduler(
+                self.scheduler, _event_loop, config.scheduler_shutdown_grace_seconds
+            )
 
-        global _event_loop
         if _event_loop:
             logger.info("⏳ Closing event loop...")
             _event_loop.call_soon_threadsafe(_event_loop.stop)
 
-        global _event_loop_thread
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
-            _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+            # A daemon thread: a short wait is enough, and it can't hold exit.
+            _event_loop_thread.join(timeout=EVENT_LOOP_JOIN_TIMEOUT_SECONDS)
 
         super().cleanup()
+        exit_if_jobs_hung(stopped)
 
     def _persist_schedule(
         self,

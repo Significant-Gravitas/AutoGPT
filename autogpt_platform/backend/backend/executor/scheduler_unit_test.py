@@ -1676,6 +1676,7 @@ class _StartupRun(NamedTuple):
     add_job_calls: list
     embedding_backfill: MagicMock
     backfill_calls_at_readiness: int
+    block_loads_at_readiness: int
 
 
 def _registered_jobs(
@@ -1694,9 +1695,13 @@ def _registered_jobs(
     )
     mock_scheduler = MagicMock()
     embedding_backfill = MagicMock(return_value=None)
+    load_blocks = MagicMock(return_value={})
     at_readiness = []
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(
+            f"{_SCHEDULER_PATH}.DrainingBackgroundScheduler",
+            return_value=mock_scheduler,
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
@@ -1711,15 +1716,21 @@ def _registered_jobs(
             return_value=("public", "sqlite://"),
         ),
         patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", embedding_backfill),
+        patch(f"{_SCHEDULER_PATH}.get_blocks", load_blocks),
         # super().run_service() blocks forever keeping the service alive; no-op it.
         patch(
             "backend.util.service.AppService.run_service",
-            side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
+            side_effect=lambda: at_readiness.append(
+                (embedding_backfill.call_count, load_blocks.call_count)
+            ),
         ),
     ):
         Scheduler(register_system_tasks=True).run_service()
     return _StartupRun(
-        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+        mock_scheduler.add_job.call_args_list,
+        embedding_backfill,
+        at_readiness[0][0],
+        at_readiness[0][1],
     )
 
 
@@ -1804,6 +1815,15 @@ def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
     run = _registered_jobs(monkeypatch, interval_hours=6)
 
     assert run.backfill_calls_at_readiness == 0
+
+
+def test_blocks_are_loaded_before_the_rpc_server_takes_requests(monkeypatch):
+    """A cold first schedule create loaded every block inside graph
+    validation, long enough for the caller to give up on a create that then
+    landed. The registry loads before readiness instead."""
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    assert run.block_loads_at_readiness == 1
 
 
 def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
