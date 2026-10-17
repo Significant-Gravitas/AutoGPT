@@ -588,9 +588,67 @@ def test_configure_auto_top_up_with_a_declined_card_says_why(
     assert response.status_code == 402
     detail = response.json()["detail"]
     assert detail.startswith("Your card has insufficient funds.")
+    assert "update your payment method" in detail
     assert "req_" not in detail
     set_auto_top_up.assert_not_called()
     enable.assert_not_called()
+
+
+@pytest.mark.parametrize("balance", [5000, -100])
+def test_turning_auto_top_up_off_checks_no_card(
+    mocker: pytest_mock.MockFixture, test_user_id: str, balance: int
+) -> None:
+    """The billing page turns auto top-up off with {amount: 0, threshold: 0}.
+    There is nothing to charge, so no card is checked, and a card that would
+    decline cannot keep auto top-up on."""
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = UserCredit()
+    mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=balance))
+    add_transaction = mocker.patch.object(
+        credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    card = Mock()
+    card.id = "pm_1"
+    list_cards = mocker.patch(
+        "backend.data.credit.stripe.PaymentMethod.list_async",
+        AsyncMock(return_value=[card]),
+    )
+    declined = stripe.CardError(
+        "Your card has expired.", None, "expired_card", http_status=402
+    )
+    charge = mocker.patch(
+        "backend.data.credit.stripe.PaymentIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    card_check = mocker.patch(
+        "backend.data.credit.stripe.SetupIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    lenient_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = lenient_client.post(
+        "/credits/auto-top-up", json={"threshold": 0, "amount": 0}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+    set_auto_top_up.assert_awaited_once_with(
+        test_user_id, AutoTopUpConfig(threshold=0, amount=0)
+    )
+    add_transaction.assert_not_called()
+    list_cards.assert_not_called()
+    charge.assert_not_called()
+    card_check.assert_not_called()
 
 
 def test_request_top_up_rejects_a_missing_amount() -> None:
