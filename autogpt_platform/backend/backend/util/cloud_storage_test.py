@@ -26,6 +26,25 @@ class TestCloudStorageHandler:
         """Create a test handler."""
         return CloudStorageHandler(config)
 
+    @pytest.fixture
+    def workload_identity_adc(self):
+        """Pod ADC: a token, no private key, no email until refreshed."""
+        credentials = MagicMock()
+        credentials.valid = False
+        credentials.service_account_email = "default"
+
+        def refresh(_request):
+            credentials.valid = True
+            credentials.service_account_email = _POD_SERVICE_ACCOUNT
+            credentials.token = "access-token"
+
+        credentials.refresh.side_effect = refresh
+        with patch(
+            "backend.util.gcs_utils.google_auth_default",
+            return_value=(credentials, "project"),
+        ):
+            yield credentials
+
     @patch("backend.util.cloud_storage.Config")
     def test_cloud_storage_config_uses_private_bucket(self, mock_config):
         mock_config.return_value.resolved_private_user_data_bucket = "private-data"
@@ -146,24 +165,28 @@ class TestCloudStorageHandler:
 
     @patch.object(CloudStorageHandler, "_get_sync_gcs_client")
     @pytest.mark.asyncio
-    async def test_generate_signed_url_gcs(self, mock_get_sync_client, handler):
-        """Test generating signed URL for GCS."""
-        # Mock sync GCS client for signed URLs
-        mock_sync_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_blob = MagicMock()
-
-        mock_get_sync_client.return_value = mock_sync_client
-        mock_sync_client.bucket.return_value = mock_bucket
-        mock_bucket.blob.return_value = mock_blob
-        mock_blob.generate_signed_url.return_value = "https://signed-url.example.com"
+    async def test_generate_signed_url_gcs_signs_through_iam(
+        self, mock_get_sync_client, handler, workload_identity_adc
+    ):
+        """A pod with no private key signs as its service account via IAM."""
+        mock_sync_client = mock_get_sync_client.return_value
+        mock_blob = mock_sync_client.bucket.return_value.blob.return_value
+        mock_blob.generate_signed_url.side_effect = _sign_like_a_key_less_pod
 
         result = await handler.generate_signed_url(
-            "gcs://test-bucket/uploads/system/uuid123/file.txt", 1
+            "gcs://test-bucket/uploads/users/user123/uuid123/file.txt",
+            1,
+            user_id="user123",
         )
 
         assert result == "https://signed-url.example.com"
-        mock_blob.generate_signed_url.assert_called_once()
+        mock_sync_client.bucket.assert_called_once_with("test-bucket")
+        mock_sync_client.bucket.return_value.blob.assert_called_once_with(
+            "uploads/users/user123/uuid123/file.txt"
+        )
+        signed_with = mock_blob.generate_signed_url.call_args.kwargs
+        assert signed_with["service_account_email"] == _POD_SERVICE_ACCOUNT
+        assert signed_with["access_token"] == "access-token"
 
     @pytest.mark.asyncio
     async def test_retrieve_rejects_a_different_bucket(self, handler):
@@ -515,7 +538,7 @@ class TestCloudStorageHandler:
     @patch.object(CloudStorageHandler, "_get_sync_gcs_client")
     @pytest.mark.asyncio
     async def test_generate_signed_url_with_exec_authorization(
-        self, mock_get_sync_client, handler
+        self, mock_get_sync_client, handler, workload_identity_adc
     ):
         """Test signed URL generation with execution authorization."""
         # Mock sync GCS client for signed URLs
@@ -543,3 +566,17 @@ class TestCloudStorageHandler:
                 1,
                 graph_exec_id="exec456",
             )
+
+
+_POD_SERVICE_ACCOUNT = "backend@example.iam.gserviceaccount.com"
+
+
+def _sign_like_a_key_less_pod(**kwargs):
+    # What google-cloud-storage raises when token-only credentials sign locally.
+    if "service_account_email" not in kwargs:
+        raise AttributeError(
+            "you need a private key to sign credentials. the credentials you are "
+            "currently using <class 'google.auth.compute_engine.credentials."
+            "Credentials'> just contains a token."
+        )
+    return "https://signed-url.example.com"
