@@ -93,7 +93,7 @@ def workflow_subject(
                 f"{_listed(steps)}.",
             }
         )
-    elif subject.effect is Effect.EXTERNAL and len(steps) > 1:
+    elif subject.effect in _OUTWARD and len(steps) > 1:
         # The approval covers the whole run, so the card names every step it covers.
         subject = subject.model_copy(
             update={
@@ -102,6 +102,19 @@ def workflow_subject(
                 "outside the platform.",
             }
         )
+    elif steps and not subject.irreversible:
+        # A reversible step of a higher tier names the run; the one that can't be
+        # undone must still warn, or approving the card lifts its pause unseen.
+        subject = subject.model_copy(
+            update={
+                "irreversible": True,
+                "reason": f"{subject.reason.removesuffix('.')}; it also has "
+                f"{_steps(steps)} that can't be undone: {_listed(steps)}.",
+            }
+        )
+    if schedules and subject.effect is Effect.EXTERNAL_JUDGED:
+        # No supervisor reads a scheduled run and no irreversible pause catches one.
+        return subject.model_copy(update={"effect": Effect.EXTERNAL})
     creates = (
         f"Runs {name} and creates a schedule."
         if schedules
@@ -162,8 +175,10 @@ _EFFECTS = {
     BlockEffect.READ: Effect.READ,
     BlockEffect.WORKSPACE: Effect.WORKSPACE,
     BlockEffect.PLATFORM: Effect.PLATFORM,
+    BlockEffect.EXTERNAL_JUDGED: Effect.EXTERNAL_JUDGED,
     BlockEffect.EXTERNAL: Effect.EXTERNAL,
 }
+_OUTWARD = frozenset({Effect.EXTERNAL_JUDGED, Effect.EXTERNAL})
 
 
 def _priced(effect: BlockEffect | None, credits: Callable[[], int]) -> int:
@@ -184,6 +199,7 @@ def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str
         step = display_name(culprit) if culprit is not None else name
         return f"{AUTOPILOT_NAME} does not know what {step} does, so he asks."
     does = {
+        BlockEffect.EXTERNAL_JUDGED: "reaches outside the platform",
         BlockEffect.EXTERNAL: "reaches outside the platform",
         BlockEffect.PLATFORM: "changes your platform objects",
     }.get(effect)
@@ -216,7 +232,7 @@ def _steps(names: list[str]) -> str:
 
 def _irreversible(effect: BlockEffect | None, block: Block | None) -> bool:
     return (
-        effect is BlockEffect.EXTERNAL
+        effect in (BlockEffect.EXTERNAL_JUDGED, BlockEffect.EXTERNAL)
         and block is not None
         and block.is_irreversible_action
     )

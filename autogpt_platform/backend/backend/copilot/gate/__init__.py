@@ -62,6 +62,8 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 # Where the supervisor reads the content of the files a command runs.
 RUN_FILES_KEY = "files_this_command_runs"
+# Where it reads what a judged outward block is: the call names only its id.
+RUNS_KEY = "capability_this_call_runs"
 # A chat driven from these runs in Auto, and its cards are answered in the channel.
 LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
 # Any other linked platform has no buttons to answer a card with, so it runs
@@ -215,10 +217,20 @@ async def check_action(
                 f"Could not read {', '.join(unread)}, so this could not be checked."
             )
         else:
+            outward_judged = effect is Effect.EXTERNAL_JUDGED
+            # A workflow's name is its author's free text; only a block's is vouched for.
+            runs = (
+                subject.name
+                if outward_judged
+                and subject is not None
+                and subject.key.startswith("block:")
+                else None
+            )
             judgement = await supervise(
                 tool_name=tool_name,
-                args=_judged_args(args, files),
+                args=_judged_args(args, files, runs),
                 user_messages=_typed_messages(session),
+                outward_judged=outward_judged,
             )
             if judgement.allowed:
                 return ALLOW
@@ -301,12 +313,18 @@ def _dollars(microdollars: int) -> str:
 
 
 def _judged_args(
-    args: dict[str, Any], files: dict[str, str | None] | None
+    args: dict[str, Any], files: dict[str, str | None] | None, runs: str | None
 ) -> dict[str, Any]:
     # Dropped first, so a model cannot hand the supervisor a harmless copy.
-    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    judged = {
+        key: value
+        for key, value in args.items()
+        if key not in (RUN_FILES_KEY, RUNS_KEY)
+    }
     if files:
         judged[RUN_FILES_KEY] = files
+    if runs:
+        judged[RUNS_KEY] = runs
     return judged
 
 
@@ -327,6 +345,7 @@ def _typed_messages(session: ChatSession) -> list[str]:
 
 
 __all__ = [
+    "RUNS_KEY",
     "RUN_FILES_KEY",
     "Decision",
     "LINKED_CHAT_PLATFORMS",

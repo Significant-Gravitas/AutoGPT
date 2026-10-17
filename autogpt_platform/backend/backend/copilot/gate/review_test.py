@@ -178,7 +178,7 @@ def test_a_bare_tool_is_its_own_subject():
         "kind": "tool",
         "key": "post_to_chat_platform",
         "name": "Post a message",
-        "effect": "external",
+        "effect": "external_judged",
         "irreversible": False,
         "block_id": None,
     }
