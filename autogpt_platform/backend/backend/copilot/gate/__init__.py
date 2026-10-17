@@ -38,6 +38,7 @@ from .policy import (
     Verdict,
     effect_for,
     estimate_for,
+    strictest_mode,
     verdict_for_effect,
 )
 from .subject import Subject
@@ -120,6 +121,16 @@ async def active_mode(
 ) -> AutopilotMode | None:
     """The mode the gate enforces on this turn, or None when it is inert."""
     return resolve_mode(session) if await gate_active(user_id, session) else None
+
+
+def child_autopilot_mode(
+    parent: ChatSession, expert_default: AutopilotMode | None
+) -> AutopilotMode:
+    """The mode a delegated or handed-off thread starts on: what the parent's
+    gate enforces, not what the parent stored, tightened by the expert's own
+    default where that is stricter."""
+    mode = resolve_mode(parent)
+    return mode if expert_default is None else strictest_mode(mode, expert_default)
 
 
 async def check_action(
@@ -332,6 +343,7 @@ __all__ = [
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
+    "child_autopilot_mode",
     "gate_active",
     "refusal_message",
     "resolve_mode",

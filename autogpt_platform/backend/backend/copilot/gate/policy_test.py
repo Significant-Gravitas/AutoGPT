@@ -7,7 +7,6 @@ from backend.copilot.gate.policy import (
     MCP_FILE_WRITE_TOOLS,
     Effect,
     Verdict,
-    child_autopilot_mode,
     classified_tools,
     effect_for,
     strictest_mode,
@@ -80,17 +79,3 @@ def test_the_strictest_mode_is_the_one_that_asks_most():
     assert strictest_mode("auto", "ask_first") == "ask_first"
     assert strictest_mode("unsupervised", "auto") == "auto"
     assert strictest_mode("unsupervised") == "unsupervised"
-
-
-def test_a_delegated_thread_follows_its_parent_when_the_expert_has_no_default():
-    assert child_autopilot_mode("ask_first", None) == "ask_first"
-    assert child_autopilot_mode("unsupervised", None) == "unsupervised"
-    assert child_autopilot_mode(None, None) is None
-
-
-def test_a_delegated_thread_is_never_looser_than_its_parent():
-    assert child_autopilot_mode("ask_first", "unsupervised") == "ask_first"
-    # A parent on the platform default cannot hand out an unsupervised thread.
-    assert child_autopilot_mode(None, "unsupervised") == "auto"
-    assert child_autopilot_mode("unsupervised", "ask_first") == "ask_first"
-    assert child_autopilot_mode("auto", "auto") == "auto"

@@ -13,10 +13,12 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import (
+    LINKED_CHAT_PLATFORMS,
     RUN_FILES_KEY,
     active_mode,
     chat_rules,
     check_action,
+    child_autopilot_mode,
     gate_active,
     held,
 )
@@ -138,6 +140,28 @@ async def test_a_linked_chat_is_gated_only_where_its_channel_can_show_a_card(
 
 async def test_the_default_mode_is_auto(gate_on):
     assert await active_mode("u", _session()) == "auto"
+
+
+def test_a_delegated_thread_follows_its_parent_when_the_expert_has_no_default():
+    assert child_autopilot_mode(_session("ask_first"), None) == "ask_first"
+    assert child_autopilot_mode(_session("unsupervised"), None) == "unsupervised"
+    assert child_autopilot_mode(_session(), None) == "auto"
+
+
+def test_a_delegated_thread_is_never_looser_than_its_parent():
+    assert child_autopilot_mode(_session("ask_first"), "unsupervised") == "ask_first"
+    # A parent on the platform default cannot hand out an unsupervised thread.
+    assert child_autopilot_mode(_session(), "unsupervised") == "auto"
+    assert child_autopilot_mode(_session("unsupervised"), "ask_first") == "ask_first"
+    assert child_autopilot_mode(_session("auto"), "auto") == "auto"
+
+
+@pytest.mark.parametrize("platform", sorted(LINKED_CHAT_PLATFORMS))
+def test_a_linked_chat_hands_its_thread_the_mode_its_gate_enforces(platform):
+    """A linked chat runs on Auto whatever it has stored."""
+    parent = _session("unsupervised", source_platform=platform)
+    assert child_autopilot_mode(parent, None) == "auto"
+    assert child_autopilot_mode(parent, "ask_first") == "ask_first"
 
 
 async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session_state):
