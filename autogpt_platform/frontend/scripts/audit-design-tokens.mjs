@@ -47,8 +47,7 @@ const DEFAULT_PALETTE = new Set([
   "fuchsia",
   "rose",
 ]);
-const SHADE =
-  /^(?:25|50|100|150|200|300|400|500|600|700|800|900|950)$/;
+const SHADE = /^(?:25|50|100|150|200|300|400|500|600|700|800|900|950)$/;
 
 const SEMANTIC = [
   "sidebar-primary-foreground",
@@ -91,13 +90,12 @@ const CLASS_RE = new RegExp(
 const ARBITRARY_LENGTH_RE =
   /(?<![\\w-])(?:[a-z0-9-]+:)*(?:p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|gap-x|gap-y|w|h|size|min-w|max-w|min-h|max-h|top|right|bottom|left|inset|inset-x|inset-y|basis|space-x|space-y|leading|tracking|rounded|z)-\[\d/g;
 
-const ARBITRARY_TYPE_RE =
-  /(?<![\\w-])(?:[a-z0-9-]+:)*text-\[\d/g;
+const ARBITRARY_TYPE_RE = /(?<![\\w-])(?:[a-z0-9-]+:)*text-\[\d/g;
 
-const ARBITRARY_FONT_RE =
-  /(?<![\\w-])(?:[a-z0-9-]+:)*font-\[\d/g;
+const ARBITRARY_FONT_RE = /(?<![\\w-])(?:[a-z0-9-]+:)*font-\[\d/g;
 
-const HEX_RE = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g;
+const HEX_RE =
+  /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g;
 const FUNC_COLOR_RE = /\b(?:rgba?|hsla?|oklch|oklab|color-mix)\(/g;
 const DARK_RE = /(?<![\\w-])dark:/g;
 const AGPT_RE = /(?<![\\w-])agpt-[a-z0-9-]+/g;
@@ -274,7 +272,8 @@ function stripComments(source) {
 function classifyColor(token) {
   if (token.startsWith("[")) {
     const inner = token.slice(1, -1);
-    if (/^(?:#|rgb|hsl|oklch|oklab|color-mix)/.test(inner)) return "arbitraryColor";
+    if (/^(?:#|rgb|hsl|oklch|oklab|color-mix)/.test(inner))
+      return "arbitraryColor";
     return null;
   }
   for (const name of SEMANTIC) {
@@ -334,7 +333,12 @@ function compareTheme(actual, expected) {
     if (actual[key] === value) same.push(key);
     else different.push({ token: key, actual: actual[key], shadcn: value });
   }
-  return { same: same.length, different, missing, compared: Object.keys(expected).length };
+  return {
+    same: same.length,
+    different,
+    missing,
+    compared: Object.keys(expected).length,
+  };
 }
 
 function scanFile(source) {
@@ -565,14 +569,14 @@ function main() {
     imports,
     themeOverlap,
     topChromeBypassFiles: topFiles(
-    chromeRows.map((row) => ({
-      ...row,
-      counts: { ...row.counts, bypass: bypassOf(row.counts) },
-    })),
-    "bypass",
-    15,
-  ),
-  topBypassFiles: topFiles(
+      chromeRows.map((row) => ({
+        ...row,
+        counts: { ...row.counts, bypass: bypassOf(row.counts) },
+      })),
+      "bypass",
+      15,
+    ),
+    topBypassFiles: topFiles(
       productRows.map((row) => ({
         ...row,
         counts: { ...row.counts, bypass: bypassOf(row.counts) },
