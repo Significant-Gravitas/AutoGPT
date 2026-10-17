@@ -418,6 +418,45 @@ function topFiles(rows, key, limit) {
     .map((row) => ({ file: row.rel, count: row.counts[key], area: row.area }));
 }
 
+const CEILING_KEYS = ["outsideBoth", "darkPrefix", "legacyImport"];
+
+function ceilingOf(chrome) {
+  return {
+    outsideBoth: outsideBothOf(chrome),
+    darkPrefix: chrome.darkPrefix,
+    legacyImport: chrome.legacyImport,
+  };
+}
+
+function ceilingFailures(current, baseline) {
+  const failures = [];
+  for (const key of CEILING_KEYS) {
+    if (current[key] > baseline[key]) {
+      failures.push(
+        `${key} is ${current[key]}, above the baseline ${baseline[key]}`,
+      );
+    }
+  }
+  return failures;
+}
+
+function printHelp() {
+  console.log(`Usage: node scripts/audit-design-tokens.mjs [--check] [--write] [--no-write] [--self-test]
+
+Counts design-token use under src and compares three chrome ceilings with
+scripts/audit-design-tokens.report.json.
+
+  --check      Exit 1 when outsideBoth, darkPrefix, or legacyImport is above
+               the committed report. This is what pnpm audit:tokens runs.
+  --write      Refresh the committed report. Wins over --check, so a PR that
+               lowered a ceiling can update the baseline in the same command.
+  --no-write   Print the summary and leave the report file alone.
+  --self-test  Check the classifier and the ceiling comparison, then exit.
+
+Lower a ceiling only in the PR that deleted the hits. A higher count fails
+the check until that report is written on purpose.`);
+}
+
 function selfTest() {
   const sample = [
     'className="hover:bg-zinc-100 text-muted-foreground border-gray-200 bg-[#fff] text-[13px] dark:bg-white"',
@@ -454,14 +493,33 @@ function selfTest() {
     console.error(failures.join("\n"));
     process.exit(1);
   }
+  const raised = ceilingFailures(
+    { outsideBoth: 2, darkPrefix: 1, legacyImport: 0 },
+    { outsideBoth: 1, darkPrefix: 1, legacyImport: 0 },
+  );
+  const held = ceilingFailures(
+    { outsideBoth: 1, darkPrefix: 0, legacyImport: 0 },
+    { outsideBoth: 1, darkPrefix: 1, legacyImport: 0 },
+  );
+  if (raised.length !== 1 || held.length !== 0) {
+    console.error("ceiling comparison failed", { raised, held });
+    process.exit(1);
+  }
   console.log("self-test ok");
 }
 
 function main() {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printHelp();
+    return;
+  }
   if (process.argv.includes("--self-test")) {
     selfTest();
     return;
   }
+  const write = process.argv.includes("--write");
+  const check = process.argv.includes("--check") && !write;
+  const noWrite = process.argv.includes("--no-write") || check;
 
   const files = [];
   walk(SRC, files);
@@ -594,8 +652,24 @@ function main() {
     "scripts",
     "audit-design-tokens.report.json",
   );
-  if (!process.argv.includes("--no-write")) {
+  if (!noWrite) {
     fs.writeFileSync(outPath, JSON.stringify(report, null, 2) + "\n");
+  }
+  let ceilingStatus = "not-checked";
+  if (check || write) {
+    const current = ceilingOf(report.productChrome);
+    if (check) {
+      const baselineReport = JSON.parse(fs.readFileSync(outPath, "utf8"));
+      const baseline = ceilingOf(baselineReport.productChrome);
+      const failures = ceilingFailures(current, baseline);
+      if (failures.length) {
+        console.error(failures.join("\n"));
+        process.exit(1);
+      }
+      ceilingStatus = "held";
+    } else {
+      ceilingStatus = "written";
+    }
   }
   console.log(
     JSON.stringify(
@@ -639,7 +713,8 @@ function main() {
           sidebarLightSame: themeOverlap.sidebarLight.same,
           sidebarDarkSame: themeOverlap.sidebarDark.same,
         },
-        wrote: process.argv.includes("--no-write") ? null : outPath,
+        wrote: noWrite ? null : outPath,
+        ceiling: ceilingStatus,
       },
       null,
       2,
