@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -15,6 +16,9 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.models import Expert
 from pytest_mock import MockerFixture
 
+from backend.copilot import model as chat_model
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError, RedisError
 
@@ -25,6 +29,7 @@ from .model import (
     _save_session_to_db,
     append_and_save_message,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
     get_or_create_builder_session,
     invalidate_session_cache,
@@ -867,6 +872,111 @@ async def test_append_and_save_message_returns_none_for_duplicate(
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="hello")
     )
+    assert result is None
+
+
+_PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
+
+# Keep going was pressed once already, and that continuation wrote only
+# assistant rows, or nothing at all: the earlier note is still in the chat's
+# trailing assistant run.
+_KEPT_GOING_ONCE = pytest.mark.parametrize(
+    "rows_after_the_note",
+    [
+        pytest.param(["Two of three sections done.", _PAUSE], id="assistant-rows"),
+        pytest.param([], id="nothing"),
+    ],
+)
+
+
+def _kept_going_once(rows_after_the_note: list[str]) -> ChatSession:
+    return _make_session_with_messages(
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(role="assistant", content=_PAUSE),
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        *(ChatMessage(role="assistant", content=row) for row in rows_after_the_note),
+    )
+
+
+def _mock_session_store(mocker: MockerFixture, session: ChatSession) -> None:
+    """The lock is taken, the session comes from cache, and writes succeed."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=len(session.messages))
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_collapses_a_repeated_note_by_default(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="assistant", content=KEEP_GOING_NOTE)
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_saves_a_repeated_note_with_content_dedupe_off(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
+    assert result is not None
+    assert result.messages[-1].content == KEEP_GOING_NOTE
+    assert [m.content for m in result.messages].count(KEEP_GOING_NOTE) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_keeps_the_id_check_with_content_dedupe_off(
+    mocker: MockerFixture,
+) -> None:
+    session = _kept_going_once([])
+    session.messages[-1].id = "click-1"
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(id="click-1", role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
     assert result is None
 
 
@@ -2383,3 +2493,76 @@ async def test_get_or_create_client_chat_session_refuses_an_automation_expert_se
         await get_or_create_client_chat_session(
             "user-a", "sid-1", dry_run=False, expert_id="expert-a"
         )
+
+
+def _mock_delete_dependencies(mocker: MockerFixture, *, deleted: bool):
+    db = mocker.MagicMock()
+    db.delete_chat_session = mocker.AsyncMock(return_value=deleted)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    redis = mocker.MagicMock()
+    redis.delete = mocker.AsyncMock()
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new=mocker.AsyncMock(return_value=redis),
+    )
+    release = asyncio.Event()
+
+    async def wait_for_release(*_args, **_kwargs):
+        await release.wait()
+
+    close_browser = mocker.patch(
+        "backend.copilot.tools.agent_browser.close_browser_session",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    delete_embedding = mocker.patch(
+        "backend.copilot.chat_session_embeddings.delete_chat_session_embedding",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    return redis, release, close_browser, delete_embedding
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_returns_before_cleanup_finishes(
+    mocker: MockerFixture,
+) -> None:
+    redis, release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=True
+    )
+    spawn = mocker.spy(chat_model, "spawn_background_task")
+    redis_started = asyncio.Event()
+    redis_release = asyncio.Event()
+
+    async def wait_for_redis_delete(*_args, **_kwargs):
+        redis_started.set()
+        await redis_release.wait()
+
+    redis.delete.side_effect = wait_for_redis_delete
+
+    delete_task = asyncio.create_task(delete_chat_session("sess-1", "user-1"))
+    await asyncio.wait_for(redis_started.wait(), 1)
+    assert not delete_task.done()
+    redis_release.set()
+    deleted = await asyncio.wait_for(delete_task, 1)
+
+    assert deleted is True
+    redis.delete.assert_awaited_once()
+    release.set()
+    await asyncio.wait_for(asyncio.gather(*spawn.spy_return_list), 1)
+    delete_embedding.assert_awaited_once_with("sess-1", "user-1")
+    close_browser.assert_awaited_once_with("sess-1", user_id="user-1")
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_not_found_runs_no_cleanup(
+    mocker: MockerFixture,
+) -> None:
+    redis, _release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=False
+    )
+
+    deleted = await delete_chat_session("sess-missing", "user-1")
+
+    assert deleted is False
+    redis.delete.assert_not_called()
+    close_browser.assert_not_called()
+    delete_embedding.assert_not_called()

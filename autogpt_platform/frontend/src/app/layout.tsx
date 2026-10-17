@@ -17,7 +17,6 @@ import {
   COOKIEBOT_SCRIPT_URL,
 } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
-import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 import Script from "next/script";
@@ -26,9 +25,6 @@ import { getSiteUrl } from "@/lib/metadata";
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
 const isCloud = environment.isCloud();
-// Agentation annotates the UI for whoever is building AutoGPT itself, so it
-// stays out of production builds; self-hosted installs are production builds.
-const showAgentation = environment.isDevelopmentBuild() || isDev;
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -134,7 +130,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ConsentWithdrawalReload />
-            {showAgentation && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

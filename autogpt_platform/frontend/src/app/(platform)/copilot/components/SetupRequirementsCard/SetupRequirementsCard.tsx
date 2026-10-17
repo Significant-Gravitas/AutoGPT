@@ -326,7 +326,7 @@ export function SetupRequirementsCard({
         <div className="rounded-2xl border bg-background p-3">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             {credentialsLabel ??
-              (isEditMode ? "Credentials" : "Agent credentials")}
+              (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
           <div className="mt-6">
             <CredentialsGroupedView

@@ -17,7 +17,7 @@ AutoGPT Platform is a monorepo containing:
 
 ## Key Concepts
 
-1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend
+1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend; identifiers, routes and API fields say agent or graph; any text a person reads says workflow (see "User-facing copy" in the root `AGENTS.md`)
 2. **Blocks**: Reusable components in `backend/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
