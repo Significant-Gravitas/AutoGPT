@@ -4,17 +4,26 @@
 
 /**
  * Format a date/time in the user's timezone with timezone indicator
- * @param date - The date to format (can be string or Date)
+ * @param date - The date to format (can be string, Date, or undefined/invalid)
  * @param timezone - The IANA timezone identifier (e.g., "America/New_York")
  * @param options - Intl.DateTimeFormat options
- * @returns Formatted date string with timezone
+ * @returns Formatted date string with timezone, or "Not scheduled" if the date is invalid
  */
 export function formatInTimezone(
-  date: string | Date,
+  date: string | Date | undefined,
   timezone: string,
   options?: Intl.DateTimeFormatOptions,
 ): string {
-  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const dateObj =
+    date === undefined
+      ? new Date(NaN)
+      : typeof date === "string"
+        ? new Date(date)
+        : date;
+
+  if (isNaN(dateObj.getTime())) {
+    return "Not scheduled";
+  }
 
   const defaultOptions: Intl.DateTimeFormatOptions = {
     year: "numeric",
