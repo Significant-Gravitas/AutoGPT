@@ -22,18 +22,6 @@ const CUSTOM_RAMPS = new Set([
   "green",
   "purple",
   "pink",
-  "customGray",
-]);
-const CUSTOM_FLATS = new Set([
-  "white",
-  "black",
-  "textGrey",
-  "textBlack",
-  "bgLightGrey",
-  "page",
-  "outlineBorder",
-]);
-const DEFAULT_PALETTE = new Set([
   "gray",
   "neutral",
   "stone",
@@ -49,6 +37,16 @@ const DEFAULT_PALETTE = new Set([
   "fuchsia",
   "rose",
 ]);
+const CUSTOM_FLATS = new Set([
+  "white",
+  "black",
+  "textGrey",
+  "textBlack",
+  "bgLightGrey",
+  "page",
+  "outlineBorder",
+]);
+const DEFAULT_PALETTE = new Set();
 const SHADE = /^(?:25|50|100|150|200|300|400|500|600|700|800|900|950)$/;
 
 const SEMANTIC = [
@@ -289,7 +287,6 @@ function classifyColor(token) {
   const shade = dash === -1 ? "" : token.slice(dash + 1);
   if (CUSTOM_RAMPS.has(family) && SHADE.test(shade)) return "customRamp";
   if (DEFAULT_PALETTE.has(family) && SHADE.test(shade)) return "defaultPalette";
-  if (family === "customGray" && SHADE.test(shade)) return "customRamp";
   return null;
 }
 
@@ -469,9 +466,8 @@ function selfTest() {
   ].join("\n");
   const counts = scanFile(sample);
   const expect = {
-    customRamp: 1,
+    customRamp: 2,
     semantic: 1,
-    defaultPalette: 1,
     arbitraryColor: 1,
     customFlat: 1,
     darkVariant: 1,
@@ -491,6 +487,14 @@ function selfTest() {
       failures.push(`${key} expected ${value} got ${counts[key]}`);
     }
   }
+  if (classifyColor("gray-200") !== "customRamp") {
+    failures.push("gray-200 should be a palette ramp now");
+  }
+  DEFAULT_PALETTE.add("mint");
+  if (classifyColor("mint-400") !== "defaultPalette") {
+    failures.push("mint-400 should stay a default palette color");
+  }
+  DEFAULT_PALETTE.delete("mint");
   if (failures.length) {
     console.error(failures.join("\n"));
     process.exit(1);

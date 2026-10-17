@@ -2,36 +2,36 @@
   "generatedBy": "scripts/audit-design-tokens.mjs",
   "unit": "source occurrence after comment stripping",
   "filesScanned": 3642,
-  "paletteHexDefinitions": 89,
+  "paletteHexDefinitions": 244,
   "productFiles": 2567,
   "productFilesWithSemantic": 160,
   "chromeFiles": 2549,
   "chromeFilesWithColorBypass": 1046,
   "chromeFilesWithSemantic": 160,
-  "chromeFilesOutsideBoth": 527,
+  "chromeFilesOutsideBoth": 136,
   "chromeFamilies": {
     "custom:red": 399,
     "custom:green": 209,
     "custom:slate": 178,
     "custom:zinc": 3084,
-    "default:gray": 480,
+    "custom:gray": 480,
     "custom:purple": 208,
-    "default:amber": 313,
-    "default:blue": 185,
-    "default:violet": 206,
-    "default:emerald": 91,
+    "custom:amber": 313,
+    "custom:blue": 185,
+    "custom:violet": 206,
+    "custom:emerald": 91,
     "custom:yellow": 90,
     "custom:orange": 66,
     "custom:pink": 14,
-    "default:rose": 45,
-    "default:teal": 18,
-    "default:indigo": 36,
-    "default:neutral": 791,
-    "default:sky": 38,
-    "default:cyan": 16,
-    "default:lime": 15,
-    "default:fuchsia": 15,
-    "default:stone": 3
+    "custom:rose": 45,
+    "custom:teal": 18,
+    "custom:indigo": 36,
+    "custom:neutral": 791,
+    "custom:sky": 38,
+    "custom:cyan": 16,
+    "custom:lime": 15,
+    "custom:fuchsia": 15,
+    "custom:stone": 3
   },
   "artworkFiles": 18,
   "artworkNote": "Artwork files are illustrations, logos, generated avatar parts, and icon sheets. Their hex is paint, not UI chrome. productChrome excludes them. Color picker data such as ColorStep/helpers.ts stays in chrome because those classes style product UI.",
@@ -50,9 +50,9 @@
   "limiter": "Each file is read once. A match is one regex hit. The count cannot include a second pass over compiled CSS. It undercounts classes assembled at runtime.",
   "product": {
     "semantic": 522,
-    "customRamp": 4337,
+    "customRamp": 6607,
     "customFlat": 803,
-    "defaultPalette": 2270,
+    "defaultPalette": 0,
     "arbitraryColor": 220,
     "arbitraryLength": 1228,
     "arbitraryType": 330,
@@ -68,9 +68,9 @@
   },
   "productChrome": {
     "semantic": 522,
-    "customRamp": 4248,
+    "customRamp": 6500,
     "customFlat": 791,
-    "defaultPalette": 2252,
+    "defaultPalette": 0,
     "arbitraryColor": 220,
     "arbitraryLength": 1213,
     "arbitraryType": 320,
@@ -86,9 +86,9 @@
   },
   "artwork": {
     "semantic": 0,
-    "customRamp": 89,
+    "customRamp": 107,
     "customFlat": 12,
-    "defaultPalette": 18,
+    "defaultPalette": 0,
     "arbitraryColor": 0,
     "arbitraryLength": 15,
     "arbitraryType": 10,
@@ -104,9 +104,9 @@
   },
   "testsAndStories": {
     "semantic": 33,
-    "customRamp": 233,
+    "customRamp": 404,
     "customFlat": 32,
-    "defaultPalette": 171,
+    "defaultPalette": 0,
     "arbitraryColor": 3,
     "arbitraryLength": 24,
     "arbitraryType": 1,
@@ -123,9 +123,9 @@
   "byArea": {
     "designSystem": {
       "semantic": 104,
-      "customRamp": 414,
+      "customRamp": 596,
       "customFlat": 116,
-      "defaultPalette": 182,
+      "defaultPalette": 0,
       "arbitraryColor": 2,
       "arbitraryLength": 123,
       "arbitraryType": 40,
@@ -141,9 +141,9 @@
     },
     "legacy": {
       "semantic": 19,
-      "customRamp": 32,
+      "customRamp": 313,
       "customFlat": 28,
-      "defaultPalette": 281,
+      "defaultPalette": 0,
       "arbitraryColor": 0,
       "arbitraryLength": 35,
       "arbitraryType": 3,
@@ -159,9 +159,9 @@
     },
     "app": {
       "semantic": 362,
-      "customRamp": 3351,
+      "customRamp": 4856,
       "customFlat": 517,
-      "defaultPalette": 1505,
+      "defaultPalette": 0,
       "arbitraryColor": 105,
       "arbitraryLength": 886,
       "arbitraryType": 241,
@@ -177,9 +177,9 @@
     },
     "other": {
       "semantic": 37,
-      "customRamp": 540,
+      "customRamp": 842,
       "customFlat": 142,
-      "defaultPalette": 302,
+      "defaultPalette": 0,
       "arbitraryColor": 113,
       "arbitraryLength": 184,
       "arbitraryType": 46,
@@ -461,83 +461,7 @@
       "area": "app"
     }
   ],
-  "topDefaultPaletteFiles": [
-    {
-      "file": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
-      "count": 143,
-      "area": "app"
-    },
-    {
-      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
-      "count": 47,
-      "area": "other"
-    },
-    {
-      "file": "src/app/(platform)/admin/diagnostics/components/DiagnosticsContent.tsx",
-      "count": 36,
-      "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
-      "count": 35,
-      "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
-      "count": 35,
-      "area": "app"
-    },
-    {
-      "file": "src/components/__legacy__/ui/calendar.tsx",
-      "count": 34,
-      "area": "legacy"
-    },
-    {
-      "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
-      "count": 33,
-      "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/profile/(user)/dashboard/components/AgentTableRow/AgentTableRow.tsx",
-      "count": 30,
-      "area": "app"
-    },
-    {
-      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
-      "count": 29,
-      "area": "app"
-    },
-    {
-      "file": "src/components/ui/button.tsx",
-      "count": 29,
-      "area": "designSystem"
-    },
-    {
-      "file": "src/app/(platform)/admin/execution-analytics/components/AnalyticsResultsTable.tsx",
-      "count": 28,
-      "area": "app"
-    },
-    {
-      "file": "src/components/__legacy__/ui/button.tsx",
-      "count": 28,
-      "area": "legacy"
-    },
-    {
-      "file": "src/components/__legacy__/ui/dropdown-menu.tsx",
-      "count": 28,
-      "area": "legacy"
-    },
-    {
-      "file": "src/components/molecules/DropdownMenu/DropdownMenu.tsx",
-      "count": 28,
-      "area": "designSystem"
-    },
-    {
-      "file": "src/lib/utils.ts",
-      "count": 28,
-      "area": "other"
-    }
-  ],
+  "topDefaultPaletteFiles": [],
   "topHexFiles": [
     {
       "file": "src/components/molecules/NotionAvatar/parts.generated.ts",
