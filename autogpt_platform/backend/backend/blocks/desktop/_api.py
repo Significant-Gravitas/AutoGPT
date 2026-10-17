@@ -12,9 +12,11 @@ import contextlib
 import secrets
 import shlex
 import string
+import time
 from typing import Literal, Mapping, Optional
 
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
+from e2b.exceptions import SandboxException
 from pydantic import BaseModel
 
 from backend.util.e2b_network import (
@@ -63,6 +65,10 @@ _STOP_STREAM = (
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
+# How long a team whose create was refused for "volume mounts are not enabled"
+# is taken to still have none. The refusal is the team's beta access, not a
+# blip, so the mounts are tried again once an hour instead of on every box.
+VOLUME_MOUNTS_DISABLED_TTL_SECONDS = 3600
 _KILL_TIMEOUT_SECONDS = 10
 
 _TYPE_CHUNK_SIZE = 25
@@ -395,6 +401,34 @@ async def resolve_volume(volume_name: str, api_key: str) -> "AsyncVolume | str":
         return volume_name
 
 
+# API key -> monotonic time until which its team is taken to have no mounts.
+_volume_mounts_disabled_until: dict[str, float] = {}
+
+
+def is_volume_mounts_disabled(exc: BaseException) -> bool:
+    """Whether E2B refused a create because the team has no volume mounts."""
+    return (
+        isinstance(exc, SandboxException)
+        and exc.status_code == 400
+        and "volume mounts are not enabled" in str(exc).lower()
+    )
+
+
+def mark_volume_mounts_disabled(api_key: str) -> None:
+    _volume_mounts_disabled_until[api_key] = (
+        time.monotonic() + VOLUME_MOUNTS_DISABLED_TTL_SECONDS
+    )
+
+
+def volume_mounts_disabled(api_key: str) -> bool:
+    """Whether a recent create showed this key's team has no volume mounts.
+
+    Asking for them again would only buy the same refusal, so creates skip
+    the mounts (and resolving their volumes) until the note expires.
+    """
+    return time.monotonic() < _volume_mounts_disabled_until.get(api_key, 0.0)
+
+
 # Client-side deadline on each create call (E2B provisions in 5-15 s), and
 # the number of mounted attempts before the volumes are given up on.  A
 # desktop keeps its volumes for life once created, so one transient failure
@@ -421,12 +455,17 @@ async def _create_sandbox_with_volumes(
         return sandbox, PersistenceInfo()
 
     paths = list(volume_mounts)
-    volumes = await asyncio.gather(
-        *(resolve_volume(volume_mounts[path], api_key) for path in paths)
+    mounted_attempts = 0 if volume_mounts_disabled(api_key) else MOUNTED_CREATE_ATTEMPTS
+    volumes = (
+        await asyncio.gather(
+            *(resolve_volume(volume_mounts[path], api_key) for path in paths)
+        )
+        if mounted_attempts
+        else []
     )
     mounts = dict(zip(paths, volumes))
     mount_error: Exception | None = None
-    for attempt in range(1, MOUNTED_CREATE_ATTEMPTS + 1):
+    for attempt in range(1, mounted_attempts + 1):
         try:
             sandbox = await asyncio.wait_for(
                 create_sandbox(AsyncSandbox, owner, **kwargs, volume_mounts=mounts),
@@ -434,7 +473,12 @@ async def _create_sandbox_with_volumes(
             )
         except Exception as exc:
             mount_error = exc
-            if attempt < MOUNTED_CREATE_ATTEMPTS:
+            if is_volume_mounts_disabled(exc):
+                # No retry can mount them, so fall back now rather than after
+                # another refusal and its backoff.
+                mark_volume_mounts_disabled(api_key)
+                break
+            if attempt < mounted_attempts:
                 await asyncio.sleep(attempt)
             continue
         return sandbox, PersistenceInfo(
@@ -454,6 +498,7 @@ async def _create_sandbox_with_volumes(
     return sandbox, PersistenceInfo(
         warning=(
             "Persistent volume unavailable (E2B volumes are in private beta); "
-            f"using suspend/resume persistence only: {mount_error}"
+            "using suspend/resume persistence only: "
+            f"{mount_error or 'volume mounts are not enabled'}"
         )
     )

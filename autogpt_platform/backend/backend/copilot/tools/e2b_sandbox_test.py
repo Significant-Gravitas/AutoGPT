@@ -13,15 +13,22 @@ session-scoped event loop in conftest.py.
 
 import asyncio
 import contextlib
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from e2b import SandboxState
-from e2b.exceptions import SandboxNotFoundException
+from e2b.exceptions import SandboxException, SandboxNotFoundException
 
-from backend.blocks.desktop._api import _STOP_STREAM, SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop import _api as desktop_api
+from backend.blocks.desktop._api import (
+    _STOP_STREAM,
+    SHARED_PATH,
+    WORKSPACE_PATH,
+    mark_volume_mounts_disabled,
+)
 from backend.blocks.desktop._common import (
     expert_volume_name,
     user_volume_name,
@@ -52,6 +59,10 @@ _SESSION_ID = "sess-123"
 _API_KEY = "test-api-key"
 _SANDBOX_ID = "sb-abc"
 _TIMEOUT = 300
+# What E2B answers a mounted create on a team without the volumes beta.
+_VOLUMES_NOT_ENABLED = SandboxException(
+    "400: Volume mounts are not enabled.", status_code=400
+)
 
 
 def _mock_sandbox(
@@ -87,6 +98,13 @@ _SESSION_SHELL_STAMP = SandboxOwner(kind="session", id=_SESSION_ID).metadata()
 def _fresh_stamps():
     _STAMPS.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_volume_refusal():
+    desktop_api._volume_mounts_disabled_until.clear()
+    yield
+    desktop_api._volume_mounts_disabled_until.clear()
 
 
 @contextlib.contextmanager
@@ -1960,6 +1978,94 @@ class TestExpertBoxRecovery:
         assert attempts[2]["volume_mounts"] is None
         assert attempts[0]["metadata"]["autogpt_mounts"] == "attached"
         assert attempts[2]["metadata"]["autogpt_mounts"] == "none"
+
+    def test_a_team_without_volume_mounts_gets_its_box_after_one_refusal(self):
+        """E2B volumes are a per-team beta: a team without them is refused
+        every mounted create, so the box goes volume-less after that refusal
+        instead of after two more attempts and their backoff."""
+        sb = _mock_sandbox("sb-plain")
+        mounts = workspace_volume_mounts(_USER_ID, None)
+        sleep = AsyncMock()
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.resolve_volume",
+                new=AsyncMock(side_effect=lambda name, key: name),
+            ),
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", new=sleep),
+            _patch_redis(_keyed_redis({})),
+        ):
+            mock_cls.create = AsyncMock(side_effect=[_VOLUMES_NOT_ENABLED, sb])
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    volume_mounts=mounts,
+                    user_id=_USER_ID,
+                )
+            )
+        assert result is sb
+        attempts = [c.kwargs for c in mock_cls.create.call_args_list]
+        assert [a["volume_mounts"] for a in attempts] == [mounts, None]
+        assert attempts[1]["metadata"]["autogpt_mounts"] == "none"
+        sleep.assert_not_awaited()
+
+    def test_later_boxes_skip_the_mounts_the_team_does_not_have(self):
+        """The refusal is remembered: the next box neither resolves volumes
+        nor asks for mounts, so it costs one create."""
+        first, second = _mock_sandbox("sb-1"), _mock_sandbox("sb-2")
+        resolve = AsyncMock(side_effect=lambda name, key: name)
+        with (
+            _patch_sdk() as mock_cls,
+            patch("backend.copilot.tools.e2b_sandbox.resolve_volume", new=resolve),
+            patch("backend.copilot.tools.e2b_sandbox.asyncio.sleep", new=AsyncMock()),
+            _patch_redis(_keyed_redis({})),
+        ):
+            mock_cls.create = AsyncMock(
+                side_effect=[_VOLUMES_NOT_ENABLED, first, second]
+            )
+            for session_id in (_SESSION_ID, "sess-456"):
+                result = asyncio.run(
+                    get_or_create_sandbox(
+                        session_id,
+                        _API_KEY,
+                        timeout=_TIMEOUT,
+                        volume_mounts=workspace_volume_mounts(_USER_ID, None),
+                        user_id=_USER_ID,
+                    )
+                )
+        assert result is second
+        assert resolve.await_count == 1
+        assert mock_cls.create.await_count == 3
+        assert mock_cls.create.call_args_list[-1].kwargs["volume_mounts"] is None
+
+    def test_the_mounts_are_asked_for_again_once_the_note_expires(self):
+        """E2B may turn volumes on for the team; an expired note must not
+        keep every box volume-less."""
+        mark_volume_mounts_disabled(_API_KEY)
+        desktop_api._volume_mounts_disabled_until[_API_KEY] = time.monotonic() - 1
+        sb = _mock_sandbox("sb-mounted")
+        mounts = workspace_volume_mounts(_USER_ID, None)
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.resolve_volume",
+                new=AsyncMock(side_effect=lambda name, key: name),
+            ),
+            _patch_redis(_keyed_redis({})),
+        ):
+            mock_cls.create = AsyncMock(return_value=sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    volume_mounts=mounts,
+                    user_id=_USER_ID,
+                )
+            )
+        assert mock_cls.create.call_args.kwargs["volume_mounts"] == mounts
 
     def test_release_fails_closed_when_redis_is_unavailable(self):
         """Without the counter we cannot rule out a concurrent turn, so the
