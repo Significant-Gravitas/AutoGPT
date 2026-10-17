@@ -71,6 +71,9 @@ class ResponseType(str, Enum):
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
     PROVIDER_FAILURE = "data-provider-failure"
+    # The turn stopped on purpose at a budget or step limit; the client shows
+    # a Paused card with ways to pick the task back up.
+    TURN_PAUSED = "data-turn-paused"
     CHECKPOINT = "data-checkpoint"
 
 
@@ -401,6 +404,23 @@ class StreamProviderFailure(StreamBaseResponse):
     def to_sse(self) -> str:
         """Emit as an AI SDK v5 data part."""
         data = {"type": self.type.value, "data": self.failure}
+        return f"data: {json_dumps(data)}\n\n"
+
+
+class StreamTurnPaused(StreamBaseResponse):
+    """The turn landed at a budget or step limit instead of failing.
+
+    Sent in place of the error frame those limits used to produce, just
+    before ``StreamFinish``. The same payload is stored on a marker row so
+    the card survives the stream (see ``backend.copilot.turn_pause``).
+    """
+
+    type: ResponseType = ResponseType.TURN_PAUSED
+    pause: dict[str, Any] = Field(..., description="TurnPause.as_part() payload")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {"type": self.type.value, "data": self.pause}
         return f"data: {json_dumps(data)}\n\n"
 
 

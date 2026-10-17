@@ -22,6 +22,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -184,6 +185,72 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
+
+
+async def enforce_model_entitlement(
+    model: CopilotLLMModel | None, session: ChatSessionInfo, user_id: str
+) -> None:
+    """Refuse the Advanced tier to a user who doesn't hold it.
+
+    Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
+    Every other route can spend platform-gated premium inference, so a client
+    that skips the picker still has to hold the Advanced entitlement.
+    """
+    if model != "advanced" or (
+        session.metadata.llm_auth_provider == "microsoft_365_copilot"
+    ):
+        return
+    try:
+        entitled = await advanced_tier_entitled(user_id)
+    except EntitlementUnavailable:
+        raise HTTPException(
+            status_code=503, detail="advanced_tier_unavailable"
+        ) from None
+    if not entitled:
+        raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
+
+
+async def enforce_platform_allowance(user_id: str) -> None:
+    """Refuse a platform-billed turn when the user's allowance is spent.
+
+    Raises 429 with a structured ``ProviderFailure`` envelope, or 503 when the
+    allowance can't be read. Shared by every route that starts a turn.
+    """
+    try:
+        daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
+            user_id,
+            config.daily_cost_limit_microdollars,
+            config.weekly_cost_limit_microdollars,
+        )
+        await check_rate_limit(
+            user_id=user_id,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+            expected_tier=usage_tier,
+        )
+    except RateLimitExceeded as e:
+        # Structured envelope (not a bare string) so the frontend can
+        # offer "switch to another connection" (e.g. a connected
+        # BYOSUB/Codex credential) instead of only "upgrade your plan" --
+        # the platform cap does not apply once the turn is billed to a
+        # user-supplied credential instead of platform dollars.
+        failure = ProviderFailure(
+            kind=ProviderFailureKind.USAGE_LIMIT,
+            message=str(e),
+            auth_provider="platform",
+            resets_at=int(e.resets_at.timestamp()),
+        )
+        raise HTTPException(status_code=429, detail=failure.as_part()) from e
+    except RateLimitUnavailable as e:
+        # Fail-closed on Redis brown-out: the user may already be at or
+        # past their USD cap and we cannot prove otherwise. 503 + a short
+        # Retry-After is the right UX (transient outage, retry shortly),
+        # not 429 ("you hit your limit").
+        raise HTTPException(
+            status_code=503,
+            detail="Rate limit service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from e
 
 
 async def _validate_and_get_session(
@@ -1006,17 +1073,15 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
-    # Best-effort cleanup of the E2B sandbox (if any).
+    # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
     e2b_cfg = ChatConfig()
     if e2b_cfg.e2b_active:
         assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
-        try:
-            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
-        except Exception:
-            logger.warning(
-                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
-            )
+        spawn_background_task(
+            kill_sandbox(session_id, e2b_cfg.e2b_api_key),
+            name=f"e2b-session-kill-{session_id[:12]}",
+        )
 
     return Response(status_code=204)
 
@@ -1790,21 +1855,7 @@ async def stream_chat_post(
     session = await _validate_and_get_writable_session(session_id, user_id)
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
-    # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
-    # Every other route can spend platform-gated premium inference, so a client
-    # that skips the picker still has to hold the Advanced entitlement.
-    if (
-        request.model == "advanced"
-        and session.metadata.llm_auth_provider != "microsoft_365_copilot"
-    ):
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            raise HTTPException(
-                status_code=503, detail="advanced_tier_unavailable"
-            ) from None
-        if not entitled:
-            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
+    await enforce_model_entitlement(request.model, session, user_id)
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1931,40 +1982,7 @@ async def stream_chat_post(
     # pending-message frequency, and concurrent-turn caps remain enforced by
     # the shared scheduling path below.
     if user_id and is_platform_route:
-        try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id,
-                config.daily_cost_limit_microdollars,
-                config.weekly_cost_limit_microdollars,
-            )
-            await check_rate_limit(
-                user_id=user_id,
-                daily_cost_limit=daily_limit,
-                weekly_cost_limit=weekly_limit,
-            )
-        except RateLimitExceeded as e:
-            # Structured envelope (not a bare string) so the frontend can
-            # offer "switch to another connection" (e.g. a connected
-            # BYOSUB/Codex credential) instead of only "upgrade your plan" --
-            # the platform cap does not apply once the turn is billed to a
-            # user-supplied credential instead of platform dollars.
-            failure = ProviderFailure(
-                kind=ProviderFailureKind.USAGE_LIMIT,
-                message=str(e),
-                auth_provider="platform",
-                resets_at=int(e.resets_at.timestamp()),
-            )
-            raise HTTPException(status_code=429, detail=failure.as_part()) from e
-        except RateLimitUnavailable as e:
-            # Fail-closed on Redis brown-out: the user may already be at or
-            # past their USD cap and we cannot prove otherwise. 503 + a short
-            # Retry-After is the right UX (transient outage, retry shortly),
-            # not 429 ("you hit your limit").
-            raise HTTPException(
-                status_code=503,
-                detail="Rate limit service degraded, retry shortly",
-                headers={"Retry-After": "30"},
-            ) from e
+        await enforce_platform_allowance(user_id)
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -2122,6 +2140,10 @@ async def stream_chat_post(
             logger.warning(
                 "[STREAM] Failed to publish initial status chunk", exc_info=True
             )
+        if request.is_user_message:
+            # The user carried the chat on, so a pending "Resume at reset"
+            # would repeat their turn.
+            cancel_resume_at_reset_in_background(session_id, user_id)
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(

@@ -30,7 +30,7 @@ export function ExpertAvatarButton({ expert }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
-          className="rounded-full ring-4 ring-background"
+          className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
           backgroundColor={getExpertTopicHex({
             avatarUrl: expert.avatar_url,
             categories: expert.categories,

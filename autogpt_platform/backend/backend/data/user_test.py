@@ -1066,15 +1066,23 @@ class TestTableBackedCredentials:
         from backend.util.encryption import JSONCryptor
 
         due = OAuth2Credentials(
-            id="due", provider="github", access_token=SecretStr("access"),
-            access_token_expires_at=1_299, refresh_token=SecretStr("refresh"), scopes=[]
+            id="due",
+            provider="github",
+            access_token=SecretStr("access"),
+            access_token_expires_at=1_299,
+            refresh_token=SecretStr("refresh"),
+            scopes=[],
         )
-        future = due.model_copy(update={"id": "future", "access_token_expires_at": 1_301})
+        future = due.model_copy(
+            update={"id": "future", "access_token_expires_at": 1_301}
+        )
         provider_runtime = due.model_copy(
             update={"id": "runtime", "refresh_strategy": "provider_runtime"}
         )
         managed = due.model_copy(update={"id": "managed", "is_managed": True})
-        without_refresh = due.model_copy(update={"id": "without-refresh", "refresh_token": None})
+        without_refresh = due.model_copy(
+            update={"id": "without-refresh", "refresh_token": None}
+        )
         api_key = APIKeyCredentials(
             id="api-key", provider="github", api_key=SecretStr("key")
         )
@@ -1087,13 +1095,19 @@ class TestTableBackedCredentials:
                 encryptedPayload=cryptor.encrypt(credentials.model_dump()),
             )
 
-        corrupt = MagicMock(id="corrupt", ownerId="user-corrupt", encryptedPayload="bad")
+        corrupt = MagicMock(
+            id="corrupt", ownerId="user-corrupt", encryptedPayload="bad"
+        )
         mock_prisma = MagicMock()
         mock_prisma.integrationcredential.find_many = AsyncMock(
             return_value=[
-                row("user-due", due), row("user-future", future),
-                row("user-runtime", provider_runtime), row("user-managed", managed),
-                row("user-without-refresh", without_refresh), row("user-api", api_key), corrupt,
+                row("user-due", due),
+                row("user-future", future),
+                row("user-runtime", provider_runtime),
+                row("user-managed", managed),
+                row("user-without-refresh", without_refresh),
+                row("user-api", api_key),
+                corrupt,
             ]
         )
         mocker.patch("backend.data.user.prisma", mock_prisma)
