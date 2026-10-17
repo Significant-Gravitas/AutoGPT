@@ -249,12 +249,10 @@ class IntegrationCredentialsManager:
         for user_id, credentials in candidates:
             try:
                 await self.refresh_if_needed(user_id, credentials)
-            except Exception:
+            except Exception as error:
                 logger.warning(
-                    "Proactive refresh failed for credential #%s belonging to user %s",
-                    credentials.id,
-                    user_id[:12],
-                    exc_info=True,
+                    f"Proactive refresh failed for credential #{credentials.id} "
+                    f"belonging to user {user_id[:12]} ({type(error).__name__})"
                 )
 
     async def refresh_if_needed(
@@ -311,22 +309,9 @@ class IntegrationCredentialsManager:
         handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            # A different worker may have completed the refresh while this one
-            # waited for the refresh mutex. Re-read before deciding, otherwise
-            # rotating providers can receive the same old refresh token twice.
-            current = await self.store.get_creds_by_id(user_id, credentials.id)
-            if current is None:
-                raise ValueError(
-                    f"Credentials #{credentials.id} for user #{user_id} not found"
-                )
-            if current.type != "oauth2":
-                raise TypeError(
-                    f"Credentials #{credentials.id} for user #{user_id} changed "
-                    f"type to {current.type!r} during OAuth refresh"
-                )
-            if current.provider != credentials.provider:
-                raise RuntimeError("Credential provider changed during refresh")
-            credentials = current
+            credentials = await self._reload_oauth_credentials(user_id, credentials)
+            if credentials.refresh_strategy == "provider_runtime":
+                return credentials
             oauth_handler = handler or await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
@@ -337,6 +322,14 @@ class IntegrationCredentialsManager:
                 # Wait until the credentials are no longer in use anywhere
                 _lock = await self._acquire_lock(user_id, credentials.id)
                 try:
+                    credentials = await self._reload_oauth_credentials(
+                        user_id, credentials
+                    )
+                    if (
+                        credentials.refresh_strategy == "provider_runtime"
+                        or not oauth_handler.needs_refresh(credentials)
+                    ):
+                        return credentials
                     fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                     await self.store.update_creds(user_id, fresh_credentials)
                     await _invoke_creds_changed_hook(
@@ -353,6 +346,24 @@ class IntegrationCredentialsManager:
                                 exc_info=True,
                             )
         return credentials
+
+    async def _reload_oauth_credentials(
+        self, user_id: str, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
+        """Re-read after either lock wait; a lease holder may replace or delete it."""
+        current = await self.store.get_creds_by_id(user_id, credentials.id)
+        if current is None:
+            raise ValueError(
+                f"Credentials #{credentials.id} for user #{user_id} not found"
+            )
+        if current.type != "oauth2":
+            raise TypeError(
+                f"Credentials #{credentials.id} for user #{user_id} changed "
+                f"type to {current.type!r} during OAuth refresh"
+            )
+        if current.provider != credentials.provider:
+            raise RuntimeError("Credential provider changed during refresh")
+        return current
 
     async def _refresh_unlocked(
         self,
