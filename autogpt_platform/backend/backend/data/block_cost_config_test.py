@@ -1,4 +1,5 @@
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockCostType
 from backend.blocks.ayrshare.post_to_bluesky import PostToBlueskyBlock
@@ -14,6 +15,7 @@ from backend.blocks.ayrshare.post_to_threads import PostToThreadsBlock
 from backend.blocks.ayrshare.post_to_tiktok import PostToTikTokBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
+from backend.blocks.bannerbear._config import bannerbear
 from backend.blocks.bannerbear.text_overlay import BannerbearTextOverlayBlock
 from backend.blocks.code_executor import (
     ExecuteCodeBlock,
@@ -25,7 +27,7 @@ from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.model import NodeExecutionStats
+from backend.data.model import APIKeyCredentials, NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
@@ -35,6 +37,7 @@ from backend.integrations.credentials_store import (
     open_router_credentials,
     webshare_proxy_credentials,
 )
+from backend.sdk.cost_integration import register_provider_costs_for_block
 
 
 @pytest.fixture(autouse=True)
@@ -119,11 +122,25 @@ def test_jina_chunking_has_flat_cost_floor():
     assert cost == 1
 
 
-def test_bannerbear_base_cost_is_three_credits():
-    # Bannerbear is registered via the SDK ProviderBuilder with base_cost=3.
+def test_bannerbear_base_cost_is_three_credits_on_the_platform_key(monkeypatch):
+    # Bannerbear is registered via the SDK ProviderBuilder with base_cost=3,
+    # billed only when the run uses the platform's BANNERBEAR_API_KEY.
+    platform_key = APIKeyCredentials(
+        id="bannerbear-default",
+        provider="bannerbear",
+        api_key=SecretStr("platform-key"),
+        title="Bannerbear API Key",
+    )
+    monkeypatch.setattr(bannerbear, "default_credentials", [platform_key])
+    monkeypatch.delitem(BLOCK_COSTS, BannerbearTextOverlayBlock, raising=False)
+    register_provider_costs_for_block(BannerbearTextOverlayBlock)
     block = BannerbearTextOverlayBlock()
-    cost, _ = block_usage_cost(block, {})
-    assert cost == 3
+
+    platform, _ = block_usage_cost(block, {"credentials": {"id": platform_key.id}})
+    own_key, _ = block_usage_cost(block, {"credentials": {"id": "user-own-key"}})
+
+    assert platform == 3
+    assert own_key == 0
 
 
 def test_e2b_sandbox_blocks_bill_per_walltime_second():
