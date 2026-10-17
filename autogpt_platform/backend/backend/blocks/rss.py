@@ -165,4 +165,5 @@ class ReadRSSFeedBlock(Block):
                     yield "entry", rss_entry
 
             yield "entries", all_entries
-            await asyncio.sleep(input_data.polling_rate)
+            if keep_going:
+                await asyncio.sleep(input_data.polling_rate)
