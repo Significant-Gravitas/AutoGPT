@@ -1,11 +1,15 @@
 """The audit on its own: a relaunched turn owes only the attempt that
-succeeded, and a turn the failure ended owes nothing."""
+succeeded, a turn the failure ended owes nothing, and a governor meters each
+call at list price."""
+
+from claude_agent_sdk import AssistantMessage, TextBlock
 
 from backend.copilot.model import Usage
+from backend.copilot.sdk.usage_meter import UsageMeter
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
-from .audit import _audit_turn
-from .invoice import ANTHROPIC_PRICES, SONNET, Call, scripted_usage
+from .audit import _audit_meter, _audit_turn
+from .invoice import ANTHROPIC_PRICES, SONNET, Call, Price, scripted_usage
 from .ledger import CostLogRow, PlatformLedger, SpendCharge, TreeCharge
 from .provider import PlannedFault
 from .scenarios import SCENARIOS, _sdk_anthropic_failing
@@ -71,6 +75,46 @@ def test_charging_a_turn_the_failure_ended_is_reported():
 
     assert [finding.check for finding in findings] == ["charge"]
     assert "owes nothing" in findings[0].message
+
+
+# Two calls on OpenRouter, which names the model ``anthropic/claude-sonnet-5-5``.
+_OPENROUTER_CALLS = [
+    call.model_copy(update={"route": "openrouter", "model": f"anthropic/{SONNET}"})
+    for call in (_FAILED_ATTEMPT, _RETRY)
+]
+
+
+def test_a_governor_metering_its_calls_at_list_price_passes():
+    meter = UsageMeter()
+    for call in _OPENROUTER_CALLS:
+        meter.observe(_as_the_cli_reports(call))
+
+    assert _audit_meter(1, _OPENROUTER_CALLS, meter.spent_usd) == []
+
+
+def test_a_governor_pricing_sonnet_as_opus_is_reported():
+    opus = Price(
+        input=15, output=75, cache_read=1.5, cache_write_5m=18.75, cache_write_1h=30
+    )
+    metered = sum(opus.of(call.usage, "1h") for call in _OPENROUTER_CALLS)
+
+    findings = _audit_meter(1, _OPENROUTER_CALLS, metered)
+
+    assert [finding.check for finding in findings] == ["meter"]
+
+
+def _as_the_cli_reports(call: Call) -> AssistantMessage:
+    return AssistantMessage(
+        content=[TextBlock(text="x")],
+        model=call.model,
+        usage={
+            "input_tokens": call.usage.input_tokens,
+            "output_tokens": call.usage.output_tokens,
+            "cache_read_input_tokens": call.usage.cache_read_tokens,
+            "cache_creation_input_tokens": call.usage.cache_write_tokens,
+        },
+        message_id=f"call-{call.request}",
+    )
 
 
 def _turn_charged_for(*calls: Call) -> tuple[PlatformLedger, list[Usage]]:

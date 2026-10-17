@@ -2,6 +2,7 @@
 the trial ends, then ends, or converts once resumed."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -117,7 +118,10 @@ async def test_scheduled_cancellation_ends_access_when_stripe_ends_the_trial(
 
 
 @pytest.mark.asyncio
-async def test_resumed_trial_converts_at_trial_end(trial, subscription, boundaries):
+@pytest.mark.parametrize("activation_ready", [False, True])
+async def test_resumed_trial_converts_at_trial_end(
+    trial, subscription, boundaries, monkeypatch, activation_ready
+):
     now = datetime.now(UTC)
     trial = trial.model_copy(
         update={
@@ -139,11 +143,24 @@ async def test_resumed_trial_converts_at_trial_end(trial, subscription, boundari
             "billing_reason": "subscription_cycle",
         },
     )
+    publish = AsyncMock(return_value=activation_ready)
+    monkeypatch.setattr(
+        fulfillment.subscription_activation, "publish_initial_pro_activation", publish
+    )
+    boundaries.user.find_unique_or_raise = AsyncMock()
+    boundaries.subscriptiontrial.find_unique_or_raise = AsyncMock(
+        return_value=SimpleNamespace(
+            convertedAt=now if activation_ready else None,
+            stripeConversionInvoiceId="in_1" if activation_ready else None,
+        )
+    )
     result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
-    assert result is not None and result[1] == SubscriptionTier.PRO
+    expected = SubscriptionTier.PRO if activation_ready else SubscriptionTier.NO_TIER
+    assert result is not None and result[1] == expected
+    publish.assert_awaited_once()
     saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
-    assert saved["convertedAt"] is not None
-    assert saved["stripeConversionInvoiceId"] == "in_1"
+    assert (saved["convertedAt"] is not None) == activation_ready
+    assert saved["stripeConversionInvoiceId"] == ("in_1" if activation_ready else None)
     assert saved["notificationRevision"] == 2
 
 
