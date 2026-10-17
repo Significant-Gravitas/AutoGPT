@@ -1,5 +1,7 @@
+import time
 from typing import Any
 
+from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -13,7 +15,17 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 
-from ._api import MAX_WAIT_SECONDS, ConductorClient
+from ._api import (
+    DEFAULT_WAIT_SECONDS,
+    MAX_WAIT_SECONDS,
+    NEXT_AFTER_CONTINUATION,
+    POLL_INTERVAL_DESCRIPTION,
+    TIMEOUT_DESCRIPTION,
+    WAIT_GUIDANCE,
+    ConductorClient,
+    poll_interval_for,
+    wait_seconds_for,
+)
 from ._config import conductor
 from ._mocks import WAIT_MOCK_REPLY
 from ._transcript import find_prompt_row, prompt_cursor, wait_for_reply
@@ -31,20 +43,21 @@ class ConductorSendMessageBlock(Block):
         session_id: str = SchemaField(description="Session to send the prompt to")
         message: str = SchemaField(description="Prompt for the agent")
         wait_for_reply: bool = SchemaField(
-            description="Wait until the agent is idle and return its reply",
+            description="Wait until the agent is idle and return its reply. "
+            + WAIT_GUIDANCE,
             default=True,
             advanced=False,
         )
         timeout_seconds: int = SchemaField(
-            description="How long to wait for the reply",
-            default=900,
+            description=TIMEOUT_DESCRIPTION,
+            default=DEFAULT_WAIT_SECONDS,
             ge=1,
             le=MAX_WAIT_SECONDS,
         )
         poll_interval_seconds: int = SchemaField(
-            description="Seconds between status checks while waiting",
-            default=10,
-            ge=1,
+            description=POLL_INTERVAL_DESCRIPTION,
+            default=0,
+            ge=0,
             le=300,
         )
         include_messages: bool = SchemaField(
@@ -62,7 +75,7 @@ class ConductorSendMessageBlock(Block):
             description="Transcript row ID of the prompt's row; pass it as "
             "`after` to Get Session to read the agent's turn. Falls back to "
             "message_id while the prompt has no row yet, which Get Session "
-            "also accepts"
+            "also accepts." + NEXT_AFTER_CONTINUATION
         )
         session_status: str = SchemaField(
             description="idle, working or error once waiting finished"
@@ -88,7 +101,8 @@ class ConductorSendMessageBlock(Block):
         super().__init__(
             id="4f22dbe5-2855-498a-ab82-6857441ea4b1",
             description="Send a prompt to a Conductor agent session and, by "
-            "default, wait for the agent to finish and return its reply.",
+            "default, wait for the agent to finish and return its reply. "
+            + WAIT_GUIDANCE,
             categories={BlockCategory.DEVELOPER_TOOLS},
             effect=BlockEffect.EXTERNAL,
             input_schema=self.Input,
@@ -170,8 +184,14 @@ class ConductorSendMessageBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        started = time.monotonic()
         if not input_data.message.strip():
             raise BlockInputError(
                 message="message must not be empty",
@@ -207,13 +227,16 @@ class ConductorSendMessageBlock(Block):
                 message_id,
             )
             return
+        timeout_seconds = wait_seconds_for(
+            input_data.timeout_seconds, execution_context, started
+        )
         try:
             waited = await self._wait(
                 credentials,
                 input_data.session_id,
                 message_id,
-                input_data.timeout_seconds,
-                input_data.poll_interval_seconds,
+                timeout_seconds,
+                poll_interval_for(timeout_seconds, input_data.poll_interval_seconds),
             )
         except Exception as e:
             raise BlockExecutionError(
