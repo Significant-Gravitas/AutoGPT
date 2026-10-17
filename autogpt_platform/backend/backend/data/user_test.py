@@ -1083,6 +1083,15 @@ class TestTableBackedCredentials:
         without_refresh = due.model_copy(
             update={"id": "without-refresh", "refresh_token": None}
         )
+        expired = due.model_copy(
+            update={"id": "expired", "access_token_expires_at": 999}
+        )
+        expired_refresh = due.model_copy(
+            update={"id": "expired-refresh", "refresh_token_expires_at": 999}
+        )
+        without_expiry = due.model_copy(
+            update={"id": "without-expiry", "access_token_expires_at": None}
+        )
         api_key = APIKeyCredentials(
             id="api-key", provider="github", api_key=SecretStr("key")
         )
@@ -1106,17 +1115,21 @@ class TestTableBackedCredentials:
                 row("user-runtime", provider_runtime),
                 row("user-managed", managed),
                 row("user-without-refresh", without_refresh),
+                row("user-expired", expired),
+                row("user-expired-refresh", expired_refresh),
+                row("user-without-expiry", without_expiry),
                 row("user-api", api_key),
                 corrupt,
             ]
         )
         mocker.patch("backend.data.user.prisma", mock_prisma)
+        mocker.patch("time.time", return_value=1_000)
 
         result = await get_near_expiry_oauth_credentials(1_300)
 
         assert result == [("user-due", due)]
         mock_prisma.integrationcredential.find_many.assert_awaited_once_with(
-            where={"ownerType": "USER", "status": "active"}
+            where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
         )
 
     @pytest.mark.asyncio
