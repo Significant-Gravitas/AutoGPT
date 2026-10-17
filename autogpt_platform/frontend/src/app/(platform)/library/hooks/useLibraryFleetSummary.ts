@@ -76,6 +76,7 @@ export function useLibraryFleetSummary(
     graphIds: graphIDs.length > 0 ? graphIDs : undefined,
     enabled: graphIDs.length > 0,
     onExecutionUpdate: handleExecutionUpdate,
+    onSubscribed: handleExecutionUpdate,
   });
 
   return useMemo(() => {

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
+from starlette.websockets import WebSocketState
 
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
@@ -123,6 +124,64 @@ async def test_websocket_router_subscribe(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "sub")
 
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_closes_socket_when_subscribe_fails(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """A subscribe that blows up (DB manager or Redis down) must not leave the
+    client believing it is subscribed: the socket is closed so the client
+    reconnects and resubscribes."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        AssertionError("the router must stop reading after closing"),
+    ]
+    mock_manager.subscribe_graph_exec.side_effect = ConnectionError(
+        "All connection attempts failed"
+    )
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_manager.close_for_lost_stream.assert_awaited_once_with(
+        mock_websocket, cause="handler_failed"
+    )
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_exits_quietly_once_the_server_closed_the_socket(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """A socket the server closed (its event stream was lost) ends the loop
+    without an "unexpected error" report: the close was already logged."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    logger_exception = mocker.patch("backend.api.ws_api.logger.exception")
+    mock_websocket.application_state = WebSocketState.DISCONNECTED
+    mock_websocket.receive_text.side_effect = RuntimeError(
+        'WebSocket is not connected. Need to call "accept" first.'
+    )
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    logger_exception.assert_not_called()
     mock_manager.disconnect_socket.assert_called_once_with(
         mock_websocket, user_id=DEFAULT_USER_ID
     )

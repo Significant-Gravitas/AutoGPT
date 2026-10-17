@@ -26,8 +26,12 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
+    dataUpdatedAt: executionsUpdatedAt,
+    refetch: refetchExecutions,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    // In the new layout this list only mounts when the account menu opens;
+    // the cached page-load copy would miss every run started since.
+    query: { select: okData, refetchOnMount: "always" },
   });
 
   // Get all graph IDs from agentInfoMap
@@ -46,13 +50,11 @@ export function useAgentActivityDropdown() {
     [agentInfoMap],
   );
 
-  // Process initial execution state when data loads
+  // Rebuild from the execution list whenever it is (re)fetched.
   // Use a ref to track if we've already processed to avoid infinite loops
-  const processedExecutionsRef = useRef<string | null>(null);
+  const processedExecutionsRef = useRef<number | null>(null);
   useEffect(() => {
-    const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
-      : null;
+    const executionKey = executions ? executionsUpdatedAt : null;
 
     if (
       executions &&
@@ -64,13 +66,14 @@ export function useAgentActivityDropdown() {
       setNotifications(notifications);
       processedExecutionsRef.current = executionKey;
     }
-  }, [executions, executionsSuccess, agentInfoMap]);
+  }, [executions, executionsSuccess, executionsUpdatedAt, agentInfoMap]);
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
+    onSubscribed: () => void refetchExecutions(),
   });
 
   return {

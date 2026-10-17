@@ -50,6 +50,11 @@ describe("BackendAPI WebSocket closed by a logout", () => {
   async function connect() {
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeWebSocket);
+    // The client fetches its socket token from the token route.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ token: "test-token" }))),
+    );
     const api = new BackendAPI("http://test", "ws://test/ws");
     void api.connectWebSocket();
     await vi.waitFor(() => expect(sockets).toHaveLength(1), { interval: 1 });
