@@ -144,9 +144,10 @@ async def configure_user_auto_top_up(
     current_balance = await credit_model.get_credits(user_id)
 
     try:
-        if current_balance < request.threshold:
+        # An amount of 0 turns auto top-up off: nothing to charge or check.
+        if request.amount and current_balance < request.threshold:
             await credit_model.top_up_credits(user_id, request.amount)
-        else:
+        elif request.amount:
             await credit_model.top_up_credits(user_id, 0)
     except NotImplementedError as e:
         raise HTTPException(
