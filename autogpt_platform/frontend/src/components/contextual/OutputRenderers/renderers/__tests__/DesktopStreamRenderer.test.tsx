@@ -1,5 +1,11 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   desktopStreamRenderer,
   DesktopStreamPreview,
@@ -16,6 +22,71 @@ const streamValue = {
 describe("DesktopStreamRenderer", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    Reflect.deleteProperty(HTMLIFrameElement.prototype, "requestFullscreen");
+  });
+
+  function mockFullscreenEnabled(enabled: boolean) {
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      get: () => enabled,
+    });
+  }
+
+  function mockRequestFullscreen(impl: () => Promise<void>) {
+    const spy = vi.fn(impl);
+    Object.defineProperty(HTMLIFrameElement.prototype, "requestFullscreen", {
+      configurable: true,
+      writable: true,
+      value: spy,
+    });
+    return spy;
+  }
+
+  it("hides the fullscreen button where the Fullscreen API is unsupported", () => {
+    mockFullscreenEnabled(false);
+    render(<DesktopStreamPreview value={streamValue} />);
+    expect(screen.queryByRole("button", { name: /fullscreen/i })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /open in new tab/i }),
+    ).toBeDefined();
+  });
+
+  it("requests fullscreen on the frame when supported", async () => {
+    mockFullscreenEnabled(true);
+    const requestFullscreen = mockRequestFullscreen(() => Promise.resolve());
+    render(<DesktopStreamPreview value={streamValue} />);
+    const button = await screen.findByRole("button", { name: /fullscreen/i });
+    fireEvent.click(button);
+    await waitFor(() => expect(requestFullscreen).toHaveBeenCalledOnce());
+    expect(requestFullscreen.mock.instances[0]).toBeInstanceOf(
+      HTMLIFrameElement,
+    );
+  });
+
+  it("does not throw when the frame lacks requestFullscreen", async () => {
+    mockFullscreenEnabled(true);
+    Object.defineProperty(HTMLIFrameElement.prototype, "requestFullscreen", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    render(<DesktopStreamPreview value={streamValue} />);
+    const button = await screen.findByRole("button", { name: /fullscreen/i });
+    expect(() => fireEvent.click(button)).not.toThrow();
+  });
+
+  it("swallows a rejected fullscreen request", async () => {
+    mockFullscreenEnabled(true);
+    const requestFullscreen = mockRequestFullscreen(() =>
+      Promise.reject(new Error("denied")),
+    );
+    render(<DesktopStreamPreview value={streamValue} />);
+    const button = await screen.findByRole("button", { name: /fullscreen/i });
+    fireEvent.click(button);
+    await waitFor(() => expect(requestFullscreen).toHaveBeenCalledOnce());
+    expect(screen.getByText("Interactive Desktop")).toBeDefined();
   });
 
   it("canRender matches desktop_stream objects only", () => {
