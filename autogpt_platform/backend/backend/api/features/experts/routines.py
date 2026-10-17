@@ -48,6 +48,7 @@ from backend.api.features.experts.routine_jobs import (
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -119,19 +120,6 @@ async def get_routine(routine_id: str) -> ExpertRoutine | None:
         where={"id": routine_id}
     )
     return to_model(row) if row is not None else None
-
-
-class RoutineNotFoundError(Exception):
-    """No such routine on this owner."""
-
-
-class RoutineUnansweredAsksError(Exception):
-    """The routine still has questions nobody answered.
-
-    A seeded proposal names what it needs to know — which repo, which inbox,
-    what hour. Scheduling it before those are answered would run it against
-    guesses on somebody's account, every day, unattended.
-    """
 
 
 async def install_routines(
