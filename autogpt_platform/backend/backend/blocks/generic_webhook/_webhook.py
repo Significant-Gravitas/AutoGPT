@@ -5,6 +5,7 @@ from fastapi import HTTPException, Request
 from pydantic import SecretStr
 from strenum import StrEnum
 
+from backend.api.features.library.model import preset_trigger_config
 from backend.data.integrations import WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
 
@@ -50,7 +51,7 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
     @classmethod
     def _configured_secret(cls, webhook: WebhookWithRelations) -> str | None:
         sources = [node.input_default for node in webhook.triggered_nodes] + [
-            preset.inputs for preset in webhook.triggered_presets
+            preset_trigger_config(preset.inputs) for preset in webhook.triggered_presets
         ]
 
         found: list[str] = []

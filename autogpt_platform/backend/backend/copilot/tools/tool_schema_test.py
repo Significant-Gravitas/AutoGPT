@@ -267,7 +267,15 @@ from ._test_data import make_session
 #     dev 583fc0bb4e                              76,975 (89 tools)
 #     + this PR's connect_integration  +200       77,175 (89 tools)
 # Plus one.
-_CHAR_BUDGET = 77_176
+# Raised 77_176 -> 77_653 for #11220's `constant_inputs`
+# (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
+# agent carrying both a trigger node and input nodes needs to configure the two
+# separately. Measured on that branch merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              77,175 (89 tools)
+#     + #11220's two arguments        +178        77,353 (89 tools)
+#     + headroom                      +300        77,653
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 77_653
 
 
 @pytest.fixture(scope="module")
@@ -462,7 +470,16 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+#
+# #11220's `constant_inputs` and `trigger_config`, the same two arguments as
+# ``_CHAR_BUDGET`` above, ride the largest session. Dev grew 199 past the
+# fab04d6ac9 measurement, so they no longer fit under that headroom.
+# Measured on #11220 merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              69,687
+#     + #11220's two arguments        +164        69,851
+#     + headroom                      +300        70,151
+# On conflict keep the higher value.
+_SESSION_WIRE_BUDGET = 70_151
 
 
 def test_largest_declared_session_wire_budget() -> None:
