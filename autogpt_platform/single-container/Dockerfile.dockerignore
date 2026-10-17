@@ -35,3 +35,16 @@
 
 **/*.log
 **/*.tmp
+
+# Frontend tests, stories and their configs; keep in sync with /.dockerignore.
+autogpt_platform/frontend/**/__tests__/
+autogpt_platform/frontend/**/*.test.*
+autogpt_platform/frontend/**/*.spec.*
+autogpt_platform/frontend/**/*.stories.*
+autogpt_platform/frontend/src/playwright/
+autogpt_platform/frontend/src/tests/
+autogpt_platform/frontend/src/mocks/
+autogpt_platform/frontend/coverage/
+autogpt_platform/frontend/playwright*.config.ts
+autogpt_platform/frontend/vitest.config.mts
+autogpt_platform/frontend/test-runner-jest.config.js
