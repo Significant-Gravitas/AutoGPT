@@ -18,6 +18,14 @@ test("switches between packaged and transparent Otto at the requested size", () 
   expect(image.getAttribute("width")).toBe("160");
   expect(image.getAttribute("height")).toBe("160");
   expect(image.getAttribute("sizes")).toBe("160px");
+  expect(image.getAttribute("fetchpriority")).toBeNull();
+
+  rerender(<AutopilotAvatar size={160} transparent priority />);
+  expect(
+    screen
+      .getByRole("img", { name: "Otto, your personal Head of AI" })
+      .getAttribute("fetchpriority"),
+  ).toBe("high");
 
   rerender(<AutopilotAvatar />);
   expect(screen.getByRole("img").getAttribute("src")).toBe(

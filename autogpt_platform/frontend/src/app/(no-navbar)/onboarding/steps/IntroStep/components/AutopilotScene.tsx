@@ -20,7 +20,7 @@ function reveal(i: number) {
 export function AutopilotScene() {
   return (
     <div className="flex h-full flex-col items-center justify-start gap-4">
-      <AutopilotAvatar size={120} transparent />
+      <AutopilotAvatar size={120} transparent priority />
 
       <div className="flex flex-col items-center gap-3">
         <ul className="flex flex-col items-center gap-2">
