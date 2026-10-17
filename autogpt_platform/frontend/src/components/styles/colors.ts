@@ -105,4 +105,5 @@ export const colors = {
   textBlack: "#1F1F20",
   bgLightGrey: "#F3F4F6",
   page: "#F6F7F8",
+  outlineBorder: "#a6a6a6",
 };
