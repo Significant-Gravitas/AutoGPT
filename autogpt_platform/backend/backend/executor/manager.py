@@ -188,6 +188,18 @@ KNOWN_GRAPH_EXECUTION_ERRORS = (
 # and leaves the node QUEUED after its run has finished.
 SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
 
+# A dispatched row reaches these only after the dispatcher charged it: the
+# charge comes before `_on_node_execution` writes RUNNING, and a block parks
+# itself in REVIEW from inside its run. A resume (REVIEW) or a redelivery after
+# a pod died (RUNNING) dispatches such a row again without a second charge.
+# Known gaps, closed by keying the charge on the node execution instead: an
+# OrchestratorBlock tool call is charged after its run, so a tool row left
+# RUNNING by a dead pod was never charged, and a REVIEW row that resumed and
+# then lost its pod comes back RUNNING after the pause refunded a usage-priced
+# pre-flight. Per-run prices bill such a re-run nothing extra; usage-priced
+# ones settle against a pre-flight that is no longer held, under-billing it.
+BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
+
 
 def _propagate_node_failure(
     graph_stats: GraphExecutionStats,
@@ -1236,6 +1248,12 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                # A REVIEW/RUNNING row was charged when it was first
+                # dispatched, so it must not be charged again (#15272).
+                # TERMINATED rows are charged: their first dispatch was
+                # reconciled when they were interrupted, so this is a new run.
+                if node_exec.status in BILLED_REDISPATCH_STATUSES:
+                    node_entry.redispatched_from = node_exec.status
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
@@ -1271,9 +1289,14 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                # Charge usage (may raise) — skipped for dry runs and for
+                # REVIEW/RUNNING re-dispatches that were already charged.
                 try:
-                    if not graph_exec.execution_context.dry_run:
+                    if queued_node_exec.redispatched_from is not None:
+                        queued_node_exec.pre_flight_charge = (
+                            billing.redispatch_reconcile_baseline(queued_node_exec)
+                        )
+                    elif not graph_exec.execution_context.dry_run:
                         (
                             cost,
                             remaining_balance,

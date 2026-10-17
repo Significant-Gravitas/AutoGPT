@@ -9,7 +9,7 @@ from backend.blocks import get_block
 from backend.blocks._base import Block
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import NodeExecutionEntry
+from backend.data.execution import ExecutionStatus, NodeExecutionEntry
 from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import NodeExecutionStats
 from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
@@ -218,6 +218,30 @@ def charge_usage(
         add_weekly_spend_sync(node_exec.execution_context.expert_id, total_cost)
 
     return total_cost, remaining_balance, block_pre_flight
+
+
+def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
+    """What a re-dispatched node still has billed, for its reconciliation to
+    settle against. Its first dispatch was charged and this one is not (#15272).
+
+    - REVIEW: the run that parked the block returned without doing anything,
+      and ``on_node_execution`` reconciled it as a COMPLETED run with empty
+      stats. That settled the charge down to the block's price for empty
+      stats: the run price for per-run blocks, 0 for usage-priced ones. That
+      price is returned, so the resumed run settles to one run's cost.
+    - RUNNING: the pod died before reconciling, so the pre-flight charge still
+      stands. ``None`` makes reconciliation read the block's pre-flight price,
+      which equals that charge unless the price changed in between.
+    """
+    if node_exec.redispatched_from != ExecutionStatus.REVIEW:
+        return None
+    block = get_block(node_exec.block_id)
+    if not block:
+        return None
+    settled, _ = block_usage_cost(
+        block=block, input_data=node_exec.inputs, stats=NodeExecutionStats()
+    )
+    return settled
 
 
 async def charge_reconciled_usage(
