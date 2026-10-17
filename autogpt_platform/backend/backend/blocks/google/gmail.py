@@ -52,6 +52,16 @@ def serialize_email_recipients(recipients: list[str]) -> str:
     return ", ".join(addr.strip() for addr in recipients)
 
 
+def parse_email_recipients(header_value: str) -> list[str]:
+    """Parse a To/Cc/Bcc header into addresses, skipping blank entries.
+
+    ``getaddresses`` yields a blank address for a missing header on Pythons
+    with the strict parser (3.13, 3.12.6+, 3.11.10+), and on every version
+    for group syntax such as ``undisclosed-recipients:;``.
+    """
+    return [addr.strip() for _, addr in getaddresses([header_value]) if addr.strip()]
+
+
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -528,16 +538,9 @@ class GmailReadBlock(GmailBase):
 
             attachments = await self._get_attachments(service, msg)
 
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
+            to_recipients = parse_email_recipients(headers.get("to", ""))
+            cc_recipients = parse_email_recipients(headers.get("cc", ""))
+            bcc_recipients = parse_email_recipients(headers.get("bcc", ""))
 
             email = Email(
                 threadId=msg.get("threadId", None),
@@ -977,21 +980,28 @@ class GmailRemoveLabelBlock(GmailBase):
 
     async def _remove_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_label_id(service, label_name)
-        if label_id:
-            result = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
-                .execute()
-            )
-            if not result.get("labelIds"):
-                return {
-                    "status": "Label already removed or not applied",
-                    "label_id": label_id,
-                }
-            return {"status": "Label removed successfully", "label_id": label_id}
-        else:
-            return {"status": "Label not found", "label_name": label_name}
+        if not label_id:
+            return {"status": "Label not found", "label_id": ""}
+        # The modify response can't say whether the label was there before
+        # (Gmail omits labelIds once none are left), so check first.
+        message = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="minimal")
+            .execute()
+        )
+        if label_id not in message.get("labelIds", []):
+            return {
+                "status": "Label already removed or not applied",
+                "label_id": label_id,
+            }
+        await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
+            .execute()
+        )
+        return {"status": "Label removed successfully", "label_id": label_id}
 
 
 class GmailGetThreadBlock(GmailBase):
@@ -1116,16 +1126,9 @@ class GmailGetThreadBlock(GmailBase):
             body = await self._get_email_body(msg, service)
             attachments = await self._get_attachments(service, msg)
 
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
+            to_recipients = parse_email_recipients(headers.get("to", ""))
+            cc_recipients = parse_email_recipients(headers.get("cc", ""))
+            bcc_recipients = parse_email_recipients(headers.get("bcc", ""))
 
             email = Email(
                 threadId=msg.get("threadId", thread_id),
