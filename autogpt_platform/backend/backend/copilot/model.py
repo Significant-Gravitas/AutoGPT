@@ -1337,7 +1337,13 @@ async def append_and_save_message(
         existing_message_count = await chat_db().get_next_sequence(session_id)
 
         try:
-            await _save_session_to_db(session, existing_message_count)
+            # A session with messages has its row (they reference it), so an
+            # existence check would only repeat the read the route just made.
+            await _save_session_to_db(
+                session,
+                existing_message_count,
+                skip_existence_check=existing_message_count > 0,
+            )
         except Exception as e:
             # Any save failure rolls back the optimistic append so the
             # in-memory ``session.messages`` stays consistent with what's
