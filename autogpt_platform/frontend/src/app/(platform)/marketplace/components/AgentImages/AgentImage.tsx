@@ -31,7 +31,7 @@ export function AgentImages({ images }: AgentImagesProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="w-full px-2 dark:bg-transparent lg:w-3/5 lg:flex-1">
+    <div className="w-full px-2 lg:w-3/5 lg:flex-1">
       {/* Main preview */}
       <AgentImageItem
         image={images[selectedIndex]}

@@ -114,7 +114,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               <SheetTitle className="text-xl">Run Outputs</SheetTitle>
               <SheetDescription className="mt-1 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
                     Beta
                   </span>
                   <span>This feature is in beta and may contain bugs</span>

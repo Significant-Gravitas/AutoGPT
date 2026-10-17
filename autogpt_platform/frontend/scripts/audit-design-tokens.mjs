@@ -97,7 +97,7 @@ const ARBITRARY_FONT_RE = /(?<![\\w-])(?:[a-z0-9-]+:)*font-\[\d/g;
 const HEX_RE =
   /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g;
 const FUNC_COLOR_RE = /\b(?:rgba?|hsla?|oklch|oklab|color-mix)\(/g;
-const DARK_RE = /(?<![\\w-])dark:/g;
+const DARK_RE = /(?<![\\w-])dark:(?=\S)/g;
 const AGPT_RE = /(?<![\\w-])agpt-[a-z0-9-]+/g;
 const LEGACY_IMPORT_RE = /@\/components\/__legacy__/g;
 
@@ -463,6 +463,7 @@ function selfTest() {
     'import { Button } from "@/components/__legacy__/ui/button";',
     "rounded-small rounded-lg agpt-card",
     "font-[600] p-[13px]",
+    "themes: { light: themes[0], dark: themes[1] },",
   ].join("\n");
   const counts = scanFile(sample);
   const expect = {

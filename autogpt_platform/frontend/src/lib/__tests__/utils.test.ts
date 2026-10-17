@@ -1,9 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
   agentGraphExportFilename,
+  categoryColorMap,
+  getPrimaryCategoryColor,
   matchesRoute,
   setNestedProperty,
 } from "../utils";
+import type { Category } from "@/lib/autogpt-server-api/types";
 
 const testCases = [
   {
@@ -176,6 +179,39 @@ const matchesRouteCases = [
     expected: false,
   },
 ];
+
+const categorySwatches = {
+  AI: "bg-orange-300",
+  SOCIAL: "bg-yellow-300",
+  TEXT: "bg-green-300",
+  SEARCH: "bg-blue-300",
+  BASIC: "bg-purple-300",
+  INPUT: "bg-cyan-300",
+  OUTPUT: "bg-red-300",
+  LOGIC: "bg-teal-300",
+  DEVELOPER_TOOLS: "bg-fuchsia-300",
+  AGENT: "bg-lime-300",
+} as const;
+
+function category(name: string): Category {
+  return { category: name, description: "" };
+}
+
+describe("getPrimaryCategoryColor", () => {
+  test("paints a known category with its light swatch", () => {
+    expect(categoryColorMap).toEqual(categorySwatches);
+
+    for (const [name, swatch] of Object.entries(categorySwatches)) {
+      expect(swatch).not.toContain("dark:");
+      expect(getPrimaryCategoryColor([category(name)])).toBe(swatch);
+    }
+  });
+
+  test("uses the neutral swatch when there is no category", () => {
+    expect(getPrimaryCategoryColor([])).toBe("bg-gray-300");
+    expect(getPrimaryCategoryColor([category("UNKNOWN")])).toBe("bg-gray-300");
+  });
+});
 
 describe("matchesRoute", () => {
   for (const { name, pathname, base, expected } of matchesRouteCases) {

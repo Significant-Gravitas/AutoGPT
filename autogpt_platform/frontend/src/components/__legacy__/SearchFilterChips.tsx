@@ -55,10 +55,10 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
           disabled={filter.value !== "all" && filter.count === 0}
           className={`flex items-center gap-2.5 rounded-[34px] px-5 py-2 ${
             filter.value !== "all" && filter.count === 0
-              ? "cursor-not-allowed border border-neutral-200 text-neutral-300 dark:border-neutral-700 dark:text-neutral-600"
+              ? "cursor-not-allowed border border-neutral-200 text-neutral-300"
               : selected === filter.value
-                ? "bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                : "border border-neutral-600 text-neutral-800 dark:border-neutral-400 dark:text-neutral-200"
+                ? "bg-neutral-800 text-white"
+                : "border border-neutral-600 text-neutral-800"
           }`}
         >
           <span

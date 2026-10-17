@@ -7,21 +7,19 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center whitespace-nowrap overflow-hidden font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-sans leading-9 tracking-tight",
+  "inline-flex items-center whitespace-nowrap overflow-hidden font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 font-sans leading-9 tracking-tight",
   {
     variants: {
       variant: {
         destructive:
-          "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90 dark:bg-red-700 dark:text-neutral-50 dark:hover:bg-red-600",
+          "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90",
         accent: "bg-accent text-accent-foreground hover:bg-violet-500",
         primary: "bg-zinc-700 text-white hover:bg-zinc-800 text-white",
-        outline:
-          "border border-black/50 text-neutral-800 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+        outline: "border border-black/50 text-neutral-800 hover:bg-neutral-100",
         secondary:
-          "bg-neutral-100 text-neutral-800 border border-neutral-200 hover:bg-neutral-100/80 dark:bg-neutral-700 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-600",
-        ghost:
-          "hover:bg-neutral-100 text-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
-        link: "text-neutral-800 underline-offset-4 hover:underline dark:text-neutral-100",
+          "bg-neutral-100 text-neutral-800 border border-neutral-200 hover:bg-neutral-100/80",
+        ghost: "hover:bg-neutral-100 text-neutral-800",
+        link: "text-neutral-800 underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2 rounded-full text-sm",

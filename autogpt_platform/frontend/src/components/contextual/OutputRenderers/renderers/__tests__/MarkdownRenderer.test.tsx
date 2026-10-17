@@ -27,6 +27,32 @@ function texOf(container: HTMLElement): string[] {
   ).map((node) => node.textContent ?? "");
 }
 
+describe("MarkdownRenderer document structure", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders the smaller headings, a rule, and struck text", () => {
+    const container = renderMarkdown(
+      [
+        "### Third",
+        "#### Fourth",
+        "##### Fifth",
+        "###### Sixth",
+        "---",
+        "~~gone~~",
+      ].join("\n\n"),
+    );
+
+    expect(container.querySelector("h3")?.textContent).toContain("Third");
+    expect(container.querySelector("h4")?.textContent).toContain("Fourth");
+    expect(container.querySelector("h5")?.textContent).toContain("Fifth");
+    expect(container.querySelector("h6")?.textContent).toContain("Sixth");
+    expect(container.querySelector("hr")).toBeTruthy();
+    expect(container.querySelector("del")?.textContent).toContain("gone");
+  });
+});
+
 describe("MarkdownRenderer math", () => {
   afterEach(() => {
     cleanup();

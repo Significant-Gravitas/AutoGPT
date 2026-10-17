@@ -148,26 +148,22 @@ function renderWorkspaceFile(
   // Generic file card with icon and download link
   const label = getFileTypeLabel(mimeType);
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
       <Icon
         icon={File02Icon}
         size={28}
         className="flex-shrink-0 text-gray-500"
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+        <span className="truncate text-sm font-medium text-gray-900">
           {metadata?.filename || label}
         </span>
-        {mimeType && (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {mimeType}
-          </span>
-        )}
+        {mimeType && <span className="text-xs text-gray-500">{mimeType}</span>}
       </div>
       <a
         href={downloadURL}
         download
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
       >
         <Icon icon={Download04Icon} size={18} />
       </a>

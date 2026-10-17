@@ -431,7 +431,7 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-xs text-gray-500 underline hover:text-gray-700"
               >
                 or enter an API credential manually
               </button>
@@ -477,7 +477,7 @@ export function MCPToolDialog({
               <p
                 role="alert"
                 aria-live="polite"
-                className="text-sm text-red-700 dark:text-red-400"
+                className="text-sm text-red-700"
               >
                 {error}
               </p>
@@ -602,15 +602,13 @@ function MCPToolCard({
       onClick={onSelect}
       className={`group flex flex-col rounded-lg border text-left transition-colors ${
         selected
-          ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
-          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+          ? "border-blue-500 bg-blue-50"
+          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-sm font-semibold dark:text-white">
-          {tool.name}
-        </span>
+        <span className="flex-1 text-sm font-semibold">{tool.name}</span>
         {paramNames.length > 0 && (
           <Badge variant="secondary" className="text-[10px]">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
@@ -620,7 +618,7 @@ function MCPToolCard({
 
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
-        <p className="px-3 pb-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="px-3 pb-1 text-xs leading-relaxed text-gray-500">
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
         </p>
       )}
@@ -650,17 +648,17 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50">
+        <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-slate-700">
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+              <tr className="border-b border-gray-100">
+                <th className="px-2 py-1 text-left font-medium text-gray-500">
                   Parameter
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th className="px-2 py-1 text-left font-medium text-gray-500">
                   Type
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th className="px-2 py-1 text-left font-medium text-gray-500">
                   Description
                 </th>
               </tr>
@@ -671,18 +669,18 @@ function MCPToolCard({
                 return (
                   <tr
                     key={name}
-                    className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
+                    className="border-b border-gray-50 last:border-0"
                   >
-                    <td className="px-2 py-1 font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                    <td className="px-2 py-1 font-mono text-[11px] text-gray-700">
                       {name}
                       {required.has(name) && (
                         <span className="ml-0.5 text-red-400">*</span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td className="px-2 py-1 text-gray-500">
                       {schemaTypeLabel(prop)}
                     </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500">
                       {prop.description ?? "—"}
                     </td>
                   </tr>
@@ -701,7 +699,7 @@ function MCPToolCard({
             e.stopPropagation();
             setExpanded((prev) => !prev);
           }}
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-[10px] text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-[10px] text-gray-400 hover:text-gray-600"
         >
           {expanded ? "Hide details" : "Show details"}
           <Icon

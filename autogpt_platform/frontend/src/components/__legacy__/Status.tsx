@@ -19,29 +19,29 @@ const statusConfig: Record<
     bgColor: "bg-blue-50",
     dotColor: "bg-blue-500",
     text: "Draft",
-    darkBgColor: "dark:bg-blue-900",
-    darkDotColor: "dark:bg-blue-300",
+    darkBgColor: "",
+    darkDotColor: "",
   },
   [SubmissionStatus.PENDING]: {
     bgColor: "bg-amber-50",
     dotColor: "bg-amber-500",
     text: "Awaiting review",
-    darkBgColor: "dark:bg-amber-900",
-    darkDotColor: "dark:bg-amber-300",
+    darkBgColor: "",
+    darkDotColor: "",
   },
   [SubmissionStatus.APPROVED]: {
     bgColor: "bg-green-50",
     dotColor: "bg-green-500",
     text: "Approved",
-    darkBgColor: "dark:bg-green-900",
-    darkDotColor: "dark:bg-green-300",
+    darkBgColor: "",
+    darkDotColor: "",
   },
   [SubmissionStatus.REJECTED]: {
     bgColor: "bg-red-50",
     dotColor: "bg-red-500",
     text: "Rejected",
-    darkBgColor: "dark:bg-red-900",
-    darkDotColor: "dark:bg-red-300",
+    darkBgColor: "",
+    darkDotColor: "",
   },
 };
 
@@ -66,7 +66,7 @@ export const Status: React.FC<StatusProps> = ({ status }) => {
       <div
         className={`h-3 w-3 ${config.dotColor} ${config.darkDotColor} rounded-full`}
       />
-      <div className="font-sans text-sm font-normal leading-tight text-neutral-600 dark:text-neutral-300">
+      <div className="font-sans text-sm font-normal leading-tight text-neutral-600">
         {config.text}
       </div>
     </div>

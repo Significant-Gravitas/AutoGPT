@@ -358,10 +358,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "relative overflow-hidden bg-white dark:bg-black",
-        className,
-      )}
+      className={cn("relative overflow-hidden bg-white", className)}
       style={{
         background: backgroundColor,
       }}
