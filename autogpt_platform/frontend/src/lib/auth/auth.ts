@@ -28,6 +28,7 @@ import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { mobileAuth } from "./mobile-auth";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -360,6 +361,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    mobileAuth(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],
