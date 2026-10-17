@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
@@ -17,6 +18,9 @@ external_api = FastAPI(
 )
 
 external_api.add_middleware(SecurityHeadersMiddleware)
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(external_api)
 external_api.include_router(v1_router, prefix="/v1")
 
 
