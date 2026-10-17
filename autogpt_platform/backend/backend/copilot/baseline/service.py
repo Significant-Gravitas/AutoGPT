@@ -955,8 +955,8 @@ async def _baseline_llm_caller(
         # Route through the shared providers helper so future provider
         # work (streaming flex tier, new SDK upgrades) propagates here
         # without a parallel migration. The pre-built ``client`` is
-        # passed through so the module-level Langfuse-wrapped client
-        # keeps its HTTP connection pool warm across turns.
+        # passed through so this loop's Langfuse-wrapped client keeps
+        # its HTTP connection pool warm across turns.
         response = await call_provider_stream(
             client=client,
             model=state.model,
