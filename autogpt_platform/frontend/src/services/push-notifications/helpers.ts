@@ -41,3 +41,23 @@ export async function teardownPushSubscription(): Promise<void> {
   await removeSubscriptionFromServer(subscription.endpoint);
   await unsubscribeFromPush(registration);
 }
+
+const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
+
+/**
+ * Remove this browser's push subscription while the session is still valid.
+ * The `/logout` page sits outside the platform layout, so the provider's own
+ * teardown never sees the user turn null; without this the next account to
+ * sign in here keeps receiving the previous account's notifications. Bounded
+ * so a slow or offline network never blocks the logout itself.
+ */
+export async function teardownPushSubscriptionBeforeLogout(): Promise<void> {
+  await Promise.race([
+    teardownPushSubscription().catch((error) =>
+      console.error("Push notification teardown failed:", error),
+    ),
+    new Promise<void>((resolve) =>
+      setTimeout(resolve, LOGOUT_TEARDOWN_TIMEOUT_MS),
+    ),
+  ]);
+}

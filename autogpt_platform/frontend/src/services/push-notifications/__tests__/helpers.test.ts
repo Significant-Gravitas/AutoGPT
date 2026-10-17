@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupPushSubscription, teardownPushSubscription } from "../helpers";
+import {
+  setupPushSubscription,
+  teardownPushSubscription,
+  teardownPushSubscriptionBeforeLogout,
+} from "../helpers";
 
 const mockIsPushSupported = vi.fn(() => true);
 const mockRegisterServiceWorker = vi.fn();
@@ -156,5 +160,43 @@ describe("teardownPushSubscription", () => {
     await teardownPushSubscription();
     expect(mockRemoveSubscriptionFromServer).not.toHaveBeenCalled();
     expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("teardownPushSubscriptionBeforeLogout", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("removes the subscription from the server and the browser", async () => {
+    await teardownPushSubscriptionBeforeLogout();
+    expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+      mockSubscription.endpoint,
+    );
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+  });
+
+  it("does not hold up logout when the server never answers", async () => {
+    vi.useFakeTimers();
+    mockRemoveSubscriptionFromServer.mockReturnValue(new Promise(() => {}));
+
+    const done = vi.fn();
+    void teardownPushSubscriptionBeforeLogout().then(done);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(done).toHaveBeenCalled();
+  });
+
+  it("does not throw when tearing down fails", async () => {
+    mockRemoveSubscriptionFromServer.mockRejectedValue(new Error("offline"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await expect(
+      teardownPushSubscriptionBeforeLogout(),
+    ).resolves.toBeUndefined();
+
+    consoleError.mockRestore();
   });
 });
