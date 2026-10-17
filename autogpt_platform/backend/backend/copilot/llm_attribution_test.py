@@ -55,6 +55,25 @@ def test_attribution_without_a_user_or_chat_still_tags_the_environment():
     assert body["trace"]["generation_name"] == "copilot-baseline"
 
 
+@pytest.mark.parametrize(
+    ("sentry_release", "expected"),
+    [("0123abcd\n", {"revision": "0123abcd"}), ("", {})],
+    ids=["revision set", "no revision"],
+)
+def test_attribution_names_the_revision_that_made_the_call(
+    mocker, sentry_release: str, expected: dict[str, str]
+):
+    mocker.patch.object(
+        llm_attribution.settings.config, "sentry_release", sentry_release
+    )
+
+    body = openrouter_attribution(
+        user_id=None, session_id=None, generation_name="copilot-sdk"
+    )
+
+    assert {k: v for k, v in body["trace"].items() if k == "revision"} == expected
+
+
 def test_attribution_marks_an_impersonated_turn():
     set_turn_impersonated(True)
 
