@@ -9,11 +9,13 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from croniter import croniter
+from fastapi import HTTPException
 from pika.exceptions import ChannelClosedByBroker
 from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
 from pydantic import BaseModel
 
+from backend.api.features.schedule_availability import read_schedules, write_schedule
 from backend.data.db import query_raw_with_schema
 from backend.data.execution import get_graph_executions, get_graph_executions_count
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -24,7 +26,10 @@ from backend.executor.utils import (
     CancelExecutionEvent,
     create_execution_queue_config,
 )
-from backend.util.clients import get_async_execution_queue, get_scheduler_client
+from backend.util.clients import (
+    get_async_execution_queue,
+    get_interactive_scheduler_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -373,14 +378,14 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     Returns:
         ScheduleHealthMetrics with schedule health info
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — `_detect_orphaned_schedules` reads `graph_id`
     # / cron unconditionally, so a copilot-turn row would either crash or get
     # mis-counted as `validation_failed`. Copilot-turn schedules are
     # session-scoped (not orphan-prone in the same way) and surface in the
     # copilot UI, not in the platform health dashboard.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter user vs system schedules
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -643,11 +648,11 @@ async def get_all_schedules_details(
     Returns:
         List of ScheduleDetail objects
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — diagnostics only surfaces graph-kind schedules
     # (copilot-turn followups are session-scoped and shown in the copilot UI).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter to user schedules only
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -699,10 +704,10 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
     Returns:
         List of OrphanedScheduleDetail objects
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — orphan detection is graph-specific.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
 
     # Detect orphans with categorization
@@ -750,12 +755,12 @@ async def cleanup_orphaned_schedules_bulk(
         f"Admin user {admin_user_id} cleaning up {len(schedule_ids)} orphaned schedules"
     )
 
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Fetch all graph schedules once to avoid N+1 queries — orphan cleanup
     # is graph-specific (copilot-turn schedules self-clean via
     # `_self_delete_copilot_turn_schedule`).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     schedule_map = {s.id: s for s in all_schedules}
 
     # Delete schedules in parallel
@@ -766,20 +771,31 @@ async def cleanup_orphaned_schedules_bulk(
             return False
 
         try:
-            await scheduler.delete_schedule(
-                schedule_id=schedule_id, user_id=schedule.user_id
+            await write_schedule(
+                scheduler.delete_schedule(
+                    schedule_id=schedule_id, user_id=schedule.user_id
+                )
             )
             return True
+        except HTTPException:
+            # The scheduler is down or didn't confirm: that is not "failed to
+            # delete", so answer 503 instead of a count that may be wrong.
+            raise
         except Exception as e:
             logger.error(f"Failed to delete schedule {schedule_id}: {e}")
             return False
 
+    # Let every delete finish before answering, so one uncertain outcome
+    # doesn't leave the rest running unobserved.
     results = await asyncio.gather(
         *[delete_schedule(schedule_id) for schedule_id in schedule_ids],
-        return_exceptions=False,
+        return_exceptions=True,
     )
+    uncertain = [r for r in results if isinstance(r, HTTPException)]
+    if uncertain:
+        raise uncertain[0]
 
-    deleted_count = sum(1 for success in results if success)
+    deleted_count = sum(1 for success in results if success is True)
 
     logger.info(
         f"Admin {admin_user_id} deleted {deleted_count}/{len(schedule_ids)} orphaned schedules"

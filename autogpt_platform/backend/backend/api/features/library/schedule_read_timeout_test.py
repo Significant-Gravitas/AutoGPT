@@ -108,6 +108,8 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     assert (single.id, single.graph_id) == (agent.id, graph.id)
     assert single.is_scheduled is scheduled
     assert single.next_scheduled_run == (next_run if scheduled else None)
+    # An unreachable scheduler must read as "unknown", never as "no schedules".
+    assert single.schedule_info_unavailable is not scheduled
 
     listing, elapsed = await _timed(
         library_db.list_library_agents(user_id=user.id, page_size=50)
@@ -115,6 +117,7 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     assert elapsed < _PROMPT_S
     [listed] = [a for a in listing.agents if a.id == agent.id]
     assert listed.is_scheduled is scheduled
+    assert listed.schedule_info_unavailable is not scheduled
 
     batch, elapsed = await _timed(
         _get_many.get_library_agents_by_ids([agent.id, "missing-id"], user.id)

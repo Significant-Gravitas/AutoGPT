@@ -13,6 +13,7 @@ import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { hasUnavailableScheduleInfo } from "@/services/schedules/scheduler-availability";
 import type { FleetSummary } from "../types";
 import {
   isActive,
@@ -111,6 +112,7 @@ export function useLibraryFleetSummary(
       scheduled: 0,
       idle: 0,
       monthlySpend,
+      schedulesUnavailable: hasUnavailableScheduleInfo(agents),
     };
 
     for (const agent of agents) {

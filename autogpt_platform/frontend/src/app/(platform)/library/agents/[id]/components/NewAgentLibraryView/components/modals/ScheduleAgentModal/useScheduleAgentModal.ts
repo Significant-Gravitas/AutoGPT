@@ -3,7 +3,12 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackScheduleCreatedGoal } from "@/services/analytics/activation-goals";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
+import { resendUnconfirmedWriteOnce } from "@/services/schedules/scheduler-availability";
+import { createSubmissionKeys } from "@/services/schedules/submission-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -26,9 +31,11 @@ export function useScheduleAgentModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
+  const [submissionKeys] = useState(createSubmissionKeys);
 
   const createScheduleMutation = useCreateSchedule({
     mutation: {
+      ...resendUnconfirmedWriteOnce,
       onSuccess: (response) => {
         if (response.status === 200) {
           toast({
@@ -40,6 +47,7 @@ export function useScheduleAgentModal(
           );
           callbacks?.onCreateSchedule?.(response.data);
           invalidateAllScheduleQueries(queryClient, agent.graph_id);
+          submissionKeys.reset();
           // Reset form
           setScheduleName(defaultScheduleName);
           setCronExpression(agent.recommended_schedule_cron || "0 9 * * 1");
@@ -47,6 +55,9 @@ export function useScheduleAgentModal(
         }
       },
       onError: (error: any) => {
+        // The scheduler may have created it without confirming; show it if so.
+        // A retry reuses the submission's key, so it can't add a second one.
+        reconcileAfterScheduleWriteError(queryClient, error, agent.graph_id);
         toast({
           title: "❌ Failed to create schedule",
           description: error.message || "An unexpected error occurred.",
@@ -67,16 +78,23 @@ export function useScheduleAgentModal(
         return Promise.reject(new Error("Schedule name required"));
       }
 
+      const data = {
+        name: scheduleName,
+        cron: cronExpression,
+        inputs: inputValues,
+        graph_version: agent.graph_version,
+        credentials: inputCredentials,
+      };
       return new Promise<void>((resolve, reject) => {
         createScheduleMutation.mutate(
           {
             graphId: agent.graph_id,
             data: {
-              name: scheduleName,
-              cron: cronExpression,
-              inputs: inputValues,
-              graph_version: agent.graph_version,
-              credentials: inputCredentials,
+              ...data,
+              schedule_id: submissionKeys.keyFor({
+                graphId: agent.graph_id,
+                ...data,
+              }),
             },
           },
           {
@@ -92,6 +110,7 @@ export function useScheduleAgentModal(
       inputValues,
       inputCredentials,
       createScheduleMutation,
+      submissionKeys,
       toast,
     ],
   );

@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Optional
 
 import pydantic
@@ -19,6 +20,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     expert_id: Optional[str] = pydantic.Field(
         default=None,
         description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
+    schedule_id: Optional[uuid.UUID] = pydantic.Field(
+        default=None,
+        description="Idempotency key: mint one per submission and resend it when retrying. A retry of a create that was applied but not confirmed returns that schedule instead of creating a duplicate. Becomes the schedule's id.",
     )
 
 

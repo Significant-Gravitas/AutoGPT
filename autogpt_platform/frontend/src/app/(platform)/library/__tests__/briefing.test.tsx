@@ -38,9 +38,21 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   };
 });
 
-function setupHandlers({ totalCents }: { totalCents: number }) {
+function setupHandlers({
+  totalCents,
+  scheduleInfoUnavailable = false,
+}: {
+  totalCents: number;
+  scheduleInfoUnavailable?: boolean;
+}) {
   const agents = [
-    { ...getGetV2ListLibraryAgentsResponseMock().agents[0], graph_id: "g-1" },
+    {
+      ...getGetV2ListLibraryAgentsResponseMock().agents[0],
+      graph_id: "g-1",
+      has_external_trigger: false,
+      is_scheduled: false,
+      schedule_info_unavailable: scheduleInfoUnavailable,
+    },
   ];
   server.use(
     getGetV2ListLibraryAgentsMockHandler({
@@ -117,6 +129,25 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
       throw new Error("Spent this month tile should render inside a button");
     }
     expect(within(tile).getByText("$0.00")).toBeDefined();
+  });
+});
+
+describe("LibraryPage — AgentBriefingPanel while the scheduler is down", () => {
+  test("the Scheduled count reads as unknown, not zero", async () => {
+    setupHandlers({ totalCents: 0, scheduleInfoUnavailable: true });
+
+    render(<LibraryPage />);
+
+    const tile = (await screen.findByText("Scheduled")).closest("button");
+    if (!tile) {
+      throw new Error("Scheduled tile should render inside a button");
+    }
+    expect(within(tile).getByText("—")).toBeDefined();
+    expect(within(tile).queryByText("0")).toBeNull();
+
+    tile.click();
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByText("No agents with scheduled tasks")).toBeNull();
   });
 });
 

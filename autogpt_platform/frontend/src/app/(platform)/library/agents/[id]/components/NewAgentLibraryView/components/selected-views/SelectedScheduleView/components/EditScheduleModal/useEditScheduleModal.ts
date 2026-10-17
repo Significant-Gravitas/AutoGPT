@@ -5,7 +5,11 @@ import { usePatchV1UpdateExecutionSchedule } from "@/app/api/__generated__/endpo
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
+import { resendUnconfirmedWriteOnce } from "@/services/schedules/scheduler-availability";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { validateSchedule } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
@@ -50,6 +54,7 @@ export function useEditScheduleModal(
   const { mutate: updateSchedule, isPending } =
     usePatchV1UpdateExecutionSchedule({
       mutation: {
+        ...resendUnconfirmedWriteOnce,
         onSuccess: async () => {
           invalidateAllScheduleQueries(queryClient, graphId);
           const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
@@ -57,6 +62,7 @@ export function useEditScheduleModal(
           setIsOpen(false);
         },
         onError: (error) => {
+          reconcileAfterScheduleWriteError(queryClient, error, graphId);
           toast({
             title: "Failed to update schedule",
             description:

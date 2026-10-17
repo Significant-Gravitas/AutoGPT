@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Path, Security
 from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.api.features.experts import experts_db
+from backend.api.features.schedule_availability import read_schedules, write_schedule
 from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import (
     ScheduleCreationRequest,
@@ -16,7 +17,7 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
 from backend.executor import scheduler
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_interactive_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -72,18 +73,25 @@ async def create_graph_execution_schedule(
     else:
         expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
 
-    result = await get_scheduler_client().add_execution_schedule(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        name=schedule_params.name,
-        cron=schedule_params.cron,
-        input_data=schedule_params.inputs,
-        input_credentials=schedule_params.credentials,
-        user_timezone=user_timezone,
-        organization_id=ctx.org_id,
-        team_id=ctx.team_id,
-        expert_id=expert_id,
+    result = await write_schedule(
+        get_interactive_scheduler_client().add_execution_schedule(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            name=schedule_params.name,
+            cron=schedule_params.cron,
+            input_data=schedule_params.inputs,
+            input_credentials=schedule_params.credentials,
+            user_timezone=user_timezone,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            expert_id=expert_id,
+            schedule_id=(
+                str(schedule_params.schedule_id)
+                if schedule_params.schedule_id
+                else None
+            ),
+        )
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -107,12 +115,14 @@ async def list_graph_execution_schedules(
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    schedules = await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        graph_id=graph_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-        include_paused=True,
+    schedules = await read_schedules(
+        get_interactive_scheduler_client().get_graph_execution_schedules(
+            user_id=user_id,
+            graph_id=graph_id,
+            organization_id=ctx.org_id,
+            team_ids=team_ids,
+            include_paused=True,
+        )
     )
     return await visible_graph_schedules(schedules, user_id)
 
@@ -126,11 +136,13 @@ async def list_all_graphs_execution_schedules(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    schedules = await get_scheduler_client().get_graph_execution_schedules(
-        user_id=user_id,
-        organization_id=ctx.org_id,
-        team_ids=team_ids,
-        include_paused=True,
+    schedules = await read_schedules(
+        get_interactive_scheduler_client().get_graph_execution_schedules(
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_ids=team_ids,
+            include_paused=True,
+        )
     )
     return await visible_graph_schedules(schedules, user_id)
 
@@ -151,8 +163,10 @@ async def list_copilot_turn_schedules(
     keeps the generated frontend client typed to a single concrete return type
     instead of a discriminated union.
     """
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="copilot_turn"
+    schedules = await read_schedules(
+        get_interactive_scheduler_client().get_execution_schedules(
+            user_id=user_id, kind="copilot_turn"
+        )
     )
     # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
     # (executor.scheduler.Scheduler) — the scheduler is the source of truth
@@ -175,7 +189,11 @@ async def delete_graph_execution_schedule(
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+        await write_schedule(
+            get_interactive_scheduler_client().delete_schedule(
+                schedule_id, user_id=user_id
+            )
+        )
     except NotFoundError:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
@@ -196,14 +214,16 @@ async def update_graph_execution_schedule(
     """Change an agent schedule's name, timing or inputs. Only the schedule's
     owner can edit it; anyone else gets the same 404 as a missing schedule."""
     try:
-        result = await get_scheduler_client().update_execution_schedule(
-            schedule_id=schedule_id,
-            user_id=user_id,
-            name=update.name,
-            cron=update.cron,
-            user_timezone=update.timezone,
-            input_data=update.inputs,
-            input_credentials=update.credentials,
+        result = await write_schedule(
+            get_interactive_scheduler_client().update_execution_schedule(
+                schedule_id=schedule_id,
+                user_id=user_id,
+                name=update.name,
+                cron=update.cron,
+                user_timezone=update.timezone,
+                input_data=update.inputs,
+                input_credentials=update.credentials,
+            )
         )
     except (NotFoundError, NotAuthorizedError):
         raise HTTPException(

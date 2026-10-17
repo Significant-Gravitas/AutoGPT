@@ -17,6 +17,7 @@ import {
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
@@ -180,6 +181,10 @@ export function LibraryAgentList({
             <LowCreditBanner />
           </div>
         )}
+        {fleetSummary?.schedulesUnavailable &&
+          (statusFilter === "scheduled" || statusFilter === "idle") && (
+            <SchedulesUnavailableNotice compact className="mb-4" />
+          )}
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button

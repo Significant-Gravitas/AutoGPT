@@ -2,7 +2,10 @@
 
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function useScheduleDetailHeader(
@@ -19,12 +22,14 @@ export function useScheduleDetailHeader(
         toast({ title: "Schedule deleted" });
         invalidateAllScheduleQueries(queryClient, agentGraphId);
       },
-      onError: (error: any) =>
+      onError: (error: any) => {
+        reconcileAfterScheduleWriteError(queryClient, error, agentGraphId);
         toast({
           title: "Failed to delete schedule",
           description: error?.message || "An unexpected error occurred.",
           variant: "destructive",
-        }),
+        });
+      },
     },
   });
 

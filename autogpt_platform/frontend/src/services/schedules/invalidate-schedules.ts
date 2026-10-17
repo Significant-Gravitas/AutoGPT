@@ -4,6 +4,7 @@ import {
   getListCopilotFollowupSchedulesQueryKey,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { QueryClient } from "@tanstack/react-query";
+import { isSchedulerUnconfirmedError } from "./scheduler-availability";
 
 // Schedule mutations (create / edit / delete) need to invalidate every
 // list query that might cache the affected row.  There are four:
@@ -48,4 +49,16 @@ export function invalidateAllScheduleQueries(
     );
   }
   return Promise.all(invalidations);
+}
+
+// After a failed schedule write: the scheduler may have applied it without
+// confirming (scheduler_unconfirmed), so re-read and show what really happened.
+export function reconcileAfterScheduleWriteError(
+  queryClient: QueryClient,
+  error: unknown,
+  graphId?: string,
+) {
+  if (isSchedulerUnconfirmedError(error)) {
+    invalidateAllScheduleQueries(queryClient, graphId);
+  }
 }
