@@ -100,11 +100,7 @@ export const AgentTableRow = ({
               >
                 {agentName}
               </Text>
-              <Text
-                variant="body"
-                size="small"
-                className="text-neutral-500"
-              >
+              <Text variant="body" size="small" className="text-neutral-500">
                 v{graph_version}
               </Text>
             </div>
@@ -142,9 +138,7 @@ export const AgentTableRow = ({
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600">
-              No reviews
-            </span>
+            <span className="text-sm text-neutral-600">No reviews</span>
           )}
         </div>
 
@@ -163,10 +157,7 @@ export const AgentTableRow = ({
                   onSelect={handleEdit}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
                 >
-                  <Icon
-                    icon={PencilIcon}
-                    className="mr-2 h-4 w-4"
-                  />
+                  <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
                   <span className="">Edit</span>
                 </DropdownMenu.Item>
               ) : (
@@ -174,10 +165,7 @@ export const AgentTableRow = ({
                   onSelect={handleView}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100"
                 >
-                  <Icon
-                    icon={EyeIcon}
-                    className="mr-2 h-4 w-4"
-                  />
+                  <Icon icon={EyeIcon} className="mr-2 h-4 w-4" />
                   <span className="">View</span>
                 </DropdownMenu.Item>
               )}

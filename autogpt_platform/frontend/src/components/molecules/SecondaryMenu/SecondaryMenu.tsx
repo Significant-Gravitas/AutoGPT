@@ -11,8 +11,7 @@ const secondaryMenuContentClassName =
 const secondaryMenuItemClassName =
   "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100";
 
-const secondaryMenuSeparatorClassName =
-  "my-1 h-px bg-gray-300";
+const secondaryMenuSeparatorClassName = "my-1 h-px bg-gray-300";
 
 export const SecondaryMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenu.Content>,
@@ -36,8 +35,7 @@ export const SecondaryMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100",
+      variant === "destructive" && "text-red-500 hover:bg-gray-100",
       className,
     )}
     {...props}
@@ -81,8 +79,7 @@ export const SecondaryDropdownMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100",
+      variant === "destructive" && "text-red-500 hover:bg-gray-100",
       className,
     )}
     {...props}

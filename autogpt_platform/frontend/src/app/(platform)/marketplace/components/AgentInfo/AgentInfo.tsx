@@ -105,10 +105,7 @@ export const AgentInfo = ({
         {/* Version Header */}
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Text
-              variant="body"
-              className="font-semibold text-neutral-900"
-            >
+            <Text variant="body" className="font-semibold text-neutral-900">
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
@@ -118,10 +115,7 @@ export const AgentInfo = ({
             )}
           </div>
           {changelogEntry && (
-            <Text
-              variant="small"
-              className="text-neutral-500"
-            >
+            <Text variant="small" className="text-neutral-500">
               {new Date(changelogEntry.date).toLocaleDateString("en-US", {
                 year: "numeric",
                 month: "long",
@@ -134,10 +128,7 @@ export const AgentInfo = ({
         {/* Real Changelog Content */}
         {changelogEntry && (
           <div className="space-y-2">
-            <Text
-              variant="body"
-              className="text-neutral-700"
-            >
+            <Text variant="body" className="text-neutral-700">
               {changelogEntry.changes_summary}
             </Text>
           </div>

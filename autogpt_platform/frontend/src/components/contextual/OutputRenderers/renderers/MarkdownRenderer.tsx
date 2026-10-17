@@ -296,10 +296,7 @@ function renderMarkdown(
           ),
           // Better heading styles
           h1: ({ children, ...props }) => (
-            <h1
-              className="my-6 text-3xl font-bold text-gray-900"
-              {...props}
-            >
+            <h1 className="my-6 text-3xl font-bold text-gray-900" {...props}>
               {children}
             </h1>
           ),
@@ -312,50 +309,32 @@ function renderMarkdown(
             </h2>
           ),
           h3: ({ children, ...props }) => (
-            <h3
-              className="my-4 text-xl font-semibold text-gray-800"
-              {...props}
-            >
+            <h3 className="my-4 text-xl font-semibold text-gray-800" {...props}>
               {children}
             </h3>
           ),
           h4: ({ children, ...props }) => (
-            <h4
-              className="my-3 text-lg font-medium text-gray-700"
-              {...props}
-            >
+            <h4 className="my-3 text-lg font-medium text-gray-700" {...props}>
               {children}
             </h4>
           ),
           h5: ({ children, ...props }) => (
-            <h5
-              className="my-2 text-base font-medium text-gray-700"
-              {...props}
-            >
+            <h5 className="my-2 text-base font-medium text-gray-700" {...props}>
               {children}
             </h5>
           ),
           h6: ({ children, ...props }) => (
-            <h6
-              className="my-2 text-sm font-medium text-gray-600"
-              {...props}
-            >
+            <h6 className="my-2 text-sm font-medium text-gray-600" {...props}>
               {children}
             </h6>
           ),
           // Horizontal rule
           hr: ({ ...props }) => (
-            <hr
-              className="my-6 border-gray-300"
-              {...props}
-            />
+            <hr className="my-6 border-gray-300" {...props} />
           ),
           // Strikethrough (GFM)
           del: ({ children, ...props }) => (
-            <del
-              className="text-gray-500 line-through"
-              {...props}
-            >
+            <del className="text-gray-500 line-through" {...props}>
               {children}
             </del>
           ),
@@ -396,10 +375,7 @@ function renderMarkdown(
             }
 
             return (
-              <p
-                className="my-3 leading-relaxed text-gray-700"
-                {...props}
-              >
+              <p className="my-3 leading-relaxed text-gray-700" {...props}>
                 {children}
               </p>
             );

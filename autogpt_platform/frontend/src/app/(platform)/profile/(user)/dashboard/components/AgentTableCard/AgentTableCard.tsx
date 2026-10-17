@@ -64,9 +64,7 @@ export const AgentTableCard = ({
               v{graph_version}
             </span>
           </div>
-          <p className="line-clamp-2 text-sm text-neutral-600">
-            {description}
-          </p>
+          <p className="line-clamp-2 text-sm text-neutral-600">{description}</p>
         </div>
         <button
           onClick={onView}

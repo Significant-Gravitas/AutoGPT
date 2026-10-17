@@ -25,9 +25,35 @@ function stripDark(source) {
     /(^|[\s"'`])([^\s"'`]*dark:[^\s"'`]*)/g,
     (match, lead, token) => {
       if (!/(?:^|:)dark:/.test(token)) return match;
+      const after = token.slice(token.lastIndexOf("dark:") + "dark:".length);
+      if (after.length === 0) return match;
       return lead === " " || lead === "\t" ? "" : lead;
     },
   );
+}
+
+function selfTest() {
+  const source = [
+    'className="bg-white dark:bg-zinc-900 hover:dark:text-white"',
+    "themes: { light: themes[0], dark: themes[1] },",
+    'note: "behind dark: class selectors"',
+  ].join("\n");
+  const next = stripDark(source);
+  const expected = [
+    'className="bg-white"',
+    "themes: { light: themes[0], dark: themes[1] },",
+    'note: "behind dark: class selectors"',
+  ].join("\n");
+  if (next !== expected) {
+    console.error(next);
+    process.exit(1);
+  }
+}
+
+if (process.argv.includes("--self-test")) {
+  selfTest();
+  console.log("self-test ok");
+  process.exit(0);
 }
 
 const files = [];

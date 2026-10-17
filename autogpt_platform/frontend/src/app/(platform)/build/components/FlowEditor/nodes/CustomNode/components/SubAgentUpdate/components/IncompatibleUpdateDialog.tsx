@@ -198,19 +198,14 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700"
-                >
+                <li key={item} className="text-sm text-gray-700">
                   <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400">
-                None
-              </li>
+              <li className="text-sm italic text-gray-400">None</li>
             )}
           </ul>
         </div>
@@ -224,19 +219,14 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700"
-                >
+                <li key={item} className="text-sm text-gray-700">
                   <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400">
-                None
-              </li>
+              <li className="text-sm italic text-gray-400">None</li>
             )}
           </ul>
         </div>
@@ -264,15 +254,10 @@ function SingleColumnSection({
         {icon}
         <span className="font-medium">{title}</span>
       </div>
-      <p className="mt-1 text-sm text-gray-500">
-        {description}
-      </p>
+      <p className="mt-1 text-sm text-gray-500">{description}</p>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
-          <li
-            key={item}
-            className="ml-4 list-disc text-sm text-gray-700"
-          >
+          <li key={item} className="ml-4 list-disc text-sm text-gray-700">
             <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs">
               {item}
             </code>

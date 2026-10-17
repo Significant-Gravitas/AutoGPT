@@ -76,11 +76,7 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
       </ContextMenu.Trigger>
       <SecondaryMenuContent>
         <SecondaryMenuItem onSelect={copyNode}>
-          <Icon
-            icon={Copy01Icon}
-            size={20}
-            className="mr-2"
-          />
+          <Icon icon={Copy01Icon} size={20} className="mr-2" />
           <span className="">Copy</span>
         </SecondaryMenuItem>
         <SecondaryMenuSeparator />
@@ -90,11 +86,7 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
             <SecondaryMenuItem
               onClick={() => window.open(`/build?flowID=${subGraphID}`)}
             >
-              <Icon
-                icon={LinkSquare01Icon}
-                size={20}
-                className="mr-2"
-              />
+              <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
               <span className="">Open workflow</span>
             </SecondaryMenuItem>
             <SecondaryMenuSeparator />
@@ -102,11 +94,7 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
         )}
 
         <SecondaryMenuItem variant="destructive" onSelect={deleteNode}>
-          <Icon
-            icon={Delete02Icon}
-            size={20}
-            className="mr-2 text-red-500"
-          />
+          <Icon icon={Delete02Icon} size={20} className="mr-2 text-red-500" />
           <span className="">Delete</span>
         </SecondaryMenuItem>
       </SecondaryMenuContent>

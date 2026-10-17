@@ -73,9 +73,7 @@ export function SubscriptionTierSection() {
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Subscription Plan</h3>
         <div className="rounded-lg border border-violet-500 bg-violet-50 p-4">
-          <p className="font-semibold text-violet-700">
-            Enterprise Plan
-          </p>
+          <p className="font-semibold text-violet-700">Enterprise Plan</p>
           <p className="mt-1 text-sm text-neutral-600">
             Your Enterprise plan is managed by your administrator. Contact your
             account team for changes.

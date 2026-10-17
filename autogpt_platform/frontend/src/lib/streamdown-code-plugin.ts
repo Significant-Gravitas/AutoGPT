@@ -109,7 +109,7 @@ export function createSingletonCodePlugin(): CodeHighlighterPlugin {
 
           const shikiResult = highlighter.codeToTokens(code, {
             lang: finalLang,
-            themes: { light: themes[0], themes[1] },
+            themes: { light: themes[0], dark: themes[1] },
           });
 
           const result: HighlightResult = {

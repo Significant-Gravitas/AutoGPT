@@ -608,9 +608,7 @@ function MCPToolCard({
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-sm font-semibold">
-          {tool.name}
-        </span>
+        <span className="flex-1 text-sm font-semibold">{tool.name}</span>
         {paramNames.length > 0 && (
           <Badge variant="secondary" className="text-[10px]">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}

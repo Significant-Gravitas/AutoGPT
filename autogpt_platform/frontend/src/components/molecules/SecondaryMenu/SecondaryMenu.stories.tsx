@@ -40,19 +40,11 @@ export const ContextMenuExample: Story = {
         </ContextMenu.Trigger>
         <SecondaryMenuContent>
           <SecondaryMenuItem onSelect={() => alert("Copy")}>
-            <Icon
-              icon={Copy01Icon}
-              size={20}
-              className="mr-2"
-            />
+            <Icon icon={Copy01Icon} size={20} className="mr-2" />
             <span className="">Copy</span>
           </SecondaryMenuItem>
           <SecondaryMenuItem onSelect={() => alert("Open agent")}>
-            <Icon
-              icon={LinkSquare01Icon}
-              size={20}
-              className="mr-2"
-            />
+            <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
             <span className="">Open agent</span>
           </SecondaryMenuItem>
           <SecondaryMenuSeparator />
@@ -60,11 +52,7 @@ export const ContextMenuExample: Story = {
             variant="destructive"
             onSelect={() => alert("Delete")}
           >
-            <Icon
-              icon={Delete02Icon}
-              size={20}
-              className="mr-2 text-red-500"
-            />
+            <Icon icon={Delete02Icon} size={20} className="mr-2 text-red-500" />
             <span className="">Delete</span>
           </SecondaryMenuItem>
         </SecondaryMenuContent>
@@ -84,19 +72,11 @@ export const DropdownMenuExample: Story = {
         </DropdownMenuTrigger>
         <SecondaryDropdownMenuContent side="right" align="start">
           <SecondaryDropdownMenuItem onClick={() => alert("Copy")}>
-            <Icon
-              icon={Copy01Icon}
-              size={20}
-              className="mr-2"
-            />
+            <Icon icon={Copy01Icon} size={20} className="mr-2" />
             <span className="">Copy</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuItem onClick={() => alert("Open agent")}>
-            <Icon
-              icon={LinkSquare01Icon}
-              size={20}
-              className="mr-2"
-            />
+            <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
             <span className="">Open agent</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuSeparator />
@@ -104,11 +84,7 @@ export const DropdownMenuExample: Story = {
             variant="destructive"
             onClick={() => alert("Delete")}
           >
-            <Icon
-              icon={Delete02Icon}
-              size={20}
-              className="mr-2 text-red-500"
-            />
+            <Icon icon={Delete02Icon} size={20} className="mr-2 text-red-500" />
             <span className="">Delete</span>
           </SecondaryDropdownMenuItem>
         </SecondaryDropdownMenuContent>

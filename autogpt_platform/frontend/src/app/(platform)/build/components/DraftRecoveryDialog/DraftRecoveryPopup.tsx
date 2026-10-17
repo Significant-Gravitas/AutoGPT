@@ -106,16 +106,10 @@ export function DraftRecoveryPopup({
             </div>
 
             <div className="flex flex-col">
-              <Text
-                variant="small-medium"
-                className="text-amber-900"
-              >
+              <Text variant="small-medium" className="text-amber-900">
                 Unsaved changes found
               </Text>
-              <Text
-                variant="small"
-                className="text-amber-700"
-              >
+              <Text variant="small" className="text-amber-700">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
                 • {formatTimeAgo(new Date(savedAt).toISOString())}

@@ -158,11 +158,7 @@ function renderWorkspaceFile(
         <span className="truncate text-sm font-medium text-gray-900">
           {metadata?.filename || label}
         </span>
-        {mimeType && (
-          <span className="text-xs text-gray-500">
-            {mimeType}
-          </span>
-        )}
+        {mimeType && <span className="text-xs text-gray-500">{mimeType}</span>}
       </div>
       <a
         href={downloadURL}

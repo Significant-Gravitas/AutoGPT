@@ -12,10 +12,7 @@ export const PublishAuthPrompt = () => {
           <Text variant="h3" className="font-semibold">
             Share your AI creations
           </Text>
-          <Text
-            variant="lead"
-            className="max-w-[80%] text-neutral-600"
-          >
+          <Text variant="lead" className="max-w-[80%] text-neutral-600">
             Log in or create an account to publish your workflows to the
             marketplace and join a community of creators
           </Text>

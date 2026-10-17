@@ -330,10 +330,7 @@ export function FileInput(props: Props) {
           {isUploading ? (
             <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
-              <Text
-                variant="small"
-                className="text-blue-700"
-              >
+              <Text variant="small" className="text-blue-700">
                 {mode === "base64" ? "Processing..." : "Uploading..."}
               </Text>
             </div>
@@ -345,19 +342,13 @@ export function FileInput(props: Props) {
                   className="h-4 w-4 flex-shrink-0 text-gray-600"
                 />
 
-                <Text
-                  variant="small-medium"
-                  className="truncate text-gray-900"
-                >
+                <Text variant="small-medium" className="truncate text-gray-900">
                   {fileInfo
                     ? getFileLabel(fileInfo.name, fileInfo.content_type)
                     : getFileLabelFromValue(value)}
                 </Text>
                 {fileInfo && (
-                  <Text
-                    variant="small"
-                    className="text-gray-500"
-                  >
+                  <Text variant="small" className="text-gray-500">
                     {formatFileSize(fileInfo.size)}
                   </Text>
                 )}

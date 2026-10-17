@@ -247,8 +247,7 @@ const Folder = forwardRef<
             `flex items-center gap-1 rounded-md text-sm`,
             className,
             {
-              "rounded-md bg-neutral-100":
-                isSelect && isSelectable,
+              "rounded-md bg-neutral-100": isSelect && isSelectable,
               "cursor-pointer": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             },

@@ -15,12 +15,10 @@ const buttonVariants = cva(
           "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90",
         accent: "bg-accent text-accent-foreground hover:bg-violet-500",
         primary: "bg-zinc-700 text-white hover:bg-zinc-800 text-white",
-        outline:
-          "border border-black/50 text-neutral-800 hover:bg-neutral-100",
+        outline: "border border-black/50 text-neutral-800 hover:bg-neutral-100",
         secondary:
           "bg-neutral-100 text-neutral-800 border border-neutral-200 hover:bg-neutral-100/80",
-        ghost:
-          "hover:bg-neutral-100 text-neutral-800",
+        ghost: "hover:bg-neutral-100 text-neutral-800",
         link: "text-neutral-800 underline-offset-4 hover:underline",
       },
       size: {

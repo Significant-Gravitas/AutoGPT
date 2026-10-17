@@ -38,51 +38,30 @@ export function NavbarLink({ name, href }: Props) {
         )}
       >
         {href === "/marketplace" && (
-          <div
-            className={cn(
-              iconNudgedClass,
-              isActive && "text-white",
-            )}
-          >
+          <div className={cn(iconNudgedClass, isActive && "text-white")}>
             <MarketplaceIcon />
           </div>
         )}
         {href === "/build" && (
-          <div
-            className={cn(
-              iconNudgedClass,
-              isActive && "text-white",
-            )}
-          >
+          <div className={cn(iconNudgedClass, isActive && "text-white")}>
             <BuilderIcon />
           </div>
         )}
         {href === "/monitor" && (
           <Icon
             icon={LaptopIcon}
-            className={cn(
-              iconBaseClass,
-              isActive && "text-white",
-            )}
+            className={cn(iconBaseClass, isActive && "text-white")}
           />
         )}
         {href === "/home" && (
-          <div
-            className={cn(
-              iconNudgedClass,
-              isActive && "text-white",
-            )}
-          >
+          <div className={cn(iconNudgedClass, isActive && "text-white")}>
             <HomepageIcon />
           </div>
         )}
         {href === "/library" && (
           <Icon
             icon={CheckListIcon}
-            className={cn(
-              "h-5 w-5 shrink-0",
-              isActive && "text-white",
-            )}
+            className={cn("h-5 w-5 shrink-0", isActive && "text-white")}
           />
         )}
         <Text

@@ -11,15 +11,13 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90",
-        destructive:
-          "bg-red-500 text-neutral-50 shadow-sm hover:bg-red-500/90",
+        destructive: "bg-red-500 text-neutral-50 shadow-sm hover:bg-red-500/90",
         accent: "bg-accent text-accent-foreground hover:bg-violet-500",
         outline:
           "border border-neutral-200 bg-white shadow-sm hover:bg-neutral-100 hover:text-neutral-900",
         secondary:
           "bg-neutral-100 text-neutral-900 shadow-sm hover:bg-neutral-100/80",
-        ghost:
-          "hover:bg-neutral-100 hover:text-neutral-900",
+        ghost: "hover:bg-neutral-100 hover:text-neutral-900",
         link: "text-neutral-900 underline-offset-4 hover:underline",
       },
       size: {

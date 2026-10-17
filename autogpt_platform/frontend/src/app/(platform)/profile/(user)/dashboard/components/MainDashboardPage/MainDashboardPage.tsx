@@ -35,11 +35,7 @@ export const MainDashboardPage = () => {
             Workflow dashboard
           </Text>
           <div className="space-y-2">
-            <Text
-              variant="h2"
-              size="large-medium"
-              className="text-neutral-900"
-            >
+            <Text variant="h2" size="large-medium" className="text-neutral-900">
               Submit a New Workflow
             </Text>
             <Text variant="body" size="small">
