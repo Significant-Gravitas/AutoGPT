@@ -197,11 +197,16 @@ class FindInDictionaryBlock(Block):
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             yield "output", obj[key]
         elif isinstance(obj, list) and isinstance(key, str):
+            is_index = key.strip().isascii() and key.strip().isdigit()
             if len(obj) == 0:
-                yield "output", []
+                # Any index into an empty list is out of range.
+                if is_index:
+                    yield "missing", input_data.input
+                else:
+                    yield "output", []
             elif isinstance(obj[0], dict) and key in obj[0]:
                 yield "output", [item[key] for item in obj if key in item]
-            elif key.strip().isascii() and key.strip().isdigit():
+            elif is_index:
                 # Builder inputs send `str | int` keys as strings by default,
                 # so treat a numeric string as a list index. isdigit() alone
                 # also accepts characters like "²" that int() rejects.

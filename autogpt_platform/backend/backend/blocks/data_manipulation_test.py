@@ -21,6 +21,7 @@ async def _find(obj: Any, key: Any) -> list[tuple[str, Any]]:
         ([10, 20, 30], " 2 ", [("output", 30)]),
         ("[10, 20, 30]", "0", [("output", 10)]),
         (["a", "b"], "5", [("missing", ["a", "b"])]),
+        ([], "0", [("missing", [])]),
         ([10, 20, 30], 5, [("missing", [10, 20, 30])]),
     ],
 )
@@ -39,6 +40,10 @@ async def test_very_long_digit_key_is_missing_not_an_error():
     # int() rejects digit strings over the interpreter's limit (4300 by
     # default since Python 3.11); such a key can't be a valid index anyway.
     assert await _find([10, 20, 30], "1" * 5000) == [("missing", [10, 20, 30])]
+
+
+async def test_non_index_key_on_empty_list_unchanged():
+    assert await _find([], "name") == [("output", [])]
 
 
 async def test_list_of_dicts_still_plucks_matching_key():
