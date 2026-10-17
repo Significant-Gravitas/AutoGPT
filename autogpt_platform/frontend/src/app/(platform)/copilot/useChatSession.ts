@@ -27,7 +27,10 @@ import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
-import { useAutopilotModeStore } from "./autopilotModeStore";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 import {
@@ -52,6 +55,17 @@ export function useChatSession({
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
 
   const transportQuery = useGetV2ListChatTransports({
     query: {
@@ -319,6 +333,10 @@ export function useChatSession({
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
+      // Same rule as the route: only a mode the user picked travels, so a new
+      // expert thread starts on the expert's own default rather than "auto".
+      const pickedMode = getAutopilotModeChoice(null);
+      if (pickedMode) sessionData.autopilot_mode = pickedMode;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }
@@ -400,6 +418,12 @@ export function useChatSession({
     sessionId && sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
       : null;
+  // What the AutoPilot budget follows: the session's own connection, or for a
+  // new chat the one it will start on (null until that is known).
+  const chatLlmAuthProvider = sessionId
+    ? sessionLlmAuthProvider
+    : (resolveCopilotLLMAuthSelection(chatTransports, copilotLlmAuth)
+        ?.authProvider ?? null);
 
   // The expert this session actually belongs to, straight off the session
   // response rather than the URL — the ?expertId= param only describes what
@@ -428,6 +452,7 @@ export function useChatSession({
     sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,

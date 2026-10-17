@@ -228,6 +228,30 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
   it("keeps the backend's status lines out of the thinking indicator", () => {
     render(
       <ChatMessagesContainer
