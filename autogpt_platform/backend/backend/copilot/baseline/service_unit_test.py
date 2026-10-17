@@ -2272,7 +2272,9 @@ class TestBaselineReasoningStreaming:
                 state=state,
             )
 
-        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        extra_body = mock_client.chat.completions.create.call_args[1].get(
+            "extra_body", {}
+        )
         assert "reasoning" not in extra_body
 
     @pytest.mark.asyncio
@@ -2427,7 +2429,9 @@ class TestBaselineReasoningStreaming:
                 state=state,
             )
 
-        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        extra_body = mock_client.chat.completions.create.call_args[1].get(
+            "extra_body", {}
+        )
         assert "reasoning" not in extra_body
         assert "thinking" not in extra_body
 
