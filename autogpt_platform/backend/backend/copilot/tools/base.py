@@ -9,6 +9,7 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.context import get_current_envelope
 from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
     is_google_call,
     remember_cut_google_output,
     remember_google_output,
@@ -91,6 +92,7 @@ async def _persist_and_summarize(
     session_id: str,
     tool_call_id: str,
     digest: bool = False,
+    google_data: bool = False,
 ) -> str:
     """Persist full output to workspace and return a preview with retrieval
     instructions — a structural outline when *digest*, else a middle-out slice.
@@ -120,7 +122,10 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
-            metadata={"purpose": "tool-output"},
+            metadata={
+                "purpose": "tool-output",
+                **({GOOGLE_DATA_METADATA_KEY: True} if google_data else {}),
+            },
             overwrite=True,
         )
     except Exception:
@@ -537,7 +542,12 @@ class BaseTool:
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
             if len(raw_output) > threshold and user_id and session.session_id:
                 raw_output = await _persist_and_summarize(
-                    raw_output, user_id, session.session_id, tool_call_id, digest
+                    raw_output,
+                    user_id,
+                    session.session_id,
+                    tool_call_id,
+                    digest,
+                    google_data=result.holds_google_data,
                 )
             output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,

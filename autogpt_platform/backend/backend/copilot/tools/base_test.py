@@ -11,7 +11,11 @@ from backend.blocks.google.gmail import GmailReadBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.copilot.gate import ALLOW
 from backend.copilot.gate.reads import model_view
-from backend.copilot.google_data_redaction import REDACTED, redact_google_data
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    REDACTED,
+    redact_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -831,3 +835,23 @@ class TestGateTracesOfGoogleCalls:
             model_view.reset(token)
 
         assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}
+
+
+class TestPersistedGoogleOutputIsFlagged:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("google", [True, False])
+    async def test_the_saved_file_says_whether_it_holds_google_data(self, google):
+        workspace = MagicMock(id="ws-1")
+        db = AsyncMock()
+        db.get_or_create_workspace = AsyncMock(return_value=workspace)
+        manager = AsyncMock()
+        with (
+            patch("backend.copilot.tools.base.workspace_db", return_value=db),
+            patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+        ):
+            await _persist_and_summarize(
+                "A" * 200_000, "u1", "s1", "call-1", google_data=google
+            )
+
+        metadata = manager.write_file.await_args.kwargs["metadata"]
+        assert metadata.get(GOOGLE_DATA_METADATA_KEY, False) is google

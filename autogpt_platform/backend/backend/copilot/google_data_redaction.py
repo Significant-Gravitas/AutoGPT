@@ -49,6 +49,10 @@ from backend.integrations.providers import ProviderName
 
 REDACTED = "[redacted: Google data]"
 
+# Set on a ``tool-outputs/`` workspace file that saved a Google block's output,
+# so reading it back is recognised as Google data too.
+GOOGLE_DATA_METADATA_KEY = "google_data"
+
 # The arguments that carry what a call sends to the block; ``resume_capability``
 # re-runs it with ``input_overrides`` merged in.
 _PAYLOAD_KEYS = ("input_data", "input", "input_overrides")

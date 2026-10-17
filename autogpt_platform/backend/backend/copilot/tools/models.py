@@ -176,11 +176,18 @@ class ToolResponseBase(BaseModel):
     def outside(self) -> tuple[Any, ...] | None:
         return self._outside
 
+    _google_data: bool = PrivateAttr(default=False)
+
+    def with_google_data(self, google_data: bool = True) -> Self:
+        """Mark this response as carrying what a Google block returned."""
+        self._google_data = self._google_data or google_data
+        return self
+
     @property
     def holds_google_data(self) -> bool:
         """Whether this carries what a Google block returned, which must stay
         out of LLM traces (see ``backend.copilot.google_data_redaction``)."""
-        return False
+        return self._google_data
 
 
 # Agent discovery models
@@ -1035,7 +1042,7 @@ class BlockOutputResponse(ToolResponseBase):
 
     @property
     def holds_google_data(self) -> bool:
-        return self.provider == ProviderName.GOOGLE.value
+        return self.provider == ProviderName.GOOGLE.value or self._google_data
 
 
 class ReviewRequiredResponse(ToolResponseBase):
