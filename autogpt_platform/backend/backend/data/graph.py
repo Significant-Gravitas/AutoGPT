@@ -16,11 +16,14 @@ from typing import (
     get_args,
 )
 
+from prisma import Prisma
 from prisma.enums import SubmissionStatus
+from prisma.errors import ForeignKeyViolationError
 from prisma.models import (
     AgentGraph,
     AgentNode,
     AgentNodeLink,
+    AgentPreset,
     LibraryAgent,
     StoreListingVersion,
 )
@@ -43,6 +46,7 @@ from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import (
+    GraphInUseError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
     GraphValidationError,
@@ -1841,9 +1845,9 @@ async def get_graph_all_versions(
     return versions
 
 
-async def delete_graph(
-    graph_id: str, user_id: str, organization_id: str | None = None
-) -> int:
+def _owned_graph_where(
+    graph_id: str, user_id: str, organization_id: str | None
+) -> AgentGraphWhereInput:
     where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
     if organization_id is not None:
         # Scope the delete to the caller's active org. Tenant-less rows
@@ -1854,10 +1858,110 @@ async def delete_graph(
             {"organizationId": organization_id},
             {"organizationId": None},
         ]
-    entries_count = await AgentGraph.prisma().delete_many(where=where)
+    return where
+
+
+async def delete_graph(
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    *,
+    tx: Prisma | None = None,
+) -> int:
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    entries_count = await AgentGraph.prisma(tx).delete_many(where=where)
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count
+
+
+async def user_owns_graph(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> bool:
+    """Whether the user owns any version of the graph, scoped the same way
+    `delete_graph` scopes its delete."""
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    return bool(await AgentGraph.prisma().count(where=where))
+
+
+# Whether anything outside the owner's own rows still points at the graph:
+# another user's library entry, preset or run, or any store listing version
+# (the StoreListingVersion → AgentGraph FK is RESTRICT whoever owns the
+# listing, and expert workflows hang off listing versions). Mirrors the
+# shared-agent predicate used for account deletion (#15487), minus its
+# sub-agent recursion: deleting this graph doesn't touch its sub-agents.
+# $1 = graph id, $2 = owner user id.
+_GRAPH_SHARED_QUERY = """
+    SELECT
+      EXISTS (SELECT 1 FROM {schema_prefix}"LibraryAgent" la
+               WHERE la."agentGraphId" = $1 AND la."userId" <> $2)
+      OR EXISTS (SELECT 1 FROM {schema_prefix}"AgentPreset" p
+                  WHERE p."agentGraphId" = $1 AND p."userId" <> $2)
+      OR EXISTS (SELECT 1 FROM {schema_prefix}"AgentGraphExecution" e
+                  WHERE e."agentGraphId" = $1 AND e."userId" <> $2)
+      AS "shared",
+      EXISTS (SELECT 1 FROM {schema_prefix}"StoreListingVersion" v
+               WHERE v."agentGraphId" = $1)
+      AS "listed"
+"""
+
+
+async def assert_graph_deletable(
+    graph_id: str, user_id: str, *, tx: Prisma | None = None
+) -> None:
+    """Raise `GraphInUseError` if permanently deleting the graph would take
+    other users' data with it or is blocked by a store listing.
+
+    Call this for the graph's owner only (see `user_owns_graph`): "other
+    users" means anyone but `user_id`."""
+    rows = await query_raw_with_schema(
+        _GRAPH_SHARED_QUERY, graph_id, user_id, client=tx
+    )
+    row = rows[0] if rows else {}
+    if row.get("listed"):
+        raise GraphInUseError(
+            f"Graph #{graph_id} has been submitted to the store and can't be "
+            "permanently deleted; remove it from your library instead."
+        )
+    if row.get("shared"):
+        raise GraphInUseError(
+            f"Graph #{graph_id} is in use by other users and can't be "
+            "permanently deleted; remove it from your library instead."
+        )
+
+
+async def delete_graph_permanently(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    """Delete all versions of the user's graph, together with the user's own
+    library entries (soft-deleted ones included) and presets for it, in one
+    transaction. Nodes and the owner's runs cascade with the graph.
+
+    Raises `GraphInUseError` if other users or a store listing reference the
+    graph; nothing is deleted then. Schedules, webhooks and trigger agents are
+    the caller's to clean up first (see
+    `library_db.cleanup_graph_for_permanent_delete`).
+    """
+    try:
+        async with transaction() as tx:
+            await assert_graph_deletable(graph_id, user_id, tx=tx)
+            where = _owned_graph_where(graph_id, user_id, organization_id)
+            if not await AgentGraph.prisma(tx).count(where=where):
+                return 0
+            await AgentPreset.prisma(tx).delete_many(
+                where={"agentGraphId": graph_id, "userId": user_id}
+            )
+            await LibraryAgent.prisma(tx).delete_many(
+                where={"agentGraphId": graph_id, "userId": user_id}
+            )
+            return await delete_graph(graph_id, user_id, organization_id, tx=tx)
+    except ForeignKeyViolationError as e:
+        # Backstop: a reference created after the check (e.g. a concurrent
+        # store install) still blocks the delete; report it as a conflict.
+        raise GraphInUseError(
+            f"Graph #{graph_id} is still referenced elsewhere and can't be "
+            "permanently deleted."
+        ) from e
 
 
 async def get_graph_settings(
