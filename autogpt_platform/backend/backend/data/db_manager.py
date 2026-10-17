@@ -187,6 +187,7 @@ from backend.data.user import (
     get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
+    get_near_expiry_oauth_credentials,
     get_user_by_id,
     get_user_credentials,
     get_user_default_chat_route,
@@ -411,6 +412,7 @@ class DatabaseManager(AppService):
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
@@ -908,6 +910,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
 

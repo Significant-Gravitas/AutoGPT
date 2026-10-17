@@ -65,6 +65,7 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -200,7 +201,7 @@ def get_event_loop():
     return _event_loop
 
 
-def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+def run_async(coro, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
     """Run a coroutine in the shared event loop and wait for completion."""
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
@@ -1852,6 +1853,13 @@ def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
         )
 
 
+def refresh_near_expiry_credentials() -> None:
+    """Keep max_instances guarding the sweep until every refresh finishes."""
+    run_async(
+        IntegrationCredentialsManager().refresh_near_expiry_credentials(), timeout=None
+    )
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -2572,6 +2580,17 @@ class Scheduler(AppService):
                 replace_existing=True,
                 seconds=config.cloud_storage_cleanup_interval_hours
                 * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Credential Refresh - keep third-party OAuth credentials valid before use.
+            self.scheduler.add_job(
+                refresh_near_expiry_credentials,
+                id="refresh_near_expiry_credentials",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,
+                seconds=60,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
