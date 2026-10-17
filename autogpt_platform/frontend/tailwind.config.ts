@@ -113,15 +113,6 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        customGray: {
-          "100": "#d9d9d9",
-          "200": "#a8a8a8",
-          "300": "#878787",
-          "400": "#646464",
-          "500": "#474747",
-          "600": "#282828",
-          "700": "#272727",
-        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
