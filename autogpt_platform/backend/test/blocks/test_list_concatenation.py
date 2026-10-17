@@ -278,8 +278,7 @@ class TestMakeHashable:
         hash(result)
 
     def test_boolean(self):
-        result = _make_hashable(True)
-        assert result is True
+        assert _make_hashable(True) == ("bool", True)
 
     def test_float(self):
         result = _make_hashable(3.14)
@@ -393,6 +392,38 @@ class TestMakeHashableMixedKeys:
         d1 = {1: "a", "b": 2}
         d2 = {1: "a", "b": 2}
         assert _make_hashable(d1) == _make_hashable(d2)
+
+
+class TestMakeHashableDistinctTypes:
+    """_make_hashable must not map JSON-distinct values onto the same key."""
+
+    def test_bool_distinct_from_int(self):
+        assert _make_hashable(True) != _make_hashable(1)
+        assert _make_hashable(False) != _make_hashable(0)
+
+    def test_empty_list_distinct_from_empty_dict(self):
+        assert _make_hashable([]) != _make_hashable({})
+
+    def test_dict_distinct_from_list_of_pairs(self):
+        assert _make_hashable({"a": 1}) != _make_hashable([["a", 1]])
+
+    def test_dedupe_keeps_distinct_values(self):
+        items = [[], {}, 1, True, {"a": 1}, [["a", 1]], 0, False]
+        assert _deduplicate_list(items) == items
+
+    def test_dedupe_still_merges_equal_values(self):
+        assert _deduplicate_list([True, True, {"a": [1]}, {"a": [1]}]) == [
+            True,
+            {"a": [1]},
+        ]
+
+    def test_difference_does_not_match_distinct_values(self):
+        block = ListDifferenceBlock()
+        assert block._compute_difference([1, 0, {}], [True, False, []]) == [1, 0, {}]
+
+    def test_intersection_does_not_match_distinct_values(self):
+        block = ListIntersectionBlock()
+        assert block._compute_intersection([1, 0, {}], [True, False, []]) == []
 
 
 class TestZipListsNoneHandling:
