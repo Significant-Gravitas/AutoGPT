@@ -325,7 +325,7 @@ The block uses regular expressions to search for the specified pattern within th
 |-------|-------------|------|----------|
 | text | Text to match | Text | Yes |
 | match | Pattern (Regex) to match | str | Yes |
-| data | Data to be forwarded to output | Data | Yes |
+| data | Data to be forwarded to output | Data | No |
 | case_sensitive | Case sensitive match | bool | No |
 | dot_all | Dot matches all | bool | No |
 
