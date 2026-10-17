@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import CreditTransactionType
+from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 
 from backend.data.credit import UserCredit
@@ -144,20 +144,47 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_deduct_credits_user_not_found(server: SpinTestServer):
-    """Test that deduct_credits raises error if transaction not found (which means user doesn't exist)."""
-    # Create a mock refund object that references a non-existent payment intent
-    refund = MagicMock(spec=stripe.Refund)
-    refund.id = "re_test_refund_nonexistent"
-    refund.payment_intent = "pi_test_nonexistent"  # This payment intent doesn't exist
-    refund.amount = 500
-    refund.status = "succeeded"
-    refund.reason = "requested_by_customer"
-    refund.created = int(datetime.now(timezone.utc).timestamp())
+async def test_deduct_credits_ignores_refund_of_non_topup_payment(
+    server: SpinTestServer,
+):
+    """A refund of a payment that bought no credits, such as a subscription
+    invoice, returns without touching the ledger or the user's refund requests."""
+    topup_tx = await setup_test_user_with_topup()
 
-    # Should raise error for missing transaction
-    with pytest.raises(Exception):  # Should raise NotFoundError for missing transaction
+    try:
+        await CreditRefundRequest.prisma().create(
+            data={
+                "userId": REFUND_TEST_USER_ID,
+                "amount": 500,
+                "transactionKey": topup_tx.transactionKey,
+                "reason": "Test refund",
+            }
+        )
+        refund = MagicMock(spec=stripe.Refund)
+        refund.id = "re_test_non_topup"
+        refund.payment_intent = "pi_test_subscription_invoice"
+        refund.amount = 6000
+        refund.status = "succeeded"
+        refund.reason = "requested_by_customer"
+
         await credit_system.deduct_credits(refund)
+
+        assert (
+            await CreditTransaction.prisma().count(where={"transactionKey": refund.id})
+            == 0
+        )
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert user_balance.balance == 1000
+        refund_request = await CreditRefundRequest.prisma().find_first(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert refund_request is not None
+        assert refund_request.status == CreditRefundRequestStatus.PENDING
+    finally:
+        await cleanup_test_user()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -264,6 +291,39 @@ async def test_handle_dispute_with_insufficient_balance(
         assert user_balance is not None
         assert user_balance.balance == 1000, "Balance should remain unchanged"
 
+    finally:
+        await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@patch("stripe.Dispute.modify_async")
+async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
+    mock_stripe_modify, server: SpinTestServer
+):
+    """A dispute of a payment that bought no credits is neither accepted nor
+    contested, and the user's unrelated top-up is left as it was."""
+    topup_tx = await setup_test_user_with_topup()
+
+    try:
+        dispute = MagicMock(spec=stripe.Dispute)
+        dispute.id = "du_test_non_topup"
+        dispute.payment_intent = "pi_test_subscription_invoice"
+        dispute.amount = 6000
+        dispute.status = "needs_response"
+        dispute.close = MagicMock()
+
+        await credit_system.handle_dispute(dispute)
+
+        dispute.close.assert_not_called()
+        mock_stripe_modify.assert_not_called()
+        assert await CreditTransaction.prisma().find_many(
+            where={"userId": REFUND_TEST_USER_ID}
+        ) == [topup_tx]
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert user_balance.balance == 1000
     finally:
         await cleanup_test_user()
 
