@@ -3,12 +3,7 @@ import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import {
-  COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
-  formatNotificationTitle,
-  parseSessionIDs,
-} from "./helpers";
+import { COPILOT_COMPLETION_NOTIFICATION, parseSessionIDs } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
@@ -53,7 +48,7 @@ async function showBrowserNotification(
 
 /**
  * Listens for copilot completion notifications via WebSocket.
- * Updates the Zustand store, plays a sound, and updates document.title.
+ * Updates the Zustand store and plays a sound.
  */
 export function useCopilotNotifications(activeSessionID: string | null) {
   const api = useBackendAPI();
@@ -62,18 +57,20 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const activeSessionRef = useRef(activeSessionID);
   activeSessionRef.current = activeSessionID;
   const windowFocusedRef = useRef(true);
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
 
-  // Pre-load audio element and sync document title with persisted state
+  // Opening a finished chat takes it off the list. The handler below skips
+  // chats already on it, so a chat left there never notifies again.
+  useEffect(() => {
+    if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
+    useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+  }, [activeSessionID, completedSessionIDs]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const audio = new Audio(NOTIFICATION_SOUND_PATH);
     audio.volume = 0.5;
     audioRef.current = audio;
-
-    const count = useCopilotUIStore.getState().completedSessionIDs.size;
-    if (count > 0) {
-      document.title = formatNotificationTitle(count);
-    }
   }, []);
 
   // Listen for WebSocket notifications
@@ -99,8 +96,6 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
       // Always update UI state (checkmark + title) regardless of notification setting
       state.addCompletedSession(sessionID);
-      const count = useCopilotUIStore.getState().completedSessionIDs.size;
-      document.title = formatNotificationTitle(count);
 
       // Sound and browser notifications are gated by the user setting
       if (!state.isNotificationsEnabled) return;
@@ -134,29 +129,16 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   useEffect(() => {
     function handleFocus() {
       windowFocusedRef.current = true;
-      if (useCopilotUIStore.getState().completedSessionIDs.size === 0) {
-        document.title = ORIGINAL_TITLE;
-      }
     }
     function handleBlur() {
       windowFocusedRef.current = false;
     }
-    function handleVisibilityChange() {
-      if (
-        document.visibilityState === "visible" &&
-        useCopilotUIStore.getState().completedSessionIDs.size === 0
-      ) {
-        document.title = ORIGINAL_TITLE;
-      }
-    }
 
     window.addEventListener("focus", handleFocus);
     window.addEventListener("blur", handleBlur);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -168,7 +150,6 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // additions (new completions) and removals (cleared sessions) propagate.
       const next = parseSessionIDs(e.newValue);
       useCopilotUIStore.setState({ completedSessionIDs: next });
-      document.title = formatNotificationTitle(next.size);
 
       // Refetch the session list so the sidebar reflects the latest
       // is_processing state (avoids stale spinner after cross-tab clear).

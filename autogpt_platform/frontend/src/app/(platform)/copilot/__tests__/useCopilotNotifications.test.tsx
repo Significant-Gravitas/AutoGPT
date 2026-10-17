@@ -109,3 +109,74 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
     });
   });
 });
+
+describe("useCopilotNotifications — opening a finished chat", () => {
+  it("takes the open chat off the finished list", async () => {
+    useCopilotUIStore.setState({
+      completedSessionIDs: new Set(["sess-1", "sess-2"]),
+    });
+
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs).toEqual(
+        new Set(["sess-2"]),
+      );
+    });
+  });
+
+  it("notifies again for a chat's next finished turn once it has been opened", async () => {
+    const { rerender } = renderHook(
+      ({ active }: { active: string | null }) =>
+        useCopilotNotifications(active),
+      {
+        wrapper: makeWrapper(),
+        initialProps: { active: null as string | null },
+      },
+    );
+    const completion = {
+      type: "copilot_completion",
+      event: "session_completed",
+      session_id: "sess-1",
+    };
+
+    act(() => capturedHandler!(completion));
+    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
+
+    rerender({ active: "sess-1" });
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    });
+    rerender({ active: null });
+
+    act(() => capturedHandler!(completion));
+    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useCopilotNotifications — tab title", () => {
+  it("leaves the tab title alone when sessions finish", async () => {
+    document.title = "AutoPilot";
+    useCopilotUIStore.setState({
+      completedSessionIDs: new Set(["sess-old-1", "sess-old-2"]),
+    });
+    renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+
+    act(() => {
+      capturedHandler!({
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-3",
+      });
+    });
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
+        "sess-3",
+      );
+    });
+    expect(document.title).toBe("AutoPilot");
+  });
+});

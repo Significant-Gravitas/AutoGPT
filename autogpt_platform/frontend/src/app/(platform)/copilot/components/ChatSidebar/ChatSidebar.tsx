@@ -28,7 +28,6 @@ import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
-import { formatNotificationTitle } from "../../helpers";
 import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
@@ -59,7 +58,7 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
   const openSearch = useGlobalSearchStore((state) => state.openSearch);
   const closeSearch = useGlobalSearchStore((state) => state.closeSearch);
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
@@ -181,14 +180,6 @@ export function ChatSidebar() {
       queryKey: SESSION_LIST_QUERY_KEY,
     });
   }, [sessionId, queryClient]);
-
-  // Clear completed indicator when navigating to a session (works for all paths)
-  useEffect(() => {
-    if (!sessionId || !completedSessionIDs.has(sessionId)) return;
-    clearCompletedSession(sessionId);
-    const remaining = Math.max(0, completedSessionIDs.size - 1);
-    document.title = formatNotificationTitle(remaining);
-  }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   function handleNewChat() {
     setSessionId(null);

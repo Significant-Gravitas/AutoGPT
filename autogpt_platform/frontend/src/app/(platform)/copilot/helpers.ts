@@ -8,8 +8,6 @@ import { parseSpecialMarkers } from "./helpers/messageMarkers";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
-export const ORIGINAL_TITLE = "AutoGPT";
-
 /**
  * Title/body/icon for the OS-level notification fired when a copilot session
  * completes. Kept in sync with the same copy hardcoded in `public/push-sw.js`
@@ -49,16 +47,6 @@ export class CopilotAuthError extends Error {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
   }
-}
-
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) New activity - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
 }
 
 /**

@@ -3,10 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
-  formatNotificationTitle,
   getCopilotAuthHeaders,
   extractSendMessageAttachments,
   getSendSuppressionReason,
@@ -31,32 +29,6 @@ import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
-
-describe("formatNotificationTitle", () => {
-  it("returns base title when count is 0", () => {
-    expect(formatNotificationTitle(0)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title with count", () => {
-    expect(formatNotificationTitle(3)).toBe(
-      `(3) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-
-  it("returns base title for negative count", () => {
-    expect(formatNotificationTitle(-1)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns base title for NaN", () => {
-    expect(formatNotificationTitle(NaN)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title for count of 1", () => {
-    expect(formatNotificationTitle(1)).toBe(
-      `(1) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-});
 
 describe("hasVisibleAssistantContent", () => {
   function assistant(parts: UIMessage["parts"]): UIMessage[] {
