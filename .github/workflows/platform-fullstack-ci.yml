@@ -120,7 +120,7 @@ jobs:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Frontend - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.18.0"
           cache: "pnpm"
@@ -401,7 +401,7 @@ jobs:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up tests - Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.18.0"
           cache: "pnpm"
