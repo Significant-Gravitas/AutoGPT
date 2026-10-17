@@ -1,5 +1,8 @@
 codecov:
-  require_ci_to_pass: true
+  # The aggregate PR check waits for Codecov, so coverage must publish first.
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
 
 coverage:
   status:
@@ -40,6 +43,8 @@ flags:
     paths:
       - autogpt_platform/backend/
     carryforward: true
+    # Four test shards across three Python versions upload separately.
+    after_n_builds: 12
   platform-frontend:
     paths:
       - autogpt_platform/frontend/src/
