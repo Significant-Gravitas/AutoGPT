@@ -131,6 +131,13 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # The chat that started this run, whose approval gate answers its review
+    # pauses; None for any run no chat started.
+    approval_chat_id: Optional[str] = None
+    # The workflow's own sensitive_action_safe_mode, before a chat forced the
+    # pause on; None on a context that predates it.
+    graph_sensitive_action_safe_mode: Optional[bool] = None
+
 
 # -------------------------- Models -------------------------- #
 

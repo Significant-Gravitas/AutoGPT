@@ -130,7 +130,10 @@ async def test_get_pending_reviews_for_user(
 ):
     """Test getting pending reviews for a user with pagination"""
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    # The page, then the chat cards answering its steps: none.
+    mock_find_many.return_value.find_many = AsyncMock(
+        side_effect=[[sample_db_review], []]
+    )
 
     # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
@@ -157,7 +160,7 @@ async def test_get_pending_reviews_for_user(
     assert result[0].node_id == "test_node_def_789"
 
     # Verify pagination parameters
-    call_args = mock_find_many.return_value.find_many.call_args
+    call_args = mock_find_many.return_value.find_many.call_args_list[0]
     assert call_args.kwargs["skip"] == 10  # (page-1) * page_size = (2-1) * 10
     assert call_args.kwargs["take"] == 10
 
