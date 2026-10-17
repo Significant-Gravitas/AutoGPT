@@ -1743,7 +1743,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["seconds"] == 6 * 3600
 
 
-def test_refresh_near_expiry_credentials_job_is_registered_every_minute(monkeypatch):
+def test_idle_credentials_job_is_registered_daily(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
     matches = [
@@ -1755,8 +1755,9 @@ def test_refresh_near_expiry_credentials_job_is_registered_every_minute(monkeypa
     assert len(matches) == 1
     call = matches[0]
     assert call.kwargs["id"] == "refresh_near_expiry_credentials"
-    assert call.kwargs["trigger"] == "interval"
-    assert call.kwargs["seconds"] == 60
+    assert call.kwargs["trigger"] == "cron"
+    assert call.kwargs["hour"] == 3
+    assert call.kwargs["minute"] == 0
     assert call.kwargs["replace_existing"] is True
     assert call.kwargs["max_instances"] == 1
     assert call.kwargs["jobstore"] == "execution"
@@ -1781,7 +1782,7 @@ def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
     monkeypatch.setattr(
         scheduler_module,
         "IntegrationCredentialsManager",
-        lambda: MagicMock(refresh_near_expiry_credentials=refresh),
+        lambda: MagicMock(refresh_idle_credentials=refresh),
     )
     thread.start()
     try:

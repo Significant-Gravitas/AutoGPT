@@ -1855,9 +1855,7 @@ def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
 
 def refresh_near_expiry_credentials() -> None:
     """Keep max_instances guarding the sweep until every refresh finishes."""
-    run_async(
-        IntegrationCredentialsManager().refresh_near_expiry_credentials(), timeout=None
-    )
+    run_async(IntegrationCredentialsManager().refresh_idle_credentials(), timeout=None)
 
 
 def cleanup_oauth_tokens():
@@ -2583,14 +2581,15 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # Credential Refresh - keep third-party OAuth credentials valid before use.
+            # Retain the persisted callable and ID to replace the old minute sweep.
             self.scheduler.add_job(
                 refresh_near_expiry_credentials,
                 id="refresh_near_expiry_credentials",
-                trigger="interval",
+                trigger="cron",
                 replace_existing=True,
                 max_instances=1,
-                seconds=60,
+                hour=3,
+                minute=0,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
