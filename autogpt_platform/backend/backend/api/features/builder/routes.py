@@ -16,6 +16,8 @@ from . import db as builder_db
 from . import model as builder_model
 
 VALID_FILTER_VALUES = get_args(builder_model.FilterType)
+# Upper bound for page_size on paginated builder routes (block menu uses 8-10)
+MAX_PAGE_SIZE = 200
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +94,8 @@ async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
     type: Annotated[builder_model.BlockTypeFilter | None, fastapi.Query()] = None,
     provider: Annotated[ProviderName | None, fastapi.Query()] = None,
-    page: Annotated[int, fastapi.Query()] = 1,
-    page_size: Annotated[int, fastapi.Query()] = 50,
+    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.BlockResponse:
     """
     Get blocks based on either category, type, or provider.
@@ -132,8 +134,8 @@ async def get_specific_blocks(
     response_model=builder_model.ProviderResponse,
 )
 async def get_providers(
-    page: Annotated[int, fastapi.Query()] = 1,
-    page_size: Annotated[int, fastapi.Query()] = 50,
+    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.ProviderResponse:
     """
     Get all integration providers with their block counts.
@@ -157,8 +159,8 @@ async def search(
     filter: Annotated[str | None, fastapi.Query()] = None,
     search_id: Annotated[str | None, fastapi.Query()] = None,
     by_creator: Annotated[list[str] | None, fastapi.Query()] = None,
-    page: Annotated[int, fastapi.Query()] = 1,
-    page_size: Annotated[int, fastapi.Query()] = 50,
+    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.SearchResponse:
     """
     Search for blocks (including integrations), marketplace agents, and user library agents.
