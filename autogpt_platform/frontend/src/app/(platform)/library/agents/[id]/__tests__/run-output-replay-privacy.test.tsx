@@ -126,18 +126,19 @@ function renderRun(credentialsInputSchema: Record<string, unknown>) {
   );
 }
 
-test("a Google-connected agent's run output is kept out of session replays", async () => {
-  renderRun(GOOGLE_CREDENTIALS);
+// Every workflow's output is hidden, not only one listing a Google account: a
+// Google Drive picker's credential is left out of credentials_input_schema, so
+// a workflow reading a picked spreadsheet lists none.
+test.each([
+  ["lists a Google account", GOOGLE_CREDENTIALS],
+  ["lists no Google account", { type: "object", properties: {} }],
+])(
+  "a run output is kept out of session replays when the workflow %s",
+  async (_, credentialsInputSchema) => {
+    renderRun(credentialsInputSchema);
 
-  const output = await screen.findByText(EMAIL);
-  expect(output.closest(".ph-no-capture")).not.toBeNull();
-  expect(output.closest(".sentry-block")).not.toBeNull();
-});
-
-test("other agents' run output stays in session replays", async () => {
-  renderRun({ type: "object", properties: {} });
-
-  const output = await screen.findByText(EMAIL);
-  expect(output.closest(".ph-no-capture")).toBeNull();
-  expect(output.closest(".sentry-block")).toBeNull();
-});
+    const output = await screen.findByText(EMAIL);
+    expect(output.closest(".ph-no-capture")).not.toBeNull();
+    expect(output.closest(".sentry-block")).not.toBeNull();
+  },
+);
