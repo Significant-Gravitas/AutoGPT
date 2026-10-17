@@ -1,4 +1,5 @@
 import { usePostTrialsStartTrialCheckout } from "@/app/api/__generated__/endpoints/trials/trials";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { trackAdsConversionBeforeNavigation } from "@/services/analytics/google-ads";
 import { markTrialCheckoutStarted } from "@/services/analytics/monetization-analytics";
@@ -21,7 +22,9 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
   // The mutation settles before the redirect, while the conversion is still
   // going out; the button must stay busy until the page actually leaves.
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const isStarting = isCheckoutPending || isCheckingOut;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isStarting =
+    isCheckoutPending || isCheckingOut || checkoutRedirect.isRedirecting;
   const offer = query.data?.eligible ? query.data.offer : null;
   useTrialOfferViewed({ offer, userID, surface: returnTo });
 
@@ -41,6 +44,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
         currency: offer.currency.toUpperCase(),
       });
       window.location.assign(response.data.url);
+      checkoutRedirect.markRedirecting();
     } catch (error) {
       failure.reportFailure({ userID, error, fallback: CHECKOUT_FAILED });
       await query.refetch();

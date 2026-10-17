@@ -20,6 +20,7 @@ import {
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import {
   markPaywallCheckoutStarted,
@@ -72,7 +73,9 @@ export function useSubscriptionStep() {
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isProcessing = isUpdatingTier || isSubmitting;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isProcessing =
+    isUpdatingTier || isSubmitting || checkoutRedirect.isRedirecting;
 
   const countryIdx = Math.max(
     0,
@@ -141,6 +144,7 @@ export function useSubscriptionStep() {
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
+        checkoutRedirect.markRedirecting();
         return;
       }
       await queryClient.invalidateQueries(
