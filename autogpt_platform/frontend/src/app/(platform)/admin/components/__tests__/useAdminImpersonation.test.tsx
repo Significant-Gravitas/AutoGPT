@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getPostV2NotifyImpersonationStartMockHandler200 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
-import { ImpersonationState } from "@/lib/impersonation";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
+import { ImpersonationCookie, ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 
@@ -34,6 +36,8 @@ const reloadMock = vi.fn();
 let setSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  // Impersonation is recorded against the signed-in admin who starts it.
+  useAuthStore.setState({ user: { id: "admin-1", role: "admin" } as User });
   toastMock.mockClear();
   reloadMock.mockClear();
   // jsdom can't navigate; intercept the reload the hook fires on a successful swap.
@@ -83,7 +87,8 @@ describe("useAdminImpersonation", () => {
     });
 
     await waitFor(() => expect(reloadMock).toHaveBeenCalledTimes(1));
-    expect(setSpy).toHaveBeenCalledWith(TARGET_USER_ID);
+    // Recorded against the admin who chose it, so no other account adopts it.
+    expect(setSpy).toHaveBeenCalledWith(TARGET_USER_ID, "admin-1");
     expect(toastMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ variant: "destructive" }),
     );
@@ -116,6 +121,53 @@ describe("useAdminImpersonation", () => {
     expect(apiHit).not.toHaveBeenCalled();
     expect(setSpy).not.toHaveBeenCalled();
     expect(reloadMock).not.toHaveBeenCalled();
+  });
+
+  test("logs no audit alert when no admin is signed in to own the swap", async () => {
+    useAuthStore.setState({ user: null });
+    const apiHit = vi.fn();
+    server.use(
+      http.post(NOTIFY_URL, () => {
+        apiHit();
+        return new HttpResponse(JSON.stringify({ alerted: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+
+    await act(async () => {
+      void result.current.startImpersonating(TARGET_USER_ID);
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't start impersonation",
+        variant: "destructive",
+      }),
+    );
+    expect(apiHit).not.toHaveBeenCalled();
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(reloadMock).not.toHaveBeenCalled();
+  });
+
+  test("shows the active impersonation once the admin is known after a reload", async () => {
+    // The reload that starts impersonation comes back before auth has loaded.
+    useAuthStore.setState({ user: null });
+    // Stored directly: this file stubs ImpersonationState.set.
+    ImpersonationCookie.set({ target: TARGET_USER_ID, owner: "admin-1" });
+
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+    expect(result.current.isImpersonating).toBe(false);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "admin-1", role: "admin" } as User });
+    });
+
+    expect(result.current.impersonatedUserId).toBe(TARGET_USER_ID);
+    expect(result.current.isImpersonating).toBe(true);
   });
 
   test("drops a re-entrant second start so only one audit alert is sent", async () => {

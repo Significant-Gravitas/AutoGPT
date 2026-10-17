@@ -30,14 +30,19 @@ export default function LogoutPage() {
         try {
           await logOut();
         } catch {
+          // The sign-out never reached the server, so the session is still
+          // live. Say so, and leave the user in the app rather than on a
+          // login page that would only send them back in.
           toast({
-            title: "Failed to log out. Redirecting to login.",
+            title: "Couldn't sign you out",
+            description: "Check your connection and try again.",
             variant: "destructive",
           });
-        } finally {
-          await wait(LOGOUT_REDIRECT_DELAY_MS);
-          router.replace("/login");
+          router.replace("/");
+          return;
         }
+        await wait(LOGOUT_REDIRECT_DELAY_MS);
+        router.replace("/login");
       }
 
       void runLogout();
