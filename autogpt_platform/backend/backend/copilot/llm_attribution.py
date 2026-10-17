@@ -14,7 +14,9 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,
   ``metadata_impersonated``, and ``metadata_revision``: the deployed build's
-  git sha, the ``revision`` every other PostHog event carries).
+  git sha from ``config.sentry_release``, left out when that is blank).
+  Broadcast sends these events itself, not through our PostHog client, so
+  they never get a property the client adds to every event it captures.
 
 Only calls that go through OpenRouter are covered. Direct Anthropic, Claude
 Code subscription and user-connected (Codex) routes never pass OpenRouter, so
