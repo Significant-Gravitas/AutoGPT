@@ -21,6 +21,12 @@ failure mode, not a hypothetical (see PR discussion). Base64 text is pure
 ASCII with no backslashes or unicode escapes for any downstream text-handling
 layer to misinterpret, so it closes the whole bug class rather than special-
 casing individual malformed inputs.
+
+Payloads over `MAX_ENV_PAYLOAD_BYTES` are written to a JSON file in the
+sandbox instead, with its path in `AGPT_VARIABLES_FILE`. An env var can't
+carry them: Linux caps a single env string at 128 KiB (MAX_ARG_STRLEN), and
+the sandbox's env is inherited by every process the user's code starts, so an
+oversized one makes each `subprocess`/`pip`/`!cmd` call fail with E2BIG.
 """
 
 import base64
@@ -28,6 +34,8 @@ import json
 import keyword
 from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel
 
 
 class ProgrammingLanguage(Enum):
@@ -38,28 +46,54 @@ class ProgrammingLanguage(Enum):
     JAVA = "java"
 
 
-# Env var name used to carry the serialized variables into the sandbox.
+# Env var carrying the base64-encoded JSON payload into the sandbox.
 VARIABLES_ENV_KEY = "AGPT_VARIABLES"
+# Env var naming the JSON file that carries a payload too big for the env.
+VARIABLES_FILE_ENV_KEY = "AGPT_VARIABLES_FILE"
+# Outside the working directory, so it isn't picked up as an output file.
+VARIABLES_FILE_PATH = "/tmp/agpt/variables.json"
 
-# Cap the serialized payload to stay well under typical OS environment limits
-# (which range from ~128 KB to a couple MB). Keeps failures clear instead of
-# surfacing as cryptic sandbox startup errors.
-MAX_VARIABLES_PAYLOAD_BYTES = 64 * 1024
+# Largest JSON payload sent through the env var. Base64 grows it by a third,
+# which keeps the env string under Linux's 128 KiB per-string limit.
+MAX_ENV_PAYLOAD_BYTES = 64 * 1024
+# Largest JSON payload accepted at all; bigger data belongs in a file the code
+# downloads itself.
+MAX_VARIABLES_PAYLOAD_BYTES = 10 * 1024 * 1024
 
 
 class UnsupportedLanguageError(ValueError):
     """Raised when variable injection is requested for an unsupported language."""
 
 
-# Constant prefixes. They reference only the env var (data), never user values.
+class VariableInjection(BaseModel):
+    """What the sandbox needs so the code sees `variables` as named values."""
+
+    envs: dict[str, str] = {}
+    """Env vars to set for the run."""
+    files: dict[str, bytes] = {}
+    """Files to write into the sandbox before the run, by absolute path."""
+    prefix: str = ""
+    """Constant code to prepend to the user's code."""
+
+
+# Constant prefixes. They read the payload from the file or env var named by
+# the env (data), never from user values in the code string.
 _PYTHON_PREFIX = (
     "import base64 as _agpt_b64, json as _agpt_json, os as _agpt_os\n"
-    "globals().update(_agpt_json.loads(_agpt_b64.b64decode("
-    f'_agpt_os.environ["{VARIABLES_ENV_KEY}"]).decode("utf-8")))\n'
+    "globals().update(_agpt_json.loads("
+    f'open(_agpt_os.environ["{VARIABLES_FILE_ENV_KEY}"], "rb").read() '
+    f'if "{VARIABLES_FILE_ENV_KEY}" in _agpt_os.environ '
+    f'else _agpt_b64.b64decode(_agpt_os.environ["{VARIABLES_ENV_KEY}"])))\n'
 )
+# `require` is missing in ES-module kernels, where `process.getBuiltinModule`
+# (Node 22.3+) stands in for it.
 _JAVASCRIPT_PREFIX = (
-    "Object.assign(globalThis, JSON.parse(Buffer.from("
-    f"process.env.{VARIABLES_ENV_KEY}, 'base64').toString('utf-8')));\n"
+    "Object.assign(globalThis, JSON.parse("
+    f"process.env.{VARIABLES_FILE_ENV_KEY} ? "
+    "(typeof require === 'function' ? require('fs') : "
+    "process.getBuiltinModule('fs'))"
+    f".readFileSync(process.env.{VARIABLES_FILE_ENV_KEY}, 'utf-8') : "
+    f"Buffer.from(process.env.{VARIABLES_ENV_KEY}, 'base64').toString('utf-8')));\n"
 )
 
 _PREFIX_BY_LANGUAGE = {
@@ -71,18 +105,19 @@ _PREFIX_BY_LANGUAGE = {
 def build_variable_injection(
     variables: dict[str, Any],
     language: ProgrammingLanguage,
-) -> tuple[dict[str, str], str]:
-    """Build the env vars and code prefix needed to expose `variables`.
+) -> VariableInjection:
+    """Build the env vars, files and code prefix needed to expose `variables`.
 
-    Returns a tuple of:
-      - envs: env-var dict to pass to the sandbox (empty if no variables)
-      - prefix: code to prepend so the variables exist as named variables
-                (empty string if no variables)
+    Up to `MAX_ENV_PAYLOAD_BYTES` the payload travels base64-encoded in the
+    `AGPT_VARIABLES` env var, as it always has. Above that it is written to
+    `VARIABLES_FILE_PATH` as plain JSON, named by `AGPT_VARIABLES_FILE`.
 
-    Raises UnsupportedLanguageError if `language` has no injection strategy.
+    Raises UnsupportedLanguageError if `language` has no injection strategy,
+    and ValueError for bad names, unserializable values or a payload over
+    `MAX_VARIABLES_PAYLOAD_BYTES`.
     """
     if not variables:
-        return {}, ""
+        return VariableInjection()
 
     prefix = _PREFIX_BY_LANGUAGE.get(language)
     if prefix is None:
@@ -100,17 +135,30 @@ def build_variable_injection(
         raise ValueError(
             f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
         ) from e
+    if language is ProgrammingLanguage.JAVASCRIPT:
+        # JSON.parse rejects the NaN/Infinity that json.dumps writes; turn them
+        # into null, as JavaScript's own JSON.stringify does.
+        serialized = json.dumps(json.loads(serialized, parse_constant=lambda _: None))
 
     serialized_bytes = serialized.encode("utf-8")
-    if len(serialized_bytes) > MAX_VARIABLES_PAYLOAD_BYTES:
+    size = len(serialized_bytes)
+    if size > MAX_VARIABLES_PAYLOAD_BYTES:
         raise ValueError(
-            "Variables payload is too large "
-            f"(max {MAX_VARIABLES_PAYLOAD_BYTES // 1024} KB). "
-            "Pass large data through a file or upstream block instead."
+            f"Variables payload is too large ({size / 1024 / 1024:.1f} MB, "
+            f"max {MAX_VARIABLES_PAYLOAD_BYTES // 1024 // 1024} MB). "
+            "Put the data in a file or at a URL and read or download it from "
+            "your code instead."
         )
-
-    envs = {VARIABLES_ENV_KEY: base64.b64encode(serialized_bytes).decode("ascii")}
-    return envs, prefix
+    if size > MAX_ENV_PAYLOAD_BYTES:
+        return VariableInjection(
+            envs={VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH},
+            files={VARIABLES_FILE_PATH: serialized_bytes},
+            prefix=prefix,
+        )
+    return VariableInjection(
+        envs={VARIABLES_ENV_KEY: base64.b64encode(serialized_bytes).decode("ascii")},
+        prefix=prefix,
+    )
 
 
 def _validate_keys(variables: dict[str, Any]) -> None:
