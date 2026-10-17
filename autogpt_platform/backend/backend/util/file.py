@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
@@ -356,7 +356,7 @@ async def store_media_file(
 
     elif file.startswith(("http://", "https://")):
         # URL - download first to get Content-Type header
-        resp = await Requests().get(file)
+        resp = await _download_url(file)
 
         # Check file size limit
         if len(resp.content) > MAX_FILE_SIZE_BYTES:
@@ -453,6 +453,25 @@ async def store_media_file(
 
     else:
         raise ValueError(f"Invalid return_format: {return_format}")
+
+
+async def _download_url(url: str) -> Response:
+    """Download a media URL, reporting a 4xx response as a bad input.
+
+    A 4xx means the URL itself is unusable (missing, forbidden, or rejected
+    like a Wikimedia thumbnail at a non-standard width), which the caller has
+    to fix. Raising ValueError makes ``Block.execute`` report it as a handled
+    ``BlockExecutionError`` instead of a ``BlockUnknownError`` that alerts
+    Sentry. 5xx and network errors keep their original exceptions.
+    """
+    resp = await Requests(raise_for_status=False).get(url)
+    if 400 <= resp.status <= 499:
+        reason = f" ({resp.reason})" if resp.reason else ""
+        raise ValueError(
+            f"Could not download file from {url}: HTTP {resp.status}{reason}"
+        )
+    resp.raise_for_status()
+    return resp
 
 
 def get_dir_size(path: Path) -> int:
