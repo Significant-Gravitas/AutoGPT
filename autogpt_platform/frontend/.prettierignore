@@ -6,3 +6,5 @@ public
 Dockerfile
 .prettierignore
 .env*
+
+scripts/audit-design-tokens.report.json

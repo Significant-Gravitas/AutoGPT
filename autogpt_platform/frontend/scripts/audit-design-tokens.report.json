@@ -1,0 +1,669 @@
+{
+  "generatedBy": "scripts/audit-design-tokens.mjs",
+  "unit": "source occurrence after comment stripping",
+  "filesScanned": 3642,
+  "paletteHexDefinitions": 87,
+  "productFiles": 2567,
+  "productFilesWithSemantic": 160,
+  "chromeFiles": 2549,
+  "chromeFilesWithColorBypass": 1046,
+  "chromeFilesWithSemantic": 160,
+  "chromeFilesOutsideBoth": 527,
+  "chromeFamilies": {
+    "custom:red": 399,
+    "custom:green": 209,
+    "custom:slate": 178,
+    "custom:zinc": 3084,
+    "default:gray": 480,
+    "custom:purple": 208,
+    "default:amber": 313,
+    "default:blue": 185,
+    "default:violet": 206,
+    "default:emerald": 91,
+    "custom:yellow": 90,
+    "custom:orange": 66,
+    "custom:pink": 14,
+    "default:rose": 45,
+    "default:teal": 18,
+    "default:indigo": 36,
+    "default:neutral": 791,
+    "default:sky": 38,
+    "default:cyan": 16,
+    "default:lime": 15,
+    "default:fuchsia": 15,
+    "default:stone": 3
+  },
+  "artworkFiles": 18,
+  "artworkNote": "Artwork files are illustrations, logos, generated avatar parts, and icon sheets. Their hex is paint, not UI chrome. productChrome excludes them. Color picker data such as ColorStep/helpers.ts stays in chrome because those classes style product UI.",
+  "exclusions": [
+    "node_modules",
+    ".next",
+    "__generated__",
+    "coverage",
+    "dist"
+  ],
+  "notMeasured": [
+    "class names built by string concatenation or template variables",
+    "the rendered DOM",
+    "node_modules and src/app/api/__generated__"
+  ],
+  "limiter": "Each file is read once. A match is one regex hit. The count cannot include a second pass over compiled CSS. It undercounts classes assembled at runtime.",
+  "product": {
+    "semantic": 522,
+    "customRamp": 4337,
+    "customFlat": 798,
+    "defaultPalette": 2270,
+    "arbitraryColor": 225,
+    "arbitraryLength": 1228,
+    "arbitraryType": 330,
+    "arbitraryFont": 21,
+    "hexLiteral": 960,
+    "functionalColor": 78,
+    "darkVariant": 467,
+    "darkPrefix": 503,
+    "agptClass": 20,
+    "legacyImport": 196,
+    "radiusNamed": 78,
+    "radiusTailwind": 1793
+  },
+  "productChrome": {
+    "semantic": 522,
+    "customRamp": 4248,
+    "customFlat": 786,
+    "defaultPalette": 2252,
+    "arbitraryColor": 225,
+    "arbitraryLength": 1213,
+    "arbitraryType": 320,
+    "arbitraryFont": 21,
+    "hexLiteral": 447,
+    "functionalColor": 75,
+    "darkVariant": 465,
+    "darkPrefix": 501,
+    "agptClass": 20,
+    "legacyImport": 196,
+    "radiusNamed": 78,
+    "radiusTailwind": 1751
+  },
+  "artwork": {
+    "semantic": 0,
+    "customRamp": 89,
+    "customFlat": 12,
+    "defaultPalette": 18,
+    "arbitraryColor": 0,
+    "arbitraryLength": 15,
+    "arbitraryType": 10,
+    "arbitraryFont": 0,
+    "hexLiteral": 513,
+    "functionalColor": 3,
+    "darkVariant": 2,
+    "darkPrefix": 2,
+    "agptClass": 0,
+    "legacyImport": 0,
+    "radiusNamed": 0,
+    "radiusTailwind": 42
+  },
+  "testsAndStories": {
+    "semantic": 8,
+    "customRamp": 259,
+    "customFlat": 30,
+    "defaultPalette": 178,
+    "arbitraryColor": 4,
+    "arbitraryLength": 24,
+    "arbitraryType": 1,
+    "arbitraryFont": 0,
+    "hexLiteral": 45,
+    "functionalColor": 3,
+    "darkVariant": 15,
+    "darkPrefix": 15,
+    "agptClass": 1,
+    "legacyImport": 5,
+    "radiusNamed": 14,
+    "radiusTailwind": 110
+  },
+  "byArea": {
+    "designSystem": {
+      "semantic": 104,
+      "customRamp": 414,
+      "customFlat": 112,
+      "defaultPalette": 182,
+      "arbitraryColor": 6,
+      "arbitraryLength": 123,
+      "arbitraryType": 40,
+      "arbitraryFont": 20,
+      "hexLiteral": 313,
+      "functionalColor": 16,
+      "darkVariant": 69,
+      "darkPrefix": 79,
+      "agptClass": 0,
+      "legacyImport": 11,
+      "radiusNamed": 10,
+      "radiusTailwind": 178
+    },
+    "legacy": {
+      "semantic": 19,
+      "customRamp": 32,
+      "customFlat": 28,
+      "defaultPalette": 281,
+      "arbitraryColor": 0,
+      "arbitraryLength": 35,
+      "arbitraryType": 3,
+      "arbitraryFont": 0,
+      "hexLiteral": 13,
+      "functionalColor": 0,
+      "darkVariant": 141,
+      "darkPrefix": 162,
+      "agptClass": 9,
+      "legacyImport": 9,
+      "radiusNamed": 1,
+      "radiusTailwind": 59
+    },
+    "app": {
+      "semantic": 362,
+      "customRamp": 3351,
+      "customFlat": 516,
+      "defaultPalette": 1505,
+      "arbitraryColor": 106,
+      "arbitraryLength": 886,
+      "arbitraryType": 241,
+      "arbitraryFont": 1,
+      "hexLiteral": 622,
+      "functionalColor": 56,
+      "darkVariant": 203,
+      "darkPrefix": 206,
+      "agptClass": 11,
+      "legacyImport": 143,
+      "radiusNamed": 49,
+      "radiusTailwind": 1308
+    },
+    "other": {
+      "semantic": 37,
+      "customRamp": 540,
+      "customFlat": 142,
+      "defaultPalette": 302,
+      "arbitraryColor": 113,
+      "arbitraryLength": 184,
+      "arbitraryType": 46,
+      "arbitraryFont": 0,
+      "hexLiteral": 12,
+      "functionalColor": 6,
+      "darkVariant": 54,
+      "darkPrefix": 56,
+      "agptClass": 0,
+      "legacyImport": 33,
+      "radiusNamed": 18,
+      "radiusTailwind": 248
+    }
+  },
+  "imports": {
+    "atomsButton": 417,
+    "uiButton": 17,
+    "legacyButton": 32,
+    "atomsInput": 73,
+    "uiInput": 5,
+    "legacyInput": 13,
+    "atomsText": 497
+  },
+  "themeOverlap": {
+    "source": "https://github.com/shadcn-ui/ui/commit/d5920cc3c1c12ed7d54c384e86fd207b648b6e42",
+    "light": {
+      "same": 20,
+      "different": [
+        {
+          "token": "background",
+          "actual": "0 0% 98%",
+          "shadcn": "0 0% 100%"
+        },
+        {
+          "token": "accent",
+          "actual": "262 83% 58%",
+          "shadcn": "240 4.8% 95.9%"
+        },
+        {
+          "token": "accent-foreground",
+          "actual": "0 0% 100%",
+          "shadcn": "240 5.9% 10%"
+        },
+        {
+          "token": "input",
+          "actual": "240 5.9% 85%",
+          "shadcn": "240 5.9% 90%"
+        },
+        {
+          "token": "ring",
+          "actual": "240 5.9% 10%",
+          "shadcn": "240 10% 3.9%"
+        }
+      ],
+      "missing": [],
+      "compared": 25
+    },
+    "dark": {
+      "same": 24,
+      "different": [],
+      "missing": [],
+      "compared": 24
+    },
+    "sidebarLight": {
+      "same": 8,
+      "different": [],
+      "missing": [],
+      "compared": 8
+    },
+    "sidebarDark": {
+      "same": 8,
+      "different": [],
+      "missing": [],
+      "compared": 8
+    }
+  },
+  "topChromeBypassFiles": [
+    {
+      "file": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+      "count": 255,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/DiagnosticsContent.tsx",
+      "count": 88,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedules.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTemplates.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTriggers.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/lib/utils.ts",
+      "count": 56,
+      "area": "other"
+    },
+    {
+      "file": "src/components/atoms/Button/helpers.ts",
+      "count": 52,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/marketplace/components/ExpertsSection/helpers.ts",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
+      "count": 48,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
+      "count": 44,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/PublishAgentModal/components/AgentSelectStep/AgentSelectStep.tsx",
+      "count": 44,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
+      "count": 42,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
+      "count": 40,
+      "area": "app"
+    }
+  ],
+  "topBypassFiles": [
+    {
+      "file": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+      "count": 255,
+      "area": "app"
+    },
+    {
+      "file": "src/components/molecules/NotionAvatar/parts.generated.ts",
+      "count": 224,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTasksIllustration.tsx",
+      "count": 166,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/DiagnosticsContent.tsx",
+      "count": 88,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/components/LibraryFolder/FolderIcon.tsx",
+      "count": 64,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedules.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTemplates.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTriggers.tsx",
+      "count": 59,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedulesIllustration.tsx",
+      "count": 58,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/artifacts/components/ArtifactsList/FileIllustration.tsx",
+      "count": 57,
+      "area": "app"
+    },
+    {
+      "file": "src/lib/utils.ts",
+      "count": 56,
+      "area": "other"
+    },
+    {
+      "file": "src/components/atoms/Button/helpers.ts",
+      "count": 52,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/marketplace/components/ExpertsSection/helpers.ts",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
+      "count": 48,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
+      "count": 48,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
+      "count": 44,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/PublishAgentModal/components/AgentSelectStep/AgentSelectStep.tsx",
+      "count": 44,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
+      "count": 42,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
+      "count": 40,
+      "area": "app"
+    }
+  ],
+  "topDefaultPaletteFiles": [
+    {
+      "file": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+      "count": 143,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
+      "count": 47,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/DiagnosticsContent.tsx",
+      "count": 36,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
+      "count": 35,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/SubscriptionTierSection.tsx",
+      "count": 35,
+      "area": "app"
+    },
+    {
+      "file": "src/components/__legacy__/ui/calendar.tsx",
+      "count": 34,
+      "area": "legacy"
+    },
+    {
+      "file": "src/app/(platform)/admin/memory/components/MemoryVisualizer.tsx",
+      "count": 33,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/dashboard/components/AgentTableRow/AgentTableRow.tsx",
+      "count": 30,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx",
+      "count": 29,
+      "area": "app"
+    },
+    {
+      "file": "src/components/ui/button.tsx",
+      "count": 29,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/admin/execution-analytics/components/AnalyticsResultsTable.tsx",
+      "count": 28,
+      "area": "app"
+    },
+    {
+      "file": "src/components/__legacy__/ui/button.tsx",
+      "count": 28,
+      "area": "legacy"
+    },
+    {
+      "file": "src/components/__legacy__/ui/dropdown-menu.tsx",
+      "count": 28,
+      "area": "legacy"
+    },
+    {
+      "file": "src/components/molecules/DropdownMenu/DropdownMenu.tsx",
+      "count": 28,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/lib/utils.ts",
+      "count": 28,
+      "area": "other"
+    }
+  ],
+  "topHexFiles": [
+    {
+      "file": "src/components/molecules/NotionAvatar/parts.generated.ts",
+      "count": 224,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTasksIllustration.tsx",
+      "count": 166,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+      "count": 60,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedules.tsx",
+      "count": 58,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedulesIllustration.tsx",
+      "count": 58,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTemplates.tsx",
+      "count": 58,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptyTriggers.tsx",
+      "count": 58,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/nodes/helpers.ts",
+      "count": 17,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/FlowEditor/tutorial/tutorial.css",
+      "count": 17,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/memory/components/GraphCanvas.tsx",
+      "count": 15,
+      "area": "app"
+    },
+    {
+      "file": "src/components/molecules/NotionAvatar/helpers.ts",
+      "count": 15,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/components/__legacy__/ui/icons.tsx",
+      "count": 13,
+      "area": "legacy"
+    },
+    {
+      "file": "src/components/atoms/AutoGPTLogo/AutoGPTLogo.tsx",
+      "count": 13,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/components/molecules/NotionAvatar/statusBadge.ts",
+      "count": 13,
+      "area": "designSystem"
+    },
+    {
+      "file": "src/app/(platform)/copilot/components/OrbitLoader/OrbitLoader.module.css",
+      "count": 10,
+      "area": "app"
+    }
+  ],
+  "topLegacyImportFiles": [
+    {
+      "file": "src/app/(platform)/build/components/MCPToolDialog.tsx",
+      "count": 7,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/execution-analytics/components/ExecutionAnalyticsForm.tsx",
+      "count": 5,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/spending/components/AddMoneyButton.tsx",
+      "count": 5,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/api-keys/components/APIKeysModals/APIKeysModals.tsx",
+      "count": 5,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
+      "count": 4,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/diagnostics/components/SchedulesTable.tsx",
+      "count": 4,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/marketplace/components/ApproveRejectButton.tsx",
+      "count": 4,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/api-keys/components/APIKeySection/APIKeySection.tsx",
+      "count": 4,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/credits/RefundModal.tsx",
+      "count": 4,
+      "area": "app"
+    },
+    {
+      "file": "src/components/contextual/CronScheduler/cron-scheduler.tsx",
+      "count": 4,
+      "area": "other"
+    },
+    {
+      "file": "src/app/(platform)/admin/marketplace/components/ExpandleRow.tsx",
+      "count": 3,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/admin/marketplace/components/SearchFilterForm.tsx",
+      "count": 3,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/BuilderActions/components/AgentOutputs/AgentOutputs.tsx",
+      "count": 3,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/build/components/NewControlPanel/NewSaveControl/NewSaveControl.tsx",
+      "count": 3,
+      "area": "app"
+    },
+    {
+      "file": "src/app/(platform)/profile/(user)/integrations/page.tsx",
+      "count": 3,
+      "area": "app"
+    }
+  ]
+}
