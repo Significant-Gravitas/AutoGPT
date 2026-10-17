@@ -10,6 +10,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_current_envelope
 from backend.copilot.google_data_redaction import (
     is_google_call,
+    remember_cut_google_output,
     remember_google_output,
     tracing_google_data,
 )
@@ -669,7 +670,8 @@ class BaseTool:
         )
         view = model_view.get()
         if view is not None:
-            seen = view(seen, result.success)
+            whole, seen = seen, view(seen, result.success)
+            remember_cut_google_output(whole, seen)
         text, images = readable_parts(seen)
         stub = await screen_read(
             self.name,

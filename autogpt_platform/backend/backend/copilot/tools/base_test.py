@@ -10,6 +10,7 @@ import pytest
 from backend.blocks.google.gmail import GmailReadBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.copilot.gate import ALLOW
+from backend.copilot.gate.reads import model_view
 from backend.copilot.google_data_redaction import REDACTED, redact_google_data
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
@@ -796,3 +797,37 @@ class TestGateTracesOfGoogleCalls:
             "read": expected(read_redacted),
         }
         assert redact_google_data({"text": "the email"}) == expected(False)
+
+    @pytest.mark.asyncio
+    async def test_the_late_cut_of_a_google_output_is_redacted(self):
+        """The SDK's late path cuts the output again before the model reads it."""
+        seen: list[str] = []
+
+        def cut(text: str, success: bool) -> str:
+            seen.append(text[: len(text) // 2])
+            return seen[-1]
+
+        token = model_view.set(cut)
+        try:
+            with (
+                patch(
+                    "backend.copilot.gate.check_action",
+                    new=AsyncMock(return_value=ALLOW),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.release_held_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.screen_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            ):
+                await self._block_tool("google").execute(
+                    "u1", MagicMock(session_id="s1"), "call-1"
+                )
+        finally:
+            model_view.reset(token)
+
+        assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}

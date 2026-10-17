@@ -49,8 +49,9 @@ from backend.integrations.providers import ProviderName
 
 REDACTED = "[redacted: Google data]"
 
-# The arguments that carry what a call sends to the block.
-_PAYLOAD_KEYS = ("input_data", "input")
+# The arguments that carry what a call sends to the block; ``resume_capability``
+# re-runs it with ``input_overrides`` merged in.
+_PAYLOAD_KEYS = ("input_data", "input", "input_overrides")
 _REMEMBERED_LIMIT = 4096
 
 _remembered: OrderedDict[str, None] = OrderedDict()
@@ -115,6 +116,13 @@ def remember_google_output(output: str) -> None:
             _remembered.popitem(last=False)
 
 
+def remember_cut_google_output(whole: str, cut: str) -> None:
+    """Remember *cut*, a later cut of the tool output *whole*, when *whole*
+    was Google data, so the text the model finally reads is redacted too."""
+    if cut != whole and _is_google_text(whole):
+        remember_google_output(cut)
+
+
 def is_google_call(arguments: dict[str, Any] | None) -> bool:
     """Whether a tool call's arguments name a block on the ``google``
     provider, as ``run_block``'s ``block_id`` or ``run_capability``'s ``id``."""
@@ -160,7 +168,8 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
     redacted = {key: _redact(value, google_ids) for key, value in node.items()}
     if _answered_call_id(node) in google_ids and "content" in node:
         redacted["content"] = REDACTED
-    if node.get("id") in google_ids:
+    call_id = node.get("id")
+    if isinstance(call_id, str) and call_id in google_ids:
         _redact_call_arguments(redacted)
     if is_google_call(node):
         redacted = _without_payload(redacted)

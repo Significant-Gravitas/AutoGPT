@@ -259,3 +259,22 @@ def test_tracing_google_data_redacts_every_text(langfuse_spans: InMemorySpanExpo
     )
     assert "quarterly numbers" not in sent
     assert REDACTED in sent
+
+
+def test_a_non_string_id_is_left_alone():
+    """Tool schemas carry ``{"id": {...}}``; it names no call."""
+    schema = {"properties": {"id": {"type": "string"}, "block_id": ["x"]}}
+
+    assert redact_google_data(schema) == schema
+
+
+@pytest.mark.parametrize("history", [_sdk_history, _baseline_history])
+def test_resumed_google_call_redacts_its_overrides(history):
+    """``resume_capability`` re-runs the block with ``input_overrides`` merged
+    into its input; its result is what identifies it as Google's."""
+    call = {"review_id": "rev-1", "input_overrides": {"body": "the new email"}}
+
+    sent = json.dumps(redact_google_data(history(call, GMAIL_OUTPUT)))
+
+    assert "the new email" not in sent
+    assert "rev-1" in sent
