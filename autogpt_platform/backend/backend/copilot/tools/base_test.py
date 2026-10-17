@@ -7,6 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot.gate import ALLOW
+from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    REDACTED,
+    redact_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -21,6 +30,7 @@ from backend.copilot.tools.base import (
 from backend.copilot.tools.models import (
     BlockDetails,
     BlockDetailsResponse,
+    BlockOutputResponse,
     ErrorResponse,
     ResponseType,
     ToolResponseBase,
@@ -709,3 +719,139 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+# ---------------------------------------------------------------------------
+# The gate's traces of a Google call
+# ---------------------------------------------------------------------------
+
+
+class TestGateTracesOfGoogleCalls:
+    """The supervisor and the content judge quote a call's arguments and
+    result in prompts of their own, so for a Google call whatever they trace
+    is redacted whole."""
+
+    @staticmethod
+    def _block_tool(provider: str | None):
+        class _Block(BaseTool):
+            @property
+            def name(self) -> str:
+                return "run_capability"
+
+            @property
+            def description(self) -> str:
+                return "Runs a block"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return BlockOutputResponse(
+                    message="ran",
+                    block_id="b",
+                    block_name="b",
+                    outputs={"result": ["the email"]},
+                    provider=provider,
+                )
+
+        return _Block()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "names_google_block, provider, action_redacted, read_redacted",
+        [
+            (True, None, True, True),
+            (False, "google", False, True),
+            (False, None, False, False),
+        ],
+        ids=["names a Google block", "returns Google data", "neither"],
+    )
+    async def test_redacted_while_the_gate_runs(
+        self, names_google_block, provider, action_redacted, read_redacted
+    ):
+        block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
+        traced: dict[str, object] = {}
+
+        async def action(*args, **kwargs):
+            traced["action"] = redact_google_data({"text": "the email"})
+            return ALLOW
+
+        async def read(*args, **kwargs):
+            traced["read"] = redact_google_data({"text": "the email"})
+
+        with (
+            patch("backend.copilot.gate.check_action", side_effect=action),
+            patch(
+                "backend.copilot.gate.reads.release_held_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.gate.reads.screen_read", side_effect=read),
+            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+        ):
+            await self._block_tool(provider).execute(
+                "u1", MagicMock(session_id="s1"), "call-1", id=block.id
+            )
+
+        def expected(redacted: bool) -> dict[str, str]:
+            return {"text": REDACTED if redacted else "the email"}
+
+        assert traced == {
+            "action": expected(action_redacted),
+            "read": expected(read_redacted),
+        }
+        assert redact_google_data({"text": "the email"}) == expected(False)
+
+    @pytest.mark.asyncio
+    async def test_the_late_cut_of_a_google_output_is_redacted(self):
+        """The SDK's late path cuts the output again before the model reads it."""
+        seen: list[str] = []
+
+        def cut(text: str, success: bool) -> str:
+            seen.append(text[: len(text) // 2])
+            return seen[-1]
+
+        token = model_view.set(cut)
+        try:
+            with (
+                patch(
+                    "backend.copilot.gate.check_action",
+                    new=AsyncMock(return_value=ALLOW),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.release_held_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.screen_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            ):
+                await self._block_tool("google").execute(
+                    "u1", MagicMock(session_id="s1"), "call-1"
+                )
+        finally:
+            model_view.reset(token)
+
+        assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}
+
+
+class TestPersistedGoogleOutputIsFlagged:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("google", [True, False])
+    async def test_the_saved_file_says_whether_it_holds_google_data(self, google):
+        workspace = MagicMock(id="ws-1")
+        db = AsyncMock()
+        db.get_or_create_workspace = AsyncMock(return_value=workspace)
+        manager = AsyncMock()
+        with (
+            patch("backend.copilot.tools.base.workspace_db", return_value=db),
+            patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+        ):
+            await _persist_and_summarize(
+                "A" * 200_000, "u1", "s1", "call-1", google_data=google
+            )
+
+        metadata = manager.write_file.await_args.kwargs["metadata"]
+        assert metadata.get(GOOGLE_DATA_METADATA_KEY, False) is google

@@ -56,6 +56,7 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -2007,6 +2008,9 @@ def _setup_langfuse_otel() -> None:
 
     To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
     `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
+
+    Every run is passed through the Google data redaction before it is
+    exported; if that cannot be installed, the SDK is left untraced.
     """
     if not _is_langfuse_configured():
         return
@@ -2040,6 +2044,7 @@ def _setup_langfuse_otel() -> None:
             f"langfuse.environment={tracing_env}",
         )
 
+        install_trace_redaction()
         configure_claude_agent_sdk(tags=["sdk"])
         logger.info(
             "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
