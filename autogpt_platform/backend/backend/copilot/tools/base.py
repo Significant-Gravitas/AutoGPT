@@ -33,6 +33,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Outputs that stop a call to wait on the user (an approval card, a sign-in),
+# which is not the tool failing.
+_AWAITING_THE_USER = frozenset(
+    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+)
+
 # Persist full tool output to workspace when it exceeds this threshold.
 # Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
 # capture the data before model_post_init middle-out truncation discards it.
@@ -318,6 +324,16 @@ async def _record_activity(
 GATE_APPROVED = "_gate_approved"
 
 
+def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
+    raw = output.output
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return False
+    return isinstance(raw, dict) and raw.get("type") in _AWAITING_THE_USER
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -441,7 +457,7 @@ class BaseTool:
                 user_id, session, tool_call_id, **kwargs
             )
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
-            if not output.success:
+            if not output.success and not _awaits_the_user(output):
                 outcome.is_error = True
             return output
 

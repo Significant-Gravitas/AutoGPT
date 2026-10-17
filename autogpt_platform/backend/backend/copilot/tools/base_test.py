@@ -779,6 +779,33 @@ class TestPostHogToolSpans:
         assert "no such label" not in repr(properties)
 
     @pytest.mark.asyncio
+    async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):
+        """An approval card is the user's decision to make, not the tool
+        failing, so it must not count against the tool."""
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+        session = MagicMock(session_id="s1")
+        refusal = tool._refusal("call-1", session, "Needs your approval")
+        with patch.object(tool, "_gate", new=AsyncMock(return_value=(refusal, False))):
+            result = await tool.execute("u1", session, "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_a_sign_in_did_not_fail(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch.object(
+            type(tool), "requires_auth", new_callable=lambda: property(lambda _: True)
+        ):
+            result = await tool.execute(None, MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
     async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
         self, capture
     ):
