@@ -27,7 +27,9 @@ const AUTH_BURST = 3;
 const AUTH_PAUSE_SECONDS = 11;
 const MAX_ATTEMPTS = 5;
 
-const DEFAULT_THROWAWAY_ACCOUNTS = 5;
+// Copilot caps running turns per user (5) and queued ones (15), so turns are
+// spread over enough accounts that the load, not the cap, sets the pace.
+const DEFAULT_THROWAWAY_ACCOUNTS = 8;
 const MAX_THROWAWAY_ACCOUNTS = 100;
 // Previews allow sign-up for this domain, and nothing is mailed to it.
 const THROWAWAY_EMAIL_DOMAIN = "previews.agpt.co";
@@ -74,6 +76,26 @@ export function setupAuth() {
   return { auth: sessions };
 }
 
+// How many accounts a run signs in, from LOAD_TEST_ACCOUNTS or
+// LOAD_TEST_ACCOUNT_COUNT; usable in the init context.
+export function accountCount() {
+  const listed = readAccounts();
+  return listed ? listed.length : readAccountCount();
+}
+
+// Headers for one account by index, for setup() and teardown(), which run
+// outside any VU. The tokens are fresh there, so no refresh is needed.
+export function accountHeaders(data, index) {
+  const sessions = data && data.auth;
+  if (!sessions || sessions.length === 0) {
+    throw new Error("No sessions: setupAuth() must run first");
+  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${sessions[index % sessions.length].token}`,
+  };
+}
+
 // Headers for the current VU's account, from setupAuth()'s data.
 export function authHeaders(data) {
   if (vuSession === null) {
@@ -83,7 +105,9 @@ export function authHeaders(data) {
         "No sessions: the test's setup() must return setupAuth()'s result",
       );
     }
-    const session = sessions[(__VU - 1) % sessions.length];
+    // VUs are numbered from 1; setup() and teardown() run as VU 0 and use
+    // the first account.
+    const session = sessions[Math.max(__VU - 1, 0) % sessions.length];
     vuSession = {
       cookies: session.cookies,
       token: session.token,
@@ -141,12 +165,16 @@ function readAccountCount() {
   return count;
 }
 
+// Accounts are named after the run (RUN_ID from k6.sh, else a random tag),
+// so everything a run creates can be found under its own accounts.
 function throwawayAccounts(count) {
-  const runId = randomHex(4);
+  const runTag = (__ENV.RUN_ID || randomHex(4))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
   const accounts = [];
   for (let i = 1; i <= count; i++) {
     accounts.push({
-      email: `loadtest-${runId}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
+      email: `loadtest-${runTag}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
       password: randomHex(24),
     });
   }

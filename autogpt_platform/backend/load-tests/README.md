@@ -1,92 +1,137 @@
 # AutoGPT Platform Load Tests
 
-[k6](https://grafana.com/docs/k6/latest/) tests that drive traffic at a deployed platform: a `!deploy` preview, dev, or a local stack. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) compares runs there.
+[k6](https://grafana.com/docs/k6/latest/) tests that drive the platform's user-facing workload at a deployed target, a `!deploy` preview as a rule, and measure what users feel: time to first token in copilot, how long a graph run takes to start and finish, how fast the store, library and account pages answer. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) decides whether two builds differ.
 
-Run them on your own machine with Docker. Don't run them on Grafana Cloud k6: it bills every virtual-user hour (see [What it costs](#what-it-costs)), and it is only for the rare run that needs more load than one machine can generate, agreed with the team first.
+Run them on your own machine with Docker. Don't run them on Grafana Cloud k6: it bills every virtual-user hour (see [What it costs](#what-it-costs)).
 
-## Run it on your machine
+## Quick start
 
-Docker is the only requirement. `./k6.sh` runs k6 from the pinned `grafana/k6` image with this directory mounted, and takes the same arguments as `k6`.
+Docker is the only requirement. `./k6.sh` runs k6 in a container with this directory mounted and takes the same arguments as `k6`. Its first run builds the image, the pinned `grafana/k6` plus the [xk6-sse](https://github.com/phymbert/xk6-sse) extension that reads copilot streams as they arrive, in about two minutes.
 
-### A preview
-
-1. Comment `!deploy` on the pull request. A few minutes later its backend answers at `https://pr-<N>-server.agpt.co/health`, and its frontend is `https://autogpt-pr-<N>.vercel.app`.
-2. Run a test against it:
+1. Comment `!deploy` on the pull request. A few minutes later its backend answers at `https://pr-<N>-server.agpt.co/health` and its frontend is `https://autogpt-pr-<N>.vercel.app`.
+2. Run the smoke profile, a minute of every journey at a low rate, to see that the target and the seeding work:
 
    ```bash
    cd autogpt_platform/backend/load-tests
    export K6_ENVIRONMENT=PREVIEW PR_NUMBER=<N>
-   VUS=2 DURATION=1m RAMP_UP=10s RAMP_DOWN=10s ./k6.sh run tests/api/core-api-test.js
+   LOAD_PROFILE=smoke ./k6.sh run tests/workload.js
    ```
 
-Nothing else is needed: on a preview, the tests sign up their own throwaway accounts (see [Accounts](#accounts)).
+3. Run the baseline profile, the comparison run: a one-minute warm-up, then ten minutes at the rates below.
 
-### Dev
+   ```bash
+   LOAD_PROFILE=baseline ./k6.sh run tests/workload.js
+   ```
 
-The whole team shares dev, so keep the load small and tell the team first. The tests cannot create accounts on dev; they sign in with accounts you supply (see [Accounts on dev](#accounts-on-dev)):
+Each run prints a report and writes `results/<RUN_ID>.json` (see [The summary](#the-summary)); the log says why any journey skipped (`K6_LOG_OUTPUT=file=results/<RUN_ID>.log` keeps it). The run signs up its own accounts and seeds its own data, so the account, store, library and copilot read journeys need nothing else on a preview. Graph runs and copilot turns need the preview to let new accounts past the paywall, and copilot turns need its dummy engine (see [Paywalled targets](#paywalled-targets) and [Copilot and model spend](#copilot-and-model-spend)). Comment `!undeploy` when you are done with the preview.
 
-```bash
-cd autogpt_platform/backend/load-tests
-export K6_ENVIRONMENT=DEV
-export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"   # gitignored
-VUS=2 DURATION=1m RAMP_UP=10s RAMP_DOWN=10s ./k6.sh run tests/api/core-api-test.js
-```
+## The workload
 
-### The variables a run needs
+`tests/workload.js` runs six journeys at once, each as an open-model k6 scenario (`ramping-arrival-rate`): iterations start at a fixed rate whatever the target's latency, so a slower build cannot quietly send fewer requests. Queueing shows up as latency, and, if every virtual user is busy, as `dropped_iterations`, which fails the run.
 
-- `K6_ENVIRONMENT`: `PREVIEW`, `DEV` or `LOCAL`.
-- `PR_NUMBER`: the pull request, for `PREVIEW`.
-- `LOAD_TEST_ACCOUNTS`: accounts to sign in with; required on `DEV` (see [`LOAD_TEST_ACCOUNTS`](#load_test_accounts)).
-- `VUS`, `DURATION`, `RAMP_UP`, `RAMP_DOWN`: the load shape. Each test has its own defaults.
+The rates are iterations per minute at the baseline profile, weighted by each journey's share of user-facing requests in production (Sentry, `autogpt-server`, `app:prod-behave:cloud`, seven days). Rare but slow journeys get more than their share so a ten-minute run reaches a usable sample.
 
-[Environment variables](#environment-variables) lists the rest.
+| Journey          | Rate | What one iteration does                                                                                                                                                                                                                                | Why this weight                                                                                                                                  |
+| ---------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `copilot_reads`  |   60 | Opens the copilot page: `GET /chat/sessions`, `/chat/usage`, `/chat/connections`, `/experts/identities`, then one session's detail                                                                                                                     | Chat session list, usage and session detail are the largest family of user-facing requests (about 35%)                                           |
+| `copilot_turn`   |   15 | A conversation turn: `POST /chat/sessions` (or reuses one of the account's seeded sessions), `POST /chat/sessions/{id}/stream`, reads the Server-Sent Events to `finish`, then `GET /chat/sessions/{id}`                                               | Rare by count in production (about a hundred streams a day) but it is the product and its cost; the rate is a sample-size floor                  |
+| `account_reads`  |   30 | What every page load asks: `GET /credits`, `/credits/subscription`, `/credits/trial`, `/onboarding`, `/onboarding/completed`, `/integrations/credentials`, `/integrations/providers`, `/integrations/providers/system`, `/orgs`, `/auth/user/timezone` | The second-largest family (about 33%), and `/credits/subscription` is the slowest common read in production                                      |
+| `store_browse`   |   30 | Browses the marketplace without signing in: `GET /store/skills`, a skill's detail, `GET /store/agents`, an agent's detail, a search, the creators list; then the account's `GET /store/profile`                                                        | Skills list and detail, store agents and search are about 25% of requests                                                                        |
+| `library_browse` |   24 | `GET /library/agents`, a library search, then one agent's detail                                                                                                                                                                                       | Under 1% of requests, but p50 of 11 s for the list and 39 s for the detail in production                                                         |
+| `graph_run`      |   10 | Opens the WebSocket, subscribes to one of the account's seeded graphs, starts a run of it, waits for the run's events to say it completed, confirms with `GET /graphs/{id}/executions/{exec}`, and lists executions                                    | 130 to 210 runs a day in production, started by webhooks, schedules and copilot; this is the executor path, with the WebSocket users watch it on |
 
-### The Docker command
+The graphs are built from deterministic blocks that do real work without a model or credentials (lib/graphs.js), so a run costs nothing and finishes in a known number of steps.
 
-`./k6.sh` passes each setting into the container by name, so values such as `LOAD_TEST_ACCOUNTS` never appear on a command line. Without the wrapper, the two runs above are:
+### Profiles
 
-```bash
-cd autogpt_platform/backend/load-tests
+| `LOAD_PROFILE` | Rates          | Warm-up | Steady | Thresholds  | Use                                                   |
+| -------------- | -------------- | ------- | ------ | ----------- | ----------------------------------------------------- |
+| `smoke`        | 0.1 x baseline | none    | 1 min  | 3 x relaxed | Does the target work, does the seeding work           |
+| `baseline`     | the table      | 1 min   | 10 min | as declared | The comparison run; about 16 requests a second in all |
+| `stress`       | 3 x baseline   | 1 min   | 10 min | 2 x relaxed | What breaks first                                     |
 
-# A preview
-docker run --rm -i --user "$(id -u):$(id -g)" -v "$PWD:/load-tests" -w /load-tests \
-  -e K6_ENVIRONMENT=PREVIEW -e PR_NUMBER=<N> \
-  -e VUS=2 -e DURATION=1m -e RAMP_UP=10s -e RAMP_DOWN=10s \
-  grafana/k6:2.3.0 run tests/api/core-api-test.js
+The warm-up ramps each rate up from zero. Requests made during it carry `phase:warmup`; every threshold and every per-endpoint and user-facing number in the summary covers `phase:steady` only. The per-journey iteration times (`by_journey`) span the whole run, since k6 times an iteration without the request tags.
 
-# Dev, with LOAD_TEST_ACCOUNTS exported in your shell
-docker run --rm -i --user "$(id -u):$(id -g)" -v "$PWD:/load-tests" -w /load-tests \
-  -e K6_ENVIRONMENT=DEV -e LOAD_TEST_ACCOUNTS \
-  -e VUS=2 -e DURATION=1m -e RAMP_UP=10s -e RAMP_DOWN=10s \
-  grafana/k6:2.3.0 run tests/api/core-api-test.js
-```
+Settings: `SCENARIOS=copilot_turn,store_browse` runs a subset; `RATE_SCALE=0.5` multiplies every rate; `WARMUP` and `DURATION` replace the phase lengths; `THRESHOLD_SCALE` relaxes the thresholds; `RUN_SEED` fixes which items each iteration picks (default fixed, so two runs send the same sequence); `LOAD_TEST_ACCOUNT_COUNT` is the number of accounts (default 8).
 
-### What it costs
+### What is measured
 
-A run on your machine costs nothing beyond the load it puts on the target: the preview's or dev's own pods and database.
+- Every request carries `endpoint` (such as `store.skill_detail`) and `phase` tags, and one check named after the endpoint. Thresholds in `configs/thresholds.js` set a p95 per endpoint, above production's p95 for the route, and a failure rate under 2%.
+- Custom Trends for what users feel: `copilot_first_chunk_ms` (the first frame), `copilot_ttft_ms` (the first text), `copilot_turn_ms` (the `finish` frame), `copilot_chunks_per_turn`; `graph_run_start_ms` (execute to the first running event) and `graph_run_ms` (execute to completed); `ws_connect_ms` and `ws_event_latency_ms` (the event's `ended_at` to its arrival). Counters tell completed, queued and failed copilot turns and graph runs apart.
+- `copilot.stream`'s `http_req_duration` is the whole stream, so it has no latency threshold; the Trends above are its numbers.
 
-Grafana Cloud k6 bills each test as its peak VUs times its whole duration, in virtual-user hours (VUh), whether it runs in the cloud (`k6 cloud run`) or streams results there (`--out cloud`). The Grafana Cloud org is on the Free plan, which allows 500 VUh a month; beyond that the paid plan costs about $0.15 per VUh on top of a $19 monthly platform fee. A 5-VU, 11-minute comparison run is about 1 VUh, and the orchestrator's full suite is about 175 VUh. So run locally; see [Grafana Cloud k6](#grafana-cloud-k6-rare-opt-in) for the exception.
+### The summary
 
-## Tests
+`handleSummary` writes `results/<RUN_ID>.json` with:
 
-| Test                                           | Auth | What it does                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/basic/connectivity-test.js`             | yes  | Backend `/health`, the frontend's JWKS, and one authenticated request                                                                                                                                                                                                        |
-| `tests/basic/single-endpoint-test.js`          | yes  | One endpoint (`ENDPOINT=credits\|graphs\|blocks\|executions`)                                                                                                                                                                                                                |
-| `tests/api/core-api-test.js`                   | yes  | `/api/credits`, `/api/graphs` and `/api/blocks` together                                                                                                                                                                                                                     |
-| `tests/api/graph-execution-test.js`            | yes  | Creates small graphs and executes them. An account without credits, or without a subscription where the paywall applies, gets a 402; k6 counts those in `graph_executions_refused_no_credits_total` and `graph_executions_refused_no_subscription_total` rather than as runs |
-| `tests/marketplace/public-access-test.js`      | no   | Store browsing: agents, search, categories, creators                                                                                                                                                                                                                         |
-| `tests/marketplace/library-access-test.js`     | yes  | Library listing and search; adds a store agent to the library when the store has one                                                                                                                                                                                         |
-| `tests/comprehensive/platform-journey-test.js` | yes  | Credits, graphs, blocks and executions with think time                                                                                                                                                                                                                       |
+- `run_id`, `profile`, `seed`, the scenarios and the rate each ran at;
+- `target`: name, URLs and the Sentry project and environment to query (`autogpt-server-previews`, `pr-<N>`); `target.build` is the backend's `/health` answer, which does not name the commit, so select the preview's traces by environment and window (its Sentry `release` is the git sha);
+- `window`: `started_at`, `load_started_at` (after setup) and `ended_at`, UTC, for perf-compare's `window=`;
+- per endpoint and per custom metric: count, p50, p95, p99, failure rate, steady phase only;
+- `by_journey`: each journey's iteration time over the whole run and its dropped iterations;
+- the seeding counts, including how many store agents and skills the target had;
+- `coverage`: per journey, `covered`, `partial` or `skipped`, with the reason when it is not covered (the paywall, no dummy engine, an empty marketplace, no sessions); the text report prints the same under `NOT COVERED IN FULL`, because a list read against an empty marketplace is fast for the wrong reason;
+- every threshold's result.
 
-A preview starts with an empty database: store and library lists come back empty, so costs that grow with data do not show there.
+`RUN_ID` comes from `./k6.sh` (a timestamp) unless you set it. The summary and the run's accounts are named after it.
+
+## Comparing two builds
+
+The verdict comes from the backend's traces in Sentry through perf-compare, not from k6's client-side numbers: perf-compare resamples by trace, corrects for multiple comparisons and refuses to judge on too little data. The procedure:
+
+1. Deploy the candidate with `!deploy`, and deploy a control the same way: a pull request at the dev commit the candidate branches from, with no changes. Each preview gets its own namespace and database, so they are alike.
+2. Run the baseline profile at both, interleaved, with the same seed. `scripts/ab.sh` does this (A B B A by default, about 45 minutes) and prints the perf-compare command for the windows it produced:
+
+   ```bash
+   scripts/ab.sh <control PR> <candidate PR>
+   ```
+
+   By hand, the equivalent is four `LOAD_PROFILE=baseline ./k6.sh run tests/workload.js` runs alternating `PR_NUMBER`, taking each run's window from its summary.
+
+3. Wait a few minutes for Sentry to ingest the last events, then name the transaction you care about and compare:
+
+   ```bash
+   S=$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py
+   python3 "$S" --project autogpt-server-previews --transaction '/api/store/skills/{slug}' \
+     --baseline env=pr-<CONTROL> window=<START1>/<END1> window=<START4>/<END4> \
+     --candidate env=pr-<CANDIDATE> window=<START2>/<END2> window=<START3>/<END3>
+   ```
+
+   For copilot, compare the executor's `copilot.turn` transaction and its span data: `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'` (also `copilot.turn.queue_wait_ms`, `copilot.turn.duration_ms`), and the route's `/api/chat/sessions/{session_id}/stream` with `--field 'tags[copilot.stream.ttft_ms,number]'`.
+
+4. `node scripts/diff-summaries.js results/<control>.json results/<candidate>.json` shows the two runs' client-side numbers side by side. It is a quick read: it reports the change, not whether the change is real.
+
+perf-compare wants at least 200 samples from 30 traces per side and recommends 1000 requests per transaction; two baseline runs per side give that for every endpoint in the table except the rarest.
+
+## Copilot and model spend
+
+The workload sends no turn to a model unless told to.
+
+- **The dummy engine.** The backend has a copilot engine that streams a fixed reply with no model behind it, chosen by `CHAT_TEST_MODE=true` on the copilot executor (it is read on every turn, so no restart of anything else is needed; the Sentry tag `copilot.engine` is `dummy`). It exercises the whole path users wait on: the route, the queue, the executor, the Redis relay and the stream. Nothing in this repository can set it on a preview; it is the infra repository's job (the preview's copilot executor deployment, plus `FORCE_FLAG_ENABLE_PLATFORM_PAYMENT=false` on its REST server and executor, since previews paywall new accounts).
+- **`LOAD_TEST_COPILOT_ENGINE=dummy`** tells the run the target has it. `setup()` then sends one probe turn and checks the reply is the dummy's; if it is not, the copilot turn scenario is disabled for the run and the log says why. Without the variable, `copilot_turn` skips with a message and everything else runs.
+- **`tests/copilot-real-model.js`** sends a capped number of turns at the real engine, for a reading of what users feel with a model behind the chat. It needs `LOAD_TEST_COPILOT_ENGINE=real`, caps the turns with `COPILOT_REAL_TURNS` (default 5, one at a time), prints the estimated cost before it starts (`COPILOT_REAL_COST_PER_TURN_USD`, default $0.10) and how far the account's daily usage meter moved after.
+
+## Seeding
+
+The target's marketplace is discovered, not created: a listing needs a creator profile, a submission and an admin's approval, which throwaway accounts cannot give. A preview's database holds only what its migrations and its five sign-in accounts put there, unless the seed fixture that `.github/workflows/platform-preview-seed-fixture.yml` bakes (it has approved listings) is restored into it, so a preview's marketplace is empty: the store journey reads the empty lists and skips the detail pages, the seed logs it and the summary's `coverage` says so. Everything else the journeys need, `setup()` creates under the run's own accounts, and only there:
+
+- `SEED_GRAPHS` graphs (default 4) built from deterministic blocks, which also makes them library agents;
+- `SEED_RUNS` runs of each (default 2), so the library and the executions list have history;
+- one marketplace agent added to the library, when the store has one;
+- `SEED_SESSIONS` chat sessions (default 6), with a turn in each when the dummy engine is confirmed.
+
+The journeys read what the seed created: the library journey opens the run's agents, the graph journey runs them, the copilot journeys open the run's sessions. The seed counts are in the summary.
+
+### Paywalled targets
+
+With the `enable-platform-payment` flag on, an account without a subscription gets `402 A subscription is required` from graph execution and chat session creation, and a preview reads the flag the way dev does. The seed notices on the first `402`: the graph journey and the copilot turn journey skip for the run, with the reason in the log; the copilot reads journey still runs, since the session list, usage, connections and experts routes answer for such accounts, though it has no session detail to open; and the summary says so under `coverage`, with `runs: 0` and `sessions: 0` under `seeding`. Nothing an account can do through the API gets it past the paywall without a card: a trial and every paid tier go through Stripe Checkout. So it is the target's side: `FORCE_FLAG_ENABLE_PLATFORM_PAYMENT=false` on the preview's REST server, executor and copilot executor (the flag is read in all three), or accounts with a subscription tier in `LOAD_TEST_ACCOUNTS` (see [Accounts on previews](#accounts-on-previews)).
 
 ## How authentication works
 
 The backend accepts only the ES256 JWTs that the frontend's Better Auth issues (audience `authenticated`), and verifies them against `<frontend>/api/auth/jwks`. `lib/auth.js` gets them the way the browser does:
 
 - `setup()` signs each account in once per run (`POST <frontend>/api/auth/sign-in/email`, or `sign-up/email` for throwaway accounts) and exchanges the session for a token (`GET <frontend>/api/auth/token`). Every VU then uses one account's token, so a run signs in once per account however many VUs it has.
-- Better Auth lets one IP make 3 sign-in or sign-up requests, then refuses more until 10 seconds pass without one. `setup()` sends them in bursts of 3 with an 11-second pause, and waits out any `429`. Five accounts take about 15 seconds.
+- Better Auth lets one IP make 3 sign-in or sign-up requests, then refuses more until 10 seconds pass without one. `setup()` sends them in bursts of 3 with an 11-second pause, and waits out any `429`. Eight accounts take about 40 seconds.
 - Tokens last an hour. Each VU fetches a new one with its account's session 10 to 20 minutes before the old one expires, so runs can last longer than an hour.
 - Before the load starts, `setup()` sends one authenticated request and stops the run unless it succeeds.
 
@@ -96,22 +141,19 @@ Passwords, cookies and tokens stay in memory and are never logged.
 
 ### Accounts on previews
 
-With `LOAD_TEST_ACCOUNTS` unset, `setup()` signs up `LOAD_TEST_ACCOUNT_COUNT` (default 5) throwaway accounts named `loadtest-<run>-<n>@previews.agpt.co`, with random passwords that never leave the run. This works because previews allow sign-up for `@previews.agpt.co` and do not require email verification, so no email is sent and no shared secret is needed. The accounts stay in the preview's database until the preview is torn down.
+With `LOAD_TEST_ACCOUNTS` unset, `setup()` signs up `LOAD_TEST_ACCOUNT_COUNT` (default 8) throwaway accounts named `loadtest-<RUN_ID>-<n>@previews.agpt.co`, with random passwords that never leave the run. Previews allow sign-up for `@previews.agpt.co` and do not require email verification, so no email is sent and no shared secret is needed. The accounts and everything seeded under them stay in the preview's database until the preview is torn down. Copilot caps running turns per user, so more accounts spread the turns; keep at least eight for the stress profile.
 
-To run as the seeded personas instead (`preview-existing@previews.agpt.co` and the others), set `LOAD_TEST_ACCOUNTS`. Their password is the `PREVIEW_ACCOUNTS_PASSWORD` secret in the team Bitwarden:
+To run as the seeded personas instead, set `LOAD_TEST_ACCOUNTS`. Every preview has `preview-admin`, `preview-existing`, `preview-clean`, `preview-pro` and `preview-enterprise` at `@previews.agpt.co`, sharing one password, the `PREVIEW_ACCOUNTS_PASSWORD` secret in the team Bitwarden. The preview seeder (`frontend/scripts/seed-preview-accounts.ts`) creates their sign-in and role only, not a subscription tier, so they meet the paywall like any new account until an admin grants them one (see [Paywalled targets](#paywalled-targets)). What a run seeds under them stays in the preview's database and adds up across runs, and a couple of accounts share copilot's per-user caps, so keep the load small:
 
 ```bash
 export LOAD_TEST_ACCOUNTS="$(jq -n --arg p "$PREVIEW_ACCOUNTS_PASSWORD" \
-  '[{email: "preview-existing@previews.agpt.co", password: $p}]')"
+  '[{email: "preview-pro@previews.agpt.co", password: $p},
+    {email: "preview-enterprise@previews.agpt.co", password: $p}]')"
 ```
 
 ### Accounts on dev
 
-Dev's sign-up allowlist does not include `@previews.agpt.co`, and `@agpt.co` addresses can only sign up through Google, so the tests cannot sign up on dev. Running the authenticated tests there needs:
-
-- A few dedicated email-and-password accounts. An admin can create them with Better Auth's admin API (`POST https://dev-builder.agpt.co/api/auth/admin/create-user`, signed in as an admin), or a domain for them can be added to dev's `AUTH_SIGNUP_ALLOWLIST` (`DEV_AUTH_SIGNUP_ALLOWLIST` in the infra repo's dev CD workflow) so they can sign up.
-- Verified email addresses, if dev requires email verification.
-- Their passwords in the team secret store, handed to the tests as `LOAD_TEST_ACCOUNTS`.
+Dev's sign-up allowlist does not include `@previews.agpt.co`, and `@agpt.co` addresses can only sign up through Google, so the tests cannot sign up on dev. Running there needs a few dedicated email-and-password accounts (an admin can create them with Better Auth's admin API, `POST https://dev-builder.agpt.co/api/auth/admin/create-user`, or a domain for them can be added to dev's `AUTH_SIGNUP_ALLOWLIST` in the infra repo), verified if dev requires email verification, with their passwords in the team secret store, handed to the tests as `LOAD_TEST_ACCOUNTS`. The whole team shares dev, so keep the load small (`LOAD_PROFILE=smoke` or `RATE_SCALE=0.2`) and tell the team first.
 
 ### `LOAD_TEST_ACCOUNTS`
 
@@ -121,75 +163,50 @@ A JSON array of accounts that already exist on the target:
 [{ "email": "loadtest-1@example.com", "password": "..." }]
 ```
 
-The tests read it only from the environment. To keep it between runs, save it as `configs/accounts.json` (gitignored) and `export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"`. The tests sign in each account in the list once; VUs share them round-robin.
+The tests read it only from the environment. To keep it between runs, save it as `configs/accounts.json` (gitignored) and `export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"`. The tests sign in each account once; VUs share them round-robin, and the seed data is created under each.
 
 ### Local stack
 
-`K6_ENVIRONMENT=LOCAL` targets `http://localhost:8006` and `http://localhost:3000`; inside Docker, `./k6.sh` points it at `host.docker.internal`. The tests sign up throwaway accounts unless the local frontend restricts sign-up.
+`K6_ENVIRONMENT=LOCAL` targets `http://localhost:8006`, `http://localhost:3000` and `ws://localhost:8001/ws`; inside Docker, `./k6.sh` points them at `host.docker.internal`. The tests sign up throwaway accounts unless the local frontend restricts sign-up. A local stack with `CHAT_TEST_MODE=true` in its backend `.env` runs the dummy copilot engine.
 
 ## Environment variables
 
 `./k6.sh` passes these into the container by name when they are set in your shell, so values never appear on a command line.
 
-| Variable                                                     | Used for                                                                                  |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `K6_ENVIRONMENT`                                             | `PREVIEW`, `DEV`, `LOCAL` or `PROD` (default `DEV`)                                       |
-| `PR_NUMBER`                                                  | The pull request whose preview `PREVIEW` targets                                          |
-| `LOAD_TEST_ACCOUNTS`                                         | Accounts to sign in with; required on `DEV` and `PROD`                                    |
-| `LOAD_TEST_ACCOUNT_COUNT`                                    | Throwaway accounts to sign up when `LOAD_TEST_ACCOUNTS` is unset (default 5, at most 100) |
-| `VUS`, `DURATION`, `RAMP_UP`, `RAMP_DOWN`                    | Load shape                                                                                |
-| `REQUESTS_PER_VU`                                            | Requests per VU per iteration                                                             |
-| `ENDPOINT`, `CONCURRENT_REQUESTS`                            | `single-endpoint-test.js` only                                                            |
-| `THRESHOLD_*`                                                | Threshold overrides in the marketplace tests                                              |
-| `K6_ALLOW_PROD`                                              | Must be `true` for `PROD`; agree a production run with the team first                     |
-| `K6_CLOUD_TOKEN`, `K6_CLOUD_STACK_ID`, `K6_CLOUD_PROJECT_ID` | Grafana Cloud k6 only, and passed in only with `--cloud`                                  |
-| `K6_IMAGE`                                                   | Another k6 image for `./k6.sh` (default `grafana/k6:2.3.0`)                               |
-| `K6_BIN`                                                     | A k6 binary for the orchestrator to use instead of `./k6.sh`                              |
+| Variable                                                                           | Used for                                                                                                            |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `K6_ENVIRONMENT`                                                                   | `PREVIEW` (default), `DEV`, `LOCAL` or `PROD`                                                                       |
+| `PR_NUMBER`                                                                        | The pull request whose preview `PREVIEW` targets                                                                    |
+| `K6_BACKEND_URL`, `K6_FRONTEND_URL`, `K6_WS_URL`                                   | Override the target's URLs, for a stack on other ports or behind another name                                       |
+| `LOAD_PROFILE`                                                                     | `smoke`, `baseline` (default) or `stress`                                                                           |
+| `SCENARIOS`                                                                        | A comma-separated subset of the journeys                                                                            |
+| `RATE_SCALE`, `WARMUP`, `DURATION`, `THRESHOLD_SCALE`                              | Adjust the profile                                                                                                  |
+| `RUN_ID`                                                                           | Names the run's accounts and summary (default: a timestamp from `./k6.sh`)                                          |
+| `RUN_SEED`                                                                         | Fixes the sequence of choices the journeys make (default fixed)                                                     |
+| `SEED_GRAPHS`, `SEED_RUNS`, `SEED_SESSIONS`                                        | How much each account is seeded with (defaults 4, 2, 6)                                                             |
+| `LOAD_TEST_COPILOT_ENGINE`                                                         | `dummy` to send copilot turns at a target with `CHAT_TEST_MODE=true`; `real` for `tests/copilot-real-model.js` only |
+| `COPILOT_TURN_TIMEOUT`                                                             | The cap on one stream (default `120s` in the workload, `300s` for the real model)                                   |
+| `COPILOT_REAL_TURNS`, `COPILOT_REAL_CONCURRENCY`, `COPILOT_REAL_COST_PER_TURN_USD` | `tests/copilot-real-model.js` only                                                                                  |
+| `LOAD_TEST_ACCOUNTS`                                                               | Accounts to sign in with; required on `DEV` and `PROD`                                                              |
+| `LOAD_TEST_ACCOUNT_COUNT`                                                          | Throwaway accounts to sign up when `LOAD_TEST_ACCOUNTS` is unset (default 8, at most 100)                           |
+| `K6_ALLOW_PROD`                                                                    | Must be `true` for `PROD`; agree a production run with the team first                                               |
+| `K6_IMAGE`, `K6_REBUILD_IMAGE`                                                     | Run another k6 image, or rebuild the default one                                                                    |
+| `K6_CLOUD_TOKEN`, `K6_CLOUD_STACK_ID`, `K6_CLOUD_PROJECT_ID`                       | Grafana Cloud k6 only, and passed in only with `--cloud`                                                            |
 
-## Results in Sentry and perf-compare
+## What it costs
 
-k6 prints its own summary at the end of a run. For comparisons, use the backend's traces in Sentry:
+A run on your machine costs nothing beyond the load it puts on the target: the preview's pods and database. With the dummy engine, copilot turns cost nothing; without `LOAD_TEST_COPILOT_ENGINE`, none are sent. Graph runs use deterministic blocks that charge no credits.
+
+Grafana Cloud k6 bills each test as its peak VUs times its whole duration, in virtual-user hours (VUh), whether it runs in the cloud (`k6 cloud run`) or streams results there (`--out cloud`). The Grafana Cloud org is on the Free plan, which allows 500 VUh a month; beyond that the paid plan costs about $0.15 per VUh on top of a $19 monthly platform fee. So run locally. `./k6.sh` refuses any command that would use Grafana Cloud unless `--cloud` is its first argument and `K6_CLOUD_TOKEN` is set, and passes no Grafana Cloud credentials into the container otherwise. An agreed cloud run needs a Grafana Cloud k6 API token and the stack's numeric ID; the project is `4254406`. Results appear at <https://significantgravitas.grafana.net/a/k6-app/>.
+
+## Sentry
 
 | Target  | Sentry project                                                     | Environment                      |
 | ------- | ------------------------------------------------------------------ | -------------------------------- |
 | Preview | `autogpt-server-previews` (backend), `builder-previews` (frontend) | `pr-<N>`                         |
 | Dev     | `autogpt-server` (backend), `builder` (frontend)                   | `app:dev-behave:cloud` (backend) |
 
-Each route is a transaction named by its path, such as `/api/credits` or `/api/graphs/{graph_id}/execute/{graph_version}`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. Sentry's `failure_rate()` counts the 402 an account without credits gets from graph execution, although k6 does not. Note the UTC start and end of each run (`date -u +%FT%TZ`), wait a few minutes for Sentry to ingest the last events, then compare windows with perf-compare. For example, a candidate preview against a control preview under the same load:
-
-```bash
-S=$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py
-python3 "$S" --project autogpt-server-previews --transaction '/api/credits' \
-  --baseline env=pr-<CONTROL> window=<START>/<END> \
-  --candidate env=pr-<N> window=<START>/<END>
-```
-
-perf-compare wants at least 200 samples from 30 traces per side, and recommends 1000 requests per transaction. The skill covers choosing baselines, interleaving runs and reading the verdict.
-
-## Orchestrator
-
-`orchestrator/orchestrator.js` runs all twelve scenarios in turn, at 100 to 500 VUs each, for about an hour: a stress suite rather than a comparison run. It runs them on your machine, needs Node and Docker, and checks its settings before the first test:
-
-```bash
-PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW
-LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)" node orchestrator/orchestrator.js DEV
-```
-
-It writes a summary to `results/`.
-
-## Grafana Cloud k6 (rare, opt-in)
-
-Don't run these tests on Grafana Cloud k6; it costs money (see [What it costs](#what-it-costs)). It is only for the rare run that needs more load than one machine can generate, and only after the team agrees to it.
-
-It is never a default. `./k6.sh` refuses any command that would use Grafana Cloud (`k6 cloud ...`, `--out cloud` or `K6_OUT=cloud`) unless `--cloud` is its first argument and `K6_CLOUD_TOKEN` is set. Without `--cloud`, it passes no Grafana Cloud credentials into the container. The orchestrator uses Grafana Cloud only with its explicit `cloud` argument. Both print a one-line cost reminder when they do. An agreed cloud run needs a Grafana Cloud k6 API token and the stack's numeric ID; the project is `4254406`:
-
-```bash
-export K6_CLOUD_TOKEN=... K6_CLOUD_STACK_ID=... K6_CLOUD_PROJECT_ID=4254406
-./k6.sh --cloud cloud run --env K6_ENVIRONMENT=PREVIEW --env PR_NUMBER=<N> --env VUS=50 tests/api/core-api-test.js
-PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW cloud
-```
-
-A remote cloud run sees only the variables passed with `--env`, and Grafana Cloud keeps those with the run, so the orchestrator refuses to send `LOAD_TEST_ACCOUNTS` there. On a preview the tests sign up throwaway accounts instead. Results appear at <https://significantgravitas.grafana.net/a/k6-app/>.
+Each route is a transaction named by its path, such as `/api/store/skills/{slug}`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. The copilot executor's turn is its own transaction, `copilot.turn`, with the engine and timings as span data. `/api/chat/sessions/{session_id}/stream` and `/ws` are long-lived transactions that measure session length, not latency.
 
 ## Troubleshooting
 
@@ -198,5 +215,12 @@ A remote cloud run sees only the variables passed with `--env`, and Grafana Clou
 - **`Getting a token ... failed: HTTP 401` right after sign-up**: the target requires email verification, so a sign-up gets no session. Use verified accounts in `LOAD_TEST_ACCOUNTS`.
 - **`... rejected the token from ...`**: the backend verifies tokens against a different frontend's JWKS than the one the test signed in at.
 - **`The first authenticated request ... failed`**: the backend is down, still starting, or not where `K6_ENVIRONMENT` and `PR_NUMBER` point.
+- **`seed: ... refused: HTTP 402 A subscription is required`**, then `graph_run: skipped` and `copilot_turn: skipped`: the target paywalls new accounts; see [Paywalled targets](#paywalled-targets).
+- **`copilot_turn: skipped`**: set `LOAD_TEST_COPILOT_ENGINE=dummy` once the target runs `CHAT_TEST_MODE=true`; see [Copilot and model spend](#copilot-and-model-spend).
+- **`copilot engine probe: the reply was not the dummy's`**: the target is not in test mode; the probe spent one real turn and the scenario is off for this run.
+- **Copilot turns time out with no `finish`**: the target's copilot executor is not running or not consuming the queue; the route answers 200 and heartbeats until the stream's TTL.
+- **`graph_run` never sees a completed run**: the executor is not running, or the WebSocket URL is wrong (`K6_WS_URL`); the journey falls back to polling and reports `graph_runs_failed`.
+- **`dropped_iterations` fails**: the target could not take the offered rate with the VUs allocated; the summary's `by_journey` says which. Lower `RATE_SCALE` or raise the maximum VUs in `configs/profiles.js`.
 - **`429` during setup**: another sign-in from the same IP used up the burst. `setup()` waits and retries; it fails only after five refusals in a row.
-- **`k6.sh: this command would use Grafana Cloud k6`**: run it on your machine instead; see [Grafana Cloud k6](#grafana-cloud-k6-rare-opt-in) for the agreed exception.
+- **`k6.sh: this command would use Grafana Cloud k6`**: run it on your machine instead.
+- **`docker build` stalls on a credential helper**: `./k6.sh` builds with an empty temporary `DOCKER_CONFIG`; if your own `docker pull` hangs, do the same.
