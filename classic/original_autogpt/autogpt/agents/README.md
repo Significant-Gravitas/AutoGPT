@@ -1,6 +1,6 @@
 # 🤖 Agents
 
-Agent is composed of [🧩 Components](./components.md) and responsible for executing pipelines and some additional logic. The base class for all agents is `BaseAgent`, it has the necessary logic to collect components and execute protocols.
+Agent is composed of [🧩 Components](../../../../docs/content/forge/components/components.md) and responsible for executing pipelines and some additional logic. The base class for all agents is `BaseAgent`, it has the necessary logic to collect components and execute protocols.
 
 ## Important methods
 
@@ -10,11 +10,11 @@ Agent is composed of [🧩 Components](./components.md) and responsible for exec
 
 ## AutoGPT Agent
 
-`Agent` is the main agent provided by AutoGPT. It's a subclass of `BaseAgent`. It has all the [Built-in Components](./built-in-components.md). `Agent` implements the essential abstract methods from `BaseAgent`: `propose_action` and `execute`.
+`Agent` is the main agent provided by AutoGPT. It's a subclass of `BaseAgent`. It has all the [Built-in Components](../../../../docs/content/forge/components/built-in-components.md). `Agent` implements the essential abstract methods from `BaseAgent`: `propose_action` and `execute`.
 
 ## Building your own Agent
 
-The easiest way to build your own agent is to extend the `Agent` class and add additional components. By doing this you can reuse the existing components and the default logic for executing [⚙️ Protocols](./protocols.md).
+The easiest way to build your own agent is to extend the `Agent` class and add additional components. By doing this you can reuse the existing components and the default logic for executing [⚙️ Protocols](../../../../docs/content/forge/components/protocols.md).
 
 ```py
 class MyComponent(AgentComponent):

@@ -1,6 +1,6 @@
 # 🧩 Components
 
-Components are the building blocks of [🤖 Agents](./agents.md). They are classes inheriting `AgentComponent` or implementing one or more [⚙️ Protocols](./protocols.md) that give agent additional abilities or processing. 
+Components are the building blocks of [🤖 Agents](../../../../docs/content/forge/components/agents.md). They are classes inheriting `AgentComponent` or implementing one or more [⚙️ Protocols](../../../../docs/content/forge/components/protocols.md) that give agent additional abilities or processing. 
 
 Components can be used to implement various functionalities like providing messages to the prompt, executing code, or interacting with external services.
 They can be enabled or disabled, ordered, and can rely on each other.
@@ -9,7 +9,7 @@ Components assigned in the agent's `__init__` via `self` are automatically detec
 For example inside `__init__`: `self.my_component = MyComponent()`.
 You can use any valid Python variable name, what matters for the component to be detected is its type (`AgentComponent` or any protocol inheriting from it).
 
-Visit [Built-in Components](./built-in-components.md) to see what components are available out of the box.
+Visit [Built-in Components](../../../../docs/content/forge/components/built-in-components.md) to see what components are available out of the box.
 
 ```py
 from forge.agent import BaseAgent
@@ -37,7 +37,7 @@ To ensure the configuration is loaded from the file correctly, the component mus
 `ConfigurableComponent` provides a `config` attribute that holds the configuration instance.
 It's possible to either set the `config` attribute directly or pass the configuration instance to the component's constructor.
 Extra configuration (i.e. for components that are not part of the agent) can be passed and will be silently ignored. Extra config won't be applied even if the component is added later.
-To see the configuration of built-in components visit [Built-in Components](./built-in-components.md).
+To see the configuration of built-in components visit [Built-in Components](../../../../docs/content/forge/components/built-in-components.md).
 
 ```py
 from pydantic import BaseModel
@@ -81,7 +81,7 @@ class SensitiveConfig(BaseModel):
 ### JSON configuration
 
 You can specify a JSON file (e.g. `config.json`) to use for the configuration when launching an agent.
-This file contains settings for individual [Components](../components/introduction.md) that AutoGPT uses.
+This file contains settings for individual [Components](../../../../docs/content/forge/components/introduction.md) that AutoGPT uses.
 To specify the file use `--component-config-file` CLI option, for example to use `config.json`:
 
 ```shell
@@ -90,13 +90,13 @@ To specify the file use `--component-config-file` CLI option, for example to use
 
 !!! note
     If you're using Docker to run AutoGPT, you need to mount or copy the configuration file to the container.
-    See [Docker Guide](../../classic/setup/docker.md) for more information.
+    See [Docker Guide](../../../../docs/content/classic/setup/docker.md) for more information.
 
 ### Example JSON configuration
 
 You can copy configuration you want to change, for example to `classic/original_autogpt/config.json` and modify it to your needs.
 *Most configuration has default values, it's better to set only values you want to modify.*
-You can see the available configuration fields and default values in [Build-in Components](./built-in-components.md).
+You can see the available configuration fields and default values in [Build-in Components](../../../../docs/content/forge/components/built-in-components.md).
 You can set sensitive variables in the `.json` file as well but it's recommended to use environment variables instead.
 
 ```json
