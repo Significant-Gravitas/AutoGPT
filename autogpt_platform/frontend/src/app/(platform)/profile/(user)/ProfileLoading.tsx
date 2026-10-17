@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Separator } from "@radix-ui/react-separator";
 
 export function ProfileLoading() {

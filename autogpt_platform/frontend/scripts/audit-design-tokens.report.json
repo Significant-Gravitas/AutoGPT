@@ -62,7 +62,7 @@
     "darkVariant": 0,
     "darkPrefix": 0,
     "agptClass": 20,
-    "legacyImport": 196,
+    "legacyImport": 191,
     "radiusNamed": 78,
     "radiusTailwind": 1793
   },
@@ -80,7 +80,7 @@
     "darkVariant": 0,
     "darkPrefix": 0,
     "agptClass": 20,
-    "legacyImport": 196,
+    "legacyImport": 191,
     "radiusNamed": 78,
     "radiusTailwind": 1751
   },
@@ -171,7 +171,7 @@
       "darkVariant": 0,
       "darkPrefix": 0,
       "agptClass": 11,
-      "legacyImport": 143,
+      "legacyImport": 138,
       "radiusNamed": 49,
       "radiusTailwind": 1308
     },
