@@ -775,10 +775,13 @@ class TestPostHogToolSpans:
 
         properties = capture.call_args.args[2]
         assert properties["$ai_is_error"] is True
+        assert "$ai_error" not in properties
         assert "no such label" not in repr(properties)
 
     @pytest.mark.asyncio
-    async def test_a_tool_that_raises_failed_without_its_message(self, capture):
+    async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
+        self, capture
+    ):
         tool = self._tool(error=True)
 
         result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
@@ -786,4 +789,5 @@ class TestPostHogToolSpans:
         assert result.success is False
         properties = capture.call_args.args[2]
         assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "RuntimeError"
         assert "inbox" not in repr(properties)

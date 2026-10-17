@@ -96,6 +96,17 @@ def mark_tool_failed() -> None:
         outcome.is_error = True
 
 
+def mark_tool_raised(error: BaseException) -> None:
+    """Mark the running tool call failed by *error*, which the tool caught
+    and answered with instead of letting it reach ``tool_span``. Only the
+    exception's type is kept, never its message. Outside a tool span it does
+    nothing."""
+    outcome = _current_outcome.get()
+    if outcome is not None:
+        outcome.is_error = True
+        outcome.error = type(error).__name__
+
+
 class SpanOutcome(BaseModel):
     """How a span ended; the code it wraps marks a failure."""
 

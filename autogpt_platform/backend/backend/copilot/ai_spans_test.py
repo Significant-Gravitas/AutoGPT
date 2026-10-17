@@ -13,6 +13,7 @@ from backend.copilot.ai_spans import (
     capture_turn,
     current_span_id,
     mark_tool_failed,
+    mark_tool_raised,
     set_turn_span,
     stamp_turn_trace_id,
     tool_span,
@@ -190,6 +191,31 @@ def test_a_tool_that_raises_is_an_error_named_by_its_type_only(capture: MagicMoc
     assert properties["$ai_is_error"] is True
     assert properties["$ai_error"] == "ValueError"
     assert "secret" not in repr(properties)
+
+
+def test_a_tool_that_caught_what_it_raised_is_named_by_its_type_only(
+    capture: MagicMock,
+):
+    """``BaseTool`` answers an exception with an error instead of letting it
+    reach the span, so it names the exception itself."""
+    _in_a_turn()
+
+    with tool_span("web_fetch", user_id=USER_ID, session_id=SESSION_ID):
+        try:
+            raise ValueError("the secret contents of an email")
+        except ValueError as error:
+            mark_tool_raised(error)
+
+    properties = capture.call_args.args[2]
+    assert properties["$ai_is_error"] is True
+    assert properties["$ai_error"] == "ValueError"
+    assert "secret" not in repr(properties)
+
+
+def test_marking_a_raise_outside_a_tool_does_nothing(capture: MagicMock):
+    mark_tool_raised(ValueError("x"))
+
+    capture.assert_not_called()
 
 
 def test_a_cancelled_tool_is_not_a_failure(capture: MagicMock):

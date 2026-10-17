@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.copilot.ai_spans import mark_tool_failed, tool_span
+from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -554,6 +554,7 @@ class BaseTool:
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")
+            mark_tool_raised(e)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
