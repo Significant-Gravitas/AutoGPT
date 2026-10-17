@@ -631,8 +631,8 @@ class CodexAnthropicGateway:
             "Connection": "keep-alive",
         }
         response = web.StreamResponse(status=200, headers=headers)
-        await response.prepare(request)
         sink = _RecordingSink(response)
+        await sink.prepare(request)
         message_id = f"msg_codex_{uuid4().hex}"
         try:
             await _write_sse(
@@ -655,8 +655,8 @@ class CodexAnthropicGateway:
                 },
             )
             await self._write_boundary(sink, conversation, first)
-            await response.write_eof()
-        except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
+            await sink.write_eof()
+        except asyncio.CancelledError:
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
@@ -913,13 +913,26 @@ class CodexAnthropicGateway:
 
 
 class _RecordingSink:
-    """Mirrors the stream into a buffer so a retry can be answered verbatim."""
+    """Mirrors the stream into a buffer so a retry can be answered verbatim.
+
+    The client going away does not end the recording. That is the very case a
+    retry exists for: the CLI times out on a slow tool-result request and
+    re-sends it, so the original's answer has to be kept whole for the resend
+    even though nobody is left to read it on the first socket.
+    """
 
     def __init__(self, response: web.StreamResponse) -> None:
         self._response = response
         self._chunks: list[bytes] = []
         self._buffered = 0
         self._recording = True
+        self._delivering = True
+
+    async def prepare(self, request: web.Request) -> None:
+        try:
+            await self._response.prepare(request)
+        except ConnectionError:
+            self._client_gone()
 
     async def write(self, data: bytes) -> None:
         if self._recording:
@@ -931,7 +944,27 @@ class _RecordingSink:
                 self._recording = False
             else:
                 self._chunks.append(data)
-        await self._response.write(data)
+        if not self._delivering:
+            return
+        try:
+            await self._response.write(data)
+        except ConnectionError:
+            self._client_gone()
+
+    async def write_eof(self) -> None:
+        if not self._delivering:
+            return
+        try:
+            await self._response.write_eof()
+        except ConnectionError:
+            self._client_gone()
+
+    def _client_gone(self) -> None:
+        self._delivering = False
+        logger.info(
+            "Codex gateway client disconnected mid-response; "
+            "keeping the response for a retry"
+        )
 
     @property
     def body(self) -> bytes | None:

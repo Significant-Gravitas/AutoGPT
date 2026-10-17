@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from . import sessions, threads
+from . import failures, sessions, threads
 from .adapters.base import MessageContext, PlatformAdapter
 from .attachments import (
     format_attachment_problems,
@@ -403,19 +403,12 @@ class MessageHandler:
                         "Ask a server admin to run `/setup` first.",
                     )
                     return False
-        except ValueError:
-            # ValueError-based domain exceptions (NotFoundError etc.) arrive
-            # over RPC with this base type.
-            logger.exception("Failed to check link status")
+        except Exception as exc:
+            category = failures.LINK_CHECK_FAILED
+            reference = failures.new_reference()
+            failures.report_failure(exc, category, reference, platform=ctx.platform)
             await adapter.send_message(
-                ctx.channel_id, "Something went wrong. Try again later."
-            )
-            return False
-        except Exception:
-            logger.exception("Unexpected error while checking link status")
-            await adapter.send_message(
-                ctx.channel_id,
-                "Something went wrong. Try again in a moment.",
+                ctx.channel_id, failures.failure_reply(category, reference)
             )
             return False
         return True
