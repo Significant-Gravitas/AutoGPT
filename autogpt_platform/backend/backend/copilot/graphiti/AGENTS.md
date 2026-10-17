@@ -17,6 +17,7 @@ Runtime prompt instructions live in `prompting.py:get_graphiti_supplement()`.
 ## Design Intent
 
 - Preserve per-user isolation through `group_id`-scoped databases and clients.
+- Build a `MemoryScope` (`scope.py`) once where a request enters the memory code and pass it down; read `group_id` / `scope_key` / `redis_key(...)` off it rather than re-deriving them from a `(user_id, expert_id)` pair, and open drivers with `open_driver(scope)`.
 - Be careful about memory pollution from assistant/tool phrasing; extraction quality matters as much as ingestion success.
 - Keep warm-context and tool-driven recall resilient: failures should degrade gracefully rather than break chat execution.
 
@@ -24,12 +25,13 @@ Runtime prompt instructions live in `prompting.py:get_graphiti_supplement()`.
 
 Run everything from `autogpt_platform/backend` and use `poetry run ...`.
 
-Get the `group_id` for a user:
+Get the `group_id` for a user (use `MemoryScope.for_expert(user_id, expert_id)`
+for one of their experts; the snippets below take either):
 
 ```bash
 poetry run python - <<'PY'
-from backend.copilot.graphiti.client import derive_group_id
-print(derive_group_id("883cc9da-fe37-4863-839b-acba022bf3ef"))
+from backend.copilot.graphiti.scope import MemoryScope
+print(MemoryScope.for_user("883cc9da-fe37-4863-839b-acba022bf3ef").group_id)
 PY
 ```
 
@@ -38,12 +40,11 @@ Inspect graph counts:
 ```bash
 poetry run python - <<'PY'
 import asyncio
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.scope import MemoryScope
 
 USER_ID = "883cc9da-fe37-4863-839b-acba022bf3ef"
-GROUP_ID = derive_group_id(USER_ID)
+SCOPE = MemoryScope.for_user(USER_ID)
 
 QUERIES = {
     "entities": "MATCH (n:Entity) RETURN count(n) AS count",
@@ -53,12 +54,7 @@ QUERIES = {
 }
 
 async def run():
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=GROUP_ID,
-    )
+    driver = open_driver(SCOPE)
     try:
         for name, query in QUERIES.items():
             records, _, _ = await driver.execute_query(query)
@@ -75,20 +71,14 @@ List entities or relation-name counts:
 ```bash
 poetry run python - <<'PY'
 import asyncio
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.scope import MemoryScope
 
 USER_ID = "883cc9da-fe37-4863-839b-acba022bf3ef"
-GROUP_ID = derive_group_id(USER_ID)
+SCOPE = MemoryScope.for_user(USER_ID)
 
 async def run():
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=GROUP_ID,
-    )
+    driver = open_driver(SCOPE)
     try:
         records, _, _ = await driver.execute_query(
             "MATCH (n:Entity) RETURN n.name AS name, n.summary AS summary ORDER BY n.name"
@@ -119,21 +109,15 @@ Inspect facts around one node:
 ```bash
 poetry run python - <<'PY'
 import asyncio
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.scope import MemoryScope
 
 USER_ID = "883cc9da-fe37-4863-839b-acba022bf3ef"
-GROUP_ID = derive_group_id(USER_ID)
+SCOPE = MemoryScope.for_user(USER_ID)
 TARGET = "sarah"
 
 async def run():
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=GROUP_ID,
-    )
+    driver = open_driver(SCOPE)
     try:
         records, _, _ = await driver.execute_query(
             """

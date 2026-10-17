@@ -211,6 +211,27 @@ def test_claude_sonnet_5_5_bills_at_authored_rates():
     assert s55_entry.context_window == 200000
 
 
+def test_claude_haiku_5_5_bills_at_authored_rates():
+    """Claude Haiku 5.5 (OpenRouter live base tier $0.10/$0.50 per 1M) —
+    flat tier and per-1M projections must match the authored catalog entry."""
+    haiku = LLMModel("claude-haiku-5-5")
+    assert haiku is LLMModel.CLAUDE_5_5_HAIKU
+    assert MODEL_COST[haiku] == 1
+    assert TOKEN_COST[haiku].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 1.5,
+        "cache_creation": 18.75,
+    }
+    assert MODEL_METADATA[haiku].max_output_tokens == 128000
+    haiku_entry = next(m for m in CATALOG.models if m.slug == "claude-haiku-5-5")
+    assert haiku_entry.price_tier == 2
+    # Capped at the 100K base price tier (flat-rate billing).
+    assert haiku_entry.context_window == 100000
+    # OpenRouter's dotted slug resolves to the enum member.
+    assert LLMModel("anthropic/claude-haiku-5.5") is haiku
+
+
 def test_claude_opus_5_bills_at_authored_rates():
     opus = LLMModel("claude-opus-5")
     assert MODEL_COST[opus] == 14
@@ -415,6 +436,28 @@ def test_muse_spark_1_3_contributor_bills_at_authored_rates():
     assert contributor_entry.supports_tools is True
     assert contributor_entry.supports_json_output is True
     assert contributor_entry.supports_reasoning is True
+
+
+def test_muse_spark_open_bills_at_authored_rates():
+    """Muse Spark Open (OpenRouter, Meta list price $1.25/$4.25 per 1M, $0.15/1M
+    cached input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    spark_open = LLMModel("meta/muse-spark-open")
+    assert spark_open is LLMModel.META_MUSE_SPARK_OPEN
+    assert MODEL_COST[spark_open] == 3
+    assert TOKEN_COST[spark_open].model_dump() == {
+        "input": 187.5,
+        "output": 637.5,
+        "cache_read": 22.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[spark_open].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-spark-open")
+    assert entry.price_tier == 1
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
 
 
 def test_muse_wonder_bills_at_authored_rates():

@@ -7,6 +7,8 @@ resolution, the CLI environment, retries, resume and every cost decision run
 as in production.
 """
 
+import base64
+import json
 import shutil
 import uuid
 from contextlib import ExitStack
@@ -24,8 +26,10 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
 from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_budget import TurnBudget
 from backend.data.llm_registry.llm_models import LLMModel
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
@@ -60,6 +64,7 @@ class SdkTurns:
         # The turn of each launch, and the CLI session it resumed (None for a
         # fresh one).
         self.resumed: list[tuple[int, str | None]] = []
+        self._governors: list[tuple[int, TurnGovernor]] = []
         self._turn = -1
         # The CLI inherits these, and the platform reads the CLI's session
         # files from the same place.
@@ -101,10 +106,19 @@ class SdkTurns:
             ):
                 pass
 
+    @property
+    def metered(self) -> dict[int, float]:
+        """The live spend each turn's governor reached, which it lands on."""
+        totals: dict[int, float] = {}
+        for turn, governor in self._governors:
+            totals[turn] = totals.get(turn, 0.0) + governor.meter.spent_usd
+        return totals
+
     def _stubs(self, session: ChatSession) -> dict[str, Any]:
         return {
             "config": self._config,
             "ClaudeSDKClient": MagicMock(side_effect=self._client),
+            "TurnGovernor": MagicMock(side_effect=self._governor),
             "AsyncClusterLock": MagicMock(side_effect=_lock),
             "_make_sdk_cwd": MagicMock(return_value=str(self._cwd)),
             "get_chat_session": AsyncMock(return_value=session),
@@ -126,7 +140,10 @@ class SdkTurns:
             "get_copilot_tool_names": MagicMock(return_value=[]),
             "get_sdk_disallowed_tools": MagicMock(return_value=[]),
             "get_user_tier": AsyncMock(return_value=None),
-            "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+            # Well above any turn here, so the governor never lands one.
+            "resolve_turn_budget": AsyncMock(
+                return_value=TurnBudget(usd=100.0, limiting="task")
+            ),
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
@@ -145,6 +162,11 @@ class SdkTurns:
         options.allowed_tools = []
         options.disallowed_tools = []
         return ClaudeSDKClient(*args, options=options, **kwargs)
+
+    def _governor(self, **kwargs: Any) -> TurnGovernor:
+        governor = TurnGovernor(**kwargs)
+        self._governors.append((self._turn, governor))
+        return governor
 
     async def _upload(
         self,
@@ -207,7 +229,14 @@ def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
 
 def _codex_credentials() -> OAuth2Credentials:
     # An unsigned JWT: the platform reads its claims, never its signature.
-    token = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ.sig"
+    claims = ({"alg": "none"}, {"exp": 9999999999, "email": "a@b.c"})
+    encoded = [
+        base64.urlsafe_b64encode(json.dumps(part, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+        for part in claims
+    ]
+    token = ".".join([*encoded, "sig"])
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
             id_token=SecretStr(token),

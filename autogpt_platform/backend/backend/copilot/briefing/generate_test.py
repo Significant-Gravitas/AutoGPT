@@ -3,11 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation
 from backend.copilot.briefing import generate as generate_module
+from backend.copilot.briefing import narrative
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.pro_activation import UsageActivationState
 from backend.util import posthog_client
 from backend.util.feature_flag import Flag
 
@@ -1032,6 +1035,46 @@ async def test_narrative_failure_still_delivers_the_template_briefing(
         "**What ran**"
         in client.append_plain_session_message.await_args.kwargs["content"]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lookup_fails", [False, True])
+async def test_unavailable_narrative_attribution_still_delivers_template(
+    monkeypatch, lookup_fails
+):
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module, "compose_narrative", narrative.compose_narrative
+    )
+    lookup = AsyncMock(
+        return_value=UsageActivationState(user_id="user-1", tier="PRO", ready=False),
+        side_effect=RuntimeError("database unavailable") if lookup_fails else None,
+    )
+    monkeypatch.setattr(
+        usage_activation,
+        "pro_activation_db",
+        lambda: MagicMock(get_usage_activation_state=lookup),
+    )
+    provider = AsyncMock()
+    monkeypatch.setattr(narrative, "structured_completion", provider)
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    stored = client.create_briefing.await_args.args[2]
+    assert stored["narrative"] is None
+    assert client.append_plain_session_message.await_args.kwargs[
+        "content"
+    ] == render_briefing_markdown(BriefingContent.model_validate(stored))
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    lookup.assert_awaited_once_with("user-1")
+    provider.assert_not_awaited()
 
 
 @pytest.mark.asyncio
