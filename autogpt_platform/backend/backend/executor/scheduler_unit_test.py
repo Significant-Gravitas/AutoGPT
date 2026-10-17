@@ -1682,7 +1682,10 @@ class _StartupRun(NamedTuple):
 
 
 def _registered_jobs(
-    monkeypatch, interval_hours: int, startup_embedding_backfill: bool = True
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+    existing_idle_job=None,
 ) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
@@ -1696,6 +1699,11 @@ def _registered_jobs(
         startup_embedding_backfill,
     )
     mock_scheduler = MagicMock()
+    mock_scheduler.get_job.side_effect = lambda job_id, **_: (
+        existing_idle_job
+        if mock_scheduler.start.called and job_id == "refresh_near_expiry_credentials"
+        else None
+    )
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
@@ -1743,6 +1751,29 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["seconds"] == 6 * 3600
 
 
+@pytest.mark.parametrize("offset_days", [-2, 1, None])
+def test_idle_credentials_startup_preserves_existing_daily_job(
+    monkeypatch, offset_days
+):
+    existing = MagicMock(
+        trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+        next_run_time=(
+            datetime.now(timezone.utc) + timedelta(days=offset_days)
+            if offset_days is not None
+            else None
+        ),
+    )
+    calls = _registered_jobs(
+        monkeypatch, interval_hours=6, existing_idle_job=existing
+    ).add_job_calls
+
+    assert not [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+
 def test_idle_credentials_job_is_registered_daily(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
@@ -1755,9 +1786,9 @@ def test_idle_credentials_job_is_registered_daily(monkeypatch):
     assert len(matches) == 1
     call = matches[0]
     assert call.kwargs["id"] == "refresh_near_expiry_credentials"
-    assert call.kwargs["trigger"] == "cron"
-    assert call.kwargs["hour"] == 3
-    assert call.kwargs["minute"] == 0
+    assert str(call.kwargs["trigger"]) == str(
+        CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+    )
     assert call.kwargs["replace_existing"] is True
     assert call.kwargs["max_instances"] == 1
     assert call.kwargs["jobstore"] == "execution"

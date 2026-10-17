@@ -2581,18 +2581,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # Retain the persisted callable and ID to replace the old minute sweep.
-            self.scheduler.add_job(
-                refresh_near_expiry_credentials,
-                id="refresh_near_expiry_credentials",
-                trigger="cron",
-                replace_existing=True,
-                max_instances=1,
-                hour=3,
-                minute=0,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
             # OAuth Token Cleanup - configurable interval
             self.scheduler.add_job(
                 cleanup_oauth_tokens,
@@ -2703,6 +2691,7 @@ class Scheduler(AppService):
         if self.register_system_tasks:
             # After start: until then get_job only sees pending jobs, not the
             # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
         self._report_parked_jobs()
 
@@ -2712,6 +2701,28 @@ class Scheduler(AppService):
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _register_idle_credential_sweep(self) -> None:
+        """Keep an existing daily job's overdue run or explicit pause intact."""
+        job_id = "refresh_near_expiry_credentials"
+        trigger = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if (
+            existing is not None
+            and str(existing.trigger) == str(trigger)
+            and _job_timezone_name(existing) == "UTC"
+        ):
+            return
+        self.scheduler.add_job(
+            refresh_near_expiry_credentials,
+            id=job_id,
+            trigger=trigger,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+            jobstore=Jobstores.EXECUTION.value,
+        )
 
     # Paused and fired-once rows are never deleted, so this scan is bounded
     # rather than left to grow with the backlog — startup precedes the RPC port.
