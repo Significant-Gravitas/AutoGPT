@@ -462,3 +462,35 @@ export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
 export const RealSandboxCommand = realStory("Sandbox Command");
 export const RealGmailNewsletter = realStory("Gmail Newsletter");
+
+// One turn's three real cards. Review all opens Home's dialog over them; once
+// one is answered, Close and continue starts the turn and folds the box.
+export const ReviewAllAndContinue: Story = (() => {
+  const cards = realCards();
+  const reviews = ["Gmail Send", "Post To X", "Workflow"].map((name, i) => ({
+    ...cards.find((c) => c.story === name)!.review,
+    created_at: new Date(Date.now() - (9 - i) * 60_000),
+  }));
+  return {
+    args: { ...queueOf(reviews), reviews },
+    parameters: {
+      msw: {
+        handlers: [
+          realCardSchemaHandler(cards),
+          http.post("*/api/review/action", () =>
+            HttpResponse.json({
+              approved_count: 1,
+              rejected_count: 0,
+              failed_count: 0,
+              awaiting_other_cards: true,
+            }),
+          ),
+          http.post(
+            "*/api/review/session/*/continue",
+            () => new HttpResponse(null, { status: 204 }),
+          ),
+        ],
+      },
+    },
+  };
+})();

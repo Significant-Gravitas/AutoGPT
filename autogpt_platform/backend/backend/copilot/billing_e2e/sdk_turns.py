@@ -11,6 +11,7 @@ import base64
 import json
 import shutil
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -147,7 +148,7 @@ class SdkTurns:
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
-            "resolve_answered": AsyncMock(return_value=[]),
+            "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
 
@@ -248,3 +249,8 @@ def _codex_credentials() -> OAuth2Credentials:
     return credentials_from_bundle(bundle).model_copy(
         update={"id": CODEX_CREDENTIAL_ID}
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield
