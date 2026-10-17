@@ -1,5 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { http, HttpResponse } from "msw";
+import { describe, expect, test, vi } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -7,8 +9,18 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getPostV1RequestCreditTopUpMockHandler } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 
 import { TopUpForm } from "../TopUpForm";
+
+const routerPush = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPush, replace: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/copilot",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
 
 function captureTopUpRequest() {
   let body: unknown = null;
@@ -67,5 +79,37 @@ describe("TopUpForm", () => {
 
     const button = await screen.findByRole("button", { name: /redirecting/i });
     expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const checkoutURL = "https://checkout.stripe.com/pay/cs_top_up";
+    let topUps = 0;
+    server.use(
+      http.post("*/api/credits", () => {
+        topUps += 1;
+        return HttpResponse.json({ checkout_url: checkoutURL });
+      }),
+    );
+
+    render(<TopUpForm />);
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /top up/i }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith(checkoutURL));
+    await act(async () => {});
+
+    const busy = screen.getByRole("button", { name: /redirecting/i });
+    expect(busy.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(busy);
+    expect(topUps).toBe(1);
+
+    restoreFromBackForwardCache();
+
+    const topUp = screen.getByRole("button", { name: /top up/i });
+    expect(topUp.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(topUp);
+    await waitFor(() => expect(topUps).toBe(2));
   });
 });
