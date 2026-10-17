@@ -178,3 +178,23 @@ def test_invalid_boolean_raises(monkeypatch):
     monkeypatch.setenv("AUTOGPT_GUARD_ENABLED", "tru")
     with pytest.raises(ValueError, match="AUTOGPT_GUARD_ENABLED"):
         attach_guard(FastAPI())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_app_service_builds_its_http_app(monkeypatch, enabled):
+    from guard import SecurityMiddleware
+
+    from backend.util.service import AppService
+
+    class _Service(AppService):
+        @classmethod
+        def get_port(cls) -> int:
+            return 0
+
+    if enabled:
+        monkeypatch.setenv("AUTOGPT_GUARD_ENABLED", "1")
+
+    app = _Service().build_fastapi_app()
+
+    has_guard = any(m.cls is SecurityMiddleware for m in app.user_middleware)
+    assert has_guard is enabled

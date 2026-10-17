@@ -548,7 +548,7 @@ class AppService(BaseAppService, ABC):
 
         # Optional fastapi-guard security middleware (off unless
         # AUTOGPT_GUARD_ENABLED)
-        attach_guard(self.fastapi_app)
+        attach_guard(app)
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
