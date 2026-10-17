@@ -207,7 +207,12 @@ vi.mock("../components/ComposerPlusMenu", () => ({
     extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
-    extraItems?: { key: string; label: string; onSelect: () => void }[];
+    extraItems?: {
+      key: string;
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+    }[];
   }) => (
     <>
       <button
@@ -220,6 +225,7 @@ vi.mock("../components/ComposerPlusMenu", () => ({
           key={item.key}
           type="button"
           role="menuitem"
+          disabled={item.disabled}
           onClick={item.onSelect}
         >
           {item.label}
@@ -337,6 +343,98 @@ describe("ChatInput token devtool entry", () => {
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
     expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
+  });
+});
+
+describe("ChatInput + menu entries", () => {
+  it("starts voice mode from the + menu, not the overflow panel", () => {
+    const onStart = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Voice mode" }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("composer-overflow-button")).toBeNull();
+  });
+
+  it("keeps Voice mode out of the menu when the flag is off", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("menuitem", { name: "Voice mode" })).toBeNull();
+  });
+
+  it("disables Voice mode while it cannot start", () => {
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart: vi.fn(), disabled: true }}
+      />,
+    );
+
+    const item = screen.getByRole("menuitem", {
+      name: "Voice mode",
+    }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  it("opens Model and connection in a dialog, even with nothing to choose", async () => {
+    // The mocked lone connection has one model behind both tiers, which is
+    // the case where the old anchored sheet rendered nothing at all.
+    render(<ChatInput onSend={mockOnSend} />);
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Model and connection" }),
+    );
+
+    expect(await screen.findByText("AutoGPT Platform")).toBeDefined();
+  });
+
+  it.each([
+    { isStreaming: true },
+    { stacked: true },
+    { variant: "compact" as const },
+  ])(
+    "keeps the model dialog closed after hiding its control: %o",
+    async (props) => {
+      const { rerender } = render(<ChatInput onSend={mockOnSend} hasSession />);
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession {...props} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+    },
+  );
+
+  it("opens Token usage in a dialog", async () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByText("Context window")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Token usage" }));
+
+    expect(await screen.findByText("Context window")).toBeDefined();
   });
 });
 
