@@ -112,4 +112,27 @@ describe("TopUpForm", () => {
     fireEvent.click(topUp);
     await waitFor(() => expect(topUps).toBe(2));
   });
+
+  test("releases the button without leaving when no checkout URL comes back", async () => {
+    let topUps = 0;
+    server.use(
+      http.post("*/api/credits", () => {
+        topUps += 1;
+        return HttpResponse.json({ checkout_url: "" });
+      }),
+    );
+
+    render(<TopUpForm />);
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /top up/i }));
+    await waitFor(() => expect(topUps).toBe(1));
+    await act(async () => {});
+
+    const topUp = await screen.findByRole("button", { name: /top up/i });
+    expect(topUp.hasAttribute("disabled")).toBe(false);
+    expect(routerPush).not.toHaveBeenCalledWith("");
+  });
 });
