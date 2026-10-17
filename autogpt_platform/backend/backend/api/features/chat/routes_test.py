@@ -22,7 +22,7 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import ChatSession
+from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
@@ -1767,6 +1767,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ):
         return ChatSession.new(
             user_id,
@@ -1774,6 +1775,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
 
     return mocker.patch(
@@ -4605,11 +4607,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -5339,3 +5343,169 @@ def test_create_session_rejects_session_id_it_cannot_honour(
 
     assert response.status_code == 422
     create.assert_not_awaited()
+
+
+def test_create_session_replay_keeps_the_mode_it_was_created_with(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The first create starts on the expert's default approval mode. A replay
+    of the same id, even after the expert's default changed or with a pick
+    of its own, adopts that session and never resets its mode."""
+    store: dict[str, ChatSession] = {}
+
+    async def _get(session_id: str, user_id: str | None = None):
+        session = store.get(session_id)
+        if session is None or (user_id is not None and session.user_id != user_id):
+            return None
+        return session
+
+    async def _persist(**kwargs):
+        if kwargs["session_id"] in store:
+            raise DatabaseError("duplicate session id")
+        return SimpleNamespace(expert_id=kwargs["expert_id"])
+
+    mock_experts_db = MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mock_experts_db.get_autopilot_mode = AsyncMock(return_value="ask_first")
+    mock_chat_db = MagicMock()
+    mock_chat_db.create_chat_session = AsyncMock(side_effect=_persist)
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=AsyncMock,
+        side_effect=lambda session: store.setdefault(session.session_id, session),
+    )
+    mocker.patch(
+        "backend.copilot.model.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c32"
+    body = {"session_id": session_id, "expert_id": "expert-1"}
+
+    first = client.post("/sessions", json=body)
+    mock_experts_db.get_autopilot_mode.return_value = "unsupervised"
+    replay = client.post("/sessions", json=body)
+    picked_replay = client.post("/sessions", json={**body, "autopilot_mode": "auto"})
+
+    assert first.status_code == 200
+    assert first.json()["metadata"]["autopilot_mode"] == "ask_first"
+    for response in (replay, picked_replay):
+        assert response.status_code == 200
+        assert response.json()["id"] == session_id
+        assert response.json()["metadata"]["autopilot_mode"] == "ask_first"
+    assert list(store) == [session_id]
+    assert store[session_id].metadata.autopilot_mode == "ask_first"
+    mock_chat_db.create_chat_session.assert_awaited_once()
+
+
+def test_create_session_with_a_session_id_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A client-named create starts on the mode the user picked, like any
+    other create."""
+    _, create = _in_memory_session_store(mocker)
+
+    response = client.post(
+        "/sessions",
+        json={
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c33",
+            "autopilot_mode": "ask_first",
+        },
+    )
+
+    assert response.status_code == 200
+    assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_without_a_pick_leaves_the_mode_to_the_server(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] is None
+
+
+def test_create_session_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_expert_kickoff_receives_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000002"
+    _mock_get_expert(mocker, _make_expert(expert_id))
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": expert_id,
+            "expert_kickoff": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"

@@ -493,6 +493,9 @@ class CreateSessionRequest(BaseModel):
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
     session_id: UUID | None = None
+    # The approval mode the chat starts on. Leave unset to start on the
+    # expert's default (or the platform default); send only a deliberate pick.
+    autopilot_mode: AutopilotMode | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -895,6 +898,7 @@ async def create_session(
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
+    autopilot_mode = request.autopilot_mode if request else None
     client_session_id = (
         str(request.session_id) if request and request.session_id else None
     )
@@ -951,6 +955,7 @@ async def create_session(
             builder_graph_id,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            autopilot_mode=autopilot_mode,
         )
     elif expert_kickoff and expert_id is not None:
         session = await get_or_create_expert_kickoff_session(
@@ -961,6 +966,7 @@ async def create_session(
             team_id=ctx.team_id,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            autopilot_mode=autopilot_mode,
         )
     else:
         try:
@@ -974,6 +980,7 @@ async def create_session(
                     llm_auth_provider=llm_auth_provider,
                     llm_credential_id=llm_credential_id,
                     expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
                 )
             else:
                 session = await create_chat_session(
@@ -984,6 +991,7 @@ async def create_session(
                     llm_auth_provider=llm_auth_provider,
                     llm_credential_id=llm_credential_id,
                     expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
                 )
         except SessionIdConflictError as e:
             raise HTTPException(

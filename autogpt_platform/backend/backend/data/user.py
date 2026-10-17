@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -21,6 +22,7 @@ from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -460,6 +462,50 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
                 exc_info=True,
             )
     return credentials
+
+
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return still-valid user OAuth credentials approaching expiry.
+
+    This cross-user query is for trusted system callers such as the scheduler,
+    never user-scoped requests. Expired grants stay on the on-demand path.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+    )
+    now = int(time.time())
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping"
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and now < credential.access_token_expires_at < refresh_before
+            and (
+                credential.refresh_token_expires_at is None
+                or credential.refresh_token_expires_at > now
+            )
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
 
 
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:

@@ -1,6 +1,7 @@
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -9,6 +10,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useAutopilotModeStore } from "../autopilotModeStore";
 import { ChatInput } from "../components/ChatInput/ChatInput";
 import { useChatSession } from "../useChatSession";
 
@@ -118,11 +120,16 @@ function ComposerHarness() {
   );
 }
 
+interface CreateBody {
+  session_id?: string;
+  autopilot_mode?: string;
+}
+
 function loseCreateResponses(lost: number) {
-  const bodies: Array<{ session_id?: string }> = [];
+  const bodies: CreateBody[] = [];
   server.use(
     http.post("*/api/chat/sessions", async ({ request }) => {
-      const body = ((await request.json()) ?? {}) as { session_id?: string };
+      const body = ((await request.json()) ?? {}) as CreateBody;
       bodies.push(body);
       if (bodies.length <= lost) return HttpResponse.error();
       return HttpResponse.json({
@@ -165,6 +172,10 @@ function createdSession() {
   return screen.getByTestId("created-session").textContent;
 }
 
+function pickMode(mode: "ask_first" | "unsupervised") {
+  act(() => useAutopilotModeStore.getState().choose(null, mode));
+}
+
 function send(text: string) {
   fireEvent.change(screen.getByTestId("textarea"), {
     target: { value: text },
@@ -175,6 +186,7 @@ function send(text: string) {
 afterEach(() => {
   server.resetHandlers();
   testState.toast.mockClear();
+  useAutopilotModeStore.setState({ choices: {} });
 });
 
 describe("creating a session when the response is lost", () => {
@@ -241,5 +253,38 @@ describe("creating a session when the response is lost", () => {
     });
     expect(bodies).toHaveLength(2);
     expect(bodies[1].session_id).not.toBe(bodies[0].session_id);
+  });
+
+  it("retries with the picked approval mode under the same session id", async () => {
+    const bodies = loseCreateResponses(1);
+    render(<ComposerHarness />);
+    pickMode("ask_first");
+
+    send("Hi Anika");
+
+    await waitFor(() => expect(bodies).toHaveLength(2), { timeout: 3000 });
+    expect(bodies[0].autopilot_mode).toBe("ask_first");
+    expect(bodies[1].autopilot_mode).toBe("ask_first");
+    expect(bodies[1].session_id).toBe(bodies[0].session_id);
+    await waitFor(() => expect(createdSession()).toBe(bodies[0].session_id));
+  });
+
+  it("names a new session when the pick changed before the resend", async () => {
+    const bodies = loseCreateResponses(2);
+    render(<ComposerHarness />);
+    pickMode("ask_first");
+
+    send("Hi Anika");
+    await waitFor(() => expect(composerValue()).toBe("Hi Anika"), {
+      timeout: 3000,
+    });
+    pickMode("unsupervised");
+    send("Hi Anika");
+
+    await waitFor(() => expect(createdSession()).toBe(bodies[2].session_id), {
+      timeout: 3000,
+    });
+    expect(bodies[2].autopilot_mode).toBe("unsupervised");
+    expect(bodies[2].session_id).not.toBe(bodies[0].session_id);
   });
 });
