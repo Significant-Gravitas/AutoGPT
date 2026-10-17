@@ -467,10 +467,10 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
 async def get_near_expiry_oauth_credentials(
     refresh_before: int,
 ) -> list[tuple[str, OAuth2Credentials]]:
-    """Return still-valid user OAuth credentials approaching expiry.
+    """Return refreshable user OAuth credentials expired at or before the cutoff.
 
     This cross-user query is for trusted system callers such as the scheduler,
-    never user-scoped requests. Expired grants stay on the on-demand path.
+    never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
     """
     rows = await prisma.integrationcredential.find_many(
         where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
@@ -497,7 +497,7 @@ async def get_near_expiry_oauth_credentials(
             and not credential.is_managed
             and credential.refresh_token is not None
             and credential.access_token_expires_at is not None
-            and now < credential.access_token_expires_at < refresh_before
+            and credential.access_token_expires_at <= refresh_before
             and (
                 credential.refresh_token_expires_at is None
                 or credential.refresh_token_expires_at > now

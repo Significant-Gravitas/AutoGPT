@@ -1069,12 +1069,12 @@ class TestTableBackedCredentials:
             id="due",
             provider="github",
             access_token=SecretStr("access"),
-            access_token_expires_at=1_299,
+            access_token_expires_at=790_399,
             refresh_token=SecretStr("refresh"),
             scopes=[],
         )
         future = due.model_copy(
-            update={"id": "future", "access_token_expires_at": 1_301}
+            update={"id": "future", "access_token_expires_at": 790_401}
         )
         provider_runtime = due.model_copy(
             update={"id": "runtime", "refresh_strategy": "provider_runtime"}
@@ -1123,11 +1123,11 @@ class TestTableBackedCredentials:
             ]
         )
         mocker.patch("backend.data.user.prisma", mock_prisma)
-        mocker.patch("time.time", return_value=1_000)
+        mocker.patch("time.time", return_value=2_000_000)
 
-        result = await get_near_expiry_oauth_credentials(1_300)
+        result = await get_near_expiry_oauth_credentials(790_400)
 
-        assert result == [("user-due", due)]
+        assert result == [("user-due", due), ("user-expired", expired)]
         mock_prisma.integrationcredential.find_many.assert_awaited_once_with(
             where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
         )

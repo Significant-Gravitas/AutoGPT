@@ -239,9 +239,9 @@ class IntegrationCredentialsManager:
 
         return get_credentials
 
-    async def refresh_near_expiry_credentials(self) -> None:
-        """Refresh eligible OAuth credentials that enter the five-minute window."""
-        refresh_before = int(time.time()) + 300
+    async def refresh_idle_credentials(self) -> None:
+        """Maintain unused refresh grants after 14 days of access-token expiry."""
+        refresh_before = int(time.time()) - 14 * 24 * 60 * 60
         candidates = await self.store.db_manager.get_near_expiry_oauth_credentials(
             refresh_before
         )
@@ -251,7 +251,7 @@ class IntegrationCredentialsManager:
                 await self.refresh_if_needed(user_id, credentials)
             except Exception as error:
                 logger.warning(
-                    f"Proactive refresh failed for credential #{credentials.id} "
+                    f"Idle refresh failed for credential #{credentials.id} "
                     f"belonging to user {user_id[:12]} ({type(error).__name__})"
                 )
 
