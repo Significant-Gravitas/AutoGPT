@@ -981,6 +981,8 @@ class CapabilityListResponse(ToolResponseBase):
     count: int
     # Generic primitives offered when the query named a service.
     fallback: list[dict[str, Any]] = Field(default_factory=list)
+    # Connected or better-covering entries a ``kind`` filter hid.
+    other_kinds: list[dict[str, Any]] = Field(default_factory=list)
     service: str | None = None
 
 

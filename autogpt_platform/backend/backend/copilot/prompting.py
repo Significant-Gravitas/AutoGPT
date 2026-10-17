@@ -204,8 +204,8 @@ three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
 vendor API directly with the user's host-scoped credentials when nothing else
 covers the service.
 
-If `find_capability` returns nothing for a named service, `web_search` for
-"<service> MCP server" and call `run_capability` with the server URL as `id`.
+If `find_capability` without `kind` returns nothing for a named service,
+`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
