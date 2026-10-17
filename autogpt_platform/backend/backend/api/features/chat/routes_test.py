@@ -5261,7 +5261,7 @@ def test_create_session_replay_keeps_the_expert_scope(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    store, create = _in_memory_session_store(mocker)
+    _store, create = _in_memory_session_store(mocker)
     _mock_get_expert(mocker, _make_expert("expert-1"))
     session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2e"
     body = {"session_id": session_id, "expert_id": "expert-1"}
