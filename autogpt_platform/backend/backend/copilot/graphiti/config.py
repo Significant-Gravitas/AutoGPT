@@ -94,8 +94,8 @@ class GraphitiConfig(BaseSettings):
     # (one prompt per candidate; log-probabilities decide the score).
     # This config defaults the classifier to gpt-4.1-mini — the same
     # cloud slug as ``llm_model`` — so the reranker can ship with no
-    # env config. The audit estimated ~10–15% precision lift on warm
-    # context at the cost of one LLM call per session start.
+    # env config, at the cost of up to 2 * context_max_facts classifier
+    # calls per session start.
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",

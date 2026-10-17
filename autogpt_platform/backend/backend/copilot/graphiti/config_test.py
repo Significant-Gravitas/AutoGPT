@@ -191,10 +191,13 @@ class TestApplyLocalGraphitiModels:
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
 
+    @pytest.mark.parametrize("reranker_override", [None, "gpt-4.1-mini"])
     def test_rewrites_cloud_defaults_under_local(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, reranker_override: str | None
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
+        if reranker_override is not None:
+            monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", reranker_override)
         cfg = GraphitiConfig()
         # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
