@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Counts source occurrences of design-token use and of values that bypass it.
-// One pass over frontend/src. Dynamic class names are not visible to a regex,
-// so the totals are a lower bound on call sites, not a rendered-pixel census.
-
 import fs from "node:fs";
 import path from "node:path";
 
@@ -122,8 +118,6 @@ const IMPORT_TARGETS = [
   ["atomsText", /@\/components\/atoms\/Text/g],
 ];
 
-// shadcn/ui zinc cssVarsTemplate, commit d5920cc (shadcn-ui/ui).
-// Sidebar values are the sidebar registry block from that era, not the zinc template.
 const SHADCN_ZINC_LIGHT = {
   background: "0 0% 100%",
   foreground: "240 10% 3.9%",

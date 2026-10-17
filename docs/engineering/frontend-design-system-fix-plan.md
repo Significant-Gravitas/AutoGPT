@@ -141,6 +141,7 @@ Each live lane runs on its own cloud VM at the PR head. `control-ui` is not in t
 - [ ] Rewrite the colors story so the approved API is the role tokens in `globals.css`, and the ramps in `colors.ts` are the primitive layer feature code does not use.
 - [ ] Remove `border-gray-200`, `text-blue-500`, and the other default-palette classes from that story.
 - [ ] Set `tailwind.cssVariables` to `true` and `iconLibrary` to the library the icon atom actually uses, so a future shadcn add does not emit `neutral` utilities and `dark:` variants.
+- [ ] In that story, record the ramp defects beside the primitive layer. `red.900` in `colors.ts` is the string `#641D1D` plus a trailing space. `slate.700` and `slate.800` are both `#475263`. The slate ramp has no `950` step, so `text-slate-950` on login and signup is Tailwind's default slate. `customGray` in `tailwind.config.ts` has no class use under `src`. The old swatch class `bg-light-grey` does not match the key `bgLightGrey`, whose utility is `bg-bgLightGrey`. Do not change those hex values in this PR.
 
 **You see.**
 
@@ -430,7 +431,7 @@ Each live lane runs on its own cloud VM at the PR head. `control-ui` is not in t
 
 **Build.**
 
-- [ ] Search for a production toggle that adds `dark` or `dark-mode` to the document. If one exists, stop and tell the operator. The styleguide fixtures that mention dark mode are sample tool output, not a toggle.
+- [ ] Confirm the theme lock before deleting classes. `src/app/providers.tsx` sets `forcedTheme="light"`. `src/app/layout.tsx` passes `attribute="class"` and `defaultTheme="light"`, and leaves `enableSystem` commented out. `tailwind.config.ts` sets `darkMode` to the selector `.dark-mode`, so a `dark:` utility does not follow the `.dark` class next-themes would add. If a user-facing control that switches theme has landed since this plan, stop and tell the operator. The styleguide fixtures that mention dark mode are sample tool output, not a toggle.
 - [ ] Remove `dark:` utilities. The role tokens in `.dark` remain for a later theme switch.
 - [ ] Lower the `darkPrefix` baseline to the leftover count, which should be 0 in chrome files.
 
@@ -554,6 +555,12 @@ Banning only hex codes loses. Hex is 447 of the chrome color hits. The custom ra
 
 Renaming `zinc` to a private scale in the first PR loses. That is a large diff with no change a person can see. Roles first, then stop reading the ramp from feature code.
 
+Turning on `shadcn/no-raw-colors` before the role migration loses. `@shadcn/lint` 0.1.1 is already a dependency, and `.oxlintrc.json` enables only `shadcn/require-static-classes`. The same package ships `no-raw-colors`, `no-arbitrary-values`, `no-inline-styles`, `no-unknown-classes`, and `no-restyle`. `no-raw-colors` flags palette utilities, and the classes the June 2025 rule approved are palette names such as `bg-zinc-800`. The rule would fail the build on the design ramp. The audit script can count that ramp apart from the default palette. Enable `no-raw-colors` only after feature code uses role utilities.
+
+Combining the shared button restyle with a global HSL edit loses. Pull request 9570 switched the shared button to role utilities and retuned the variables on 5 March 2025. Pull request 9575 reverted that whole change the same day because the restyle broke existing screens. ds-values edits only the token block. ds-button-text edits the atoms after that.
+
+Switching Tailwind's default palette off in one config change loses. Closed testing pull request 15255 tried a remap off `dev` and still had to keep some hues distinct. ds-palette retargets each default-palette class to a role.
+
 ## Appendix C. Risks
 
 ds-values changes `--border` and the base rule `* { @apply border-border }`, so every bordered control moves together. The owner watches library, build, and copilot screenshots before asking for review.
@@ -566,7 +573,7 @@ Artwork is 18 files and 513 hex codes. The script leaves those out of the chrome
 
 The `git show origin/main:pstack/...` lines do not resolve in this repository. The coordinator reads those files from the local plugin. That is a process risk, not a product risk.
 
-ds-dark-prefix deletes `dark:` classes only after a search finds no production toggle. If a toggle exists, the owner stops. The `.dark` token block stays.
+ds-dark-prefix deletes `dark:` classes only while `forcedTheme` stays `"light"`. If a user-facing theme control exists, the owner stops. The `.dark` token block stays. Those utilities listen for `.dark-mode`, which is a different selector from `.dark`.
 
 `components.json` currently has `cssVariables` false. Until ds-contract lands, `shadcn add` will generate `neutral` utilities and the count will rise.
 
@@ -609,7 +616,7 @@ Two more systems sit beside color. Named radii such as `rounded-small` occur 78 
 
 Three buttons are imported. The atom is imported 417 times, `src/components/ui/button.tsx` 17 times, and the legacy button 32 times. The shadcn button is the neutral palette plus `dark:` variants. The atom button is the zinc ramp plus a hardcoded border. `components.json` says `cssVariables` is false and `baseColor` is `neutral`, which is how that second button got generated. `CONTRIBUTING.md` already says to prefer tokens and not to import shadcn primitives from feature code. `.oxlintrc.json` only warns on `shadcn/require-static-classes`. Nothing fails the build.
 
-`dark:` appears 501 times in chrome files. `tailwind.config.ts` says dark variants are ignored until dark mode is supported. A search of `src` found no production toggle. The `.dark` class would still activate those utilities, and they would paint default neutrals over the tokens.
+`dark:` appears 501 times in chrome files. `tailwind.config.ts` sets `darkMode` to `["class", ".dark-mode"]` and says those variants are ignored until dark mode is supported. `Providers` forces `forcedTheme="light"`. Layout sets `defaultTheme="light"` and leaves `enableSystem` commented out. A search of `src` found no user-facing theme control. A `dark:` utility follows `.dark-mode`. The stock values in the `.dark` block follow `.dark`. Turning a theme on later would load that stock zinc block unless ds-values has already replaced it.
 
 Legacy imports of `@/components/__legacy__` occur 196 times, against the rule that feature code must not use that folder.
 
@@ -669,6 +676,8 @@ What to copy is the structure, not the colors. One primitive palette. Role token
 ## Appendix H. Token architecture
 
 Keep three layers, and make the middle one the only layer feature code can see.
+
+This reverses the written rule from 19 June 2025. Pull request 10186 called the ramps in `colors.ts` the only colors, and it called the HSL variables legacy. The config comments that said so were deleted in pull request 11763 while reformatting `tailwind.config.ts`. The colors story still carries the ramp warning. The HSL layer grew after that label was gone, including the sidebar tokens in pull request 11901. Three docs still disagree. The overview example is `text-primary bg-surface`, and there is no `surface` token. The colors story says ramps only. `CONTRIBUTING.md` says prefer a token when one exists. The role layer is the one that can change the product from one file. The ramp names stay, so an existing `bg-zinc-800` class keeps its hex until a later PR stops feature code from using the ramp.
 
 The primitive layer is `src/components/styles/colors.ts`. It holds ramps. Feature code does not import it and does not use `bg-zinc-800`.
 
