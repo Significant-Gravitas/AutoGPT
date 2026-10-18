@@ -15,6 +15,7 @@ didn't: ``max_budget_usd`` above the budget (in the CLI's price units) and
 
 from claude_agent_sdk import AssistantMessage, Message, StreamEvent
 
+from backend.copilot.constants import PER_TURN_SPEND_FLOOR_USD
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
 
@@ -22,8 +23,6 @@ from .usage_meter import UsageMeter, cli_price_ratio
 
 # Model calls past the check-in before the CLI's own max_turns stops the turn.
 STEP_BACKSTOP_MARGIN = 50
-# The CLI refuses to start a query whose budget is very small.
-_CLI_MIN_BUDGET_USD = 0.5
 # Spend held back for the checkpoint: about two calls at the latest call's
 # price (the round whose tools are refused, then the reply), within bounds.
 _RESERVE_MIN_USD = 0.02
@@ -142,7 +141,7 @@ class TurnGovernor:
             return self.budget.usd * cli_price_ratio(model)
         headroom = max(_BACKSTOP_MIN_USD, _BACKSTOP_SHARE * self.budget.usd)
         cli_usd = (self.budget.usd + headroom) * cli_price_ratio(model)
-        return max(_CLI_MIN_BUDGET_USD, cli_usd)
+        return max(PER_TURN_SPEND_FLOOR_USD, cli_usd)
 
     def _update(self) -> None:
         if self.landing is not None:

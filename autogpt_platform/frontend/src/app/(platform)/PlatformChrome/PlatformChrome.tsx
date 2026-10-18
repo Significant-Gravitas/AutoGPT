@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -26,6 +27,8 @@ import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
 // Mobile header buttons float over the content, so they get a pill surface to
@@ -33,7 +36,7 @@ interface Props {
 const mobileTriggerClassName =
   "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
 
-export function PlatformChrome({ children }: Props) {
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
@@ -70,12 +73,16 @@ export function PlatformChrome({ children }: Props) {
   }
 
   if (showNewLayout) {
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
     return (
       <SidebarProvider
-        defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
-        <BuilderSidebarAutoClose />
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
