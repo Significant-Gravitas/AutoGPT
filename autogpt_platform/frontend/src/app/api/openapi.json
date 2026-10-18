@@ -4407,6 +4407,141 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/at-reset": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List turns at budget reset",
+        "description": "The chat's pending resume and send at the budget reset.",
+        "operationId": "getV2List turns at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtResetTurnsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Schedule turn at budget reset",
+        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. A chat has\nat most one of each: a resume set again replaces the earlier one, and a\nsend joins the message already waiting, so nothing written meanwhile is\nlost. Sending a message in the chat cancels a pending resume.",
+        "operationId": "postV2Schedule turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AtResetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AtResetTurn" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found, or not writable" },
+          "409": {
+            "description": "\"not_out_of_budget\": nothing to wait for, so carry on now. \"no_reset\": the allowance never refills (a trial)."
+          },
+          "413": {
+            "description": "\"message_too_long\": the message waiting plus this one would be longer than a single message may be"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Usage could not be read; retry shortly" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/at-reset/{kind}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel turn at budget reset",
+        "description": "Cancel the chat's resume or send at the budget reset; one that isn't\nset is already cancelled.",
+        "operationId": "deleteV2Cancel turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": ["resume", "send"],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
@@ -7992,6 +8127,56 @@
         }
       }
     },
+    "/api/experts/{expert_id}/mode": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Mode",
+        "description": "Set the approval mode new web chats with this expert start on.\n\nThreads already open keep the mode stored on them, and the composer's\nselector still overrides it per thread. Routines, scheduled follow-ups\nand chats driven from a linked chat platform are not gated by it.",
+        "operationId": "update_expert_mode",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertModeUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Approval modes are not enabled for this account"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -8342,6 +8527,46 @@
           },
           "503": {
             "description": "Workflow schedule cleanup temporarily unavailable"
+          }
+        }
+      }
+    },
+    "/api/feature-flags": {
+      "get": {
+        "tags": ["feature-flags"],
+        "summary": "Get Feature Flags",
+        "description": "The frontend's flags for the caller, evaluated as the backend's own reads are.",
+        "operationId": "get_feature_flags",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "visitor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed.",
+              "title": "Visitor Id"
+            },
+            "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FrontendFlagValues" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -15705,7 +15930,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.  409 means the delete could not be ordered with another\nchange to the owner's skills; nothing was deleted, so try again.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16507,6 +16732,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -19437,6 +19663,63 @@
         "required": ["pod_id"],
         "title": "AssignPodRequest"
       },
+      "AtResetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind",
+            "description": "\"resume\" picks the paused task back up; \"send\" sends ``message`` as the user's."
+          },
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64000 },
+              { "type": "null" }
+            ],
+            "title": "Message",
+            "description": "What to send. Required for send, ignored for resume."
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "AtResetRequest",
+        "description": "A turn to run when the budget resets."
+      },
+      "AtResetTurn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind"
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "run_at"],
+        "title": "AtResetTurn",
+        "description": "A turn set to run when the budget resets."
+      },
+      "AtResetTurnsResponse": {
+        "properties": {
+          "jobs": {
+            "items": { "$ref": "#/components/schemas/AtResetTurn" },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "type": "object",
+        "required": ["jobs"],
+        "title": "AtResetTurnsResponse",
+        "description": "The chat's turns set for the budget reset, at most one of each kind."
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -20972,6 +21255,29 @@
             "title": "Reset Cost",
             "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
             "default": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "low", "exhausted"],
+            "title": "State",
+            "description": "'exhausted' when a turn can't start now (a capped window or the trial allowance is used up), 'low' from 80% of the tightest window (where the meters turn amber), otherwise 'ok'.",
+            "default": "ok"
+          },
+          "limiting_window": {
+            "anyOf": [
+              { "type": "string", "enum": ["daily", "weekly", "trial"] },
+              { "type": "null" }
+            ],
+            "title": "Limiting Window",
+            "description": "The limit behind a 'low' or 'exhausted' state: the used-up window that refills last, 'trial' for the trial allowance, or the fullest window when 'low'. Null when 'ok'."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When the limiting window refills. Null when 'ok', for the trial allowance, and for a window that allows nothing (no plan), none of which refill."
           }
         },
         "type": "object",
@@ -21528,6 +21834,19 @@
             "type": "object",
             "title": "Credential Pins"
           },
+          "purpose": {
+            "type": "string",
+            "enum": ["followup", "resume", "send"],
+            "title": "Purpose",
+            "default": "followup"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -21927,6 +22246,16 @@
             "type": "boolean",
             "title": "Expert Kickoff",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           }
         },
         "additionalProperties": false,
@@ -24151,6 +24480,16 @@
             ],
             "title": "Learning Paused At"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -24431,7 +24770,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Job Title"
           },
-          "is_archived": { "type": "boolean", "title": "Is Archived" }
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
         },
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
@@ -24459,6 +24808,24 @@
         "type": "object",
         "required": ["learning_paused"],
         "title": "ExpertLearningPolicyRequest"
+      },
+      "ExpertModeUpdate": {
+        "properties": {
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
+        },
+        "type": "object",
+        "required": ["autopilot_mode"],
+        "title": "ExpertModeUpdate",
+        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default. The field is required,\nso an empty body cannot clear it by accident."
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -24866,6 +25233,16 @@
               { "type": "null" }
             ],
             "title": "Learning Paused At"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -25307,6 +25684,84 @@
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse"
+      },
+      "FrontendFlag": {
+        "type": "string",
+        "enum": [
+          "marketplace-search-terms",
+          "enable-platform-payment",
+          "artifacts-page",
+          "chat-mode-option",
+          "generic-trigger-agents",
+          "chat-search",
+          "autogpt-new-layout",
+          "chat-workspace-files",
+          "chat-pinning",
+          "task-progress-bar",
+          "hire-experts",
+          "skills-hub",
+          "settings-notifications",
+          "onboarding-brain-dump",
+          "onboarding-expert-team",
+          "graphiti-memory",
+          "graphiti-communities-enabled",
+          "dream-pass-enabled",
+          "dream-pass-invalidate-entity",
+          "dream-skill-learning-enabled",
+          "copilot-bot-platforms",
+          "copilot-voice-mode",
+          "copilot-auto-mode",
+          "copilot-stream-shadow",
+          "copilot-stream-runtime"
+        ],
+        "title": "FrontendFlag",
+        "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
+        "x-enum-varnames": [
+          "MARKETPLACE_SEARCH_TERMS",
+          "ENABLE_PLATFORM_PAYMENT",
+          "ARTIFACTS_PAGE",
+          "CHAT_MODE_OPTION",
+          "GENERIC_TRIGGER_AGENTS",
+          "CHAT_SEARCH",
+          "AUTOGPT_NEW_LAYOUT",
+          "CHAT_WORKSPACE_FILES",
+          "CHAT_PINNING",
+          "TASK_PROGRESS_BAR",
+          "HIRE_EXPERTS",
+          "SKILLS_HUB",
+          "SETTINGS_NOTIFICATIONS",
+          "ONBOARDING_BRAIN_DUMP",
+          "ONBOARDING_EXPERT_TEAM",
+          "GRAPHITI_MEMORY",
+          "GRAPHITI_COMMUNITIES_ENABLED",
+          "DREAM_PASS_ENABLED",
+          "DREAM_PASS_INVALIDATE_ENTITY",
+          "DREAM_SKILL_LEARNING_ENABLED",
+          "COPILOT_BOT_PLATFORMS",
+          "COPILOT_VOICE_MODE",
+          "COPILOT_AUTO_MODE",
+          "COPILOT_STREAM_SHADOW",
+          "COPILOT_STREAM_RUNTIME"
+        ]
+      },
+      "FrontendFlagValues": {
+        "properties": {
+          "flags": {
+            "additionalProperties": true,
+            "propertyNames": { "$ref": "#/components/schemas/FrontendFlag" },
+            "type": "object",
+            "title": "Flags",
+            "description": "Each flag the vendor answered, or null for one it has no definition of, which takes the frontend's default; one left out has no answer yet."
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False when no flag vendor is configured or it gave up starting, so every flag is its default."
+          }
+        },
+        "type": "object",
+        "required": ["flags", "configured"],
+        "title": "FrontendFlagValues"
       },
       "GenerateTestDataRequest": {
         "properties": {

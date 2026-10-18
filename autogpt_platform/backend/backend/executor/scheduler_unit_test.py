@@ -9,6 +9,7 @@ import asyncio
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,6 +26,7 @@ from backend.copilot.permissions import (
     ROUTINE_SELF_ESCALATION_TOOLS,
 )
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
@@ -51,6 +53,7 @@ from backend.executor.scheduler import (
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
+    refresh_near_expiry_credentials,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -1679,7 +1682,10 @@ class _StartupRun(NamedTuple):
 
 
 def _registered_jobs(
-    monkeypatch, interval_hours: int, startup_embedding_backfill: bool = True
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+    existing_idle_job=None,
 ) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
@@ -1693,6 +1699,11 @@ def _registered_jobs(
         startup_embedding_backfill,
     )
     mock_scheduler = MagicMock()
+    mock_scheduler.get_job.side_effect = lambda job_id, **_: (
+        existing_idle_job
+        if mock_scheduler.start.called and job_id == "refresh_near_expiry_credentials"
+        else None
+    )
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
@@ -1738,6 +1749,88 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+@pytest.mark.parametrize("offset_days", [-2, 1, None])
+def test_idle_credentials_startup_preserves_existing_daily_job(
+    monkeypatch, offset_days
+):
+    existing = MagicMock(
+        trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+        next_run_time=(
+            datetime.now(timezone.utc) + timedelta(days=offset_days)
+            if offset_days is not None
+            else None
+        ),
+    )
+    calls = _registered_jobs(
+        monkeypatch, interval_hours=6, existing_idle_job=existing
+    ).add_job_calls
+
+    assert not [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+
+def test_idle_credentials_job_is_registered_daily(monkeypatch):
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    matches = [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "refresh_near_expiry_credentials"
+    assert str(call.kwargs["trigger"]) == str(
+        CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+    )
+    assert call.kwargs["replace_existing"] is True
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == "execution"
+
+
+def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    started, release, completed = (threading.Event() for _ in range(3))
+    run_async = scheduler_module.run_async
+
+    async def refresh():
+        started.set()
+        await asyncio.to_thread(release.wait)
+        completed.set()
+
+    def short_timeout(coro, timeout=0.01):
+        return run_async(coro, timeout=timeout)
+
+    monkeypatch.setattr(scheduler_module, "_event_loop", loop)
+    monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(
+        scheduler_module,
+        "IntegrationCredentialsManager",
+        lambda: MagicMock(refresh_idle_credentials=refresh),
+    )
+    thread.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job = pool.submit(refresh_near_expiry_credentials)
+            try:
+                assert started.wait(timeout=2)
+                assert not completed.wait(timeout=0.1)
+                assert not job.done()
+            finally:
+                release.set()
+                assert completed.wait(timeout=2)
+            job.result(timeout=2)
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2)
+        loop.close()
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):

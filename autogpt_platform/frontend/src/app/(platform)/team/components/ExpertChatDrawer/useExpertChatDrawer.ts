@@ -1,7 +1,6 @@
 import {
   buildKickoffMessage,
   clearKickoffPending,
-  type ExpertKickoffMetadata,
   getKickoffStatus,
   type KickoffAttemptToken,
   markKickoffDone,
@@ -11,6 +10,15 @@ import {
 import { describeChatError } from "@/app/(platform)/copilot/chatErrorGuidance";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
+import {
+  hasAttachments,
+  validateAttachments,
+  type OutgoingMessage,
+} from "@/app/(platform)/copilot/helpers/sendWithAttachments";
+import {
+  buildStoredAttachmentParts,
+  type WorkspaceAttachment,
+} from "@/app/(platform)/copilot/helpers/workspaceAttachments";
 import { latestExpertSessionParams } from "@/app/(platform)/copilot/expertSessionQuery";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
@@ -24,7 +32,8 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChatTarget } from "./helpers";
+import { textMessage, type ChatTarget } from "./helpers";
+import { recoverUnsentMessage, useExpertChatSend } from "./useExpertChatSend";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
@@ -40,11 +49,6 @@ function notifyStartFailed(error: unknown) {
   });
 }
 
-interface PendingSend {
-  text: string;
-  metadata?: ExpertKickoffMetadata;
-}
-
 interface KickoffAttempt {
   userId: string;
   expertId: string;
@@ -55,7 +59,7 @@ interface KickoffAttempt {
  *  once the prompt went out, so a failed kickoff hands the failure back to
  *  the composer or card that sent it instead of dropping the words. */
 interface QueuedSend {
-  text: string;
+  message: OutgoingMessage;
   resolve: () => void;
   reject: (err: unknown) => void;
 }
@@ -88,7 +92,7 @@ export function useExpertChatDrawer({
   const [kickoffCheckedFor, setKickoffCheckedFor] = useState<string | null>(
     null,
   );
-  const pendingPromptRef = useRef<PendingSend | null>(null);
+  const pendingPromptRef = useRef<OutgoingMessage | null>(null);
   const queuedBehindKickoffRef = useRef<QueuedSend | null>(null);
   const kickoffAttemptRef = useRef<KickoffAttempt | null>(null);
   // Every thread reset bumps the generation; a session create that resolves
@@ -195,22 +199,39 @@ export function useExpertChatDrawer({
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      userId,
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop: stopStream,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    userId,
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
+  const { pendingSend, hold, release, send, stop } = useExpertChatSend({
+    sessionId,
+    status,
+    isReconnecting,
+    isFinishProbing,
+    sendMessage,
+    stop: stopStream,
+  });
 
   const hasAssistantReply = messages.some(
     (message) => message.role === "assistant",
   );
   useEffect(() => {
     const attempt = kickoffAttemptRef.current;
-    if (!attempt || status !== "ready" || !hasAssistantReply) return;
+    if (!attempt || !sessionId || status !== "ready" || !hasAssistantReply)
+      return;
     kickoffAttemptRef.current = null;
     void withKickoffLock(attempt.userId, attempt.expertId, async () => {
       markKickoffDone(attempt.userId, attempt.expertId, attempt.token);
@@ -220,13 +241,13 @@ export function useExpertChatDrawer({
         const queued = takeQueued();
         if (!queued) return;
         try {
-          await sendMessage({ text: queued.text });
+          await send(sessionId, queued.message);
           queued.resolve();
         } catch (err) {
           queued.reject(err);
         }
       });
-  }, [hasAssistantReply, sendMessage, status]);
+  }, [hasAssistantReply, send, sessionId, status]);
 
   useEffect(() => {
     const attempt = kickoffAttemptRef.current;
@@ -259,23 +280,28 @@ export function useExpertChatDrawer({
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
     takeQueued()?.reject(new Error("The chat was reset"));
+    release();
     kickoffAttemptRef.current = null;
     setSeedToSend(seedPrompt);
     setSuppressOnboarding(!!seedPrompt);
-  }, [threadKey, seedPrompt, setMessages]);
+  }, [threadKey, seedPrompt, setMessages, release]);
 
   useEffect(() => {
     if (!seedToSend) return;
     setSeedToSend(null);
-    void startSessionRef.current({ text: seedToSend }).catch(notifyStartFailed);
+    void startSessionRef
+      .current(textMessage(seedToSend))
+      .catch(notifyStartFailed);
   }, [seedToSend]);
 
   useEffect(() => {
     if (!sessionId || !pendingPromptRef.current) return;
     const pending = pendingPromptRef.current;
     pendingPromptRef.current = null;
-    sendMessage({ text: pending.text, metadata: pending.metadata });
-  }, [sessionId, sendMessage]);
+    void send(sessionId, pending).catch((err: unknown) =>
+      recoverUnsentMessage(pending, err),
+    );
+  }, [sessionId, send]);
 
   function startNewThread() {
     setSuppressOnboarding(false);
@@ -288,13 +314,14 @@ export function useExpertChatDrawer({
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
     takeQueued()?.reject(new Error("The chat was reset"));
+    release();
     kickoffAttemptRef.current = null;
   }
 
-  function queueBehindKickoff(text: string): Promise<void> {
+  function queueBehindKickoff(message: OutgoingMessage): Promise<void> {
     if (queuedBehindKickoffRef.current) throw new SessionStartingError();
     const settled = new Promise<void>((resolve, reject) => {
-      queuedBehindKickoffRef.current = { text, resolve, reject };
+      queuedBehindKickoffRef.current = { message, resolve, reject };
     });
     // The sender awaits `settled`; this handler only keeps a rejection that
     // lands before it does from surfacing as unhandled.
@@ -312,7 +339,7 @@ export function useExpertChatDrawer({
     const queued = takeQueued();
     if (!queued) return;
     try {
-      const started = await startSession({ text: queued.text });
+      const started = await startSession(queued.message);
       if (started) queued.resolve();
       else queued.reject(new Error("The chat was reset"));
     } catch (err) {
@@ -340,7 +367,8 @@ export function useExpertChatDrawer({
           await sendMessage(buildKickoffMessage(id, token));
           return true;
         }
-        return startSession(buildKickoffMessage(id, token), {
+        const kickoff = buildKickoffMessage(id, token);
+        return startSession(textMessage(kickoff.text, kickoff.metadata), {
           expertKickoff: true,
         });
       });
@@ -361,7 +389,7 @@ export function useExpertChatDrawer({
   }
 
   async function startSession(
-    firstMessage: PendingSend,
+    firstMessage: OutgoingMessage,
     options?: { expertKickoff?: boolean },
   ): Promise<boolean> {
     const generation = generationRef.current;
@@ -405,39 +433,48 @@ export function useExpertChatDrawer({
     }
   }
 
-  async function onSend(message: string) {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    if (!sessionId && isCheckingKickoff) {
-      await queueBehindKickoff(trimmed);
+  async function onSend(
+    text: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) {
+    const message: OutgoingMessage = {
+      text: text.trim(),
+      files: files ?? [],
+      parts: buildStoredAttachmentParts(workspaceFiles ?? []),
+    };
+    if (!message.text && !hasAttachments(message)) return;
+    if (!validateAttachments(message)) return;
+    if (!sessionId || needsKickoff()) {
+      // Nothing else draws the message until a session exists to send it to.
+      hold(message);
+      try {
+        await sendBeforeSession(message);
+      } catch (err) {
+        release(message);
+        throw err;
+      }
       return;
     }
-    if (
-      userId &&
-      expertId &&
-      kickoffCheckedFor === expertId &&
-      getKickoffStatus(userId, expertId) === "idle"
-    ) {
-      const sent = queueBehindKickoff(trimmed);
-      await startKickoff(userId, expertId);
-      await sent;
-      return;
-    }
-    if (!sessionId) {
-      await startSession({ text: trimmed });
+    if (hasAttachments(message)) {
+      void send(sessionId, message).catch((err: unknown) =>
+        recoverUnsentMessage(message, err),
+      );
       return;
     }
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
-        queueMessage(trimmed);
+        await queueFollowUpMessage(sessionId, message.text);
+        queueMessage(message.text);
       } catch (err) {
         if (
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          sendMessage({ text: trimmed });
+          void send(sessionId, message).catch((sendErr: unknown) =>
+            recoverUnsentMessage(message, sendErr),
+          );
           return;
         }
         Sentry.captureException(err);
@@ -446,7 +483,32 @@ export function useExpertChatDrawer({
       }
       return;
     }
-    sendMessage({ text: trimmed });
+    void send(sessionId, message).catch((err: unknown) =>
+      recoverUnsentMessage(message, err),
+    );
+  }
+
+  function needsKickoff() {
+    return (
+      !!userId &&
+      !!expertId &&
+      kickoffCheckedFor === expertId &&
+      getKickoffStatus(userId, expertId) === "idle"
+    );
+  }
+
+  async function sendBeforeSession(message: OutgoingMessage) {
+    if (!sessionId && isCheckingKickoff) {
+      await queueBehindKickoff(message);
+      return;
+    }
+    if (needsKickoff() && userId && expertId) {
+      const sent = queueBehindKickoff(message);
+      await startKickoff(userId, expertId);
+      await sent;
+      return;
+    }
+    await startSession(message);
   }
 
   // Cards fail quietly and keep their form, so this path owns the toast; the
@@ -481,5 +543,6 @@ export function useExpertChatDrawer({
     isLoadingSession: !!sessionId && sessionQuery.isLoading,
     isCreating,
     suppressOnboarding,
+    pendingSend,
   };
 }
