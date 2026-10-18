@@ -1,4 +1,5 @@
 import datetime
+import sys
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -154,6 +155,40 @@ class TestSafeJson:
         data = {"users": models}
         result = SafeJson(data)
         assert isinstance(result, Json)
+
+    def test_deeply_nested_container_does_not_become_repr(self):
+        """A recursion failure must not store a repr string in a JSON column.
+
+        Graph execution inputs are read back as `GraphInput`, so the old repr
+        fallback turned an oversized-but-valid request into a poisoned run.
+        """
+        # SafeJson may run under modules that raise the interpreter recursion
+        # limit; depth must stay relative to the active limit, not an absolute
+        # count that only happens to fail under pytest's default limit.
+        depth = sys.getrecursionlimit() + 200
+        nested: list[Any] = []
+        current: list[Any] = nested
+        for _ in range(depth):
+            child: list[Any] = []
+            current.append(child)
+            current = child
+
+        result = SafeJson({"value": nested})
+        # jsonable_encoder fails before it can preserve the top-level key;
+        # the important contract is a valid object, not a repr string.
+        assert result.data == {}
+
+        list_result = SafeJson(nested)
+        assert list_result.data == []
+
+    def test_scalar_serialization_error_keeps_string_fallback(self):
+        class Exploding:
+            def __str__(self):
+                raise RuntimeError("cannot stringify")
+
+        result = SafeJson(Exploding())
+        # Serialization cannot inspect this type; use the existing empty-object JSON fallback.
+        assert result.data == {}
 
     def test_edge_case_circular_reference_protection(self):
         """Test that circular references don't cause infinite loops."""

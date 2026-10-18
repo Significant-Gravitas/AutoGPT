@@ -589,6 +589,41 @@ def test_execute_graph_marks_the_onboarding_step_for_a_library_run(
     assert step.await_args.args[1] is OnboardingStep.LIBRARY_RUN_AGENT
 
 
+def test_execute_graph_accepts_deeply_nested_json_payload(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """FastAPI must decode ~950 nested arrays before the handler runs; the
+    graph accepts arbitrary JSON in its `inputs` mapping."""
+    depth = 950
+
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    started = mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(return_value=_execution_meta()),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+
+    # TestClient's JSON encoder recurses on this payload under Python 3.11.
+    body = '{"inputs":{"payload":' + "[" * depth + "]" * depth + "}}"
+    response = client.post(
+        "/graphs/graph-1/execute/1",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    received = started.await_args.kwargs["inputs"]["payload"]
+    for _ in range(depth):
+        assert isinstance(received, list)
+        received = received[0] if received else None
+    assert received is None
+
+
 def test_execute_graph_returns_structured_validation_errors(
     mocker: pytest_mock.MockFixture,
 ) -> None:

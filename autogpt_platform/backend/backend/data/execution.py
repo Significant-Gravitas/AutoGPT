@@ -62,6 +62,7 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.json import SafeJson
+from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
@@ -355,12 +356,29 @@ class GraphExecutionMeta(BaseDbModel):
                 allow_legacy_text=True,
             )
 
+        persisted_inputs = _graph_exec.inputs
+        inputs: object = persisted_inputs
+        if isinstance(persisted_inputs, str):
+            try:
+                inputs = json_loads(persisted_inputs)
+            except Exception:
+                logger.warning(
+                    "Failed to parse invalid graph execution inputs as JSON; "
+                    "treating them as absent"
+                )
+                inputs = None
+        if inputs is not None and not isinstance(inputs, dict):
+            logger.warning(
+                "Graph execution inputs are not a JSON object; treating them as absent"
+            )
+            inputs = None
+
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
-            inputs=cast(GraphInput | None, _graph_exec.inputs),
+            inputs=cast(GraphInput | None, inputs),
             credential_inputs=(
                 {
                     name: CredentialsMetaInput.model_validate(cmi)

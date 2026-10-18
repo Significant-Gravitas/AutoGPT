@@ -6,13 +6,13 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import ExecutionFailureReason
 
 
-def _db_execution(*, status: ExecutionStatus, stats: dict):
+def _db_execution(*, status: ExecutionStatus, stats: dict, inputs: object = None):
     return SimpleNamespace(
         id="exec-1",
         userId="user-1",
         agentGraphId="graph-1",
         agentGraphVersion=1,
-        inputs=None,
+        inputs=inputs,
         credentialInputs=None,
         nodesInputMasks=None,
         agentPresetId=None,
@@ -103,3 +103,23 @@ def test_persisted_failure_reason_is_preserved():
 
     assert execution.stats is not None
     assert execution.stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+
+
+@pytest.mark.parametrize(
+    ("persisted_inputs", "expected_inputs"),
+    [
+        ("{'payload': [[['abyss']]]}", None),
+        ('["not", "an", "object"]', None),
+        ('{"payload": "valid"}', {"payload": "valid"}),
+    ],
+)
+def test_persisted_string_inputs_are_normalized(persisted_inputs, expected_inputs):
+    execution = GraphExecutionMeta.from_db(
+        _db_execution(
+            status=ExecutionStatus.QUEUED,
+            stats=None,
+            inputs=persisted_inputs,
+        )
+    )
+
+    assert execution.inputs == expected_inputs
