@@ -868,3 +868,22 @@ class TestStructuredRequest:
         assert [m["role"] for m in prompted] == ["system", "user"]
         assert "emit_x" in prompted[-1]["content"]
         assert messages == [{"role": "system", "content": "sys"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", ["{}", '{"facts": []}'])
+async def test_truncated_tool_output_fails_with_usage(arguments):
+    fake = _tool_response(arguments, prompt_tokens=12, completion_tokens=4096)
+    fake.stop_reason = "max_tokens"
+    with patch(
+        "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+        return_value=_anthropic_routing(api_key="test"),
+    ), patch("backend.copilot.dream.llm.call_provider", AsyncMock(return_value=fake)):
+        with pytest.raises(DreamLLMError, match="max_tokens") as caught:
+            await structured_completion(
+                model="claude-sonnet-5",
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_SampleOutput,
+            )
+    assert caught.value.usage.input_tokens == 12
+    assert caught.value.usage.output_tokens == 4096

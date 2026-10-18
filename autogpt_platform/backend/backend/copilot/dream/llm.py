@@ -150,6 +150,9 @@ async def structured_completion(
     )
     usage = _usage_from_provider_response(response, request.model)
 
+    if response.stop_reason == "max_tokens":
+        raise DreamLLMError("LLM output truncated at max_tokens", usage)
+
     content = structured_payload(response)
     if not content:
         raise DreamLLMError("LLM returned empty content", usage)

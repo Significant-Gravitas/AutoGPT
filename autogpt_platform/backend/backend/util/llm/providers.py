@@ -229,6 +229,7 @@ class ProviderResponse:
     tool_calls: list[ToolContentBlock] | None = None
     reasoning: str | None = None
     cost_usd: float | None = None
+    stop_reason: str | None = None
     # Provider-native response object for callers that need raw access.
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_response: Any = Field(default=None, repr=False, exclude=True)
@@ -705,6 +706,7 @@ async def _call_anthropic_messages(
         or 0,
         tool_calls=tool_calls,
         reasoning=reasoning,
+        stop_reason=resp.stop_reason,
         raw_response=resp,
     )
 
@@ -1440,6 +1442,11 @@ async def download_batch_results(
                     output_tokens=output_tokens,
                     cache_read_tokens=cache_read,
                     cache_creation_tokens=cache_creation,
+                    error=(
+                        "max_tokens"
+                        if message is not None and message.stop_reason == "max_tokens"
+                        else None
+                    ),
                     raw_result=entry,
                 )
             )

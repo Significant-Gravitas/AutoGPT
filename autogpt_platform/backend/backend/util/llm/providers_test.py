@@ -471,6 +471,7 @@ class TestAnthropicMessages:
             )
         assert isinstance(result, ProviderResponse)
         assert result.content == expected
+        assert result.stop_reason == response.stop_reason
         assert result.reasoning == "reasoning"
         assert result.completion_tokens == 7
         if answer.type == "tool_use":
@@ -1895,6 +1896,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason="end_turn",
                             content=[
                                 SimpleNamespace(type="text", text='{"facts": []}')
                             ],
@@ -1936,7 +1938,8 @@ class TestDownloadBatchResults:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("thinking_first", [False, True])
-    async def test_extracts_tool_use_input_as_json(self, thinking_first):
+    @pytest.mark.parametrize("stop_reason", ["tool_use", "max_tokens"])
+    async def test_extracts_tool_use_input_as_json(self, thinking_first, stop_reason):
         """Step 5 leans on this: when the dream pass uses
         ``tool_choice={"type":"tool","name":...}`` to force structured
         output, the result is one ``tool_use`` block whose ``input``
@@ -1959,6 +1962,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason=stop_reason,
                             content=thinking
                             + [
                                 anthropic.types.ToolUseBlock(
@@ -1992,6 +1996,8 @@ class TestDownloadBatchResults:
                 api_key="x",
             )
         assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
+        assert rows[0].error == ("max_tokens" if stop_reason == "max_tokens" else None)
+        assert rows[0].output_tokens == 1
 
     @pytest.mark.asyncio
     async def test_tool_use_after_a_text_block_is_still_the_result(self):
@@ -2005,6 +2011,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason="end_turn",
                             content=[
                                 anthropic.types.TextBlock(
                                     type="text", text="Recording the proposals."
