@@ -401,7 +401,8 @@ the next section.
 
 You can pin your own slugs at any time by setting the matching
 `GRAPHITI_*_MODEL` env var; the validator only touches slots still at
-their cloud default. A custom slug (`qwen3:8b`, `hf.co/...`,
+their cloud default, including the previous `gpt-4.1-mini` default in
+existing `.env` files. A custom slug (`qwen3:8b`, `hf.co/...`,
 `my-registry.io/model:tag`) passes through untouched.
 
 ### Embeddings require an embedding model pulled into Ollama

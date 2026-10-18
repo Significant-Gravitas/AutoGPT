@@ -291,7 +291,8 @@ class GraphitiConfig(BaseSettings):
 
         Operator overrides (custom slugs like ``qwen3:8b`` or
         ``hf.co/...``) pass through untouched — only the literal cloud
-        defaults trigger rewriting. Lazy-imports ``chat_cfg`` to avoid
+        defaults and the previous ``gpt-4.1-mini`` default trigger rewriting.
+        Lazy-imports ``chat_cfg`` to avoid
         the ``copilot.sdk.env`` ↔ ``util/clients`` cycle dev's PR
         established.
         """
@@ -309,9 +310,9 @@ class GraphitiConfig(BaseSettings):
         if chat_cfg.transport.name != "local":
             return self
 
-        if self.llm_model == _DEFAULT_LLM_MODEL:
+        if self.llm_model in (_DEFAULT_LLM_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "llm_model", _LOCAL_LLM_MODEL)
-        if self.reranker_model == _DEFAULT_RERANKER_MODEL:
+        if self.reranker_model in (_DEFAULT_RERANKER_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "reranker_model", _LOCAL_RERANKER_MODEL)
         if self.embedder_model == _DEFAULT_EMBEDDER_MODEL:
             object.__setattr__(self, "embedder_model", _LOCAL_EMBEDDER_MODEL)

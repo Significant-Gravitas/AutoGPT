@@ -191,13 +191,17 @@ class TestApplyLocalGraphitiModels:
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
 
-    @pytest.mark.parametrize("reranker_override", [None, "gpt-6-luna"])
+    @pytest.mark.parametrize(
+        "model_override",
+        [None, "gpt-6-luna", "gpt-4.1-mini"],
+    )
     def test_rewrites_cloud_defaults_under_local(
-        self, monkeypatch: pytest.MonkeyPatch, reranker_override: str | None
+        self, monkeypatch: pytest.MonkeyPatch, model_override: str | None
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
-        if reranker_override is not None:
-            monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", reranker_override)
+        if model_override is not None:
+            monkeypatch.setenv("GRAPHITI_LLM_MODEL", model_override)
+            monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", model_override)
         cfg = GraphitiConfig()
         # llm_model: gpt-6-luna → Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
@@ -241,8 +245,9 @@ class TestApplyLocalGraphitiModels:
         assert cfg.reranker_model == "gpt-6-luna"
         assert cfg.embedder_model == "text-embedding-3-small"
 
-    def test_reranker_env_override_under_cloud_transport(
-        self, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize("model", ["gpt-4.1-mini", "gpt-5.6-luna"])
+    def test_model_env_overrides_under_cloud_transport(
+        self, monkeypatch: pytest.MonkeyPatch, model: str
     ) -> None:
         _patch_chat_cfg(
             monkeypatch,
@@ -252,9 +257,11 @@ class TestApplyLocalGraphitiModels:
                 base_url="https://openrouter.ai/api/v1",
             ),
         )
-        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "gpt-5.6-luna")
+        monkeypatch.setenv("GRAPHITI_LLM_MODEL", model)
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", model)
         cfg = GraphitiConfig()
-        assert cfg.reranker_model == "gpt-5.6-luna"
+        assert cfg.llm_model == model
+        assert cfg.reranker_model == model
 
 
 class TestIsEnabledForUser:
