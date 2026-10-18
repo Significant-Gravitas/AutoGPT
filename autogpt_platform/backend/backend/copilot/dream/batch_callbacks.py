@@ -1018,9 +1018,8 @@ async def _log_all_phase_costs(
 
     for phase, row in state.items():
         try:
-            if row.get("error"):
-                # Phase errored — don't record usage for a phase that
-                # didn't complete; downstream phases never ran either.
+            if row.get("error") and row["error"] != "max_tokens":
+                # Truncation still consumes billable tokens; provider failures do not.
                 continue
             phase_model = phase_models.get(phase)
             if not phase_model:
