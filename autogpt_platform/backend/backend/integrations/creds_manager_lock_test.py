@@ -28,6 +28,7 @@ async def scenario(mocker):
         host=redis_client.HOST,
         port=redis_client.PORT,
         password=redis_client.PASSWORD,
+        address_remap=redis_client._address_remap,
         socket_connect_timeout=1,
         socket_timeout=1,
     )
