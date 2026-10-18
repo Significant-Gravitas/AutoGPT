@@ -1069,6 +1069,83 @@ class TestTableBackedCredentials:
         assert where == {"ownerType": "USER", "ownerId": "u1", "status": "active"}
 
     @pytest.mark.asyncio
+    async def test_get_near_expiry_oauth_credentials_returns_only_refreshable_due_rows(
+        self, mocker
+    ):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, OAuth2Credentials
+        from backend.data.user import get_near_expiry_oauth_credentials
+        from backend.util.encryption import JSONCryptor
+
+        due = OAuth2Credentials(
+            id="due",
+            provider="github",
+            access_token=SecretStr("access"),
+            access_token_expires_at=790_399,
+            refresh_token=SecretStr("refresh"),
+            scopes=[],
+        )
+        future = due.model_copy(
+            update={"id": "future", "access_token_expires_at": 790_401}
+        )
+        provider_runtime = due.model_copy(
+            update={"id": "runtime", "refresh_strategy": "provider_runtime"}
+        )
+        managed = due.model_copy(update={"id": "managed", "is_managed": True})
+        without_refresh = due.model_copy(
+            update={"id": "without-refresh", "refresh_token": None}
+        )
+        expired = due.model_copy(
+            update={"id": "expired", "access_token_expires_at": 999}
+        )
+        expired_refresh = due.model_copy(
+            update={"id": "expired-refresh", "refresh_token_expires_at": 999}
+        )
+        without_expiry = due.model_copy(
+            update={"id": "without-expiry", "access_token_expires_at": None}
+        )
+        api_key = APIKeyCredentials(
+            id="api-key", provider="github", api_key=SecretStr("key")
+        )
+        cryptor = JSONCryptor()
+
+        def row(owner_id, credentials):
+            return MagicMock(
+                id=credentials.id,
+                ownerId=owner_id,
+                encryptedPayload=cryptor.encrypt(credentials.model_dump()),
+            )
+
+        corrupt = MagicMock(
+            id="corrupt", ownerId="user-corrupt", encryptedPayload="bad"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[
+                row("user-due", due),
+                row("user-future", future),
+                row("user-runtime", provider_runtime),
+                row("user-managed", managed),
+                row("user-without-refresh", without_refresh),
+                row("user-expired", expired),
+                row("user-expired-refresh", expired_refresh),
+                row("user-without-expiry", without_expiry),
+                row("user-api", api_key),
+                corrupt,
+            ]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+        mocker.patch("time.time", return_value=2_000_000)
+
+        result = await get_near_expiry_oauth_credentials(790_400)
+
+        assert result == [("user-due", due), ("user-expired", expired)]
+        mock_prisma.integrationcredential.find_many.assert_awaited_once_with(
+            where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+        )
+
+    @pytest.mark.asyncio
     async def test_set_updates_existing_creates_new_revokes_missing(self, mocker):
         from unittest.mock import AsyncMock, MagicMock
 

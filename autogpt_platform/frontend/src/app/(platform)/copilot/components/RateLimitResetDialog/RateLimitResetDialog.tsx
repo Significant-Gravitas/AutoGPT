@@ -15,8 +15,14 @@ import {
 } from "@/services/usageExperience/helpers";
 import { formatPaymentDue } from "@/services/usageExperience/payment";
 import { usagePresentation } from "@/services/usageExperience/presentation";
+import {
+  budgetOutTitle,
+  budgetResetSentence,
+  type ResetWait,
+} from "@/services/usageExperience/budget";
 import { useRouter } from "next/navigation";
 import type { ComponentProps } from "react";
+import { ResetWaitBox } from "./components/ResetWaitBox";
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +40,11 @@ interface Props {
   alternative?: { display_name: string } | null;
   onContinue?: () => void;
   isSwitching?: boolean;
+  /** The reset a blocked chat can wait for, when it has one. */
+  wait?: ResetWait | null;
+  meters?: ComponentProps<typeof ResetWaitBox>["meters"];
+  onSendAtReset?: () => void;
+  isSchedulingAtReset?: boolean;
 }
 
 export function RateLimitResetDialog({
@@ -52,6 +63,10 @@ export function RateLimitResetDialog({
   alternative,
   onContinue,
   isSwitching,
+  wait = null,
+  meters,
+  onSendAtReset,
+  isSchedulingAtReset,
 }: Props) {
   const router = useRouter();
   const model =
@@ -64,6 +79,10 @@ export function RateLimitResetDialog({
       },
     });
   const copy = usagePresentation(model, offer?.usageMultiplier);
+  // A top-tier plan has no upgrade to lead with, so waiting for the reset
+  // leads instead.
+  const waitTitle =
+    wait && model.isTopTier ? budgetOutTitle(wait.window) : null;
   const payment = formatPaymentDue(model.payment);
   const fallbackTitle =
     failureWindow === "trial"
@@ -97,7 +116,7 @@ export function RateLimitResetDialog({
               ? "One moment. Your work is saved."
               : unavailable
                 ? fallbackTitle
-                : copy.title}
+                : (waitTitle ?? copy.title)}
           </Text>
         </div>
       }
@@ -133,7 +152,7 @@ export function RateLimitResetDialog({
               unmask={!payment}
               className="mb-5 !text-sm !leading-6 !text-zinc-500"
             >
-              {copy.description}
+              {waitTitle && wait ? budgetResetSentence(wait) : copy.description}
             </Text>
             {copy.trialSpent && (
               <div className="mb-5">
@@ -143,6 +162,13 @@ export function RateLimitResetDialog({
                   detail="One allowance for your trial. It doesn’t refresh."
                 />
               </div>
+            )}
+            {wait && (
+              <ResetWaitBox
+                meters={meters}
+                onSendAtReset={onSendAtReset}
+                isScheduling={isSchedulingAtReset}
+              />
             )}
             {isBillingEnabled && model.targetTier && (
               <PlanOffer

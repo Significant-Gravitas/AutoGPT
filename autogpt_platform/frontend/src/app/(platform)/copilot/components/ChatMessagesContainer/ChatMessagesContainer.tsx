@@ -45,6 +45,7 @@ import {
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
@@ -397,6 +398,9 @@ export function ChatMessagesContainer({
     // text chunk. Treat it as inflight so the bubble transitions straight
     // into the next part without flashing back to "Thinking...".
     if (lastPart.type === "step-start") return true;
+
+    // A pause is how the turn ends, so nothing more is coming to wait on.
+    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
