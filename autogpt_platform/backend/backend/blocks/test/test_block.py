@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Type
 
 import pytest
@@ -46,6 +47,26 @@ async def test_rss_feed_block_skips_final_sleep_for_one_shot(monkeypatch):
 
     assert outputs == [("entries", [])]
     assert sleep_calls == []
+
+
+async def test_rss_feed_block_times_out_one_shot_fetch(monkeypatch):
+    async def parse_feed(url):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 0)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=False,
+    )
+
+    with pytest.raises(TimeoutError):
+        async for _ in block.run(input_data):
+            pass
 
 
 async def test_execute_preserves_insufficient_balance_error_type():

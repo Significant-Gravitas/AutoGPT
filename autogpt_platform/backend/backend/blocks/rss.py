@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -148,7 +149,13 @@ class ReadRSSFeedBlock(Block):
         while keep_going:
             keep_going = input_data.run_continuously
 
-            feed = await self.parse_feed(input_data.rss_url)
+            if input_data.run_continuously:
+                feed = await self.parse_feed(input_data.rss_url)
+            else:
+                feed = await asyncio.wait_for(
+                    self.parse_feed(input_data.rss_url),
+                    timeout=DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
+                )
             all_entries = []
 
             for entry in feed["entries"]:
