@@ -156,8 +156,9 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   }
 
   function rereadList() {
+    if (!sessionId) return;
     void queryClient.invalidateQueries({
-      queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? ""),
+      queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
     });
   }
 
