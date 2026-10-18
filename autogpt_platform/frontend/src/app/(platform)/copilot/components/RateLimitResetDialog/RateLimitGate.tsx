@@ -5,6 +5,8 @@ import type { ProviderFailure } from "../../providerFailure";
 import { useProviderLimitDialog } from "../ProviderLimitDialog/useProviderLimitDialog";
 import { RateLimitResetDialog } from "./RateLimitResetDialog";
 import { useUsageActions } from "@/services/usageExperience/useUsageActions";
+import { getResetWait } from "@/services/usageExperience/budget";
+import { useSendDraftAtReset } from "../SendAtReset/useSendDraftAtReset";
 
 interface Props {
   rateLimitMessage: string | null;
@@ -13,6 +15,8 @@ interface Props {
   onDismiss: () => void;
   onRefreshingChange?: (refreshing: boolean) => void;
   refreshState?: ReturnType<typeof useRateLimitRefresh>;
+  /** Sends the draft now if "Send at reset" finds the budget already back. */
+  onSendNow?: (message: string) => void | Promise<void>;
 }
 
 export function RateLimitGate({
@@ -22,6 +26,7 @@ export function RateLimitGate({
   onDismiss,
   onRefreshingChange,
   refreshState,
+  onSendNow,
 }: Props) {
   const state = useUsageActions();
   const localRefresh = useRateLimitRefresh(
@@ -38,6 +43,12 @@ export function RateLimitGate({
       onDismiss();
     },
   });
+  const { sendDraftAtReset, isScheduling } = useSendDraftAtReset({
+    sessionId,
+    onSendNow,
+    onClose: onDismiss,
+  });
+  const wait = getResetWait(state.budget);
   const failureWindow = /\b(weekly|daily|trial)\b/i
     .exec(rateLimitMessage ?? "")?.[1]
     ?.toLowerCase();
@@ -60,6 +71,12 @@ export function RateLimitGate({
       alternative={alternative}
       onContinue={continueHere}
       isSwitching={isSwitching}
+      wait={wait}
+      meters={state.usage}
+      onSendAtReset={
+        sessionId && wait ? () => void sendDraftAtReset() : undefined
+      }
+      isSchedulingAtReset={isScheduling}
     />
   );
 }

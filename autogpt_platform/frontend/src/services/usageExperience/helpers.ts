@@ -6,6 +6,9 @@ interface Usage {
   tier?: string | null;
   daily?: UsageWindow | null;
   weekly?: UsageWindow | null;
+  state?: string;
+  limiting_window?: "daily" | "weekly" | "trial" | null;
+  resets_at?: string | Date | null;
 }
 interface Trial {
   status?: string | null;
@@ -66,15 +69,25 @@ export function getUsageExperience(
       : (["daily", "weekly"] as const).filter(
           (key) => (usage?.[key]?.percent_used ?? 0) >= 100,
         );
-  const window = exhausted
+  const clientWindow = exhausted
     ? "trial"
     : (recurring.sort(
         (a, b) =>
           new Date(usage?.[b]?.resets_at ?? "").getTime() -
           new Date(usage?.[a]?.resets_at ?? "").getTime(),
       )[0] ?? null);
+  // When a turn can't start, the server names the limit that decides, down
+  // to a trial's own daily or weekly cap that the client can't tell apart
+  // from its allowance.
+  const window =
+    usage?.state === "exhausted" && usage.limiting_window
+      ? usage.limiting_window
+      : clientWindow;
   const isTopTier =
     tier === "MAX" || tier === "BUSINESS" || tier === "ENTERPRISE";
+  // The server knows when a window allows nothing (no plan, or a trial that
+  // is over): it reports no reset, and none is shown.
+  const refills = !(usage?.state === "exhausted" && usage.resets_at === null);
   return {
     tier,
     isActiveTrial,
@@ -92,7 +105,7 @@ export function getUsageExperience(
     blocked: window !== null || !!inactiveTrialStatus,
     window,
     resetsAt:
-      window && window !== "trial"
+      refills && window && window !== "trial"
         ? (usage?.[window]?.resets_at ?? null)
         : null,
     targetTier:

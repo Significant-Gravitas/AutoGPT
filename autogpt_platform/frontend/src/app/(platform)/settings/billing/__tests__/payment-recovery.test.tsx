@@ -53,7 +53,7 @@ it.each(["past_due", "unpaid"])(
     expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
     expect(
       screen.getByText(
-        "Pro was due to start on Sep 17, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.",
+        "Pro was due to start on Sep 17, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, workflows and results are saved.",
       ),
     ).toBeDefined();
     for (const amount of screen.getAllByText(/\$54\.13/)) {
@@ -75,7 +75,7 @@ it("points to the payment method row when the open invoice can't be read", async
   render(<SettingsBillingPage />);
   expect(
     await screen.findByText(
-      "Update your payment method below to continue. Your chats, agents and results are saved.",
+      "Update your payment method below to continue. Your chats, workflows and results are saved.",
     ),
   ).toBeDefined();
   expect(screen.queryByRole("link", { name: /^Pay / })).toBeNull();
