@@ -122,3 +122,47 @@ async def test_gcs_delete_raises_other_errors_when_url_contains_404(mocker, stat
 
     with pytest.raises(aiohttp.ClientResponseError):
         await storage.delete("gcs://my-bucket/path/file.txt")
+
+
+@pytest.mark.asyncio
+async def test_local_store_accepts_name_over_255_utf8_bytes(tmp_path):
+    """A name under the char cap but over NAME_MAX bytes stores fine (#15651)."""
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+    filename = "夜" * 86 + ".txt"  # 90 chars, 262 bytes
+    assert len(filename.encode("utf-8")) > 255
+
+    storage_path = await storage.store("ws", "file", filename, b"hello")
+
+    assert storage_path.endswith(".txt")
+    assert await storage.retrieve(storage_path) == b"hello"
+
+
+@pytest.mark.asyncio
+async def test_local_store_failure_leaves_no_empty_directory(tmp_path, mocker):
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+    mocker.patch.object(
+        workspace_storage.aiofiles,
+        "open",
+        side_effect=OSError(28, "No space left on device"),
+    )
+
+    with pytest.raises(OSError):
+        await storage.store("ws", "file", "data.txt", b"hello")
+
+    assert not (tmp_path / "ws" / "file").exists()
+    assert not (tmp_path / "ws").exists()
+    assert tmp_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_local_store_failure_keeps_sibling_files(tmp_path, mocker):
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+    kept = await storage.store("ws", "other", "keep.txt", b"keep")
+    mocker.patch.object(workspace_storage.aiofiles, "open", side_effect=OSError("boom"))
+
+    with pytest.raises(OSError):
+        await storage.store("ws", "file", "data.txt", b"hello")
+
+    assert not (tmp_path / "ws" / "file").exists()
+    mocker.stopall()
+    assert await storage.retrieve(kept) == b"keep"

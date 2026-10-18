@@ -1530,3 +1530,92 @@ def test_rename_file_reports_skill_capacity_conflict(mock_get_workspace, mock_re
     response = client.patch("/files/f1", json={"name": "SKILL.md"})
     assert response.status_code == 409
     assert response.json()["detail"] == "Skill limit reached (150 saved skills)."
+
+
+# -- Long multibyte file names (#15651) --
+
+
+def _patch_upload_route_db(mocker) -> None:
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
+    )
+
+
+def test_upload_name_over_255_utf8_bytes_succeeds_on_local_storage(mocker, tmp_path):
+    """Real WorkspaceManager + LocalWorkspaceStorage; only the DB is mocked.
+    Before the byte cap this raised ``[Errno 36] File name too long``."""
+    from backend.util.workspace_storage import LocalWorkspaceStorage
+
+    filename = "夜" * 86 + ".txt"  # 90 chars, 262 UTF-8 bytes
+    _patch_upload_route_db(mocker)
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+    mocker.patch("backend.util.workspace.get_workspace_storage", return_value=storage)
+    mocker.patch(
+        "backend.util.workspace.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
+    )
+    mocker.patch("backend.util.workspace.scan_content_safe", new=AsyncMock())
+    db = MagicMock()
+    db.get_workspace_total_size = AsyncMock(return_value=0)
+    db.get_workspace_file_by_path = AsyncMock(return_value=None)
+
+    async def _create(**kwargs):
+        return _make_file(
+            id=kwargs["file_id"],
+            name=kwargs["name"],
+            path=kwargs["path"],
+            storage_path=kwargs["storage_path"],
+            size_bytes=kwargs["size_bytes"],
+        )
+
+    db.create_workspace_file = AsyncMock(side_effect=_create)
+    mocker.patch("backend.util.workspace.workspace_db", return_value=db)
+
+    response = _upload(filename=filename, content=b"hello")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == filename
+    stored = db.create_workspace_file.await_args.kwargs["storage_path"]
+    assert storage._parse_storage_path(stored).read_bytes() == b"hello"
+
+
+def test_upload_unexpected_error_body_has_no_exception_text(mocker):
+    """With the production catch-all handler, a 500 doesn't echo the OSError
+    (which names the absolute storage path) back to the client."""
+    from backend.api.rest_api import handle_internal_http_error
+
+    prod_app = fastapi.FastAPI()
+    prod_app.include_router(router)
+    prod_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    prod_app.add_exception_handler(Exception, handle_internal_http_error(500))
+    prod_app.dependency_overrides = app.dependency_overrides
+    prod_client = fastapi.testclient.TestClient(prod_app, raise_server_exceptions=False)
+    _patch_upload_route_db(mocker)
+    secret = "/data/workspaces/ws-001/f1/secret-name.txt"
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=OSError(36, "File name too long", secret)
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = prod_client.post(
+        "/files/upload?session_id=sess-1",
+        files={"file": ("secret-name.txt", io.BytesIO(b"x"), "text/plain")},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+    assert "/data/" not in response.text
+    assert "File name too long" not in response.text

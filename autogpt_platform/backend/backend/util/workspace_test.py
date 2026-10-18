@@ -323,6 +323,37 @@ async def test_write_file_storage_check_routes_through_workspace_db_accessor(
     mock_db.get_workspace_total_size.assert_awaited_once_with("ws-123")
 
 
+@pytest.mark.asyncio
+async def test_write_file_stores_name_over_255_utf8_bytes_on_local_disk(
+    manager, mock_db, tmp_path
+):
+    """A CJK name of 262 UTF-8 bytes (90 chars) used to fail with
+    ``[Errno 36] File name too long`` on local storage (#15651). The on-disk
+    component is shortened; the workspace keeps the original name."""
+    from backend.util.workspace_storage import LocalWorkspaceStorage
+
+    filename = "夜" * 86 + ".txt"
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file(name=filename)
+
+    with (
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=1_000_000,
+        ),
+    ):
+        await manager.write_file(filename=filename, content=b"hello")
+
+    kwargs = mock_db.create_workspace_file.await_args.kwargs
+    assert kwargs["name"] == filename
+    assert kwargs["path"] == f"/{filename}"
+    assert await storage.retrieve(kwargs["storage_path"]) == b"hello"
+
+
 # ---------------------------------------------------------------------------
 # Path resolution: which roots a session-scoped manager takes literally
 # ---------------------------------------------------------------------------

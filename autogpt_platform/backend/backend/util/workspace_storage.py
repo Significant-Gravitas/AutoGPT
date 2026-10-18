@@ -315,8 +315,14 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write file asynchronously
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
+        try:
+            async with aiofiles.open(file_path, "wb") as f:
+                await f.write(content)
+        except BaseException:
+            # Don't leave a partial file or an empty {file_id}/ directory behind.
+            file_path.unlink(missing_ok=True)
+            self._remove_empty_parents(file_path.parent)
+            raise
 
         # Return relative path as storage path
         relative_path = file_path.relative_to(self.base_dir)
@@ -351,16 +357,19 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
             file_path.unlink()
 
             # Clean up empty parent directories
-            parent = file_path.parent
-            while parent != self.base_dir:
-                try:
-                    if parent.exists() and not any(parent.iterdir()):
-                        parent.rmdir()
-                    else:
-                        break
-                except OSError:
+            self._remove_empty_parents(file_path.parent)
+
+    def _remove_empty_parents(self, parent: Path) -> None:
+        """Remove ``parent`` and its ancestors while empty, stopping at base_dir."""
+        while parent != self.base_dir:
+            try:
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+                else:
                     break
-                parent = parent.parent
+            except OSError:
+                break
+            parent = parent.parent
 
     async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
         """
