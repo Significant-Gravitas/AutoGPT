@@ -282,7 +282,9 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
         orchestrator, "dream_lock", side_effect=AssertionError("took the lock")
     )
 
-    result = await orchestrator._execute_dream_pass_async("user-1", config=cfg)
+    result = await orchestrator._execute_dream_pass_async(
+        "user-1", expert_id=None, config=cfg
+    )
     assert result.skipped is True
     assert result.skip_reason == "no_platform_api"
 
