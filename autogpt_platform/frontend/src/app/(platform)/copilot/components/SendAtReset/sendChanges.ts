@@ -1,7 +1,10 @@
-// The send changes this page has started on each chat, and how many are
-// still out. Kept for the whole page: the composer and the "send at reset"
-// menu each change the same chat's send.
-const changes = new Map<string, { started: number; out: number }>();
+// The send changes this page has started on each chat, how many are still
+// out, and how many of them cancelled it. Kept for the whole page: the
+// composer and the "send at reset" menu each change the same chat's send.
+const changes = new Map<
+  string,
+  { started: number; out: number; cancels: number }
+>();
 
 /** Mutation callbacks that count each change to a chat's send. */
 export const countSendChanges = {
@@ -15,8 +18,17 @@ export const countSendChanges = {
   },
 };
 
-/** Call as a read of the chat's send goes out, or a wait on it begins; the
- *  returned check says whether a change from this page can have come since. */
+/** The same for cancelling a chat's send, which Edit does too. */
+export const countSendCancels = {
+  ...countSendChanges,
+  onMutate(variables: { sessionId: string }) {
+    countSendChanges.onMutate(variables);
+    changesTo(variables.sessionId).cancels += 1;
+  },
+};
+
+/** Call as a read of the chat's send goes out; once it is back, the
+ *  returned check says whether it can have missed a change from this page. */
 export function startSendRead(sessionId: string) {
   const chat = changesTo(sessionId);
   const startedBefore = chat.out === 0 ? chat.started : null;
@@ -25,10 +37,20 @@ export function startSendRead(sessionId: string) {
   };
 }
 
+/** Call as a wait on the chat's send begins; the returned check says
+ *  whether this page has cancelled the send since. */
+export function startCancelWatch(sessionId: string) {
+  const chat = changesTo(sessionId);
+  const cancelsBefore = chat.cancels;
+  return function cancelledSince() {
+    return chat.cancels !== cancelsBefore;
+  };
+}
+
 function changesTo(sessionId: string) {
   let chat = changes.get(sessionId);
   if (!chat) {
-    chat = { started: 0, out: 0 };
+    chat = { started: 0, out: 0, cancels: 0 };
     changes.set(sessionId, chat);
   }
   return chat;

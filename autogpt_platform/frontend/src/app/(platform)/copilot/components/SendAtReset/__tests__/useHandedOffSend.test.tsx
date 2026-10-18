@@ -47,7 +47,12 @@ function useNewChat(
   const scheduled = useScheduledSend({ sessionId, onSendNow });
   useHandedOffSend(sessionId, scheduled);
   const [draft] = useChatDraft(sessionDraftKey(sessionId));
-  return { draft, pending: scheduled.pending, cancel: scheduled.cancel };
+  return {
+    draft,
+    pending: scheduled.pending,
+    schedule: scheduled.schedule,
+    cancel: scheduled.cancel,
+  };
 }
 
 function serverHolding(waiting: unknown[] | "unavailable") {
@@ -298,6 +303,57 @@ describe("useHandedOffSend", () => {
         expect(cancelled).toBe(1);
         expect(result.current.draft).toBe("");
         expect(toastTitles()).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // A message the user sets meanwhile doesn't stand in for the one the gone
+    // page's request was carrying, which never landed.
+    it("still puts it back once the user adds a message of their own", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date(2026, 9, 18, 9, 0));
+        const client = listedEmpty("chat-added-to");
+        let waiting: string | null = null;
+        let reads = 0;
+        server.use(
+          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+            reads += 1;
+            return HttpResponse.json({
+              jobs: waiting
+                ? [{ kind: "send", run_at: RUN_AT, message: waiting }]
+                : [],
+            });
+          }),
+          http.post(
+            "*/api/chat/sessions/:sessionId/at-reset",
+            async ({ request }) => {
+              const body = (await request.json()) as { message: string };
+              waiting = waiting
+                ? `${waiting}\n\n${body.message}`
+                : body.message;
+              return HttpResponse.json({
+                kind: "send",
+                run_at: RUN_AT,
+                message: waiting,
+              });
+            },
+          ),
+        );
+        sentBeforeTheReload("chat-added-to", SEND_SETTLE_MS - 1000);
+
+        const { result } = renderHook(() => useNewChat("chat-added-to"), {
+          wrapper: withQueryClient(client),
+        });
+        await waitFor(() => expect(reads).toBe(1));
+        await act(() => result.current.schedule("Then the newsletter"));
+
+        await waitFor(() => expect(result.current.draft).toBe(MESSAGE), {
+          timeout: 3000,
+        });
+        expect(handedOff("chat-added-to")).toBeUndefined();
+        expect(toastTitles()).toEqual(["Couldn’t schedule your message"]);
       } finally {
         vi.useRealTimers();
       }

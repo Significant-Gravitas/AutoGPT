@@ -23,7 +23,12 @@ import {
   SentNowError,
   sessionDraftKey,
 } from "./helpers";
-import { countSendChanges, startSendRead } from "./sendChanges";
+import {
+  countSendCancels,
+  countSendChanges,
+  startCancelWatch,
+  startSendRead,
+} from "./sendChanges";
 import { useAtResetJobs } from "./useAtResetJobs";
 
 interface Args {
@@ -44,7 +49,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     mutation: countSendChanges,
   });
   const cancelSend = useDeleteV2CancelTurnAtBudgetReset({
-    mutation: countSendChanges,
+    mutation: countSendCancels,
   });
   const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
@@ -180,11 +185,11 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     const settling = sentAt + SEND_SETTLE_MS - Date.now();
     if (!readHolds(read, message) && settling > 0) {
       // The gone page's request can still be landing.
-      const changedHere = startSendRead(sessionId);
+      const cancelledSince = startCancelWatch(sessionId);
       await new Promise((resolve) => setTimeout(resolve, settling));
-      // Edited, cancelled or added to on this page meanwhile: what the user
-      // did with the send stands.
-      if (changedHere()) return;
+      // Edited or cancelled on this page meanwhile: what the user did with
+      // the send stands. A message they added doesn't stand in for this one.
+      if (cancelledSince()) return;
       read = await readSend();
     }
     if (readHolds(read, message)) {
