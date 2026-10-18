@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from backend.data import (
+    skill_deletion,
     skill_learning,
     skill_publication,
     skill_reviews,
@@ -19,7 +20,7 @@ from backend.data.db_manager import DatabaseManagerAsyncClient
 
 _CALL_RE = re.compile(
     r"(skill_learning_db|skill_reviews_db|skill_versions_db|skill_publication_db"
-    r"|skill_use_db)\(\)\s*\.\s*(\w+)"
+    r"|skill_use_db|skill_deletion_db)\(\)\s*\.\s*(\w+)"
 )
 _ROOTS = (
     Path(__file__).parent,
@@ -46,6 +47,7 @@ def test_every_accessor_call_is_exposed_on_the_rpc_client():
         assert any(
             hasattr(module, name)
             for module in (
+                skill_deletion,
                 skill_learning,
                 skill_reviews,
                 skill_versions,

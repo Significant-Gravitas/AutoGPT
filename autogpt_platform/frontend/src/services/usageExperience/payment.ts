@@ -14,6 +14,6 @@ export function formatPaymentDue(payment: UsageExperience["payment"]) {
   return {
     url: payment.payment_url,
     actionLabel: `Pay ${amount} now`,
-    description: `${plan} was due to start${date ? ` on ${date}` : ""}, but the ${amount} charge didn’t go through. Pay now and ${plan === "Your plan" ? "your plan" : plan} starts right away. Your chats, agents and results are saved.`,
+    description: `${plan} was due to start${date ? ` on ${date}` : ""}, but the ${amount} charge didn’t go through. Pay now and ${plan === "Your plan" ? "your plan" : plan} starts right away. Your chats, workflows and results are saved.`,
   };
 }

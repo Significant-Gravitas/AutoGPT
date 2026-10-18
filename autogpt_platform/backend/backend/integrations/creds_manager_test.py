@@ -6,12 +6,15 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.user import get_near_expiry_oauth_credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
+from backend.integrations.oauth.github import GitHubOAuthHandler
+from backend.util.encryption import JSONCryptor
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +87,146 @@ class TestInvokeCredsChangedHook:
         await _invoke_creds_changed_hook("user-b", "slack")
 
         assert calls == [("user-a", "github"), ("user-b", "slack")]
+
+
+@pytest.mark.asyncio
+async def test_refresh_idle_credentials_refreshes_each_candidate(mocker):
+    manager = IntegrationCredentialsManager()
+    first = _provider_runtime_credentials().model_copy(
+        update={"id": "cred-1", "refresh_strategy": "oauth_handler"}
+    )
+    second = first.model_copy(update={"id": "cred-2"})
+    get_candidates = mocker.patch.object(
+        manager.store.db_manager,
+        "get_near_expiry_oauth_credentials",
+        AsyncMock(return_value=[("user-1", first), ("user-2", second)]),
+    )
+    refresh = mocker.patch.object(manager, "refresh_if_needed", AsyncMock())
+
+    with patch("backend.integrations.creds_manager.time.time", return_value=1_000):
+        await manager.refresh_idle_credentials()
+
+    get_candidates.assert_awaited_once_with(1_000 - 14 * 86_400)
+    assert refresh.await_args_list == [
+        (("user-1", first), {}),
+        (("user-2", second), {}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_refresh_idle_credentials_continues_after_a_failure(mocker, caplog):
+    manager = IntegrationCredentialsManager()
+    first = _provider_runtime_credentials().model_copy(
+        update={"id": "cred-1", "refresh_strategy": "oauth_handler"}
+    )
+    second = first.model_copy(update={"id": "cred-2"})
+    mocker.patch.object(
+        manager.store.db_manager,
+        "get_near_expiry_oauth_credentials",
+        AsyncMock(return_value=[("user-1", first), ("user-2", second)]),
+    )
+    refresh = mocker.patch.object(
+        manager,
+        "refresh_if_needed",
+        AsyncMock(side_effect=[RuntimeError("provider rejected secret-token"), None]),
+    )
+
+    await manager.refresh_idle_credentials()
+
+    assert refresh.await_args_list == [
+        (("user-1", first), {}),
+        (("user-2", second), {}),
+    ]
+    assert "secret-token" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("idle_days", [15, 30])
+@pytest.mark.parametrize("fail_first", [False, True])
+async def test_idle_sweep_maintains_unused_credentials_and_recovers_after_failure(
+    mocker, idle_days, fail_first
+):
+    manager = IntegrationCredentialsManager()
+    now = 1_750_000_000
+    original = _provider_runtime_credentials().model_copy(
+        update={
+            "provider": "github",
+            "refresh_strategy": "oauth_handler",
+            "access_token_expires_at": now - idle_days * 86_400,
+            "refresh_token_expires_at": now + 30 * 86_400,
+        }
+    )
+    stored = {original.id: original}
+    handler = GitHubOAuthHandler("client", "secret", "https://example.com/callback")
+    clock = mocker.patch("time.time", return_value=now)
+    database = mocker.patch("backend.data.user.prisma")
+    database.integrationcredential.find_many = AsyncMock(
+        side_effect=lambda **_: [
+            MagicMock(
+                id=c.id,
+                ownerId="user-a",
+                encryptedPayload=JSONCryptor().encrypt(c.model_dump()),
+            )
+            for c in stored.values()
+        ]
+    )
+    mocker.patch.object(
+        manager.store.db_manager,
+        "get_near_expiry_oauth_credentials",
+        AsyncMock(side_effect=get_near_expiry_oauth_credentials),
+    )
+    mocker.patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=handler))
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=_owned_lock()))
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(side_effect=lambda _user, credential_id: stored[credential_id]),
+    )
+
+    async def persist(_user, credentials):
+        assert _user == "user-a"
+        stored[credentials.id] = credentials
+
+    mocker.patch.object(manager.store, "update_creds", AsyncMock(side_effect=persist))
+    response = MagicMock()
+    response.json.return_value = {
+        "access_token": "rotated-access",
+        "refresh_token": "rotated-refresh",
+        "expires_in": 3_600,
+        "refresh_token_expires_in": 60 * 86_400,
+        "scope": "repo",
+    }
+    post = AsyncMock(
+        side_effect=([RuntimeError("temporary failure")] if fail_first else [])
+        + [response, response]
+    )
+    mocker.patch(
+        "backend.integrations.oauth.github.Requests", return_value=MagicMock(post=post)
+    )
+    mocker.patch.object(handler, "_request_username", AsyncMock(return_value="user"))
+
+    await manager.refresh_idle_credentials()
+    if fail_first:
+        assert stored[original.id] == original
+        clock.return_value += 86_400
+        await manager.refresh_idle_credentials()
+
+    assert post.await_count == 1 + fail_first
+    assert post.await_args.kwargs["data"]["refresh_token"] == "refresh"
+    assert stored[original.id].access_token.get_secret_value() == "rotated-access"
+    assert stored[original.id].refresh_token == SecretStr("rotated-refresh")
+    assert stored[original.id].access_token_expires_at == clock.return_value + 3_600
+
+    for _ in range(14):
+        clock.return_value += 86_400
+        await manager.refresh_idle_credentials()
+    assert post.await_count == 1 + fail_first
+
+    clock.return_value += 86_400
+    await manager.refresh_idle_credentials()
+    assert post.await_count == 2 + fail_first
+    assert post.await_args.kwargs["data"]["refresh_token"] == "rotated-refresh"
 
 
 @pytest.mark.asyncio
@@ -175,6 +318,40 @@ async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker
     handler.needs_refresh.assert_called_once_with(fresh)
     handler.refresh_tokens.assert_not_awaited()
     acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("replacement_exists", [True, False])
+async def test_locked_refresh_reloads_after_waiting_for_a_lease(
+    mocker, replacement_exists
+):
+    manager = IntegrationCredentialsManager()
+    stale = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler", "access_token_expires_at": 1_100}
+    )
+    fresh = stale.model_copy(update={"access_token_expires_at": 2_000})
+    lock = _owned_lock()
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=lock))
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(side_effect=[stale, fresh if replacement_exists else None]),
+    )
+    update = mocker.patch.object(manager.store, "update_creds", AsyncMock())
+    handler = MagicMock()
+    handler.needs_refresh.side_effect = lambda c: c.access_token_expires_at < 1_300
+    handler.refresh_tokens = AsyncMock(return_value=fresh)
+
+    if replacement_exists:
+        assert await manager._refresh_locked("user-a", stale, handler) is fresh
+    else:
+        with pytest.raises(ValueError, match="not found"):
+            await manager._refresh_locked("user-a", stale, handler)
+
+    handler.refresh_tokens.assert_not_awaited()
+    update.assert_not_awaited()
+    lock.release.assert_awaited_once()
 
 
 @pytest.mark.asyncio

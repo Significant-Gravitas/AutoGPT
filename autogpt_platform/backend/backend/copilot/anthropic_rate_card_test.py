@@ -244,3 +244,32 @@ class TestOpus5Rates:
             cache_ttl=cache_ttl,
         )
         assert cost == expected_cost
+
+
+class TestHaiku5_5Rates:
+    """Haiku 5.5 is the default title/classifier model: a rate-card refresh that
+    drops its key must fail here, not silently bill at the Opus 4.1 fallback."""
+
+    def test_haiku_5_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-haiku-5-5") == 128000
+
+    def test_haiku_5_5_billed_at_published_rates_without_fallback(self, caplog):
+        cost = compute_anthropic_cost_usd(
+            model="claude-haiku-5-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        assert cost == pytest.approx(0.6)
+        assert "falling back" not in caplog.text
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 0.135), ("1h", 0.21)])
+    def test_haiku_5_5_cache_rates(self, cache_ttl, expected_cost):
+        cost = compute_anthropic_cost_usd(
+            model="claude-haiku-5-5",
+            prompt_tokens=2_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_creation_tokens=1_000_000,
+            cache_ttl=cache_ttl,
+        )
+        assert cost == pytest.approx(expected_cost)
