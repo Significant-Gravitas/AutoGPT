@@ -89,7 +89,7 @@ export function PaywallPlanChoices({
         </div>
       )}
       <Text variant="small" tone="secondary" className="text-center text-xs">
-        Your conversations and agents stay saved. Cancel anytime.
+        Your conversations and workflows stay saved. Cancel anytime.
       </Text>
     </section>
   );
@@ -115,7 +115,7 @@ function PlanChoice({
   const features = isPro
     ? [
         "Experts for content, sales and research, with Otto coordinating",
-        "Agents that keep working in the background on a schedule",
+        "Workflows that keep working in the background on a schedule",
       ]
     : [
         plan.usage

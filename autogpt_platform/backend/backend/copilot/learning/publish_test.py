@@ -289,6 +289,61 @@ async def test_revocation_keeps_invalidated_head_retryable_if_restore_fails(
 
 
 @pytest.mark.asyncio
+async def test_learning_waits_for_the_owner_when_revocation_left_no_fallback(
+    fake_store, workspace
+):
+    """With no earlier version to restore, revocation leaves the invalidated
+    version current. Learning then waits for the owner and says why,
+    instead of reporting a save that must recover."""
+    source = await fake_store.upsert_source_revision(
+        USER,
+        expert_id=EXPERT,
+        source_kind=KIND,
+        source_id="withdrawn",
+        revision="1",
+        evidence_refs=[],
+        outcome_signals=[],
+    )
+    head = await fake_store.ensure_head(USER, EXPERT, NAME)
+    learned = await fake_store.commit_version_safe(
+        USER,
+        head=head,
+        expected_current_version=head.current_version,
+        draft=VersionDraft(
+            content=_content(BODY_V1),
+            description="Import a CSV",
+            triggers=["csv"],
+            origin="saved_overnight",
+            sources=[{"source_id": source.id}],
+        ),
+    )
+    await fake_store.complete_publication(
+        USER, version_id=learned.version.id, review_id=None
+    )
+    excluded = await fake_store.set_source_eligibility(
+        USER, source.id, "excluded", excluded_by_user_id=USER
+    )
+    await revocation.invalidate_versions_for_source(USER, excluded, "excluded")
+
+    outcome = await publish.publish_learned_version(
+        publish.PublishRequest(
+            user_id=USER,
+            expert_id=EXPERT,
+            skill_name=NAME,
+            description="Import a CSV",
+            triggers=["csv"],
+            body=BODY_V2,
+            summary="Validate the row count",
+            origin="saved_overnight",
+        )
+    )
+
+    assert outcome.status == "paused"
+    assert "restore an earlier version" in outcome.reason
+    workspace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_completed_restore_is_acknowledged_if_suppression_recording_fails(
     fake_store, workspace, monkeypatch, caplog
 ):

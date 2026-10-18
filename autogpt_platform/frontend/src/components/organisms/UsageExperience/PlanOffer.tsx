@@ -44,8 +44,8 @@ export function PlanOffer({
             ? "A full daily and weekly allowance once payment goes through"
             : "Experts for content, sales and research, with Otto coordinating",
           freshUsage
-            ? "Your chats, agents and files stay where they are"
-            : "Agents that keep working in the background on a schedule",
+            ? "Your chats, workflows and files stay where they are"
+            : "Workflows that keep working in the background on a schedule",
         ]
       : [
           usageMultiplier
