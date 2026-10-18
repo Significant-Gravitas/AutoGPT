@@ -29,6 +29,7 @@ from backend.data.db import query_raw_with_schema
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
+from backend.util.sql import escape_like
 
 from . import skill_model
 from .categories import category_filter_values
@@ -603,7 +604,7 @@ def _live_version_where(
     if category_values := category_filter_values(category):
         where["categories"] = {"has_some": category_values}
     if search_query and search_query.strip():
-        needle = search_query.strip()
+        needle = escape_like(search_query.strip())
         where["OR"] = [
             {"name": {"contains": needle, "mode": "insensitive"}},
             {"description": {"contains": needle, "mode": "insensitive"}},
