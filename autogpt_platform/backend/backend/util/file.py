@@ -70,18 +70,6 @@ MAX_FILENAME_BYTES = 240
 _MAX_EXTENSION_LENGTH = 20
 
 
-def _truncate_utf8(text: str, max_bytes: int) -> str:
-    """Cut ``text`` to at most ``max_bytes`` UTF-8 bytes on a character boundary."""
-    return text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
-
-
-def _fits(text: str) -> bool:
-    return (
-        len(text) <= MAX_FILENAME_LENGTH
-        and len(text.encode("utf-8")) <= MAX_FILENAME_BYTES
-    )
-
-
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize and truncate filename to prevent filesystem errors.
@@ -111,6 +99,18 @@ def sanitize_filename(filename: str) -> str:
         sanitized = f"file_{uuid.uuid4().hex[:8]}"
 
     return sanitized
+
+
+def _truncate_utf8(text: str, max_bytes: int) -> str:
+    """Cut ``text`` to at most ``max_bytes`` UTF-8 bytes on a character boundary."""
+    return text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
+
+
+def _fits(text: str) -> bool:
+    return (
+        len(text) <= MAX_FILENAME_LENGTH
+        and len(text.encode("utf-8")) <= MAX_FILENAME_BYTES
+    )
 
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:

@@ -8,6 +8,7 @@ for Google Cloud Storage (cloud deployments) and local filesystem (self-hosted d
 import asyncio
 import hashlib
 import logging
+import tempfile
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -265,6 +266,8 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         else:
             self.base_dir = Path(get_data_path()) / "workspaces"
 
+        self.base_dir = self.base_dir.resolve()
+
         # Ensure base directory exists
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -314,13 +317,21 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         # Create parent directories
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write file asynchronously
+        temporary_path: Path | None = None
         try:
-            async with aiofiles.open(file_path, "wb") as f:
+            with tempfile.NamedTemporaryFile(
+                dir=file_path.parent, prefix=".upload-", delete=False
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+            async with aiofiles.open(temporary_path, "wb") as f:
                 await f.write(content)
+            temporary_path.replace(file_path)
         except BaseException:
-            # Don't leave a partial file or an empty {file_id}/ directory behind.
-            file_path.unlink(missing_ok=True)
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception("Failed to remove incomplete workspace upload")
             self._remove_empty_parents(file_path.parent)
             raise
 
@@ -363,10 +374,7 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         """Remove ``parent`` and its ancestors while empty, stopping at base_dir."""
         while parent != self.base_dir:
             try:
-                if parent.exists() and not any(parent.iterdir()):
-                    parent.rmdir()
-                else:
-                    break
+                parent.rmdir()
             except OSError:
                 break
             parent = parent.parent
