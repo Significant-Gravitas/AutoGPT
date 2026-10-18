@@ -300,7 +300,21 @@ instrument_fastapi(
 )
 
 
-def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+def handle_internal_http_error(
+    status_code: int = 500,
+    log_error: bool = True,
+    expose_detail: bool | None = None,
+):
+    """Build an exception handler that answers with ``status_code``.
+
+    ``detail`` carries ``str(exc)`` only when ``expose_detail`` is true, which
+    defaults to 4xx: those mappings are deliberate, user-facing messages. 5xx
+    exceptions are unexpected, and their text can hold file paths, SQL or
+    hostnames, so the client gets a generic detail and the logs keep the rest.
+    """
+    if expose_detail is None:
+        expose_detail = status_code < 500
+
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
             if status_code >= 500:
@@ -328,7 +342,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         return fastapi.responses.JSONResponse(
             content={
                 "message": f"Failed to process {request.method} {request.url.path}",
-                "detail": str(exc),
+                "detail": str(exc) if expose_detail else "Internal server error",
                 "hint": hint,
             },
             status_code=status_code,
@@ -376,7 +390,10 @@ app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
-app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
+# MissingConfigError messages name the missing setting for the operator.
+app.add_exception_handler(
+    MissingConfigError, handle_internal_http_error(503, expose_detail=True)
+)
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 # UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
 # maps to HTTP 402. log_error=False because it's not an error from the
