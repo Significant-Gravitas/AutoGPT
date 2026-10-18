@@ -260,6 +260,19 @@ describe("useScheduledSend", () => {
         );
       });
 
+      it("still edits once a change it made has settled", async () => {
+        const { calls } = serverJoining();
+        const chat = await openChat("chat-edit-after-add");
+        await act(() =>
+          chat.menu.result.current.schedule("Then the newsletter"),
+        );
+
+        await act(() => chat.composer.result.current.edit());
+
+        expect(calls.cancelled).toBe(1);
+        expect(chat.draft.result.current[0]).toBe(FIRST);
+      });
+
       it("leaves it alone when the read lands before the message", async () => {
         const { calls, hold } = serverJoining();
         const chat = await openChat("chat-read-during-add");

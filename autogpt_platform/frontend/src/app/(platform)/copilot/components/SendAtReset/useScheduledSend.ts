@@ -47,15 +47,16 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   });
   const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
-  async function schedule(message: string) {
+  /** `onAnswered` hears as soon as the server answers, before a send it
+   *  says to make now instead streams its reply. */
+  async function schedule(message: string, onAnswered?: () => void) {
     if (!sessionId) throw new Error("This chat isn’t ready yet");
     // A chat sends one message at the reset; the server adds this one to
     // any already waiting and answers with the joined message.
     try {
-      const response = await scheduleSend.mutateAsync({
-        sessionId,
-        data: { kind: "send", message },
-      });
+      const response = await scheduleSend
+        .mutateAsync({ sessionId, data: { kind: "send", message } })
+        .finally(onAnswered);
       if (response.status !== 200) return;
       const job = response.data;
       await writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
@@ -85,9 +86,9 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
 
   /** For a message no composer is holding: a failure goes back into the
    *  chat's draft instead of being thrown. */
-  async function scheduleQuietly(message: string) {
+  async function scheduleQuietly(message: string, onAnswered?: () => void) {
     try {
-      await schedule(message);
+      await schedule(message, onAnswered);
     } catch (error) {
       draft.write((current) => returnToDraft(current, message));
       toastSendFailure({
@@ -125,9 +126,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     const { send } = read;
     // Already sent, or cancelled elsewhere.
     if (!send) {
-      void queryClient.invalidateQueries({
-        queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? ""),
-      });
+      rereadList();
       return;
     }
     if (!(await unschedule())) return;
@@ -155,6 +154,12 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     }
   }
 
+  function rereadList() {
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? ""),
+    });
+  }
+
   function toastChangeFailure(error: unknown) {
     toast({
       title: "Couldn’t change your scheduled message",
@@ -172,15 +177,18 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     // doesn't add this message, and Edit puts what it cancels in the draft.
     const read = await readSend();
     if ("send" in read && holdsMessage(read.send?.message ?? "", message)) {
+      // The list, read as the chat opened, can predate the send landing.
+      rereadList();
       return;
     }
     draft.write((current) => returnToDraft(current, message));
+    const unread = "error" in read;
     toastSendFailure({
-      title:
-        "error" in read
-          ? "Couldn’t check your scheduled message"
-          : SCHEDULE_FAILED_TITLE,
-      error: "error" in read ? read.error : undefined,
+      title: unread
+        ? "Couldn’t check your scheduled message"
+        : SCHEDULE_FAILED_TITLE,
+      // Sent again, a message the server may hold would be joined on twice.
+      error: unread ? new Error("It may already be set to send") : undefined,
       recovery: "your message is back in the composer",
     });
   }
