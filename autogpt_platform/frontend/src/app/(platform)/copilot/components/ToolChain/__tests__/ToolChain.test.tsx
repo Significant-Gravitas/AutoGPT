@@ -12,6 +12,7 @@ import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { PendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { ToolChain } from "../ToolChain";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -434,13 +435,8 @@ describe("ToolChain", () => {
       "e.g. Europe",
     ) as HTMLTextAreaElement;
     await user.type(field, "Wstern");
-    await user.type(field, "e", {
-      initialSelectionStart: 1,
-      initialSelectionEnd: 1,
-    });
-
-    expect(field.value).toBe("Western");
-    expect(field.selectionStart).toBe(2);
+    await expectTypingKept(field, "e", 1);
+    await expectTypingKept(field, " 日本語");
   });
 
   it("reports a rejected send without bringing the card back", async () => {
