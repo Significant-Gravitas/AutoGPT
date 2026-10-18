@@ -389,6 +389,11 @@ async def upload_file(
         raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
     except VirusScanError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
+    except OSError as e:
+        logger.exception("Failed to store uploaded workspace file")
+        raise fastapi.HTTPException(
+            status_code=500, detail="Unable to store file. Please try again."
+        ) from e
     except ValueError as e:
         # write_file raises ValueError for path-conflict, size-limit, and
         # storage-quota cases; map each to its correct HTTP status.
