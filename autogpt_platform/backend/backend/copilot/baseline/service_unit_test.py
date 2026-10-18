@@ -3635,6 +3635,7 @@ async def _run_baseline_turn(
             dict(new=AsyncMock(return_value="")),
         ),
         (f"{_BASELINE}.drain_pending_safe", dict(new=AsyncMock(return_value=[]))),
+        (f"{_BASELINE}.resolve_answered", dict(new=AsyncMock(return_value=[]))),
         (
             f"{_BASELINE}._resolve_baseline_model",
             dict(

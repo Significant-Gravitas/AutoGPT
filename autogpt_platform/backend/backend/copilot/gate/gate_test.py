@@ -242,7 +242,7 @@ async def test_the_supervisor_reads_an_old_first_message_without_its_memory_bloc
 
     assert decision.allowed
     assert supervisor.await_args is not None
-    assert supervisor.await_args.kwargs["user_message"] == "tidy the repo"
+    assert supervisor.await_args.kwargs["user_messages"] == ["tidy the repo"]
     assert session.messages[0].content == first
 
 

@@ -1821,6 +1821,7 @@ class TestFirstTurnWarmContextIsEphemeral:
         refresh,
         extra: list[tuple[str, dict]] | None = None,
         message: str | None = None,
+        expect_error: bool = False,
     ) -> MagicMock:
         """Drive one turn, sending the session's last message unless
         ``message`` is given. Returns the ``chat_db`` stand-in that saw every
@@ -1875,7 +1876,7 @@ class TestFirstTurnWarmContextIsEphemeral:
                 session=session,
             ):
                 events.append(event)
-        assert not [e for e in events if isinstance(e, StreamError)]
+        assert bool([e for e in events if isinstance(e, StreamError)]) == expect_error
         return db
 
     @staticmethod
@@ -2220,11 +2221,10 @@ class TestFirstTurnWarmContextIsEphemeral:
     @pytest.mark.parametrize(
         "failure", ["raised", "reported"], ids=["ECONNRESET", "rate-limit"]
     )
-    async def test_a_first_turn_retry_reads_memory_again_after_a_forget(self, failure):
-        """The first send carries the first turn's block; the attempt runs a
-        ``memory_forget`` and fails transiently; the retry must read memory
-        again rather than resend the first block, even for a message the
-        substance gate would skip (a first turn always recalls)."""
+    async def test_a_first_turn_failure_does_not_replay_a_completed_forget(
+        self, failure
+    ):
+
         forgotten: list[bool] = []
         forces: list[bool] = []
         queries: list[str] = []
@@ -2241,18 +2241,13 @@ class TestFirstTurnWarmContextIsEphemeral:
             first_block=_nova_block(forgotten=False),
             refresh=_refresh,
             extra=[(f"{_SVC}._compute_transient_backoff", dict(return_value=0))],
+            expect_error=True,
         )
 
-        assert forgotten and len(queries) == 2
-        first, retry = queries
-        assert _NOVA_FORGOTTEN in first
-        assert forces == [True]
-        assert _NOVA_FORGOTTEN not in retry
-        assert _NOVA_KEPT in retry
-        assert len(INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
-        assert retry.count("<temporal_context") == 1
-        assert strip_injected_memory_text(retry) == strip_injected_memory_text(first)
-        assert "nova recovery" in strip_injected_memory_text(retry)
+        assert forgotten and len(queries) == 1
+        assert forces == []
+        assert len(INJECTED_MEMORY_BLOCK_RE.findall(queries[0])) == 1
+        assert "nova recovery" in strip_injected_memory_text(queries[0])
 
     @pytest.mark.asyncio
     async def test_a_first_turn_overflow_retry_reads_memory_again(self):
