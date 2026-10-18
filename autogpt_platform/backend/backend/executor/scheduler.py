@@ -32,8 +32,17 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.at_reset import (
+    AT_RESET_JOB_NAMES,
+    AtResetKind,
+    at_reset_schedule_id,
+    fire_verdict,
+    load_at_reset_chat,
+)
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
+from backend.copilot.db import PaginatedMessages
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
@@ -42,9 +51,10 @@ from backend.copilot.dream.scheduling import (
 )
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
-from backend.copilot.model import create_chat_session, get_chat_session
+from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
@@ -55,6 +65,7 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -190,7 +201,7 @@ def get_event_loop():
     return _event_loop
 
 
-def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
+def run_async(coro, timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
     """Run a coroutine in the shared event loop and wait for completion."""
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
@@ -399,6 +410,9 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
+    if args.purpose != "followup":
+        await _execute_at_reset_turn(args, args.purpose)
+        return
     routine = await _routine_for_turn(args)
     if routine is not None and not routine.enabled:
         # Deleting a routine's jobs is best effort — the scheduler can refuse,
@@ -932,6 +946,219 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
             f"its schedule {schedule_id}",
             exc_info=True,
         )
+
+
+# When a chat's resume or send at the reset was cancelled, by job id. A job
+# cancelled while it runs is already out of the job store, so the cancel
+# finds nothing to remove; before firing or putting itself back the job looks
+# here. In process, like the jobs themselves: one scheduler runs them.
+_at_reset_cancels: dict[str, datetime] = {}
+_at_reset_cancels_lock = threading.Lock()
+_AT_RESET_CANCEL_MEMORY = timedelta(hours=2)
+
+# An at-reset turn that can't fire yet (the chat is busy, the budget or the
+# expert can't be read, the queue turned it away) tries again five minutes
+# later, this many times: an hour, so a long turn already running in the chat
+# can finish. One still out of budget moves to the next reset instead, which
+# starts the count again.
+_MAX_AT_RESET_RETRIES = 12
+
+
+async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) -> None:
+    """Fire a "Resume at reset" or "Send at reset" the user set on a chat.
+
+    ``fire_verdict`` decides whether it still should; this carries that out.
+    Whenever it can't fire yet it goes back under its own id, so the chat
+    keeps at most one of each kind.
+    """
+    label = _session_id_label(args)
+    try:
+        chat = await _at_reset_chat(args)
+        if chat is None:
+            return
+        verdict = await fire_verdict(kind, chat, args.created_at)
+        if _cancelled_after_set(args):
+            logger.info(
+                f"{kind}-at-reset turn for session {label} was cancelled "
+                "while it ran; dropping it"
+            )
+            return
+        if verdict.action == "fire":
+            await _dispatch_at_reset_turn(args, kind, chat.session)
+        elif verdict.action == "wait" and verdict.run_at is not None:
+            logger.info(
+                f"{kind}-at-reset turn for session {label} is still out of "
+                f"budget; moving it to {verdict.run_at.isoformat()}"
+            )
+            await _readd_at_reset_turn(args, run_at=verdict.run_at, retries=0)
+        elif verdict.action == "retry":
+            await _rearm_at_reset_turn(args, reason=verdict.why)
+        else:
+            logger.info(
+                f"Dropping {kind}-at-reset turn for session {label}: {verdict.why}"
+            )
+    except Exception as e:
+        logger.warning(
+            f"{kind}-at-reset turn for session {label} could not be dispatched",
+            exc_info=True,
+        )
+        await _rearm_at_reset_turn(args, reason=f"{type(e).__name__}: {e}")
+
+
+async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None:
+    """The chat an at-reset turn fires into, or None once that's been handled.
+
+    A chat that is gone, someone else's, or out of the job's scope removes the
+    job, as for a follow-up; an expert that can't be looked up tries again.
+    """
+    chat = (
+        await load_at_reset_chat(args.session_id, args.user_id)
+        if args.session_id
+        else None
+    )
+    if chat is None or chat.session.expert_id != args.expert_id:
+        logger.info(
+            f"At-reset turn {args.schedule_id} skipped — session "
+            f"{_session_id_label(args)} is gone or out of scope; removing it"
+        )
+        await _self_delete_copilot_turn_schedule(args)
+        return None
+    if args.expert_id is None:
+        return chat
+    status = await _expert_scope_status(args.user_id, args.expert_id)
+    if status == "unavailable":
+        await _rearm_at_reset_turn(args, reason="the expert could not be looked up")
+        return None
+    if status != "active":
+        await _skip_inactive_expert_scope(args, status)
+        return None
+    return chat
+
+
+async def _dispatch_at_reset_turn(
+    args: "CopilotTurnJobArgs", kind: AtResetKind, session: ChatSessionInfo
+) -> None:
+    """Start the turn the way a follow-up into an existing chat starts.
+
+    A resume is a system note: grey in the chat, an instruction to the model.
+    A send is the user's own words, written before the reset, so unlike a
+    model-authored follow-up it lands as their message.
+    """
+    is_send = kind == "send"
+    await schedule_turn(
+        session_id=session.session_id,
+        user_id=args.user_id,
+        turn_id=str(uuid.uuid4()),
+        message=args.message if is_send else RESUMED_AT_RESET_NOTE,
+        is_user_message=is_send,
+        tool_call_id="scheduled_followup",
+        tool_name="schedule_followup",
+        unattended=True,
+        credential_pins=args.credential_pins,
+        organization_id=args.organization_id,
+        team_id=args.team_id,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
+        # It carries on the user's own chat, so under the chat's own
+        # limits, as a message sent there now would be (a builder chat's).
+        permissions=resolve_session_permissions(session),
+        scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id),
+    )
+    logger.info(
+        f"Dispatched {kind}-at-reset turn for session {session.session_id[:12]}"
+    )
+
+
+async def _rearm_at_reset_turn(args: "CopilotTurnJobArgs", *, reason: str) -> None:
+    """Try an at-reset turn again in five minutes, a bounded number of times."""
+    label = _session_id_label(args)
+    if args.cap_retry_count >= _MAX_AT_RESET_RETRIES:
+        logger.error(
+            f"Dropping {args.purpose}-at-reset turn for session {label} after "
+            f"{_MAX_AT_RESET_RETRIES} retries ({reason})"
+        )
+        return
+    run_at = datetime.now(tz=timezone.utc) + timedelta(
+        seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
+    )
+    logger.info(
+        f"{args.purpose}-at-reset turn for session {label} can't fire yet "
+        f"({reason}); retry {args.cap_retry_count + 1}/{_MAX_AT_RESET_RETRIES} "
+        f"at {run_at.isoformat()}"
+    )
+    await _readd_at_reset_turn(args, run_at=run_at, retries=args.cap_retry_count + 1)
+
+
+async def _readd_at_reset_turn(
+    args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
+) -> None:
+    """Put an at-reset turn back under its own id, keeping when it was set."""
+    if _cancelled_after_set(args):
+        logger.info(
+            f"Not putting back the {args.purpose}-at-reset turn for session "
+            f"{_session_id_label(args)}: it was cancelled while it ran"
+        )
+        return
+    try:
+        # Under its own id this is safe to repeat, and a put-back lost on a
+        # connection the scheduler had just closed would drop the user's turn.
+        await get_scheduler_client(should_retry=True).add_copilot_turn_schedule(
+            user_id=args.user_id,
+            session_id=args.session_id,
+            message=args.message,
+            run_at=run_at,
+            user_timezone=args.user_timezone,
+            cap_retry_count=retries,
+            organization_id=args.organization_id,
+            team_id=args.team_id,
+            expert_id=args.expert_id,
+            credential_pins=args.credential_pins,
+            purpose=args.purpose,
+            schedule_id=args.schedule_id,
+            created_at=args.created_at,
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to put back the {args.purpose}-at-reset turn for session "
+            f"{_session_id_label(args)}",
+            exc_info=True,
+        )
+
+
+def _put_back_onto(
+    newer: "CopilotTurnJobInfo", message: str
+) -> tuple[str, datetime | None]:
+    """A send put back after the user wrote another while it ran: both go,
+    this one first, as the newer job the user set. One already put back there
+    (a repeated call whose first try landed) is left as it is."""
+    if newer.message.startswith(f"{message}\n\n"):
+        return newer.message, newer.created_at
+    return f"{message}\n\n{newer.message}", newer.created_at
+
+
+def _remember_at_reset_cancel(job_id: str) -> None:
+    now = datetime.now(tz=timezone.utc)
+    with _at_reset_cancels_lock:
+        stale = [
+            key
+            for key, at in _at_reset_cancels.items()
+            if now - at > _AT_RESET_CANCEL_MEMORY
+        ]
+        for key in stale:
+            del _at_reset_cancels[key]
+        _at_reset_cancels[job_id] = now
+
+
+def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
+    """Whether the user cancelled this job after it was set: setting it
+    again after a cancel makes a new job, set later than the cancel."""
+    if args.schedule_id is None:
+        return False
+    with _at_reset_cancels_lock:
+        cancelled_at = _at_reset_cancels.get(args.schedule_id)
+    if cancelled_at is None:
+        return False
+    return args.created_at is None or args.created_at <= cancelled_at
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -1626,6 +1853,11 @@ def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
         )
 
 
+def refresh_near_expiry_credentials() -> None:
+    """Keep max_instances guarding the sweep until every refresh finishes."""
+    run_async(IntegrationCredentialsManager().refresh_idle_credentials(), timeout=None)
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -1885,6 +2117,14 @@ class CopilotTurnJobArgs(BaseModel):
     # the follow-up was made, which every fire runs on (SECRT-2804). A routine
     # keeps its pins on its row instead. Empty on rows persisted before pins.
     credential_pins: CredentialPins = Field(default_factory=dict)
+    # Every job is a follow-up but the two a user sets on an out-of-budget
+    # chat: "Resume at reset" and "Send at reset" (``copilot/at_reset.py``).
+    # Those keep one id per chat, stay out of the agent's schedule tools, and
+    # check the budget when they fire. Rows from before this load as followups.
+    purpose: Literal["followup", "resume", "send"] = "followup"
+    # When the job was first set, kept when it is put back for a retry; a
+    # resume stands down if the user carried the chat on after it.
+    created_at: datetime | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -2451,6 +2691,7 @@ class Scheduler(AppService):
         if self.register_system_tasks:
             # After start: until then get_job only sees pending jobs, not the
             # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
         self._report_parked_jobs()
 
@@ -2460,6 +2701,28 @@ class Scheduler(AppService):
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _register_idle_credential_sweep(self) -> None:
+        """Keep an existing daily job's overdue run or explicit pause intact."""
+        job_id = "refresh_near_expiry_credentials"
+        trigger = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if (
+            existing is not None
+            and str(existing.trigger) == str(trigger)
+            and _job_timezone_name(existing) == "UTC"
+        ):
+            return
+        self.scheduler.add_job(
+            refresh_near_expiry_credentials,
+            id=job_id,
+            trigger=trigger,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+            jobstore=Jobstores.EXECUTION.value,
+        )
 
     # Paused and fired-once rows are never deleted, so this scan is bounded
     # rather than left to grow with the backlog — startup precedes the RPC port.
@@ -2618,6 +2881,9 @@ class Scheduler(AppService):
         routine_id: str | None = None,
         credential_pins: CredentialPins | None = None,
         routine_schedule_id: str | None = None,
+        purpose: Literal["followup", "resume", "send"] = "followup",
+        schedule_id: str | None = None,
+        created_at: datetime | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2628,6 +2894,14 @@ class Scheduler(AppService):
 
         The ``*_retry_count`` arguments are set internally to bound their
         respective transient retry paths; normal callers should leave them at 0.
+
+        *purpose* ``"resume"`` / ``"send"`` marks a chat's turn at the budget
+        reset; it comes with the chat's own *schedule_id*
+        (``at_reset_schedule_id``), so adding it again replaces the earlier
+        job. *created_at* is passed only when putting a job back, to keep when
+        it was first set; a job put back after the user set a newer one
+        under the same id while it ran doesn't overwrite that one (see
+        ``_put_back_onto``).
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2638,10 +2912,18 @@ class Scheduler(AppService):
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
 
+        if purpose != "followup" and schedule_id and created_at is not None:
+            newer = self._newer_at_reset_job(schedule_id, created_at)
+            if newer is not None and purpose == "resume":
+                # Set again while this one ran: the newer resume stands.
+                return newer
+            if newer is not None:
+                message, created_at = _put_back_onto(newer, message)
+
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
         job_args = CopilotTurnJobArgs(
-            schedule_id=str(uuid.uuid4()),
+            schedule_id=schedule_id or str(uuid.uuid4()),
             user_id=user_id,
             session_id=session_id,
             message=message,
@@ -2658,12 +2940,15 @@ class Scheduler(AppService):
             routine_id=routine_id,
             credential_pins=credential_pins or {},
             routine_schedule_id=routine_schedule_id,
+            purpose=purpose,
+            created_at=created_at or datetime.now(timezone.utc),
         )
-        default_name = (
-            f"copilot turn (session {session_id[:8]})"
-            if session_id
-            else "copilot turn (new chat)"
-        )
+        if purpose != "followup":
+            default_name = AT_RESET_JOB_NAMES[purpose]
+        elif session_id:
+            default_name = f"copilot turn (session {session_id[:8]})"
+        else:
+            default_name = "copilot turn (new chat)"
         job = self._persist_schedule(
             dispatch_func=execute_copilot_turn,
             job_args=job_args,
@@ -2675,10 +2960,52 @@ class Scheduler(AppService):
             f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "
             f"for session {session_label} in timezone {user_timezone}"
         )
-        _record_copilot_turn_schedule_created(
-            job_args, job, title=name or message[:80] or "Follow-up"
-        )
+        # An at-reset turn is put back under its own id every time it can't
+        # fire yet, so the feed and the schedule metrics would count it again
+        # each time; only follow-ups are recorded.
+        if purpose == "followup":
+            _record_copilot_turn_schedule_created(
+                job_args, job, title=name or message[:80] or "Follow-up"
+            )
         return CopilotTurnJobInfo.from_db(job_args, job)
+
+    def _newer_at_reset_job(
+        self, schedule_id: str, than: datetime
+    ) -> CopilotTurnJobInfo | None:
+        """The job under *schedule_id*, if it was set after *than*."""
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        info = _job_to_info(job) if job else None
+        if not isinstance(info, CopilotTurnJobInfo) or info.created_at is None:
+            return None
+        return info if info.created_at > than else None
+
+    @expose
+    def cancel_at_reset_turn(
+        self, user_id: str, session_id: str, kind: AtResetKind
+    ) -> bool:
+        """Remove a chat's resume or send at the budget reset, if it has one.
+
+        Idempotent and quiet when there is nothing to remove: the chat route
+        calls this whenever the user sends a message, so a missing job is the
+        usual case rather than an error. Returns whether a job was removed.
+        """
+        job_id = at_reset_schedule_id(kind, session_id)
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        info = _job_to_info(job) if job else None
+        if job is not None and (info is None or info.user_id != user_id):
+            return False
+        # Remembered even with no job to remove: it may be running right
+        # now, about to fire or to put itself back.
+        _remember_at_reset_cancel(job_id)
+        if job is None:
+            return False
+        job.remove()
+        # Its index row stays for the next listing to drop. The chat's next
+        # turn at reset reuses this id, and that drop puts back the row of a
+        # job set again meanwhile, which a delete here would not.
+        self._invalidate_jobs_cache()
+        logger.info(f"Removed {kind}-at-reset job for session {session_id[:12]}")
+        return True
 
     @expose
     def delete_graph_execution_schedule(
@@ -3043,6 +3370,7 @@ class Scheduler(AppService):
             return full_scan()
         if self.scheduler.running:
             self._delete_schedule_index_rows(dangling)
+            self._restore_reused_index_rows(dangling)
         return jobs
 
     def _upsert_schedule_index_row(
@@ -3074,6 +3402,30 @@ class Scheduler(AppService):
             self._schedule_index.delete_many(job_ids)
         except Exception:
             logger.warning("Failed to remove stale schedule index rows", exc_info=True)
+
+    def _restore_reused_index_rows(self, job_ids: list[str]) -> None:
+        """Put back the row of any job set again under one of *job_ids*, the
+        rows just dropped for having no job.
+
+        A chat's turn at the budget reset reuses its id, so a new one can be
+        set between a listing finding the old job gone and the drop, and the
+        drop would hide it from the chat's listings until the next reconcile.
+        Every schedule is added before its row is written, so reading the job
+        after the drop catches each such row.
+        """
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                logger.warning(
+                    "Could not load job %s to check its dropped index row",
+                    job_id,
+                    exc_info=True,
+                )
+                continue
+            info = _job_to_info(job) if job else None
+            if info is not None:
+                self._upsert_schedule_index_row(job_id, info)
 
     def _mark_schedule_index_ready(self, failure_version: int) -> None:
         with self._jobs_cache_lock:
@@ -3147,6 +3499,7 @@ class Scheduler(AppService):
         if not self.scheduler.running:
             return
         index.delete_many(confirmed_gone)
+        self._restore_reused_index_rows(confirmed_gone)
 
         self._mark_schedule_index_ready(failure_version)
         logger.info(
@@ -3840,6 +4193,7 @@ class SchedulerClient(AppServiceClient):
 
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
+    cancel_at_reset_turn = endpoint_to_async(Scheduler.cancel_at_reset_turn)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
     update_execution_schedule = endpoint_to_async(
         Scheduler.update_graph_execution_schedule

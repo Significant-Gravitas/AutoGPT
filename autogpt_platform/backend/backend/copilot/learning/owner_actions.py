@@ -129,6 +129,7 @@ async def restore_version(
     actor_user_id: str,
     reason: str = "Restored by the owner",
     suppress_behavior: bool = True,
+    replacing_version_id: str | None = None,
 ) -> PublishOutcome:
     """Restore prior content as a new version, suppressing owner-rejected behavior.
 
@@ -136,7 +137,9 @@ async def restore_version(
     one), affects future use only, and — as the first-release boundary —
     turns automatic improvements off for the skill so the undone change
     cannot reappear without an explicit decision. Source revocation skips
-    behavior suppression because it withdraws evidence, not the procedure.
+    behavior suppression because it withdraws evidence, not the procedure,
+    and passes ``replacing_version_id``: the version it read as current, so
+    a skill deleted or changed since that read is left alone.
     """
     versions = skill_versions_db()
     target = await versions.get_version(user_id, version_id)
@@ -156,6 +159,13 @@ async def restore_version(
     head = await versions.get_head(user_id, owner_key_for(expert_id), skill_name)
     if head is None:
         return PublishOutcome(status="conflict", reason="skill has no version history")
+    if (
+        replacing_version_id is not None
+        and head.current_version_id != replacing_version_id
+    ):
+        return PublishOutcome(
+            status="conflict", reason="the skill changed before it could be restored"
+        )
     replaced = (
         await versions.get_version(user_id, head.current_version_id)
         if head.current_version_id

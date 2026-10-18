@@ -11,7 +11,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prometheus_client import REGISTRY
 
+from backend.blocks.typesafe._budget import prepare_state
 from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.gate import jev
 from backend.copilot.gate.classifier import supervise
@@ -129,7 +131,92 @@ async def test_without_a_key_jev_is_never_called():
     llm.assert_awaited_once()
 
 
-async def _supervise(call_jev, llm_answer, *, enabled: bool | None = True):
+# The request scrolled past the first window: four messages came after it.
+_LONG_CHAT = [
+    "Tidy my workspace: delete the old screenshots under reports/",
+    "thanks",
+    "what time is it in Tokyo?",
+    "and in Lima?",
+    "ok go on",
+]
+
+
+async def test_a_not_asked_for_ask_on_a_long_chat_runs_once_the_whole_chat_is_read():
+    call_jev = AsyncMock(
+        side_effect=[_result(_ANSWERS["ask_on_q1"]), _result(_ANSWERS["allow"])]
+    )
+    asks = _asks()
+
+    judgement, _, _ = await _supervise(
+        call_jev, "ask\nreason: not asked for", user_messages=_LONG_CHAT
+    )
+
+    assert judgement.allowed
+    first, second = (_request_in(c.args[1]) for c in call_jev.await_args_list)
+    assert _LONG_CHAT[0] not in first
+    assert all(message in second for message in _LONG_CHAT)
+    # The second call is counted like the first.
+    assert _asks() == asks + 1
+
+
+@pytest.mark.parametrize("answer", ["ask_by_choice", "allow"])
+async def test_only_a_not_asked_for_ask_is_judged_again(answer):
+    call_jev = _jev(answer)
+
+    judgement, _, _ = await _supervise(
+        call_jev, "ask\nreason: cannot be undone", user_messages=_LONG_CHAT
+    )
+
+    assert judgement.allowed is (answer == "allow")
+    call_jev.assert_awaited_once()
+
+
+async def test_it_is_judged_again_at_most_once():
+    call_jev = _jev("ask_on_q1")
+
+    judgement, _, _ = await _supervise(
+        call_jev, "ask\nreason: not asked for", user_messages=_LONG_CHAT
+    )
+
+    assert not judgement.allowed
+    assert call_jev.await_count == 2
+
+
+async def test_a_chat_the_first_judgement_read_whole_is_not_judged_again():
+    call_jev = _jev("ask_on_q1")
+
+    await _supervise(
+        call_jev, "ask\nreason: not asked for", user_messages=_LONG_CHAT[-3:]
+    )
+
+    call_jev.assert_awaited_once()
+
+
+async def test_a_history_too_long_to_read_whole_keeps_its_newest_messages():
+    notes = [f"note {n}: " + "background " * 1_500 for n in range(8)]
+    call_jev = AsyncMock(
+        side_effect=[_result(_ANSWERS["ask_on_q1"]), _result(_ANSWERS["allow"])]
+    )
+
+    await _supervise(
+        call_jev, "ask\nreason: not asked for", user_messages=[*notes, *_LONG_CHAT]
+    )
+
+    state = call_jev.await_args_list[1].args[1]
+    second = _request_in(state)
+    assert not prepare_state(state, jev.QUESTIONS).truncated
+    assert all(message in second for message in _LONG_CHAT)
+    assert "note 0:" not in second
+    assert "omitted by the system" not in second
+
+
+async def _supervise(
+    call_jev,
+    llm_answer,
+    *,
+    enabled: bool | None = True,
+    user_messages: list[str] | None = None,
+):
     llm = (
         AsyncMock(side_effect=llm_answer)
         if isinstance(llm_answer, BaseException)
@@ -143,17 +230,28 @@ async def _supervise(call_jev, llm_answer, *, enabled: bool | None = True):
     ):
         if enabled:
             with patch.object(jev, "_api_key", "test-key"):
-                judgement = await _judge()
+                judgement = await _judge(user_messages)
         else:
-            judgement = await _judge()
+            judgement = await _judge(user_messages)
     return judgement, llm, call_jev
 
 
-async def _judge():
+async def _judge(user_messages: list[str] | None = None):
     return await supervise(
         tool_name="bash_exec",
         args={"command": "ls reports/"},
-        user_message="list the files in reports",
+        user_messages=user_messages or ["list the files in reports"],
+    )
+
+
+def _request_in(state: str) -> str:
+    return state.split("<<<BEGIN USER REQUEST ")[1].split("<<<END USER REQUEST")[0]
+
+
+def _asks() -> float:
+    return (
+        REGISTRY.get_sample_value("copilot_gate_first_stage_total", {"outcome": "ask"})
+        or 0.0
     )
 
 
