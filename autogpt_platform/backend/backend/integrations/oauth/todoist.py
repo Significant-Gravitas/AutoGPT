@@ -85,7 +85,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
         self, credentials: OAuth2Credentials
     ) -> OAuth2Credentials:
         if not credentials.refresh_token:
-            return credentials
+            raise ValueError("No refresh token available")
         response = await Requests().post(
             self.TOKEN_URL,
             data={

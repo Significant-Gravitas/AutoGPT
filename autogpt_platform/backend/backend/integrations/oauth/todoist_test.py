@@ -58,15 +58,36 @@ async def test_refresh_sends_the_refresh_token_and_stores_the_rotated_one(
     assert fresh.access_token_expires_at > time.time()
 
 
-async def test_replayed_refresh_never_keeps_the_spent_refresh_token(
+async def test_replayed_refresh_drops_the_spent_token_and_fails_after_expiry(
     mocker: MockerFixture,
 ):
     # Todoist answers a reused refresh token inside its 60 s window without one.
-    _mock_token_endpoint(mocker, {"access_token": "a2", "expires_in": 3600})
+    post = _mock_token_endpoint(mocker, {"access_token": "a2", "expires_in": 3600})
+    clock = mocker.patch("time.time", return_value=1_750_000_000)
+    handler = _handler()
 
-    fresh = await _handler().refresh_tokens(_credentials())
+    fresh = await handler.refresh_tokens(_credentials())
 
     assert fresh.refresh_token is None
+    assert fresh.access_token_expires_at == 1_750_003_600
+    assert await handler.get_access_token(fresh) == "a2"
+
+    clock.return_value = 1_750_003_601
+    with pytest.raises(ValueError, match="No refresh token available"):
+        await handler.get_access_token(fresh)
+    post.assert_awaited_once()
+
+
+async def test_legacy_access_token_remains_usable_without_a_refresh_token(
+    mocker: MockerFixture,
+):
+    post = _mock_token_endpoint(mocker, {})
+    credentials = _credentials().model_copy(
+        update={"refresh_token": None, "access_token_expires_at": None}
+    )
+
+    assert await _handler().get_access_token(credentials) == "a1"
+    post.assert_not_awaited()
 
 
 def _handler() -> TodoistOAuthHandler:
