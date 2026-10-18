@@ -21,8 +21,8 @@ from .schemas import DreamPassUsage, DreamPhase, PhaseUsage
 def batch_pass_usage(
     state: dict[str, dict[str, Any]], phase_models: dict[str, str]
 ) -> DreamPassUsage | None:
-    """The usage of every phase of a batch pass whose result landed without an
-    error, priced on the model it ran on; ``None`` when none did."""
+    """The usage of every phase of a batch pass whose result consumed tokens, including
+    truncated output, priced on the model it ran on; ``None`` when none did."""
     phases = [
         phase_usage(phase, _priced(usage))
         for phase in PHASE_TIERS
@@ -36,8 +36,9 @@ def landed_phase_usage(
     row: dict[str, Any] | None, model: str | None
 ) -> InferenceUsage | None:
     """The tokens a batch phase's state row records, on *model*. ``None`` for a
-    phase that has not landed, came back errored, or has no model recorded."""
-    if row is None or row.get("error") or not model:
+    phase that has not landed, failed before producing output, or has no model recorded.
+    """
+    if row is None or not model or (row.get("error") and row["error"] != "max_tokens"):
         return None
     return InferenceUsage(
         model=model,
