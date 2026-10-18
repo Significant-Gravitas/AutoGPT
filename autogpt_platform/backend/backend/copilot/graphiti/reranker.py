@@ -1,7 +1,7 @@
 """Boolean/logprob reranking with a 16-token floor and non-reasoning Luna.
 
-Luna omits the legacy tokenizer's logit bias; the prompt requests True/False
-and the returned first-token probability supplies the relevance score.
+Luna omits the legacy tokenizer's logit bias; only True/False first-token
+probabilities supply relevance scores. Unusable responses score zero.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                 (
                     response.choices[0].logprobs.content[0].top_logprobs
                     if response.choices[0].logprobs is not None
-                    and response.choices[0].logprobs.content is not None
+                    and response.choices[0].logprobs.content
                     else []
                 )
                 for response in responses
@@ -101,10 +101,16 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                     scores.append(0.0)
                     continue
                 norm_logprobs = np.exp(top_logprobs[0].logprob)
-                if top_logprobs[0].token.strip().split(" ")[0].lower() == "true":
+                token = top_logprobs[0].token.strip().lower()
+                if token == "true":
                     scores.append(norm_logprobs)
-                else:
+                elif token == "false":
                     scores.append(1 - norm_logprobs)
+                else:
+                    logger.warning(
+                        "Reranker returned a non-boolean token; scoring zero"
+                    )
+                    scores.append(0.0)
 
             results = [
                 (passage, score)

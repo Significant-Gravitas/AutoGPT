@@ -85,7 +85,7 @@ async def test_rank_requests_at_least_sixteen_max_tokens():
     for kwargs in captured:
         assert kwargs["max_tokens"] >= 16
         # The boolean-classifier mechanics must survive the patch —
-        # logit_bias pins output to True/False and logprobs drive scores.
+        # Legacy logit bias nudges True/False and logprobs drive scores.
         assert kwargs["logit_bias"] == {"6432": 1, "7983": 1}
         assert kwargs["logprobs"] is True
 
@@ -124,6 +124,48 @@ async def test_rank_handles_empty_logprobs_without_desync():
 
     assert [passage for passage, _ in ranked] == ["relevant", "no_response"]
     assert dict(ranked)["no_response"] == 0.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gpt-6-luna", "gpt-4.1-mini"])
+@pytest.mark.parametrize("token", ["Yes", "No", "\n", '"', "True.", "True enough"])
+async def test_rank_rejects_non_boolean_tokens(model, token):
+    client, _ = _client_with(
+        [
+            _logprob_response(token, -0.7),
+            _logprob_response("True", -0.05),
+            _logprob_response("False", -0.05),
+        ]
+    )
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model=model), client=client
+    )
+
+    ranked = await reranker.rank("query", ["unscorable", "relevant", "irrelevant"])
+
+    assert [passage for passage, _ in ranked] == [
+        "relevant",
+        "irrelevant",
+        "unscorable",
+    ]
+    assert dict(ranked)["unscorable"] == 0.0
+    assert dict(ranked)["relevant"] > 0.9
+    assert 0 < dict(ranked)["irrelevant"] < 0.1
+
+
+@pytest.mark.asyncio
+async def test_rank_handles_empty_token_content():
+    empty_response = _empty_logprob_response()
+    empty_response.choices[0].logprobs.content = []
+    client, _ = _client_with([empty_response, _logprob_response("True", -0.05)])
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-6-luna"), client=client
+    )
+
+    ranked = await reranker.rank("query", ["unscorable", "relevant"])
+
+    assert [passage for passage, _ in ranked] == ["relevant", "unscorable"]
+    assert dict(ranked)["unscorable"] == 0.0
 
 
 @pytest.mark.asyncio
