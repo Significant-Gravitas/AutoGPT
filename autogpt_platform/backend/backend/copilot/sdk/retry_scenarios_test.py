@@ -1108,6 +1108,11 @@ def _make_sdk_patches(
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
+        (f"{_SVC}.resolve_answered", dict(new_callable=AsyncMock, return_value=[])),
+        (
+            f"{_SVC}.drain_pending_for_persist",
+            dict(new_callable=AsyncMock, return_value=[]),
+        ),
         # Bypass budget resolution — it hits Redis via the rate-limit
         # helpers, which the retry_scenarios mocks don't stand up. The task
         # cap is fine for retry-flow assertions (covered in turn_budget_test).
@@ -1275,6 +1280,7 @@ class TestFollowUpWarmContextCallSite:
         refresh,
         client_factory,
         extra: list[tuple[str, dict]] | None = None,
+        expect_error: bool = False,
     ) -> list:
         patches = _make_sdk_patches(
             session,
@@ -1310,7 +1316,7 @@ class TestFollowUpWarmContextCallSite:
                 session=session,
             ):
                 events.append(event)
-        assert not [e for e in events if isinstance(e, StreamError)]
+        assert bool([e for e in events if isinstance(e, StreamError)]) == expect_error
         return events
 
     @pytest.mark.asyncio
@@ -1631,12 +1637,9 @@ class TestFollowUpWarmContextCallSite:
     @pytest.mark.parametrize(
         "failure", ["raised", "reported"], ids=["ECONNRESET", "rate-limit"]
     )
-    async def test_a_transient_retry_reads_memory_again_after_a_forget(self, failure):
-        """Forget, transient failure, retry. The failed attempt's tool calls
-        are not streamed output, so the error retries the attempt, and the
-        rollback takes the forget out of the history the retry sends. The
-        retry must read memory again: the user's text byte for byte, exactly
-        one block, the unrelated fact in it and the forgotten one not."""
+    async def test_a_transient_failure_does_not_replay_a_completed_forget(
+        self, failure
+    ):
         forgotten: list[bool] = []
         queries: list[str] = []
 
@@ -1652,17 +1655,12 @@ class TestFollowUpWarmContextCallSite:
             _refresh,
             self._forget_then_fail(queries, forgotten, failure),
             extra=[(f"{_SVC}._compute_transient_backoff", dict(return_value=0))],
+            expect_error=True,
         )
 
-        assert forgotten and len(queries) == 2
-        first, retry = queries
-        assert "violet-913" in first
-        assert "violet-913" not in retry
-        assert "Hector supervises the Nova recovery" in retry
-        assert len(_INJECTED_MEMORY_BLOCK_RE.findall(retry)) == 1
-        assert retry.count("<temporal_context") == 1
-        asked = _strip_injected_memory_text(retry)
-        assert asked == _strip_injected_memory_text(first)
+        assert forgotten and len(queries) == 1
+        assert len(_INJECTED_MEMORY_BLOCK_RE.findall(queries[0])) == 1
+        asked = _strip_injected_memory_text(queries[0])
         assert "retrieve the Nova recovery details" in asked
 
     @pytest.mark.asyncio
