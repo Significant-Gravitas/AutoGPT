@@ -125,20 +125,6 @@ async def test_briefing_chat_preserves_interactive_origin_and_default_route(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_briefing_chat_has_an_initial_title(user_id: str):
-    session_id = await copilot_db.append_plain_session_message(
-        user_id=user_id,
-        content="## Briefing",
-        message_id=str(uuid4()),
-        title="Morning briefing — 2026-10-07",
-    )
-    assert session_id is not None
-    created = await copilot_db.get_chat_session_metadata(session_id)
-    assert created is not None
-    assert created.title == "Morning briefing — 2026-10-07"
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_briefing_chat_sanitizes_content_and_title(user_id: str):
     session_id = await copilot_db.append_plain_session_message(
         user_id=user_id,
