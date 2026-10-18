@@ -15,6 +15,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
     poetry run pytest -m integration backend/copilot/graphiti/recall_hard_forget_integration_test.py
 """
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -130,7 +131,14 @@ def _chat_store(*session_ids: str) -> SimpleNamespace:
     message = ChatMessage(role="user", content="Whole session text", sequence=0)
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
-            return_value=[SimpleNamespace(session_id=s, title=s) for s in session_ids]
+            return_value=[
+                SimpleNamespace(
+                    session_id=s,
+                    title=s,
+                    started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                )
+                for s in session_ids
+            ]
         ),
         get_chat_messages_paginated=AsyncMock(
             return_value=SimpleNamespace(messages=[message])
