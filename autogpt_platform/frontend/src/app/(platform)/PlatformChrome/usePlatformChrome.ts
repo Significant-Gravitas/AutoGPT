@@ -1,4 +1,4 @@
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -23,6 +23,7 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
 
 export function usePlatformChrome() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
   // Also initializes the auth store — required here because the tour shell
   // replaces the Navbar, which is what normally kicks off the session check.
@@ -42,7 +43,8 @@ export function usePlatformChrome() {
 
   const isMarketplaceRoute = matchesRoute(pathname, "/marketplace");
 
-  const isCopilotRoute = matchesRoute(pathname, "/copilot");
+  const isCopilotRoute =
+    matchesRoute(pathname, "/home") || matchesRoute(pathname, "/copilot");
 
   const isBuilderRoute = matchesRoute(pathname, "/build");
 
@@ -73,6 +75,9 @@ export function usePlatformChrome() {
     // copilot's header controls.
     overlayInsetHeader: isCopilotRoute,
     isCopilotRoute,
+    // An open chat carries the sidebar and workspace-files buttons in its
+    // thread chip, so the inset header leaves them out.
+    isChatSession: isCopilotRoute && Boolean(searchParams.get("sessionId")),
     // Titleless pages collapse the header on desktop so content doesn't sit
     // below an empty strip; on mobile it stays for the sidebar trigger.
     hasInsetHeaderTitle: Boolean(getRouteTitle(pathname)),

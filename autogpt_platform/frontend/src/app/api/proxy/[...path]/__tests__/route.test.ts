@@ -19,6 +19,13 @@ import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
 
+const PRIVATE_IMAGE_HEADER_KEYS = [
+  "accept",
+  "accept-encoding",
+  "authorization",
+  "cache-control",
+];
+
 const BACKEND = "https://backend.test";
 
 function makeParams(path: string[]) {
@@ -105,6 +112,7 @@ describe("proxy route — handler pass-through", () => {
           "Content-Type": "application/json",
           "Content-Length": "1234",
           "Content-Encoding": "gzip",
+          Authorization: "Bearer upstream-secret",
           "Cache-Control": "no-store",
           "X-Custom-Header": "preserved",
         },
@@ -116,6 +124,7 @@ describe("proxy route — handler pass-through", () => {
 
     expect(res.headers.get("content-encoding")).toBeNull();
     expect(res.headers.get("content-length")).toBeNull();
+    expect(res.headers.get("authorization")).toBeNull();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("x-custom-header")).toBe("preserved");
     expect(res.headers.get("content-type")).toBe("application/json");
@@ -373,6 +382,139 @@ describe("proxy route — handler pass-through", () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       `${BACKEND}/api/v1/items?page=2&size=20`,
     );
+  });
+
+  it("preserves private video range responses without allowing shared caching", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("video bytes", {
+        status: 206,
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": "11",
+          "Content-Range": "bytes 0-10/100",
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=3600",
+        },
+      }),
+    );
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "videos",
+      "preview.mp4",
+    ];
+    const req = new NextRequest(
+      `https://app.test/api/proxy/${path.join("/")}`,
+      {
+        headers: { Range: "bytes=0-10" },
+      },
+    );
+    const res = await GET(req, makeParams(path));
+
+    const init = vi.mocked(fetch).mock.calls[0][1]!;
+    const sentHeaders = init.headers as Headers;
+    expect(sentHeaders.get("range")).toBe("bytes=0-10");
+    expect(sentHeaders.get("accept-encoding")).toBe("identity");
+    expect(init.cache).toBe("no-store");
+    expect(res.status).toBe(206);
+    expect(await res.text()).toBe("video bytes");
+    expect(res.headers.get("content-length")).toBe("11");
+    expect(res.headers.get("content-range")).toBe("bytes 0-10/100");
+    expect(res.headers.get("accept-ranges")).toBe("bytes");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("forwards only allowlisted headers for a private image", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("image", {
+        status: 200,
+        headers: { "Content-Type": "image/png", "Content-Length": "5" },
+      }),
+    );
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "thumbnail.png",
+    ];
+    const req = new NextRequest(
+      `https://app.test/api/proxy/${path.join("/")}`,
+      {
+        headers: {
+          Accept: "image/*",
+          Authorization: "Bearer client-supplied",
+          Range: "bytes=0-10",
+          "X-Forwarded-For": "203.0.113.7",
+        },
+      },
+    );
+    await GET(req, makeParams(path));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect([...sentHeaders.keys()].sort()).toEqual(PRIVATE_IMAGE_HEADER_KEYS);
+    expect(sentHeaders.get("authorization")).not.toBe("Bearer client-supplied");
+  });
+
+  it("forwards the backend signed redirect for oversized private media", async () => {
+    const signedUrl =
+      "https://storage.googleapis.com/private/object?signature=test";
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(null, {
+        status: 307,
+        headers: {
+          Location: signedUrl,
+          "Cache-Control": "private, no-store",
+        },
+      }),
+    );
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "large.png",
+    ];
+    const res = await GET(
+      new NextRequest(`https://app.test/api/proxy/${path.join("/")}`),
+      makeParams(path),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(signedUrl);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.text()).toBe("");
+  });
+
+  it("does not expose private-media proxy exception details", async () => {
+    vi.mocked(fetch).mockRejectedValue(
+      new Error("upstream failed with bearer super-secret"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "thumbnail.png",
+    ];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Proxy request failed" });
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it("hardens a public shared-file response after proxying storage", async () => {

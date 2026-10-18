@@ -453,10 +453,13 @@ async def test_returns_feature_disabled_when_flag_off(tool):
         side_effect=AssertionError("scheduler must not be touched when flag off")
     )
 
-    with patch(
-        f"{_TOOL_PATH}.is_followups_feature_enabled",
-        new=AsyncMock(return_value=False),
-    ), patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client):
+    with (
+        patch(
+            f"{_TOOL_PATH}.is_followups_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client),
+    ):
         result = await tool._execute(
             user_id=_USER,
             session=session,
@@ -467,3 +470,45 @@ async def test_returns_feature_disabled_when_flag_off(tool):
     assert isinstance(result, ErrorResponse)
     assert result.error == "feature_disabled"
     scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", [None, "session-other-owned-by-same-user"])
+async def test_schedule_created_is_attributed_to_the_scheduling_chat(
+    tool, session, target
+):
+    # The event belongs to the chat the user was in; the target it fires
+    # into (None = a fresh chat) rides along as target_chat_session_id.
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+    tracked = MagicMock()
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            f"{_TOOL_PATH}.get_chat_session",
+            new=AsyncMock(return_value=MagicMock(expert_id=None)),
+        ),
+        patch(f"{_TOOL_PATH}.track_chat_outcome", new=tracked),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="check CI",
+            delay_seconds=600,
+            session_id=target,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    tracked.assert_called_once_with(
+        _USER,
+        session.session_id,
+        "schedule_created",
+        target="followup",
+        schedule_id="cop-1",
+        target_chat_session_id=target,
+        is_recurring=False,
+    )

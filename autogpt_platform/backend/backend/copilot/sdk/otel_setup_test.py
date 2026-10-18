@@ -21,6 +21,7 @@ class TestSetupLangfuseOtel:
                 "LANGSMITH_TRACING",
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "OTEL_EXPORTER_OTLP_HEADERS",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
             ]
             saved = {k: os.environ.pop(k, None) for k in env_keys}
             try:
@@ -60,6 +61,7 @@ class TestSetupLangfuseOtel:
                 "LANGSMITH_TRACING",
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "OTEL_EXPORTER_OTLP_HEADERS",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
                 "OTEL_RESOURCE_ATTRIBUTES",
             ]
             saved = {k: os.environ.pop(k, None) for k in env_keys}
@@ -74,6 +76,12 @@ class TestSetupLangfuseOtel:
                     == "https://langfuse.example.com/api/public/otel"
                 )
                 assert "Authorization=Basic" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+                assert (
+                    os.environ[
+                        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                    ]
+                    == "autogpt-copilot-traces"
+                )
                 assert (
                     os.environ["OTEL_RESOURCE_ATTRIBUTES"]
                     == "langfuse.environment=test"
@@ -107,19 +115,33 @@ class TestSetupLangfuseOtel:
         ):
             from backend.copilot.sdk.service import _setup_langfuse_otel
 
-            saved = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+            env_keys = [
+                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
+            ]
+            saved = {key: os.environ.get(key) for key in env_keys}
             try:
                 os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://custom.endpoint/v1"
+                os.environ[
+                    "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                ] = "custom-provider"
                 _setup_langfuse_otel()
                 assert (
                     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
                     == "https://custom.endpoint/v1"
                 )
+                assert (
+                    os.environ[
+                        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                    ]
+                    == "custom-provider"
+                )
             finally:
-                if saved is not None:
-                    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = saved
-                elif "OTEL_EXPORTER_OTLP_ENDPOINT" in os.environ:
-                    del os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
+                for key, value in saved.items():
+                    if value is not None:
+                        os.environ[key] = value
+                    else:
+                        os.environ.pop(key, None)
 
     def test_graceful_failure_on_exception(self):
         """Setup should not raise even if internal code fails."""

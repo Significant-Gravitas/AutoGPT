@@ -19,9 +19,12 @@ from typing import Any, Awaitable, Callable
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.context import get_current_envelope
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.copilot.trial_cost_context import capture_cost_context
+from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
@@ -30,6 +33,7 @@ from .classifier import DecidedBy, supervise
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
+    PARKABLE,
     AutopilotMode,
     Effect,
     Verdict,
@@ -57,9 +61,17 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# Where the supervisor reads the content of the files a command runs.
+RUN_FILES_KEY = "files_this_command_runs"
+# A chat driven from these runs in Auto, and its cards are answered in the channel.
+LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
+# Any other linked platform has no buttons to answer a card with, so it runs
+# ungated: a held call would strand the chat.
+CARDLESS_PLATFORMS = (
+    frozenset(p.value.lower() for p in Platform) - LINKED_CHAT_PLATFORMS
+)
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
-_PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
 METERED = frozenset({Effect.READ, Effect.WORKSPACE})
 # The user's own word on the subject in this chat outranks the mode's rule.
@@ -93,10 +105,14 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
     is watching stay ungated until they get their own path."""
     if not user_id or session.metadata.origin != "interactive":
         return False
+    if session.metadata.source_platform in CARDLESS_PLATFORMS:
+        return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
+    if session.metadata.source_platform in LINKED_CHAT_PLATFORMS:
+        return "auto"
     return session.metadata.autopilot_mode or DEFAULT_MODE
 
 
@@ -114,9 +130,11 @@ async def check_action(
     session: ChatSession,
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
-    approval answers the call, so an approved call is never re-derived."""
+    approval answers the call, so an approved call is never re-derived.
+    ``context_of`` reads the files the call runs, for the supervisor only."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -124,7 +142,7 @@ async def check_action(
     # Reads, workspace work and the ungated tools run in every mode and can
     # never have been parked, so they skip the review and rule lookups; a paid
     # step can be parked over the ceiling, so it cannot.
-    if effect_for(tool_name) not in _PARKABLE and not estimate_for(tool_name):
+    if effect_for(tool_name) not in PARKABLE and not estimate_for(tool_name):
         return ALLOW
 
     session_id = session.session_id
@@ -161,7 +179,7 @@ async def check_action(
     # workspace work skip the Redis round trip.
     hit = (
         await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
-        if effect in _PARKABLE
+        if effect in PARKABLE
         else None
     )
     rule = hit.rule if hit else None
@@ -192,20 +210,28 @@ async def check_action(
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        judgement = await supervise(
-            tool_name=tool_name,
-            args=args,
-            user_message=_last_user_message(session),
-        )
-        if judgement.allowed:
-            return ALLOW
-        reason, decided_by = judgement.reason, judgement.decided_by
+        files = await context_of() if context_of is not None else None
+        if unread := [path for path, text in (files or {}).items() if text is None]:
+            reason = (
+                f"Could not read {', '.join(unread)}, so this could not be checked."
+            )
+        else:
+            judgement = await supervise(
+                tool_name=tool_name,
+                args=_judged_args(args, files),
+                user_messages=_typed_messages(session),
+            )
+            if judgement.allowed:
+                return ALLOW
+            reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
         tool_call_id=tool_call_id,
         args=args,
         rule_key=rule_key,
+        envelope=get_current_envelope(),
+        cost_context=await capture_cost_context(user_id),
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
@@ -275,17 +301,36 @@ def _dollars(microdollars: int) -> str:
     return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
-def _last_user_message(session: ChatSession) -> str:
-    """What the user last asked, for the supervisor's prompt; the session's
-    first message without the memory block an older session stored in it."""
-    for message in reversed(without_stored_first_turn_memory(session.messages)):
-        if message.role == "user" and message.content:
-            return message.content
-    return ""
+def _judged_args(
+    args: dict[str, Any], files: dict[str, str | None] | None
+) -> dict[str, Any]:
+    # Dropped first, so a model cannot hand the supervisor a harmless copy.
+    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    if files:
+        judged[RUN_FILES_KEY] = files
+    return judged
+
+
+def _typed_messages(session: ChatSession) -> list[str]:
+    """What the user typed, oldest first; an answered card's rows and a row of
+    nothing but the server's context are not the user's words."""
+    # Deferred: copilot.service imports the tool registry, which imports this gate.
+    from backend.copilot.service import strip_injected_context_for_display
+
+    typed = [
+        strip_injected_context_for_display(message.content)
+        for message in without_stored_first_turn_memory(session.messages)
+        if message.role == "user"
+        and message.content
+        and not held.is_answer_row(message)
+    ]
+    return [message for message in typed if message.strip()]
 
 
 __all__ = [
+    "RUN_FILES_KEY",
     "Decision",
+    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",

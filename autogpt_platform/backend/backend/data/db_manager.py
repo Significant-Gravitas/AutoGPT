@@ -2,6 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from prisma.enums import ContentType
+
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
@@ -41,9 +43,13 @@ from backend.api.features.library.triggers import (
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
+    delete_content_embedding,
+    get_content_embedding,
     get_embedding_stats,
+    store_content_embedding,
 )
 from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store import skill_db as marketplace_skill_db
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
@@ -57,6 +63,12 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import skill_deletion as skill_deletion_data
+from backend.data import skill_learning as skill_learning_data
+from backend.data import skill_publication as skill_publication_data
+from backend.data import skill_reviews as skill_reviews_data
+from backend.data import skill_use as skill_use_data
+from backend.data import skill_versions as skill_versions_data
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -140,6 +152,7 @@ from backend.data.human_review import (
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
+    process_all_reviews_for_execution,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -147,6 +160,11 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
+from backend.data.posthog_lifecycle_sync import (
+    request_posthog_lifecycle_sync,
+    start_posthog_lifecycle_sweep,
+)
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -169,13 +187,17 @@ from backend.data.user import (
     get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
+    get_near_expiry_oauth_credentials,
     get_user_by_id,
     get_user_credentials,
+    get_user_default_chat_route,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
     get_user_subscription_tier,
+    heal_orphaned_auth_identities,
+    is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
@@ -193,7 +215,10 @@ from backend.data.workspace import (
     soft_delete_workspace_file,
 )
 from backend.data.workspace_folder import list_workspace_folders
-from backend.data.workspace_skill import publish_workspace_skill_file
+from backend.data.workspace_skill import (
+    publish_workspace_skill_file,
+    skill_root_has_room,
+)
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -235,6 +260,25 @@ get_credits = _get_credits
 spend_credits = _spend_credits
 
 
+async def _store_content_embedding(
+    content_type: ContentType,
+    content_id: str,
+    embedding: list[float],
+    searchable_text: str,
+    metadata: dict | None = None,
+    user_id: str | None = None,
+) -> bool:
+    # Without the ``tx`` parameter, which can't cross the RPC boundary.
+    return await store_content_embedding(
+        content_type=content_type,
+        content_id=content_id,
+        embedding=embedding,
+        searchable_text=searchable_text,
+        metadata=metadata,
+        user_id=user_id,
+    )
+
+
 async def _spend_org_credits(
     org_id: str,
     user_id: str,
@@ -255,6 +299,11 @@ async def _spend_org_credits(
 
 async def _get_org_credits(org_id: str) -> int:
     return await _get_org_credits_raw(org_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_org_credits = _get_org_credits
+spend_org_credits = _spend_org_credits
 
 
 class DatabaseManager(AppService):
@@ -349,15 +398,21 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    # The scheduler routes unattended chats by the user's saved default.
+    get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Exposed for the scheduler's auth-identity invariant monitor.
+    heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
@@ -377,6 +432,7 @@ class DatabaseManager(AppService):
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -428,6 +484,12 @@ class DatabaseManager(AppService):
     backfill_missing_embeddings = _(backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
     unified_hybrid_search = _(unified_hybrid_search)
+    # The copilot executor indexes chat titles and workspace files.
+    get_content_embedding = _(get_content_embedding)
+    store_content_embedding = _(
+        _store_content_embedding, name="store_content_embedding"
+    )
+    delete_content_embedding = _(delete_content_embedding)
 
     # ============ Alerts ============ #
     raise_alert_condition = _(raise_alert_condition)
@@ -455,6 +517,7 @@ class DatabaseManager(AppService):
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
     publish_workspace_skill_file = _(publish_workspace_skill_file)
+    skill_root_has_room = _(skill_root_has_room)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
@@ -494,6 +557,8 @@ class DatabaseManager(AppService):
     # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
+    start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
+    request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -542,6 +607,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -568,6 +634,60 @@ class DatabaseManager(AppService):
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
     add_expert_skill_names = _(experts_db.add_expert_skill_names)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
+    set_expert_learning_paused = _(experts_db.set_expert_learning_paused)
+
+    # ============ Skill learning ============ #
+    # Exposed so the Prisma-less copilot executor + scheduler can capture
+    # sources, keep the review ledger, and read/write skill versions via
+    # db_accessors.skill_learning_db() / skill_versions_db().
+    upsert_source_revision = _(skill_learning_data.upsert_source_revision)
+    get_source = _(skill_learning_data.get_source)
+    get_source_by_ref = _(skill_learning_data.get_source_by_ref)
+    list_pending_sources = _(skill_learning_data.list_pending_sources)
+    list_pending_owner_keys = _(skill_learning_data.list_pending_owner_keys)
+    get_review_for_revision = _(skill_reviews_data.get_review_for_revision)
+    reserve_model_review = _(skill_reviews_data.reserve_model_review)
+    checkpoint_review_usage = _(skill_reviews_data.checkpoint_review_usage)
+    set_review_replay = _(skill_reviews_data.set_review_replay)
+    require_owned_source = _(skill_learning_data.require_owned_source)
+    set_source_eligibility = _(skill_learning_data.set_source_eligibility)
+    set_source_approval = _(skill_learning_data.set_source_approval)
+    mark_source_attempted = _(skill_learning_data.mark_source_attempted)
+    advance_source_cursor = _(skill_learning_data.advance_source_cursor)
+    upsert_review = _(skill_reviews_data.upsert_review)
+    get_review = _(skill_reviews_data.get_review)
+    list_reviews = _(skill_reviews_data.list_reviews)
+    summarize_learning = _(skill_reviews_data.summarize_learning)
+    get_head = _(skill_versions_data.get_head)
+    ensure_head = _(skill_versions_data.ensure_head)
+    list_heads = _(skill_versions_data.list_heads)
+    list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
+    update_head_policy = _(skill_versions_data.update_head_policy)
+    pause_use_if_current = _(skill_versions_data.pause_use_if_current)
+    publish_version_if_current = _(skill_versions_data.publish_version_if_current)
+    commit_version_safe = _(skill_publication_data.commit_version_safe)
+    complete_publication = _(skill_publication_data.complete_publication)
+    abandon_publication = _(skill_publication_data.abandon_publication)
+    list_pending_publications = _(skill_publication_data.list_pending_publications)
+    get_pending_publication_for_skill = _(
+        skill_publication_data.get_pending_publication_for_skill
+    )
+    create_version = _(skill_versions_data.create_version)
+    set_version_state = _(skill_versions_data.set_version_state)
+    get_version = _(skill_versions_data.get_version)
+    list_versions = _(skill_versions_data.list_versions)
+    list_recent_versions = _(skill_versions_data.list_recent_versions)
+    list_open_decisions = _(skill_versions_data.list_open_decisions)
+    list_versions_in_states = _(skill_versions_data.list_versions_in_states)
+    invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
+    latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
+    record_skill_deletion = _(skill_deletion_data.record_skill_deletion)
+    add_suppression = _(skill_use_data.add_suppression)
+    find_suppression = _(skill_use_data.find_suppression)
+    list_suppressions = _(skill_use_data.list_suppressions)
+    record_use_event = _(skill_use_data.record_use_event)
+    list_use_events = _(skill_use_data.list_use_events)
+
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
     get_workflow_label = _(experts_db.get_workflow_label)
@@ -582,7 +702,16 @@ class DatabaseManager(AppService):
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
+    active_expert_ids = _(experts_db.active_expert_ids)
     count_raised_experts = _(experts_db.count_raised_experts)
+
+    # ============ Marketplace skills ============ #
+    # The copy reconcile in copilot.tools.skills runs in Prisma-less
+    # processes; it compares copies against these and fetches packages to
+    # fast-forward or merge them.
+    get_active_versions = _(marketplace_skill_db.get_active_versions)
+    get_version_packages = _(marketplace_skill_db.get_version_packages)
+    find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -617,6 +746,7 @@ class DatabaseManager(AppService):
     count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
     list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
     update_chat_session_status = _(chat_db.update_chat_session_status)
+    admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
@@ -646,6 +776,8 @@ class DatabaseManager(AppService):
     # second process has no Prisma connection, so these cross the RPC.
     get_billing_email_recipient = _(get_billing_email_recipient)
     claim_welcome_email = _(claim_welcome_email)
+    # Read by the audience consumer right before each MailerLite write.
+    is_marketing_opted_out = _(is_marketing_opted_out)
     release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
 
@@ -682,6 +814,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    # Auth identity invariant monitoring
+    heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
@@ -767,13 +901,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
 
@@ -786,6 +924,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
+    process_all_reviews_for_execution = d.process_all_reviews_for_execution
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -819,6 +958,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_last_briefing_at = d.set_last_briefing_at
     get_billing_email_recipient = d.get_billing_email_recipient
     claim_welcome_email = d.claim_welcome_email
+    is_marketing_opted_out = d.is_marketing_opted_out
     release_welcome_email = d.release_welcome_email
 
     # ============ Morning Briefing ============ #
@@ -875,6 +1015,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
+    get_content_embedding = d.get_content_embedding
+    store_content_embedding = d.store_content_embedding
+    delete_content_embedding = d.delete_content_embedding
+
+    # ============ Marketplace skills ============ #
+    get_active_versions = d.get_active_versions
+    get_version_packages = d.get_version_packages
+    find_version_by_hash = d.find_version_by_hash
 
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
@@ -883,6 +1031,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
     publish_workspace_skill_file = d.publish_workspace_skill_file
+    skill_root_has_room = d.skill_root_has_room
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
@@ -921,6 +1070,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
+    start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
+    request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -961,6 +1112,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired
@@ -983,6 +1135,55 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_expert_skill_name = d.add_expert_skill_name
     add_expert_skill_names = d.add_expert_skill_names
     remove_expert_skill_name = d.remove_expert_skill_name
+    set_expert_learning_paused = d.set_expert_learning_paused
+
+    # ============ Skill learning ============ #
+    upsert_source_revision = d.upsert_source_revision
+    get_source = d.get_source
+    get_source_by_ref = d.get_source_by_ref
+    list_pending_sources = d.list_pending_sources
+    list_pending_owner_keys = d.list_pending_owner_keys
+    get_review_for_revision = d.get_review_for_revision
+    reserve_model_review = d.reserve_model_review
+    checkpoint_review_usage = d.checkpoint_review_usage
+    set_review_replay = d.set_review_replay
+    require_owned_source = d.require_owned_source
+    set_source_eligibility = d.set_source_eligibility
+    set_source_approval = d.set_source_approval
+    mark_source_attempted = d.mark_source_attempted
+    advance_source_cursor = d.advance_source_cursor
+    upsert_review = d.upsert_review
+    get_review = d.get_review
+    list_reviews = d.list_reviews
+    summarize_learning = d.summarize_learning
+    get_head = d.get_head
+    ensure_head = d.ensure_head
+    list_heads = d.list_heads
+    list_use_paused_skill_names = d.list_use_paused_skill_names
+    update_head_policy = d.update_head_policy
+    pause_use_if_current = d.pause_use_if_current
+    publish_version_if_current = d.publish_version_if_current
+    commit_version_safe = d.commit_version_safe
+    complete_publication = d.complete_publication
+    abandon_publication = d.abandon_publication
+    list_pending_publications = d.list_pending_publications
+    get_pending_publication_for_skill = d.get_pending_publication_for_skill
+    create_version = d.create_version
+    set_version_state = d.set_version_state
+    get_version = d.get_version
+    list_versions = d.list_versions
+    list_recent_versions = d.list_recent_versions
+    list_open_decisions = d.list_open_decisions
+    list_versions_in_states = d.list_versions_in_states
+    invalidate_source_versions = d.invalidate_source_versions
+    latest_independent_version_id = d.latest_independent_version_id
+    record_skill_deletion = d.record_skill_deletion
+    add_suppression = d.add_suppression
+    find_suppression = d.find_suppression
+    list_suppressions = d.list_suppressions
+    record_use_event = d.record_use_event
+    list_use_events = d.list_use_events
+
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
     get_workflow_label = d.get_workflow_label
@@ -995,6 +1196,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
+    active_expert_ids = d.active_expert_ids
     count_raised_experts = d.count_raised_experts
 
     # ============ CoPilot Chat Sessions ============ #
@@ -1025,6 +1227,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_chat_sessions_by_status = d.count_chat_sessions_by_status
     list_chat_sessions_by_status = d.list_chat_sessions_by_status
     update_chat_session_status = d.update_chat_session_status
+    admit_chat_session_turn = d.admit_chat_session_turn
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message

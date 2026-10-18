@@ -239,7 +239,8 @@ def test_open_router_bills_cost_usd_not_the_displayed_token_rate():
 
 def test_open_router_display_rate_matches_the_catalog_entry():
     """The builder's "$X in / $Y out per 1M" label is the catalog credit rate
-    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures.
+    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures,
+    moved again on 2026-10-17 to track OpenRouter's live reprice.
     """
     entry = next(
         c

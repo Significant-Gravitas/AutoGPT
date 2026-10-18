@@ -177,9 +177,8 @@ pri*
 ig*
 # ...but roster content is source, not local scratch. `pri*`/`ig*` above are
 # broad enough to swallow a whole file (priya.json did not show up in
-# `git status` at all until this was added), so re-include those two trees.
+# `git status` at all until this was added), so re-include that tree.
 !autogpt_platform/backend/backend/copilot/eval/style/fixtures/*.json
-!autogpt_platform/backend/backend/api/features/store/starter_skills/*.md
 # Same trap: `pri*` hid Priya's clay avatars, so the catalog shipped pointing
 # at files git never tracked. Expert artwork is named after the expert, so
 # re-include the whole tree rather than one name at a time.

@@ -171,8 +171,11 @@ async def test_a_slug_another_creator_holds_is_refused(creator):
 
 
 async def test_approval_promotes_the_version_and_puts_it_on_the_shelf(
-    creator, reviewer
+    creator, reviewer, mocker
 ):
+    publish_avatar = mocker.patch.object(
+        skill_submission_db.store_db, "publish_creator_avatar", autospec=True
+    )
     submission = await skill_submission_db.submit_skill(creator, _request())
 
     reviewed = await skill_submission_db.review_skill_submission(
@@ -186,6 +189,7 @@ async def test_approval_promotes_the_version_and_puts_it_on_the_shelf(
     assert reviewed.is_live is True
     browse = await skill_db.get_marketplace_skills()
     assert [s.slug for s in browse.skills] == ["brand-voice-guide"]
+    publish_avatar.assert_awaited_once_with(creator)
 
 
 async def test_rejection_keeps_the_skill_off_the_shelf(creator, reviewer):

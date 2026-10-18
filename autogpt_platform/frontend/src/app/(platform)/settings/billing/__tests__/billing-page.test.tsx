@@ -7,6 +7,12 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { AutomationCreditsTab } from "../components/AutomationCreditsTab/AutomationCreditsTab";
 import SettingsBillingPage from "../page";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 // Allow per-test override of the search params Next.js exposes to the page.
 const mockSearchParams = { current: new URLSearchParams() };
 const mockRouterReplace = vi.fn();
@@ -76,7 +82,9 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     render(<SettingsBillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Billing & usage" }),
+    ).toBeDefined();
 
     const subscriptionTab = screen.getByRole("tab", { name: "Subscription" });
     expect(subscriptionTab.getAttribute("data-state")).toBe("active");

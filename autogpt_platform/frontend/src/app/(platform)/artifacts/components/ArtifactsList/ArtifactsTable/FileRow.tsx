@@ -133,7 +133,7 @@ export function FileRow({
               align="center"
               sideOffset={16}
               collisionPadding={16}
-              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm shadow-xl shadow-black/10 outline-none"
+              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm text-zinc-900 shadow-xl shadow-black/10 outline-none"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>

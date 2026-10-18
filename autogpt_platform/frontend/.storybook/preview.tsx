@@ -8,14 +8,11 @@ import {
 } from "@storybook/addon-docs/blocks";
 import { Preview } from "@storybook/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { initialize, mswLoader } from "msw-storybook-addon";
+import { mswLoader } from "msw-storybook-addon/csf3";
 import React from "react";
 import "../src/app/globals.css";
 import "../src/components/styles/fonts.css";
 import { theme } from "./theme";
-
-// Initialize MSW
-initialize();
 
 // One QueryClient per browser session is fine for Storybook — retries
 // are off so failing MSW handlers surface immediately instead of being
@@ -47,7 +44,7 @@ const preview: Preview = {
       ),
     },
   },
-  loaders: [mswLoader],
+  loaders: [mswLoader()],
   decorators: [
     (Story) => (
       <QueryClientProvider client={storyQueryClient}>

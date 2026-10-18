@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.graphiti import scope_lock
-from backend.copilot.graphiti.recall import legacy_forget_predicate
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT, legacy_forget_predicate
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY
 from backend.copilot.graphiti.scope import write_lock_key
@@ -213,10 +213,64 @@ class TestMain:
         code: int,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        args = argparse.Namespace(apply=True, graph=None)
+        args = argparse.Namespace(apply=True, graph=None, scan_markers=False)
         with patch.object(
             backfill, "backfill_all_graphs", AsyncMock(return_value=totals)
         ):
             assert await backfill.main(args) == code
 
         assert ("run again" in capsys.readouterr().out) is bool(code)
+
+
+class TestScanMarkers:
+    """``--scan-markers``: the facts carrying a forget's marker, by uuid, and
+    those a forget never scrubbed, which before the recall policy deploys
+    can only have been invented by the extraction."""
+
+    @pytest.mark.asyncio
+    async def test_reports_every_marked_fact_and_the_unscrubbed_apart(self) -> None:
+        driver = _driver(
+            [{"uuid": "a", "scrubbed": True}, {"uuid": "b", "scrubbed": False}]
+        )
+        with (
+            patch.object(backfill, "_graph_driver", return_value=driver),
+            patch.object(
+                backfill, "_memory_graph_names", AsyncMock(return_value=["user_a"])
+            ),
+        ):
+            found = await backfill.scan_markers()
+
+        assert found == [
+            backfill.ForgetMarkers(graph="user_a", marked=["a", "b"], unscrubbed=["b"])
+        ]
+        query = driver.execute_query.await_args
+        assert query.args == (backfill.MARKERS_QUERY,)
+        assert query.kwargs == {"placeholder": FORGOTTEN_FACT}
+        assert "SET" not in backfill.MARKERS_QUERY.upper(), "it only reads"
+        driver.close.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "unscrubbed, code", [([], 0), (["b"], 1)], ids=["scrubbed", "invented"]
+    )
+    @pytest.mark.asyncio
+    async def test_exits_non_zero_on_an_unscrubbed_marker_naming_only_uuids(
+        self, unscrubbed: list[str], code: int, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        found = [
+            backfill.ForgetMarkers(
+                graph="user_a", marked=["a", *unscrubbed], unscrubbed=unscrubbed
+            )
+        ]
+        args = argparse.Namespace(apply=False, graph=None, scan_markers=True)
+        backfill_all = AsyncMock()
+        with (
+            patch.object(backfill, "scan_markers", AsyncMock(return_value=found)),
+            patch.object(backfill, "backfill_all_graphs", backfill_all),
+        ):
+            assert await backfill.main(args) == code
+
+        backfill_all.assert_not_awaited()
+        out = capsys.readouterr().out
+        assert (
+            f"user_a: {1 + len(unscrubbed)} marked, {len(unscrubbed)} unscrubbed" in out
+        )

@@ -1,18 +1,13 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import {
-  ArrowDown01Icon,
-  CheckmarkBadge01Icon,
-  CircleIcon,
-  CreditCardIcon,
-} from "@hugeicons/core-free-icons";
-import { useState } from "react";
-
-import { EarnGroup, EarnRow, getEarnGroups, TaskGroup } from "../helpers";
+import { CreditCardIcon } from "@hugeicons/core-free-icons";
+import { useId } from "react";
+import { TaskGroup } from "../helpers";
+import { WalletCopilotUsage } from "./WalletCopilotUsage";
+import { WalletEarnCredits } from "./WalletEarnCredits";
 
 interface Props {
   groups: TaskGroup[];
@@ -28,111 +23,53 @@ export function WalletCompactPanel({
   onAddCredits,
 }: Props) {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const earnGroups = getEarnGroups(groups, completedSteps);
+  const creditsHeadingID = useId();
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-3 px-3 py-2">
-        <Text variant="body-medium">Automation credits</Text>
-        <span className="font-sans text-base font-semibold text-zinc-900">
-          {formattedCredits}
-        </span>
+    <div className="flex flex-col">
+      <div className="px-5 py-4">
+        <WalletCopilotUsage />
       </div>
-
-      {isPaymentEnabled && (
-        <button
-          type="button"
-          onClick={onAddCredits}
-          className="flex items-center justify-center gap-3 rounded-large bg-zinc-100 px-3 py-2.5 text-center transition-colors hover:bg-zinc-200"
-        >
-          <Icon icon={CreditCardIcon} size={20} className="text-zinc-700" />
-          <Text variant="body-medium">Add credits</Text>
-        </button>
-      )}
-
-      <div className="px-3 pb-1.5 pt-2">
-        <Text variant="body-medium">Earn credits</Text>
-      </div>
-      <div className="max-h-[20rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
-        {earnGroups.map((group) => (
-          // `defaultOpen` is part of the key so finishing the last task in a
-          // group remounts its section and re-seeds it collapsed, instead of
-          // leaving the completed group stuck open.
-          <EarnGroupSection
-            key={`${group.key}:${group.defaultOpen}`}
-            group={group}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EarnGroupSection({ group }: { group: EarnGroup }) {
-  const [open, setOpen] = useState(group.defaultOpen);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-        className="flex w-full items-start justify-between gap-3 rounded-large px-3 py-1.5 text-left transition-colors hover:bg-zinc-50"
+      <section
+        aria-labelledby={creditsHeadingID}
+        className="mx-5 flex flex-col gap-4 border-t border-zinc-100 py-4"
       >
-        <span className="flex min-w-0 items-start gap-2.5">
-          <StatusIcon done={group.done} />
-          <Text variant="body-medium">{group.label}</Text>
-          <Icon
-            icon={ArrowDown01Icon}
-            size={14}
-            className={cn(
-              "mt-1 shrink-0 text-zinc-400 transition-transform duration-200",
-              open && "rotate-180",
-            )}
-          />
-        </span>
-        <span className="shrink-0 font-sans text-sm text-zinc-500">
-          {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
-        </span>
-      </button>
-
-      {open && group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <Text
+              as="h2"
+              id={creditsHeadingID}
+              variant="large-medium"
+              tone="primary"
+            >
+              Automation credits
+            </Text>
+            <Text
+              variant="large-semibold"
+              tone="primary"
+              className="tabular-nums"
+            >
+              {formattedCredits}
+            </Text>
+          </div>
+          <Text variant="small" tone="secondary">
+            Credits used when your automations run.
+          </Text>
+        </div>
+        {isPaymentEnabled && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            leadingIcon={CreditCardIcon}
+            onClick={onAddCredits}
+            className="w-full"
+          >
+            Add credits
+          </Button>
+        )}
+      </section>
+      <WalletEarnCredits groups={groups} completedSteps={completedSteps} />
     </div>
-  );
-}
-
-function EarnTaskRow({ row }: { row: EarnRow }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-1.5 pl-8 pr-3">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <StatusIcon done={row.done} />
-        <Text variant="body">{row.label}</Text>
-      </div>
-      <span className="shrink-0 font-sans text-sm text-zinc-500">
-        {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
-      </span>
-    </div>
-  );
-}
-
-function StatusIcon({ done }: { done: boolean }) {
-  return (
-    <span className="mt-0.5 shrink-0">
-      {done ? (
-        <Icon
-          icon={CheckmarkBadge01Icon}
-          size={18}
-          className="text-[#00a656]"
-          aria-label="completed"
-        />
-      ) : (
-        <Icon
-          icon={CircleIcon}
-          size={16}
-          className="text-zinc-400"
-          aria-label="pending"
-        />
-      )}
-    </span>
   );
 }

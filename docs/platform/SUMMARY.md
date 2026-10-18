@@ -12,7 +12,6 @@
 * [Scheduling & Triggers](scheduling-and-triggers.md)
 * [Templates](templates.md)
 * [Credits & Billing](credits-and-billing.md)
-* [Activation Metrics & Experiments](activation-metrics.md)
 * [Integrations & Credentials](integrations-and-credentials.md)
 * [Data Flow & Execution](data-flow-and-execution.md)
 * [Sharing & Exporting Agents](sharing-and-exporting.md)
@@ -43,6 +42,7 @@
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 

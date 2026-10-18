@@ -134,6 +134,25 @@ export function shell(id = "shell") {
   });
 }
 
+export function createAgent(id = "agent") {
+  return heldReview({
+    id,
+    tool: "create_agent",
+    mode: "auto",
+    reason: "it creates an agent the user did not ask for.",
+    reasonKind: "supervisor",
+    subject: {
+      kind: "tool",
+      key: "create_agent",
+      name: "Create a workflow",
+      effect: "platform",
+      irreversible: false,
+    },
+    chatRules: ["allow", "judge"],
+    headline: { ask: "Create a workflow" },
+  });
+}
+
 export function deleteFolder(id: string, folderId: string) {
   return heldReview({
     id,
@@ -188,7 +207,7 @@ export function workflow(id = "wf") {
     },
     args: { library_agent_id: "lib-1", inputs: { topic: "Q3 invoices" } },
     fields: [
-      { key: "library_agent_id", label: "Library agent" },
+      { key: "library_agent_id", label: "Library workflow" },
       { key: "inputs", label: "Inputs" },
     ],
     headline: { ask: "Run", object: "Morning digest" },

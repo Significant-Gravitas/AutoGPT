@@ -113,7 +113,7 @@ export async function completeOnboardingWizard(
   }
 
   await expect(preparing).toBeVisible({ timeout: 10000 });
-  await page.waitForURL(/\/copilot/, { timeout: 30000 });
+  await page.waitForURL(/\/home/, { timeout: 30000 });
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });

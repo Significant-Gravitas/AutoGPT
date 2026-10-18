@@ -1,0 +1,82 @@
+# The journeys configuration: AutoPilot answers from scripts instead of a real
+# model, so a Playwright journey drives the real copilot pipeline (engine,
+# tools, persistence, streaming, cost accounting) with deterministic model
+# turns. Only CI's journeys leg and local test stacks add this file; a plain
+# `docker compose up` never reads it, so self-hosted installs are unaffected.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.journeys.yml up -d
+#
+# Scripts live in frontend/src/playwright/journeys/model-scripts. See
+# scripted_model/README.md.
+
+x-scripted-model-env: &scripted-model-env
+  # OpenRouter mode pointed at the fake. The SDK engine's CLI gets this URL
+  # without /v1 as ANTHROPIC_BASE_URL (backend/copilot/sdk/env.py); the
+  # baseline engine and side calls (session titles) use it as their
+  # OpenAI-compatible endpoint. The key is never checked.
+  CHAT_TEST_MODE: "false"
+  CHAT_USE_LOCAL: "false"
+  CHAT_USE_OPENROUTER: "true"
+  CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "false"
+  CHAT_BASE_URL: http://scripted_model:4010/api/v1
+  CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  # Memory (graphiti-memory is a hosted flag) would otherwise send that key to
+  # openrouter.ai and api.openai.com. Kept inside the stack, its calls fail
+  # fast and the turn goes on without memory, as it does on any failure.
+  GRAPHITI_LLM_BASE_URL: http://scripted_model:4010/api/v1
+  GRAPHITI_EMBEDDER_BASE_URL: http://scripted_model:4010/api/v1
+  GRAPHITI_EMBEDDER_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  # Journeys provoke failures on purpose; keep them out of Sentry even when a
+  # local .env carries a real DSN.
+  SENTRY_DSN: ""
+
+services:
+  scripted_model:
+    build:
+      context: ./scripted_model
+    volumes:
+      - ./frontend/src/playwright/journeys/model-scripts:/scripts:ro
+    # Journeys read the journal from the host.
+    ports:
+      - "127.0.0.1:4010:4010"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4010/healthz', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  copilot_executor:
+    environment: *scripted-model-env
+    depends_on:
+      scripted_model:
+        condition: service_healthy
+
+  rest_server:
+    environment: *scripted-model-env
+
+  executor:
+    environment: *scripted-model-env
+
+  scheduler_server:
+    environment: *scripted-model-env
+
+  database_manager:
+    environment: *scripted-model-env
+
+  notification_server:
+    environment: *scripted-model-env
+
+  websocket_server:
+    environment: *scripted-model-env
+
+  frontend:
+    environment:
+      DISABLE_SENTRY: "true"

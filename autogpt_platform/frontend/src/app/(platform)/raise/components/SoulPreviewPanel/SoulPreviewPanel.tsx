@@ -1,11 +1,12 @@
 "use client";
 
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { kitBudgetLabel, kitToolsLabel, type RaiseKit } from "../../helpers";
-import { roleLabelFor } from "../RoleStep/helpers";
+import { roleFor } from "../CategoryStep/helpers";
 import { SoulDetailCard } from "./SoulDetailCard";
 
 const REVEAL =
@@ -18,7 +19,7 @@ type SoulDetail = {
 
 interface Props {
   name: string;
-  role: string | null;
+  category: ExpertAvatarRequestCategory | null;
   jobTitle?: string | null;
   avatarUrl: string | null;
   color: string | null;
@@ -31,7 +32,7 @@ interface Props {
 // Answers stack beneath it, which pushes the identity card up as they land.
 export function SoulPreviewPanel({
   name,
-  role,
+  category,
   jobTitle,
   avatarUrl,
   color,
@@ -39,7 +40,7 @@ export function SoulPreviewPanel({
   voiceLabel,
   kit,
 }: Props) {
-  const roleLabel = jobTitle || roleLabelFor(role);
+  const roleLabel = jobTitle || roleFor(category);
   const details = [
     { label: "About", value: about },
     { label: "Voice", value: voiceLabel },

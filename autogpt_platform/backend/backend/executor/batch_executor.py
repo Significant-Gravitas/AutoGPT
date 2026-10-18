@@ -424,6 +424,7 @@ class BatchExecutor(AppService):
     Health check just confirms the loop thread is alive.
     """
 
+    reads_feature_flags = False
     _loop_thread: threading.Thread | None = None
     _shutdown_event: threading.Event
 

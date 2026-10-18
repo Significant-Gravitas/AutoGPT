@@ -9,6 +9,8 @@ owner (personal library or expert): a re-install overwrites that copy and is
 not counted again.
 """
 
+import hashlib
+import json
 import logging
 
 import prisma.enums
@@ -17,12 +19,14 @@ import prisma.types
 
 from backend.copilot.tools.skills import (
     SKILL_ORIGIN_MARKETPLACE,
+    SkillBaseline,
     SkillFile,
     SkillWrite,
     StoredSkill,
     store_user_skills,
 )
 from backend.data.db import query_raw_with_schema
+from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -35,6 +39,204 @@ _LISTING_INCLUDE: prisma.types.SkillListingInclude = {
     "ActiveVersion": True,
     "CreatorProfile": True,
 }
+
+# One map for the whole marketplace, slug → active version, read by every
+# copy reconcile. Refreshed on a TTL and dropped by the catalog publisher.
+ACTIVE_VERSIONS_CACHE_KEY = "copilot:skills_active_versions:v1"
+ACTIVE_VERSIONS_CACHE_TTL_S = 60
+
+
+async def get_active_versions(
+    slugs: list[str],
+) -> dict[str, skill_model.ActiveSkillVersion]:
+    """The active version per listing slug, for the slugs that exist.
+
+    Serves the per-turn reconcile in ``copilot.tools.skills``, so it reads
+    one cached map of every listing rather than a query per copy. A slug
+    with no listing is absent; a delisted one is present with ``retired``.
+    """
+    if not slugs:
+        return {}
+    versions = await _read_active_versions_cache()
+    if versions is None:
+        versions = await _load_active_versions()
+        await _write_active_versions_cache(versions)
+    return {slug: versions[slug] for slug in slugs if slug in versions}
+
+
+async def _load_active_versions() -> dict[str, skill_model.ActiveSkillVersion]:
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where={"activeVersionId": {"not": None}}, include={"ActiveVersion": True}
+    )
+    unhashed = [
+        listing.ActiveVersion.id
+        for listing in listings
+        if listing.ActiveVersion is not None
+        and listing.ActiveVersion.packageSha256 is None
+    ]
+    file_hashes = await _file_hashes(unhashed)
+    versions: dict[str, skill_model.ActiveSkillVersion] = {}
+    for listing in listings:
+        active = listing.ActiveVersion
+        if active is None:
+            continue
+        live = (
+            not listing.isDeleted
+            and listing.hasApprovedVersion
+            and active.isAvailable
+            and not active.isDeleted
+            and active.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        )
+        versions[listing.slug] = skill_model.ActiveSkillVersion(
+            listing_id=listing.id,
+            version_id=active.id,
+            package_sha256=active.packageSha256
+            or skill_model.package_sha256_of(
+                skill_model.legacy_skill_markdown(active, listing.slug),
+                file_hashes.get(active.id, []),
+            ),
+            retired=not live,
+        )
+    return versions
+
+
+async def _file_hashes(
+    version_ids: list[str],
+) -> dict[str, list[tuple[str, str, bool]]]:
+    """``(path, sha256, executable)`` per version, without loading the bytes:
+    the identity of a creator-published version, whose rows carry no stored
+    package hash, is computed from these."""
+    if not version_ids:
+        return {}
+    rows = await query_raw_with_schema(
+        'SELECT "skillListingVersionId" AS version_id, "relativePath" AS path, '
+        'sha256, "isExecutable" AS executable FROM {schema_prefix}"SkillListingFile" '
+        'WHERE "skillListingVersionId" = ANY($1::text[]) ORDER BY "relativePath"',
+        version_ids,
+    )
+    hashes: dict[str, list[tuple[str, str, bool]]] = {}
+    for row in rows:
+        hashes.setdefault(row["version_id"], []).append(
+            (row["path"], row["sha256"], bool(row["executable"]))
+        )
+    return hashes
+
+
+def _hashed_files(files: list[SkillFile]) -> list[tuple[str, str, bool]]:
+    return [
+        (f.relative_path, hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in files
+    ]
+
+
+async def _read_active_versions_cache() -> (
+    dict[str, skill_model.ActiveSkillVersion] | None
+):
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(ACTIVE_VERSIONS_CACHE_KEY)
+        if not raw:
+            return None
+        payload = json.loads(raw)
+        return {
+            slug: skill_model.ActiveSkillVersion.model_validate(item)
+            for slug, item in payload.items()
+        }
+    except Exception:
+        # Best-effort cache: a miss or a malformed entry costs one query.
+        return None
+
+
+async def _write_active_versions_cache(
+    versions: dict[str, skill_model.ActiveSkillVersion],
+) -> None:
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            ACTIVE_VERSIONS_CACHE_KEY,
+            json.dumps({slug: v.model_dump() for slug, v in versions.items()}),
+            ex=ACTIVE_VERSIONS_CACHE_TTL_S,
+        )
+    except Exception:
+        pass
+
+
+async def invalidate_active_versions_cache() -> None:
+    """Drop the slug → active version map so copies see a publish at once
+    rather than after the TTL. Best-effort: the publisher may run from a
+    deploy job with no Redis in reach, and the TTL bounds the staleness."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(ACTIVE_VERSIONS_CACHE_KEY)
+    except Exception:
+        logger.warning("Could not drop the active skill versions cache", exc_info=True)
+
+
+async def get_version_packages(
+    version_ids: list[str],
+) -> dict[str, skill_model.SkillVersionPackage]:
+    """Whole packages by version id, for the versions that exist. Any version
+    can be fetched, not only the active one: a merge needs the baseline a
+    copy was installed from as well as the update."""
+    if not version_ids:
+        return {}
+    rows = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"id": {"in": version_ids}}, include={"SkillListing": True}
+    )
+    files = await _read_versions_files([row.id for row in rows])
+    packages: dict[str, skill_model.SkillVersionPackage] = {}
+    for row in rows:
+        if row.SkillListing is None:
+            continue
+        slug = row.SkillListing.slug
+        skill_markdown = row.skillMarkdown or skill_model.legacy_skill_markdown(
+            row, slug
+        )
+        package = files.get(row.id, [])
+        packages[row.id] = skill_model.SkillVersionPackage(
+            version_id=row.id,
+            listing_id=row.skillListingId,
+            slug=slug,
+            version=row.version,
+            package_sha256=row.packageSha256
+            or skill_model.package_sha256_of(skill_markdown, _hashed_files(package)),
+            skill_markdown=skill_markdown,
+            files=package,
+            required_providers=list(row.requiredProviders),
+            scanned_checksums=list(row.scannedSha256),
+        )
+    return packages
+
+
+async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | None:
+    """The id of the listing's version whose package hashes to
+    *package_sha256*, any version, not only the active one.
+
+    A copy installed before baselines were recorded is matched through
+    this: its files still hash to the version it came from when nobody
+    edited it, which proves it unedited and names what to fast-forward from.
+    A version with no stored hash is hashed as its installs rendered it,
+    from its files' recorded hashes, never their bytes. The newest match
+    wins when two versions hash alike.
+    """
+    rows = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"skillListingId": listing_id},
+        include={"SkillListing": True},
+        order={"version": "desc"},
+    )
+    file_hashes = await _file_hashes(
+        [row.id for row in rows if row.packageSha256 is None]
+    )
+    for row in rows:
+        if row.SkillListing is None:
+            continue
+        digest = row.packageSha256 or skill_model.package_sha256_of(
+            skill_model.legacy_skill_markdown(row, row.SkillListing.slug),
+            file_hashes.get(row.id, []),
+        )
+        if digest == package_sha256:
+            return row.id
+    return None
 
 
 async def get_marketplace_skills(
@@ -211,6 +413,12 @@ async def install_marketplace_skills(
     writes: list[SkillWrite] = []
     for listing in live:
         active = skill_model.active_version(listing)
+        # The published SKILL.md verbatim, so the copy's checksum is the
+        # catalog's and the copy can later prove it is unedited.
+        skill_markdown = active.skillMarkdown or skill_model.legacy_skill_markdown(
+            active, listing.slug
+        )
+        package = files.get(active.id, [])
         writes.append(
             SkillWrite(
                 name=listing.slug,
@@ -218,19 +426,19 @@ async def install_marketplace_skills(
                 body=active.body,
                 triggers=list(active.triggers),
                 version=str(active.version),
-                extra={
-                    key: value
-                    for key, value in (
-                        ("license", active.license),
-                        ("source", active.sourceRepo),
-                        ("source_url", active.sourceUrl),
-                    )
-                    if value is not None
-                },
+                skill_markdown=skill_markdown,
                 # `[]`, never `None` — which means "leave the folder alone"
                 # and would keep a sibling only the previous version had.
-                files=files.get(active.id, []),
+                files=package,
                 scanned_checksums=frozenset(active.scannedSha256),
+                baseline=SkillBaseline(
+                    listing_id=listing.id,
+                    version_id=active.id,
+                    package_sha256=active.packageSha256
+                    or skill_model.package_sha256_of(
+                        skill_markdown, _hashed_files(package)
+                    ),
+                ),
             )
         )
     stored = (

@@ -283,7 +283,7 @@ describe("BlockMenuContent", () => {
 
     expect(
       screen.getByPlaceholderText(
-        "Blocks, Agents, Integrations or Keywords...",
+        "Blocks, Workflows, Integrations or Keywords...",
       ),
     ).toBeDefined();
   });
@@ -316,7 +316,7 @@ describe("BlockMenuContent", () => {
     render(<BlockMenuContent />);
 
     const input = screen.getByPlaceholderText(
-      "Blocks, Agents, Integrations or Keywords...",
+      "Blocks, Workflows, Integrations or Keywords...",
     );
     fireEvent.change(input, { target: { value: "slack" } });
 
@@ -327,7 +327,7 @@ describe("BlockMenuContent", () => {
     render(<BlockMenuContent />);
 
     const input = screen.getByPlaceholderText(
-      "Blocks, Agents, Integrations or Keywords...",
+      "Blocks, Workflows, Integrations or Keywords...",
     );
     fireEvent.change(input, { target: { value: "test" } });
 
