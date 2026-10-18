@@ -12,6 +12,7 @@ from claude_agent_sdk import Message
 from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot.baseline import service as baseline
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
@@ -197,6 +198,7 @@ async def sdk_service_turn(
         "resolve_turn_budget": AsyncMock(
             return_value=TurnBudget(usd=100.0, limiting="task")
         ),
+        "gate_auto_continue": AsyncMock(return_value=AutoContinueGate(proceed=True)),
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),

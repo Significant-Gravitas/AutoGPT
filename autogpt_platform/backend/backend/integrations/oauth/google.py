@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -177,7 +178,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.refresh_token
         assert google_creds.scopes
 
-        google_creds.refresh(Request())
+        await asyncio.to_thread(google_creds.refresh, Request())
         assert google_creds.expiry
 
         return OAuth2Credentials(
