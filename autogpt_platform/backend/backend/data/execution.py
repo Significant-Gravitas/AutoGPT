@@ -45,12 +45,7 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
-from backend.blocks import (
-    get_block,
-    get_io_block_ids,
-    get_output_block_ids,
-    get_webhook_block_ids,
-)
+from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.sharing.execution_shares import (
@@ -1908,7 +1903,7 @@ async def get_graph_execution_by_share_token(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            **graph_execution_include(get_output_block_ids()),
+            **GRAPH_EXECUTION_INCLUDE_WITH_NODES,
         },
     )
 

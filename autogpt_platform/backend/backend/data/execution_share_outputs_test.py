@@ -15,7 +15,6 @@ import prisma.models
 import pytest
 from prisma.enums import AgentExecutionStatus
 
-from backend.blocks import get_output_block_ids
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.execution import (
     get_graph_execution,
@@ -161,7 +160,7 @@ def exec_client(mocker):
 
 @pytest.mark.asyncio
 async def test_shared_outputs_equal_owner_outputs(exec_client):
-    owner = await get_graph_execution("owner-1", "ge-1")
+    owner = await get_graph_execution("owner-1", "ge-1", include_node_executions=True)
     shared = await get_graph_execution_by_share_token("tok-1")
 
     assert owner is not None and shared is not None
@@ -186,20 +185,16 @@ async def test_shared_outputs_hide_moderated_original_value(exec_client):
 
 
 @pytest.mark.asyncio
-async def test_share_query_loads_output_blocks_with_input_rows(exec_client):
+async def test_share_query_uses_owner_node_execution_window(exec_client):
+    await get_graph_execution("owner-1", "ge-1", include_node_executions=True)
+    owner_nodes = exec_client.find_first.call_args.kwargs["include"]["NodeExecutions"]
     await get_graph_execution_by_share_token("tok-1")
 
     include = exec_client.find_first.call_args.kwargs["include"]
     node_execs = include["NodeExecutions"]
     assert include["AgentGraph"] is True
     assert "Input" in node_execs["include"]
-    assert node_execs["where"]["Node"]["is"]["AgentBlock"]["is"]["id"]["in"] == (
-        get_output_block_ids()
-    )
-    assert node_execs["where"]["NOT"] == [
-        {"executionStatus": AgentExecutionStatus.INCOMPLETE}
-    ]
-    assert "take" in node_execs
+    assert node_execs == owner_nodes
 
 
 @pytest.mark.asyncio
