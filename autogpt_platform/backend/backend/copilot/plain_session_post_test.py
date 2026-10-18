@@ -190,26 +190,52 @@ async def test_concurrent_deliveries_create_one_chat_without_orphans(
     assert original.Messages == []
 
 
-@pytest.mark.parametrize("unique_failure", [False, True])
 @pytest.mark.asyncio(loop_scope="session")
-async def test_chat_creation_failures_propagate_without_leaving_a_session(
-    user_id: str, mocker, unique_failure: bool
-):
-    error = (
-        UniqueViolationError(
-            {"user_facing_error": {"message": "Unique constraint: ChatSession_pkey"}}
-        )
-        if unique_failure
-        else RuntimeError("chat creation failed")
-    )
+async def test_chat_creation_failure_propagates(user_id: str, mocker):
     session_actions = PrismaChatSession.prisma()
-    mocker.patch.object(type(session_actions), "create", AsyncMock(side_effect=error))
+    mocker.patch.object(
+        type(session_actions),
+        "create",
+        AsyncMock(side_effect=RuntimeError("chat creation failed")),
+    )
 
-    with pytest.raises(type(error)):
+    with pytest.raises(RuntimeError, match="chat creation failed"):
         await copilot_db.append_plain_session_message(
             user_id=user_id, content="## Briefing", message_id=str(uuid4())
         )
-    assert await PrismaChatSession.prisma().find_many(where={"userId": user_id}) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_unique_violation_for_a_new_message_propagates_and_writes_nothing(
+    user_id: str, mocker
+):
+    existing = await copilot_db.create_chat_session(
+        session_id=str(uuid4()), user_id=user_id
+    )
+    session_actions = PrismaChatSession.prisma()
+    real_create = session_actions.create
+
+    async def create_with_colliding_session_id(*, data, **kwargs):
+        return await real_create(data={**data, "id": existing.session_id}, **kwargs)
+
+    mocker.patch.object(
+        type(session_actions),
+        "create",
+        AsyncMock(side_effect=create_with_colliding_session_id),
+    )
+    message_id = str(uuid4())
+
+    with pytest.raises(UniqueViolationError):
+        await copilot_db.append_plain_session_message(
+            user_id=user_id, content="## Briefing", message_id=message_id
+        )
+    assert await ChatMessage.prisma().find_unique(where={"id": message_id}) is None
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id}, include={"Messages": True}
+    )
+    assert [(session.id, session.Messages) for session in sessions] == [
+        (existing.session_id, [])
+    ]
 
 
 async def _seed_existing_conversations(user_id: str) -> list[str]:
