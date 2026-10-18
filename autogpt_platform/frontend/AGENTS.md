@@ -62,7 +62,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: LaunchDarkly integration
+- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 

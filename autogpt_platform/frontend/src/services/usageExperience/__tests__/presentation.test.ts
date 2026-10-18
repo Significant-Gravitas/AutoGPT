@@ -86,7 +86,7 @@ describe("usage messages", () => {
     expect(usagePresentation(experience)).toMatchObject({
       title: "You can continue today at 5:00 PM",
       noticeTitle: "You can continue today at 5:00 PM",
-      description: "Your chats, agents and results are saved.",
+      description: "Your chats, workflows and results are saved.",
     });
   });
   it("states the amount and start date of a failed first trial charge", () => {
@@ -109,7 +109,7 @@ describe("usage messages", () => {
     expect(usagePresentation(experience)).toMatchObject({
       title: "Your payment didn’t go through",
       description:
-        "Pro was due to start on Oct 12, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.",
+        "Pro was due to start on Oct 12, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, workflows and results are saved.",
     });
   });
   it("keeps the billing route when the open invoice is unavailable", () => {
@@ -119,7 +119,7 @@ describe("usage messages", () => {
       "NO_TIER",
     );
     expect(usagePresentation(experience).description).toBe(
-      "Review your billing details to continue. Your chats, agents and results are saved.",
+      "Review your billing details to continue. Your chats, workflows and results are saved.",
     );
   });
 });

@@ -9,10 +9,14 @@ import {
   getGetBrainDumpRecommendedProvidersMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
-import { getChatMock } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getChatMock,
+  getGetV2ListTurnsAtBudgetResetMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
+import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
 import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
@@ -38,6 +42,8 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No flag vendor unless a test provides one, so every flag serves its default.
+  getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),
@@ -59,6 +65,9 @@ export const mockHandlers = [
     providers: [],
   }),
   ...getBriefingsMock(),
+  // Nothing set to send at a budget reset unless a test sets it up; random
+  // jobs would put a scheduled-message chip above every chat's composer.
+  getGetV2ListTurnsAtBudgetResetMockHandler200({ jobs: [] }),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),

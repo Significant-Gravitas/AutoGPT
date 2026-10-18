@@ -13,6 +13,7 @@ from backend.api.features.chat import continuation as continuation_routes
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot import model as chat_model
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor import utils as executor_utils
@@ -84,6 +85,9 @@ def chat(mocker: pytest_mock.MockerFixture):
     )
     mocks.publish = mocker.patch.object(
         continuation_routes.stream_registry, "publish_chunk", new=AsyncMock()
+    )
+    mocks.cancel_resume = mocker.patch.object(
+        continuation_routes, "cancel_resume_at_reset_in_background"
     )
     return mocks
 
@@ -173,6 +177,43 @@ def test_a_chat_taken_after_the_busy_check_is_a_409(chat):
 
     assert client.post(URL).status_code == 409
     chat.publish.assert_not_awaited()
+
+
+def test_keep_going_cancels_a_pending_resume_at_reset(chat, test_user_id):
+    # Only the resume: ``cancel_resume_at_reset_in_background`` leaves a
+    # pending send alone (copilot/at_reset_test.py).
+    assert client.post(URL).status_code == 202
+    chat.cancel_resume.assert_called_once_with(SESSION_ID, test_user_id)
+
+
+@pytest.mark.parametrize("refusal", ["busy", "duplicate"])
+def test_a_keep_going_that_didnt_start_leaves_the_resume(chat, refusal):
+    if refusal == "busy":
+        chat.busy.return_value = True
+    else:
+        chat.schedule.return_value = None
+
+    assert client.post(URL).status_code == 409
+    chat.cancel_resume.assert_not_called()
+
+
+def test_a_failing_resume_cancel_never_fails_keep_going(
+    chat, mocker: pytest_mock.MockerFixture
+):
+    mocker.patch.object(
+        continuation_routes,
+        "cancel_resume_at_reset_in_background",
+        cancel_resume_at_reset_in_background,
+    )
+    scheduler_down = MagicMock(
+        cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("scheduler down"))
+    )
+    mocker.patch(
+        "backend.copilot.at_reset.get_scheduler_client", return_value=scheduler_down
+    )
+
+    assert client.post(URL).status_code == 202
+    chat.schedule.assert_awaited_once()
 
 
 _PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
