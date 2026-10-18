@@ -14,10 +14,11 @@ import { describeSendFailure } from "../ChatInput/helpers";
 import { useChatDraftAccess } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
-  holdsMessage,
   isJoinedSendTooLong,
+  readHolds,
   returnToDraft,
   SCHEDULE_FAILED_TITLE,
+  SEND_SETTLE_MS,
   sendAtResetFailureTitle,
   SentNowError,
   sessionDraftKey,
@@ -168,15 +169,21 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     });
   }
 
-  /** For a message a page sent to be set and then lost track of, as on a
-   *  reload mid-request: keep it if the server has it, otherwise put it back
-   *  in the chat's draft. Never sent again from here, since the first try
-   *  could still land and the server would add the message twice. */
-  async function recover(message: string) {
+  /** For a message a page sent to be set at `sentAt` and then lost track
+   *  of, as on a reload mid-request: keep it if the server has it, otherwise
+   *  put it back in the chat's draft. Never sent again from here, since the
+   *  first try could still land and the server would add the message twice. */
+  async function recover(message: string, sentAt: number) {
     // A change this page makes meanwhile can't sway it: adding to the send
     // doesn't add this message, and Edit puts what it cancels in the draft.
-    const read = await readSend();
-    if ("send" in read && holdsMessage(read.send?.message ?? "", message)) {
+    let read = await readSend();
+    const settling = sentAt + SEND_SETTLE_MS - Date.now();
+    if (!readHolds(read, message) && settling > 0) {
+      // The gone page's request can still be landing.
+      await new Promise((resolve) => setTimeout(resolve, settling));
+      read = await readSend();
+    }
+    if (readHolds(read, message)) {
       // The list, read as the chat opened, can predate the send landing.
       rereadList();
       return;

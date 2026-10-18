@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 import { StrictMode, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatDraft } from "../../ChatInput/useChatDraft";
-import { sessionDraftKey } from "../helpers";
+import { SEND_SETTLE_MS, sessionDraftKey } from "../helpers";
 import { useScheduledSendHandoff } from "../scheduledSendHandoff";
 import { useHandedOffSend } from "../useHandedOffSend";
 import { useScheduledSend } from "../useScheduledSend";
@@ -165,10 +165,24 @@ describe("useHandedOffSend", () => {
   });
 
   describe("after a reload while the send was being set", () => {
-    function sentBeforeTheReload(sessionId: string) {
+    // By default long enough ago that its request has landed if it ever will.
+    function sentBeforeTheReload(sessionId: string, ago = SEND_SETTLE_MS) {
       useScheduledSendHandoff.setState({
-        sends: { [sessionId]: { message: MESSAGE, sentAt: Date.now() } },
+        sends: { [sessionId]: { message: MESSAGE, sentAt: Date.now() - ago } },
       });
+    }
+
+    // The chat's list as the page read it on opening: no send, and fresh, so
+    // only the page's own reads of the send reach the server.
+    function listedEmpty(sessionId: string) {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      });
+      client.setQueryData<getV2ListTurnsAtBudgetResetResponse>(
+        getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
+        { status: 200, data: { jobs: [] }, headers: new Headers() },
+      );
+      return client;
     }
 
     it("keeps it when the server has it, joined onto what was waiting", async () => {
@@ -190,13 +204,7 @@ describe("useHandedOffSend", () => {
     // The chat's list, read as the page opened, can predate the send landing,
     // and nothing reads a list holding no send again.
     it("shows the send it finds the server has", async () => {
-      const client = new QueryClient({
-        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-      });
-      client.setQueryData<getV2ListTurnsAtBudgetResetResponse>(
-        getGetV2ListTurnsAtBudgetResetQueryKey("chat-listed-early"),
-        { status: 200, data: { jobs: [] }, headers: new Headers() },
-      );
+      const client = listedEmpty("chat-listed-early");
       serverHolding([{ kind: "send", run_at: RUN_AT, message: MESSAGE }]);
       sentBeforeTheReload("chat-listed-early");
 
@@ -209,6 +217,37 @@ describe("useHandedOffSend", () => {
       );
       expect(handedOff("chat-listed-early")).toBeUndefined();
       expect(result.current.draft).toBe("");
+    });
+
+    // The server keeps on with a request after a reload drops the page that
+    // sent it, so a send missing just after the reload can still land.
+    it("waits for a request still landing before putting it back", async () => {
+      const client = listedEmpty("chat-landing");
+      let reads = 0;
+      server.use(
+        http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+          reads += 1;
+          return HttpResponse.json({
+            jobs:
+              reads > 1
+                ? [{ kind: "send", run_at: RUN_AT, message: MESSAGE }]
+                : [],
+          });
+        }),
+      );
+      sentBeforeTheReload("chat-landing", SEND_SETTLE_MS - 300);
+
+      const { result } = renderHook(() => useNewChat("chat-landing"), {
+        wrapper: withQueryClient(client),
+      });
+
+      await waitFor(
+        () => expect(result.current.pending?.message).toBe(MESSAGE),
+        { timeout: 3000 },
+      );
+      expect(handedOff("chat-landing")).toBeUndefined();
+      expect(result.current.draft).toBe("");
+      expect(toastTitles()).toEqual([]);
     });
 
     it("puts it back in the composer when the server doesn't have it", async () => {
