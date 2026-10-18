@@ -135,6 +135,18 @@ export function diffRows(
   return diffs;
 }
 
+/**
+ * Sentry's default `normalizeDepth` of 3 flattens anything deeper than three
+ * levels under `extra` into `"[Array]"`, so a diff row's field names at
+ * `extra.diffs[i].fields` never arrive. Each differing row is sent as one
+ * flat string instead, e.g. `"2: content, tool_calls"`.
+ */
+export function diffReportLines(
+  diffs: readonly { index: number; fields: readonly string[] }[],
+) {
+  return diffs.map((diff) => `${diff.index}: ${diff.fields.join(", ")}`);
+}
+
 interface SessionView {
   messages?: readonly unknown[] | null;
   active_stream?: { turn_id: string } | null;
@@ -226,7 +238,8 @@ function compareTurn(shadow: ShadowTurn, session: SessionView) {
     .slice(0, last.rows)
     .map(logRowFromPersisted);
   const diffs = diffRows(log.rows, turnRows);
-  if (diffs.length > 0) reportDrift("finish", log, { diffs });
+  if (diffs.length > 0)
+    reportDrift("finish", log, { diffs: diffReportLines(diffs) });
 }
 
 // A replay that opens past the turn's `start` (a trimmed stream) is a tail,

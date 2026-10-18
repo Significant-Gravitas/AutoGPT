@@ -18,7 +18,7 @@ import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
 import { seedTurnLog } from "./turnLog";
-import { diffRows, sha256Hex } from "./turnShadow";
+import { diffReportLines, diffRows, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
   closeBlocks,
@@ -1058,7 +1058,7 @@ export class TurnRuntime {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
         cursor: seg.log.cursor,
-        diffs: drift,
+        diffs: diffReportLines(drift),
       });
     }
     this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
