@@ -14,7 +14,7 @@ from backend.copilot.legacy_first_turn_memory_test_data import (
     legacy_first_message,
     master_warm,
 )
-from backend.copilot.model import ChatMessage
+from backend.copilot.model import ChatMessage, ChatSessionInfo
 
 from . import fetch as fetch_mod
 from . import hidden_sessions
@@ -80,7 +80,12 @@ def _chat_store(*session_ids: str) -> SimpleNamespace:
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[
-                SimpleNamespace(session_id=sid, title=sid) for sid in session_ids
+                SimpleNamespace(
+                    session_id=sid,
+                    title=sid,
+                    started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                )
+                for sid in session_ids
             ]
         ),
         get_chat_messages_paginated=AsyncMock(
@@ -158,3 +163,21 @@ def test_a_session_body_reads_the_first_message_without_its_stored_block():
     assert "violet-913" not in body
     assert "what is Alice working on" in body
     assert "Bob leads Atlas" in body
+
+
+@pytest.mark.asyncio
+async def test_session_row_preserves_typed_creation_time(mocker):
+    started = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    session = ChatSessionInfo(
+        session_id="s",
+        user_id="u",
+        title="title",
+        usage=[],
+        started_at=started,
+        updated_at=started,
+    )
+    database = _chat_store("s")
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+    row = await fetch_mod._session_row(session, "u")
+    assert row.created_at == started
+    assert row.body == "user: something the user said"
