@@ -4,7 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { StrictMode, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +47,7 @@ function useNewChat(
   const scheduled = useScheduledSend({ sessionId, onSendNow });
   useHandedOffSend(sessionId, scheduled);
   const [draft] = useChatDraft(sessionDraftKey(sessionId));
-  return { draft, pending: scheduled.pending };
+  return { draft, pending: scheduled.pending, cancel: scheduled.cancel };
 }
 
 function serverHolding(waiting: unknown[] | "unavailable") {
@@ -251,6 +251,51 @@ describe("useHandedOffSend", () => {
           { timeout: 3000 },
         );
         expect(handedOff("chat-landing")).toBeUndefined();
+        expect(result.current.draft).toBe("");
+        expect(toastTitles()).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // The request landed while the page waited, the chip showed it, and the
+    // user cancelled it: putting the message back would undo that.
+    it("leaves it to the user once they change the send while it waits", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date(2026, 9, 18, 9, 0));
+        const client = listedEmpty("chat-changed");
+        let waiting: string | null = null;
+        let reads = 0;
+        let cancelled = 0;
+        server.use(
+          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+            reads += 1;
+            const jobs = waiting
+              ? [{ kind: "send", run_at: RUN_AT, message: waiting }]
+              : [];
+            // The gone page's request lands right after the first read.
+            waiting = MESSAGE;
+            return HttpResponse.json({ jobs });
+          }),
+          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
+            cancelled += 1;
+            waiting = null;
+            return new HttpResponse(null, { status: 204 });
+          }),
+        );
+        sentBeforeTheReload("chat-changed", SEND_SETTLE_MS - 1000);
+
+        const { result } = renderHook(() => useNewChat("chat-changed"), {
+          wrapper: withQueryClient(client),
+        });
+        await waitFor(() => expect(reads).toBe(1));
+        await act(() => result.current.cancel());
+
+        await waitFor(() => expect(handedOff("chat-changed")).toBeUndefined(), {
+          timeout: 3000,
+        });
+        expect(cancelled).toBe(1);
         expect(result.current.draft).toBe("");
         expect(toastTitles()).toEqual([]);
       } finally {

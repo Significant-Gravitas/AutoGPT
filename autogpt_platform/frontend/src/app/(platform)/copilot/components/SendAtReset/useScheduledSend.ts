@@ -175,13 +175,16 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
    *  put it back in the chat's draft. Never sent again from here, since the
    *  first try could still land and the server would add the message twice. */
   async function recover(message: string, sentAt: number) {
-    // A change this page makes meanwhile can't sway it: adding to the send
-    // doesn't add this message, and Edit puts what it cancels in the draft.
+    if (!sessionId) return;
     let read = await readSend();
     const settling = sentAt + SEND_SETTLE_MS - Date.now();
     if (!readHolds(read, message) && settling > 0) {
       // The gone page's request can still be landing.
+      const changedHere = startSendRead(sessionId);
       await new Promise((resolve) => setTimeout(resolve, settling));
+      // Edited, cancelled or added to on this page meanwhile: what the user
+      // did with the send stands.
+      if (changedHere()) return;
       read = await readSend();
     }
     if (readHolds(read, message)) {

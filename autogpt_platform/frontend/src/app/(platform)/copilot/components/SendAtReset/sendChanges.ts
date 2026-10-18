@@ -15,8 +15,8 @@ export const countSendChanges = {
   },
 };
 
-/** Call as a read of the chat's send goes out; once it is back, the
- *  returned check says whether it can have missed a change from this page. */
+/** Call as a read of the chat's send goes out, or a wait on it begins; the
+ *  returned check says whether a change from this page can have come since. */
 export function startSendRead(sessionId: string) {
   const chat = changesTo(sessionId);
   const startedBefore = chat.out === 0 ? chat.started : null;
