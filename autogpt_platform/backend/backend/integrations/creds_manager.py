@@ -261,17 +261,8 @@ class IntegrationCredentialsManager:
         if credentials.refresh_strategy == "provider_runtime":
             return credentials
 
-        # When lock=False, skip ALL Redis locking (both the outer "refresh" scope
-        # lock and the inner credential lock).  This is used by the copilot's
-        # integration_creds module which runs across multiple threads with separate
-        # event loops; acquiring a Redis lock whose asyncio.Lock() was created on
-        # a different loop raises "Future attached to a different loop".
-        # Resolve once: `_refresh_locked` needs the handler anyway, and
-        # building it twice per refresh just to read a class flag is wasteful.
-        # A construction failure is left to the refresh path to raise, rather
-        # than being turned into "take the lock" — `lock=False` exists because
-        # the copilot runs across threads with separate event loops, where
-        # entering a Redis lock raises "Future attached to a different loop".
+        # Copilot skips refresh locks for reusable tokens. Rotating tokens must
+        # serialize refreshes and reload storage, even for a lock-free caller.
         handler = await self._get_oauth_handler(credentials)
         if lock:
             return await self._refresh_locked(user_id, credentials, handler=handler)
@@ -378,11 +369,8 @@ class IntegrationCredentialsManager:
     ) -> OAuth2Credentials:
         """Best-effort token refresh without any Redis locking.
 
-        Safe for use from multi-threaded contexts (e.g. copilot workers) where
-        each thread has its own event loop and sharing Redis-backed asyncio locks
-        is not possible.  Concurrent refreshes are tolerated: the last writer
-        wins, and stale tokens are overwritten — which holds only for a static
-        refresh token, so a rotating provider never reaches this path.
+        Concurrent refreshes are tolerated only for reusable refresh tokens;
+        rotating providers must use the locked path and reload stored credentials.
         """
         oauth_handler = handler or await self._get_oauth_handler(credentials)
         if oauth_handler.needs_refresh(credentials):
