@@ -1,7 +1,6 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { ReportedSendError } from "@/app/(platform)/copilot/helpers/reportedSendError";
-import { describeSendFailure } from "./helpers";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
@@ -17,6 +16,9 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  draftKey?: string;
+  /** Names what failed in the toast, e.g. a scheduled send. */
+  failureTitle?: string | ((error: unknown) => string);
 }
 
 export function useChatInput({
@@ -27,16 +29,23 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  draftKey,
+  failureTitle = "Couldn't send message",
 }: Args) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
   const [isEnqueueing, setIsEnqueueing] = useState(false);
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
   const isEnqueueingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
-    useCopilotUIStore();
+  const {
+    initialPrompt,
+    setInitialPrompt,
+    recoveredDraft,
+    clearRecoveredDraft,
+    notifyMessageSent,
+  } = useCopilotUIStore();
 
   useEffect(
     function consumeInitialPrompt() {
@@ -53,7 +62,16 @@ export function useChatInput({
       ) as HTMLTextAreaElement | null;
       textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt, inputId],
+    [initialPrompt, setInitialPrompt, inputId, setValue],
+  );
+
+  useEffect(
+    function consumeRecoveredDraft() {
+      if (!recoveredDraft) return;
+      setValue((current) => restoreFailedDraft(current, recoveredDraft));
+      clearRecoveredDraft();
+    },
+    [recoveredDraft, clearRecoveredDraft, setValue],
   );
 
   useEffect(
@@ -89,14 +107,13 @@ export function useChatInput({
       notifyMessageSent();
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
-      if (error instanceof ReportedSendError) return;
-      toast({
-        title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "your message is back in the composer",
-        ),
-        variant: "destructive",
+      toastSendFailure({
+        title:
+          typeof failureTitle === "function"
+            ? failureTitle(error)
+            : failureTitle,
+        error,
+        recovery: "your message is back in the composer",
       });
     } finally {
       isSubmittingRef.current = false;
@@ -120,14 +137,10 @@ export function useChatInput({
       await onEnqueue(trimmedMessage);
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
-      if (error instanceof ReportedSendError) return;
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "your message is back in the composer",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your message is back in the composer",
       });
     } finally {
       isEnqueueingRef.current = false;

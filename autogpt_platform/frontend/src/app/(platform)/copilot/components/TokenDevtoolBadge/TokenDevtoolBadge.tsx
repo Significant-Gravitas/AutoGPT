@@ -3,6 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
@@ -26,6 +27,11 @@ interface Props {
   /** Alignment is the tray's concern — the badge renders into two
    *  structurally different parents. */
   className?: string;
+  /** Opened from the composer's + menu: no button of its own, the popover
+   *  anchors to its parent box instead. */
+  anchorOnly?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /** Dev-only context readout in the composer tray. The bar tracks the
@@ -34,7 +40,13 @@ interface Props {
  *  to summarize. The popover splits the estimate by source and lists
  *  per-turn usage; ⟲ marks a turn where the stream carried a
  *  `context_compaction` tool call. */
-export function TokenDevtoolBadge({ sessionId, className }: Props) {
+export function TokenDevtoolBadge({
+  sessionId,
+  className,
+  anchorOnly = false,
+  open: controlledOpen,
+  onOpenChange,
+}: Props) {
   const turns = useTokenDevtoolStore((s) => s.turnsBySession[sessionId]);
   const breakdown = useTokenDevtoolStore(
     (s) => s.breakdownBySession[sessionId],
@@ -45,7 +57,9 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
   const compacted = useTokenDevtoolStore(
     (s) => s.compactedBySession[sessionId] ?? false,
   );
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const seed = breakdown ? breakdownTotal(breakdown) : undefined;
   const context = displayContext(liveContext ?? null, compacted, seed);
   // The rows describe the loaded-history seed, so showing them next to a
@@ -55,27 +69,33 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Token devtool, context ${
-            context === null ? "unknown" : formatTokenCount(context)
-          }`}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
-            className,
-          )}
-        >
-          <Icon icon={DashboardSpeed02Icon} size={16} />
-          <span className="sr-only">
-            {context === null ? "ctx —" : `ctx ~${formatTokenCount(context)}`}
-          </span>
-        </button>
-      </PopoverTrigger>
+      {anchorOnly ? (
+        <PopoverAnchor asChild>
+          <span aria-hidden className="pointer-events-none absolute inset-0" />
+        </PopoverAnchor>
+      ) : (
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Token devtool, context ${
+              context === null ? "unknown" : formatTokenCount(context)
+            }`}
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+              className,
+            )}
+          >
+            <Icon icon={DashboardSpeed02Icon} size={16} />
+            <span className="sr-only">
+              {context === null ? "ctx —" : `ctx ~${formatTokenCount(context)}`}
+            </span>
+          </button>
+        </PopoverTrigger>
+      )}
 
       <PopoverContent
         side="top"
-        align="end"
+        align={anchorOnly ? "start" : "end"}
         sideOffset={8}
         className="w-80 rounded-2xl border-zinc-200/70 p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]"
       >

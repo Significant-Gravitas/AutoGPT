@@ -28,6 +28,7 @@ from backend.copilot.service import (
     _record_title_generation_cost,
     _title_usage_from_response,
     _update_title_async,
+    settings,
 )
 from backend.util.settings import Config
 
@@ -667,6 +668,36 @@ class TestGenerateSessionTitle:
         assert extra_body["usage"] == {"include": True}
         assert extra_body["user"] == "user-abc"
         assert extra_body["session_id"] == "sess-abc"
+        assert extra_body["trace"] == {
+            "generation_name": "copilot-title",
+            "environment": settings.config.app_env.value,
+            "impersonated": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_title_call_off_openrouter_carries_no_broadcast_fields(self):
+        """Broadcast only sees OpenRouter calls, and a direct-Anthropic aux
+        endpoint 400s on unknown body fields."""
+        resp = _build_completion(content="Title")
+        helper = AsyncMock(return_value=resp)
+        with (
+            patch(
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
+            ),
+            patch(
+                "backend.copilot.service.config",
+                MagicMock(
+                    aux_uses_openrouter=False,
+                    aux_provider_label="anthropic",
+                    title_model="anthropic/claude-haiku-4.5",
+                ),
+            ),
+        ):
+            await _generate_session_title(
+                "hello", user_id="user-abc", session_id="sess-abc"
+            )
+        assert helper.await_args.kwargs["extra_body"] is None
 
     @pytest.mark.asyncio
     async def test_title_model_normalized_when_aux_is_anthropic(self):

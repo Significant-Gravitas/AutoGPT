@@ -89,7 +89,9 @@ export function RunAgentTool({ part }: Props) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
-              text={isCorrupted ? "Agent result could not be displayed" : text}
+              text={
+                isCorrupted ? "Workflow result could not be displayed" : text
+              }
               className={isError ? "text-red-500" : undefined}
             />
           </div>

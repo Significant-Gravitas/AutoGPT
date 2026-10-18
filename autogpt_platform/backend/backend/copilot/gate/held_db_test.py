@@ -288,11 +288,10 @@ async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
+async def test_a_call_rebuilt_without_usage_origin_asks_for_resend_in_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Its record was lost, but a turn in the user's own chat is a root anyway:
-    the wake starts as one, under the session's permissions as they are now."""
+    """The card alone cannot establish which allowance bought the work."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
@@ -310,9 +309,10 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     ):
         await held.wake(test_user_id, session.session_id, rows.values())
 
-    woken = dispatch.await_args.kwargs
-    assert (woken["envelope"], woken["root"]) == (None, True)
-    assert woken["permissions"] == today
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert any("send the request again" in (m.content or "") for m in reloaded.messages)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -439,7 +439,7 @@ async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+async def test_an_approval_whose_usage_origin_was_lost_does_not_run_from_the_card(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     session = await _new_session(test_user_id)
@@ -448,8 +448,8 @@ async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
 
     [delivered] = await held.resolve_answered(test_user_id, session)
 
-    assert post_tool.runs == [{"text": "from the card"}]
-    assert "posted from the card" in delivered.content
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
     # The card kept the call's id, so the chain row still finds its result.
     assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
     assert await _row(review_id, test_user_id) is None
@@ -717,4 +717,4 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
     with patch("backend.copilot.gate.supervise", supervisor):
         await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
 
-    assert supervisor.await_args.kwargs["user_message"] == request
+    assert supervisor.await_args.kwargs["user_messages"] == [request]

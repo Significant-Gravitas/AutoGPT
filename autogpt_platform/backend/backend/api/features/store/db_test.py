@@ -9,7 +9,7 @@ import pytest
 from prisma import Prisma
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 from . import categories as store_categories
 from . import db
@@ -119,6 +119,46 @@ async def test_get_store_agent_details(mocker):
     mock_store_agent.return_value.find_first.assert_called_once_with(
         where={"creator_username": "creator", "slug": "test-agent"}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agent_details_missing_names_the_workflow(mocker):
+    mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock_store_agent.return_value.find_first = AsyncMock(return_value=None)
+
+    with pytest.raises(NotFoundError, match="^Workflow creator/gone not found$"):
+        await db.get_store_agent_details("creator", "gone")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agent_details_db_failure_names_the_workflow(mocker):
+    mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock_store_agent.return_value.find_first = AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+
+    with pytest.raises(DatabaseError, match="^Failed to fetch workflow details$"):
+        await db.get_store_agent_details("creator", "test-agent")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agent_by_version_id_missing_names_the_workflow(mocker):
+    mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock_store_agent.return_value.find_first = AsyncMock(return_value=None)
+
+    with pytest.raises(NotFoundError, match="^Workflow version-9 not found$"):
+        await db.get_store_agent_by_version_id("version-9")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agent_by_version_id_db_failure_names_the_workflow(mocker):
+    mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock_store_agent.return_value.find_first = AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+
+    with pytest.raises(DatabaseError, match="^Failed to fetch workflow details$"):
+        await db.get_store_agent_by_version_id("version-9")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -549,6 +589,27 @@ async def test_get_store_creators_only_returns_approved(mocker):
     _, count_kwargs = mock_creator.return_value.count.call_args
     assert find_kwargs["where"]["num_agents"] == {"gt": 0}
     assert count_kwargs["where"]["num_agents"] == {"gt": 0}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "search_query, searched_for",
+    [("a" * 300, {"a" * 100}), ("   ", set())],
+    ids=["over-long query searches its first 100 characters", "blank query"],
+)
+async def test_get_store_creators_accepts_long_and_blank_queries(
+    mocker, search_query, searched_for
+):
+    mock_creator = mocker.patch("prisma.models.Creator.prisma")
+    mock_creator.return_value.find_many = AsyncMock(return_value=[])
+    mock_creator.return_value.count = AsyncMock(return_value=0)
+
+    await db.get_store_creators(search_query=search_query)
+
+    where = mock_creator.return_value.find_many.call_args.kwargs["where"]
+    assert {
+        match["contains"] for field in where.get("OR", []) for match in field.values()
+    } == searched_for
 
 
 @pytest.mark.asyncio(loop_scope="session")
