@@ -222,32 +222,40 @@ describe("useHandedOffSend", () => {
     // The server keeps on with a request after a reload drops the page that
     // sent it, so a send missing just after the reload can still land.
     it("waits for a request still landing before putting it back", async () => {
-      const client = listedEmpty("chat-landing");
-      let reads = 0;
-      server.use(
-        http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
-          reads += 1;
-          return HttpResponse.json({
-            jobs:
-              reads > 1
-                ? [{ kind: "send", run_at: RUN_AT, message: MESSAGE }]
-                : [],
-          });
-        }),
-      );
-      sentBeforeTheReload("chat-landing", SEND_SETTLE_MS - 300);
+      // The clock stands still, so the page reads before the window ends
+      // however long it takes to open; the wait itself runs in real time.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date(2026, 9, 18, 9, 0));
+        const client = listedEmpty("chat-landing");
+        let reads = 0;
+        server.use(
+          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+            reads += 1;
+            return HttpResponse.json({
+              jobs:
+                reads > 1
+                  ? [{ kind: "send", run_at: RUN_AT, message: MESSAGE }]
+                  : [],
+            });
+          }),
+        );
+        sentBeforeTheReload("chat-landing", SEND_SETTLE_MS - 300);
 
-      const { result } = renderHook(() => useNewChat("chat-landing"), {
-        wrapper: withQueryClient(client),
-      });
+        const { result } = renderHook(() => useNewChat("chat-landing"), {
+          wrapper: withQueryClient(client),
+        });
 
-      await waitFor(
-        () => expect(result.current.pending?.message).toBe(MESSAGE),
-        { timeout: 3000 },
-      );
-      expect(handedOff("chat-landing")).toBeUndefined();
-      expect(result.current.draft).toBe("");
-      expect(toastTitles()).toEqual([]);
+        await waitFor(
+          () => expect(result.current.pending?.message).toBe(MESSAGE),
+          { timeout: 3000 },
+        );
+        expect(handedOff("chat-landing")).toBeUndefined();
+        expect(result.current.draft).toBe("");
+        expect(toastTitles()).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("puts it back in the composer when the server doesn't have it", async () => {
