@@ -20,6 +20,32 @@ export function getDefaultTypeIndex(options: StrictRJSFSchema[]): number {
 }
 
 /**
+ * Returns shallow copies of the options with empty `properties` objects removed.
+ *
+ * rjsf's `retrieveSchema` stubs `properties: {}` onto open-ended object schemas
+ * (`additionalProperties: true`). `getFirstMatchingOption` then builds
+ * `anyOf: []` from those keys, which AJV rejects as an invalid schema.
+ * Order is preserved so returned indices still map to the original options.
+ */
+export function stripEmptyProperties<T extends StrictRJSFSchema>(
+  options: T[],
+): T[] {
+  return options.map((option) => {
+    const properties = option?.properties;
+    if (
+      properties &&
+      typeof properties === "object" &&
+      Object.keys(properties).length === 0
+    ) {
+      const copy = { ...option };
+      delete copy.properties;
+      return copy;
+    }
+    return option;
+  });
+}
+
+/**
  * Determines if a type selector should be shown for an anyOf schema
  * Returns false for simple optional types (type | null)
  * Returns true for complex anyOf (3+ types or multiple non-null types)
