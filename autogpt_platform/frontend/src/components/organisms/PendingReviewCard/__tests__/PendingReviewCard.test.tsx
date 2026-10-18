@@ -4,7 +4,10 @@ import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 import { PendingReviewCard } from "../PendingReviewCard";
+
+type ReviewPayload = PendingHumanReviewModel["payload"];
 
 function makeReview(
   overrides: Partial<PendingHumanReviewModel> = {},
@@ -266,4 +269,27 @@ test("uses the block's input schema and never shows the credential id", async ()
   expect(screen.queryByText(/s3cr3t/)).toBeNull();
   expect(screen.queryByDisplayValue("s3cr3t")).toBeNull();
   expect(screen.queryByText("SendEmailBlock")).toBeNull();
+});
+
+// A list payload is edited as raw JSON. Every half-typed edit is invalid JSON,
+// and the field used to drop it and put the old text back, which also broke
+// IME input and threw the caret to the end.
+test("keeps half-typed JSON in a list payload and reports it once it parses", async () => {
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+  await expectTypingKept(field, ", 3", field.value.indexOf("2") + 1);
+
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    JSON.stringify([1, 2, 3], null, 2),
+  );
 });
