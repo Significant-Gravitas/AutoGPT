@@ -145,9 +145,9 @@ class _RefreshScenario:
         assert (user_id, credentials.id) == (_USER, self.stored.id)
         self.stored = credentials.model_copy(deep=True)
 
-    async def acquire(self, key: tuple[str, ...]):
+    async def acquire(self, key: tuple[str, ...], *, blocking_timeout=None):
         mutex = self.locks.setdefault(key, asyncio.Lock())
-        await mutex.acquire()
+        await asyncio.wait_for(mutex.acquire(), timeout=blocking_timeout)
         lock = AsyncMock(spec=Lock)
         lock.locked.return_value = True
         lock.owned.return_value = True

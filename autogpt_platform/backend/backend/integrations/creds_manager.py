@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+_REFRESH_LOCK_WAIT_SECONDS = 5.0
 
 
 _on_creds_changed: Callable[[str, str], None] | None = None
@@ -276,7 +277,12 @@ class IntegrationCredentialsManager:
             # have the grant revoked by a provider that treats reuse as
             # compromise, and the loser can persist a token already
             # invalidated upstream.
-            return await self._refresh_locked(user_id, credentials, handler=handler)
+            return await self._refresh_locked(
+                user_id,
+                credentials,
+                handler=handler,
+                lock_timeout=_REFRESH_LOCK_WAIT_SECONDS,
+            )
         return await self._refresh_unlocked(user_id, credentials, handler=handler)
 
     async def _get_oauth_handler(
@@ -303,8 +309,13 @@ class IntegrationCredentialsManager:
         user_id: str,
         credentials: OAuth2Credentials,
         handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
+        *,
+        lock_timeout: float | None = None,
     ) -> OAuth2Credentials:
-        async with self._locked(user_id, credentials.id, "refresh"):
+        # Bound acquisition only: cancelling a refresh can lose a rotated token.
+        async with self._locked(
+            user_id, credentials.id, "refresh", blocking_timeout=lock_timeout
+        ):
             credentials = await self._reload_oauth_credentials(user_id, credentials)
             if credentials.refresh_strategy == "provider_runtime":
                 return credentials
@@ -316,7 +327,9 @@ class IntegrationCredentialsManager:
                     credentials.id,
                 )
                 # Wait until the credentials are no longer in use anywhere
-                _lock = await self._acquire_lock(user_id, credentials.id)
+                _lock = await self._acquire_lock(
+                    user_id, credentials.id, blocking_timeout=lock_timeout
+                )
                 try:
                     credentials = await self._reload_oauth_credentials(
                         user_id, credentials
@@ -502,11 +515,15 @@ class IntegrationCredentialsManager:
     # -- Locking utilities -- #
 
     async def _acquire_lock(
-        self, user_id: str, credentials_id: str, *args: str
+        self,
+        user_id: str,
+        credentials_id: str,
+        *args: str,
+        blocking_timeout: float | None = None,
     ) -> AsyncRedisLock:
         key = self._credentials_lock_key(user_id, credentials_id, *args)
         locks = await self.locks()
-        return await locks.acquire(key)
+        return await locks.acquire(key, blocking_timeout=blocking_timeout)
 
     @staticmethod
     def _credentials_lock_key(
@@ -526,8 +543,16 @@ class IntegrationCredentialsManager:
                 logger.warning("Failed to release credentials lock", exc_info=True)
 
     @asynccontextmanager
-    async def _locked(self, user_id: str, credentials_id: str, *args: str):
-        lock = await self._acquire_lock(user_id, credentials_id, *args)
+    async def _locked(
+        self,
+        user_id: str,
+        credentials_id: str,
+        *args: str,
+        blocking_timeout: float | None = None,
+    ):
+        lock = await self._acquire_lock(
+            user_id, credentials_id, *args, blocking_timeout=blocking_timeout
+        )
         try:
             yield
         finally:

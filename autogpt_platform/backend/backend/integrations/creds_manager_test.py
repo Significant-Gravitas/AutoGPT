@@ -411,7 +411,12 @@ async def test_copilot_refresh_takes_the_lock_only_for_rotating_providers(
 
     assert result is credentials
     taken, skipped = (locked, unlocked) if rotates else (unlocked, locked)
-    taken.assert_awaited_once_with("user-a", credentials, handler=handler)
+    if rotates:
+        taken.assert_awaited_once_with(
+            "user-a", credentials, handler=handler, lock_timeout=5.0
+        )
+    else:
+        taken.assert_awaited_once_with("user-a", credentials, handler=handler)
     skipped.assert_not_awaited()
 
 
