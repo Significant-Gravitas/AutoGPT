@@ -91,6 +91,8 @@ async def structured_complete(
         max_output_tokens=max_output_tokens,
     )
     usage = _usage(response, request.model, ctx)
+    if response.stop_reason == "max_tokens":
+        raise InferenceError("LLM output truncated at max_tokens", usage)
     value = parse_structured_output(structured_payload(response), response_model, usage)
     return StructuredCompletion(value=value, usage=usage)
 

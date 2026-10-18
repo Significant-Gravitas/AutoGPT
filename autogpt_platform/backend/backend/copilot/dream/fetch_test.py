@@ -10,6 +10,7 @@ from backend.copilot.graphiti.recall import (
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.model import ChatSessionInfo
 
 from . import fetch as fetch_mod
 from . import hidden_sessions
@@ -75,7 +76,12 @@ def _chat_store(*session_ids: str) -> SimpleNamespace:
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[
-                SimpleNamespace(session_id=sid, title=sid) for sid in session_ids
+                SimpleNamespace(
+                    session_id=sid,
+                    title=sid,
+                    started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                )
+                for sid in session_ids
             ]
         ),
         get_chat_messages_paginated=AsyncMock(
@@ -133,3 +139,21 @@ async def test_the_dream_reads_no_session_when_it_cannot_tell_which_are_hidden(
 
     assert bundle.recent_sessions == []
     chat_store.get_user_chat_sessions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_row_preserves_typed_creation_time(mocker):
+    started = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    session = ChatSessionInfo(
+        session_id="s",
+        user_id="u",
+        title="title",
+        usage=[],
+        started_at=started,
+        updated_at=started,
+    )
+    database = _chat_store("s")
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+    row = await fetch_mod._session_row(session, "u")
+    assert row.created_at == started
+    assert row.body == "user: something the user said"

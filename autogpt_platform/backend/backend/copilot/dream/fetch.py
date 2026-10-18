@@ -328,7 +328,7 @@ async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
             session_id=sid, limit=20, user_id=user_id
         )
         if paginated is not None:
-            messages = list(getattr(paginated, "messages", []) or [])
+            messages = list(paginated.messages)
     except Exception:
         logger.debug(
             "Failed to fetch messages for session %s — body left empty",
@@ -338,8 +338,7 @@ async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
     return SessionRow(
         session_id=sid,
         title=session.title,
-        created_at=getattr(session, "createdAt", None)
-        or getattr(session, "created_at", None),
+        created_at=session.started_at,
         body=_session_body(messages),
     )
 

@@ -263,3 +263,41 @@ async def test_ensure_dream_system_scheduled_is_the_account_scope(env):
 
     assert list(env.db.rows) == [USER]
     assert await registry.ensure_dream_system_scheduled("") == {}
+
+
+@pytest.mark.asyncio
+async def test_timezone_is_durable_before_scheduler_replacement(env, monkeypatch):
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    env.timezone = TOKYO
+    record = env.db.record_scope_jobs
+    calls = 0
+
+    async def fail_final_record(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ConnectionError("final record failed")
+        return await record(*args, **kwargs)
+
+    monkeypatch.setattr(env.db, "record_scope_jobs", fail_final_record)
+    result = await registry.ensure_scope_scheduled(ACCOUNT)
+    assert calls == 2
+    assert env.db.rows[USER].timezone == TOKYO
+    assert result["community_rebuild"]["reason"] == "record_failed"
+    assert env.db.rows[USER].community_job_id == f"community_rebuild_{USER}"
+
+
+@pytest.mark.asyncio
+async def test_failed_timezone_intent_does_not_replace_crons(env, monkeypatch):
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    env.timezone = TOKYO
+    env.scheduler.add_scope_community_rebuild_schedule.reset_mock()
+    env.scheduler.add_scope_nightly_batch_schedule.reset_mock()
+    monkeypatch.setattr(
+        env.db, "record_scope_jobs", AsyncMock(side_effect=ConnectionError("db down"))
+    )
+    result = await registry.ensure_scope_scheduled(ACCOUNT)
+    assert result["community_rebuild"]["reason"] == "record_failed"
+    assert env.db.rows[USER].timezone == PARIS
+    env.scheduler.add_scope_community_rebuild_schedule.assert_not_awaited()
+    env.scheduler.add_scope_nightly_batch_schedule.assert_not_awaited()

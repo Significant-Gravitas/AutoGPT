@@ -1053,8 +1053,9 @@ def _schedule_expert_memory(user_id: str, expert_id: str) -> None:
     """Register a new expert's memory crons without holding up its hire.
 
     Safe to race an archive or a pause: registration never resumes a paused
-    scope, whenever it lands, and takes down crons it registered for one
-    that was paused meanwhile. Only revive and the resume route resume.
+    scope, whenever it lands. Crons registered for a scope paused meanwhile
+    are held back by the fire gate and removed by the reconcile pass.
+    Only revive and the resume route resume.
     """
     spawn_background_task(
         ensure_expert_scheduled(user_id, expert_id),

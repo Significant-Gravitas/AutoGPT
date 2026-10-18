@@ -11,7 +11,12 @@ still land. Anything awaited inside a deadline that bounds itself must do so
 with ``asyncio.timeout`` too (see :func:`within_deadline`).
 """
 
-import asyncio
+import sys
+
+if sys.version_info >= (3, 11):
+    from asyncio import timeout
+else:
+    from async_timeout import timeout
 from typing import Awaitable, TypeVar
 
 REGISTRY_CALL_TIMEOUT_SECONDS = 10.0
@@ -33,7 +38,7 @@ async def within_deadline(call: Awaitable[T]) -> T:
     ``wait_for`` completes has its cancellation swallowed, so the change
     would run on past it.
     """
-    async with asyncio.timeout(REGISTRY_CALL_TIMEOUT_SECONDS):
+    async with timeout(REGISTRY_CALL_TIMEOUT_SECONDS):
         return await call
 
 
