@@ -191,7 +191,7 @@ class TestApplyLocalGraphitiModels:
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
 
-    @pytest.mark.parametrize("reranker_override", [None, "gpt-4.1-mini"])
+    @pytest.mark.parametrize("reranker_override", [None, "gpt-6-luna"])
     def test_rewrites_cloud_defaults_under_local(
         self, monkeypatch: pytest.MonkeyPatch, reranker_override: str | None
     ) -> None:
@@ -199,7 +199,7 @@ class TestApplyLocalGraphitiModels:
         if reranker_override is not None:
             monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", reranker_override)
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
+        # llm_model: gpt-6-luna → Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
@@ -226,7 +226,7 @@ class TestApplyLocalGraphitiModels:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenRouter / direct-Anthropic transports leave the cloud
-        defaults alone — graphiti's ``gpt-4.1-mini`` stays put for
+        defaults alone — graphiti's ``gpt-6-luna`` stays put for
         anyone who isn't on a self-hosted backend."""
         _patch_chat_cfg(
             monkeypatch,
@@ -237,8 +237,8 @@ class TestApplyLocalGraphitiModels:
             ),
         )
         cfg = GraphitiConfig()
-        assert cfg.llm_model == "gpt-4.1-mini"
-        assert cfg.reranker_model == "gpt-4.1-mini"
+        assert cfg.llm_model == "gpt-6-luna"
+        assert cfg.reranker_model == "gpt-6-luna"
         assert cfg.embedder_model == "text-embedding-3-small"
 
     def test_reranker_env_override_under_cloud_transport(

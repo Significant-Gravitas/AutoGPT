@@ -20,6 +20,25 @@ from backend.copilot.graphiti.config import GraphitiConfig
 from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gpt-6-luna", "openai/gpt-6-luna"])
+async def test_luna_reranker_disables_reasoning_without_legacy_token_bias(model):
+    client, captured = _client_with([_logprob_response("True", -0.1)])
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model=model), client=client
+    )
+
+    ranked = await reranker.rank("query", ["passage"])
+
+    assert ranked[0][1] > 0.9
+    assert captured[0]["reasoning_effort"] == "none"
+    assert captured[0]["max_completion_tokens"] == 16
+    assert captured[0]["logprobs"] is True
+    assert captured[0]["top_logprobs"] == 2
+    assert "max_tokens" not in captured[0]
+    assert "logit_bias" not in captured[0]
+
+
 def _logprob_response(token: str, logprob: float) -> SimpleNamespace:
     top = SimpleNamespace(token=token, logprob=logprob)
     content = SimpleNamespace(top_logprobs=[top])
@@ -111,8 +130,8 @@ async def test_rank_handles_empty_logprobs_without_desync():
 @pytest.mark.parametrize(
     "model, expected_model",
     [
-        (None, "gpt-4.1-mini"),
-        ("", "gpt-4.1-mini"),
+        (None, "gpt-6-luna"),
+        ("", "gpt-6-luna"),
         ("custom-reranker", "custom-reranker"),
     ],
 )
@@ -160,4 +179,4 @@ async def test_build_graphiti_uses_compat_reranker(mocker):
 
     await reranker.rank("query", ["passage"])
 
-    assert requests[0]["model"] == "gpt-4.1-mini"
+    assert requests[0]["model"] == "gpt-6-luna"

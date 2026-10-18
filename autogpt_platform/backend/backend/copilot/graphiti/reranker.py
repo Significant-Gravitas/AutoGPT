@@ -1,26 +1,13 @@
-"""OpenAI-compat cross-encoder reranker for warm-context retrieval.
+"""Boolean/logprob reranking with a 16-token floor and non-reasoning Luna.
 
-graphiti-core 0.28.2's stock ``OpenAIRerankerClient.rank`` sends
-``max_tokens=1`` on each boolean-classifier call. OpenAI (and
-OpenRouter's OpenAI/Azure upstreams) now reject completions below 16
-output tokens ("Invalid 'max_output_tokens': integer below minimum
-value. Expected a value >= 16, but got 1"), which turned every
-warm-context fetch into a 400 — and, because the ratification hit
-hook runs after the search gather that raised, also starved the
-hit-time ratification loop.
-
-``CompatOpenAIRerankerClient.rank`` is a faithful copy of the
-upstream method (pinned at graphiti-core 0.28.2) with ``max_tokens``
-raised to a compliant floor. Scoring is unchanged: the ``logit_bias``
-pins the output to True/False, and only the FIRST token's
-top-logprobs are read, so the extra token budget never affects the
-ranking (same seam-level patch pattern as
-``communities._bounded_label_propagation``).
+Luna omits the legacy tokenizer's logit bias; the prompt requests True/False
+and the returned first-token probability supplies the relevance score.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 import openai
@@ -33,20 +20,28 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
+from .models import DEFAULT_LLM_MODEL, is_luna_model
+
 logger = logging.getLogger(__name__)
 
-# OpenAI's documented minimum for max output tokens on logprob
-# completions. The classifier still only ever emits one token (the
-# logit_bias restricts the vocabulary to "True"/"False").
 MIN_COMPLETION_TOKENS = 16
 
-DEFAULT_MODEL = "gpt-4.1-mini"
+DEFAULT_MODEL = DEFAULT_LLM_MODEL
 
 
 class CompatOpenAIRerankerClient(OpenAIRerankerClient):
-    """Stock reranker with an OpenAI-compliant ``max_tokens`` floor."""
+    """Graphiti reranker with compatible request parameters per model."""
 
     async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
+        model = self.config.model or DEFAULT_MODEL
+        options: dict[str, Any] = (
+            {"reasoning_effort": "none", "max_completion_tokens": MIN_COMPLETION_TOKENS}
+            if is_luna_model(model)
+            else {
+                "max_tokens": MIN_COMPLETION_TOKENS,
+                "logit_bias": {"6432": 1, "7983": 1},
+            }
+        )
         openai_messages_list: list[list[ChatCompletionMessageParam]] = [
             [
                 ChatCompletionSystemMessageParam(
@@ -75,13 +70,12 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             responses = await semaphore_gather(
                 *[
                     self.client.chat.completions.create(
-                        model=self.config.model or DEFAULT_MODEL,
+                        model=model,
                         messages=openai_messages,
                         temperature=0,
-                        max_tokens=MIN_COMPLETION_TOKENS,
-                        logit_bias={"6432": 1, "7983": 1},
                         logprobs=True,
                         top_logprobs=2,
+                        **options,
                     )
                     for openai_messages in openai_messages_list
                 ]
@@ -125,4 +119,4 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             raise
 
 
-__all__ = ["CompatOpenAIRerankerClient", "LLMConfig", "MIN_COMPLETION_TOKENS"]
+__all__ = ["MIN_COMPLETION_TOKENS", "CompatOpenAIRerankerClient", "LLMConfig"]

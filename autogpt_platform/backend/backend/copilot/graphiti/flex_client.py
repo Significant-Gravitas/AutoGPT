@@ -24,12 +24,14 @@ does).
 
 from typing import Any
 
-from graphiti_core.llm_client import OpenAIClient
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
+from .llm_client import GraphitiOpenAIClient
+from .models import is_luna_model
 
-class FlexOpenAIClient(OpenAIClient):
+
+class FlexOpenAIClient(GraphitiOpenAIClient):
     """Same as graphiti's ``OpenAIClient`` with ``service_tier`` injected.
 
     Constructor mirrors ``OpenAIClient`` exactly so it slots into
@@ -48,6 +50,16 @@ class FlexOpenAIClient(OpenAIClient):
         reasoning: str | None = None,
         verbosity: str | None = None,
     ):
+        if is_luna_model(model):
+            return await super()._create_structured_completion(
+                model,
+                messages,
+                temperature,
+                max_tokens,
+                response_model,
+                reasoning,
+                verbosity,
+            )
         is_reasoning_model = (
             model.startswith("gpt-5")
             or model.startswith("o1")
@@ -84,6 +96,16 @@ class FlexOpenAIClient(OpenAIClient):
         reasoning: str | None = None,
         verbosity: str | None = None,
     ):
+        if is_luna_model(model):
+            return await super()._create_completion(
+                model,
+                messages,
+                temperature,
+                max_tokens,
+                response_model,
+                reasoning,
+                verbosity,
+            )
         is_reasoning_model = (
             model.startswith("gpt-5")
             or model.startswith("o1")
