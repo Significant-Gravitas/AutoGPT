@@ -173,22 +173,29 @@ describe("useScheduledSend", () => {
       const FIRST = "Draft the launch post";
       const JOINED = `${FIRST}\n\nThen the newsletter`;
 
+      // The server holds the first message, then both once the add lands. A
+      // read answers with what the server held when the read came in.
       function serverJoining() {
         const calls = { reads: 0, added: 0, cancelled: 0 };
         const hold: { nextRead?: Promise<void>; add?: Promise<void> } = {};
+        let waiting: string | null = FIRST;
         server.use(
           http.get("*/api/chat/sessions/:sessionId/at-reset", async () => {
             calls.reads += 1;
+            const answer = waiting;
             const held = hold.nextRead;
             hold.nextRead = undefined;
             await held;
             return HttpResponse.json({
-              jobs: [{ kind: "send", run_at: RUN_AT, message: FIRST }],
+              jobs: answer
+                ? [{ kind: "send", run_at: RUN_AT, message: answer }]
+                : [],
             });
           }),
           http.post("*/api/chat/sessions/:sessionId/at-reset", async () => {
             calls.added += 1;
             await hold.add;
+            waiting = JOINED;
             return HttpResponse.json({
               kind: "send",
               run_at: RUN_AT,
@@ -197,6 +204,7 @@ describe("useScheduledSend", () => {
           }),
           http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
             calls.cancelled += 1;
+            waiting = null;
             return new HttpResponse(null, { status: 204 });
           }),
         );
@@ -270,7 +278,7 @@ describe("useScheduledSend", () => {
         await act(() => chat.composer.result.current.edit());
 
         expect(calls.cancelled).toBe(1);
-        expect(chat.draft.result.current[0]).toBe(FIRST);
+        expect(chat.draft.result.current[0]).toBe(JOINED);
       });
 
       it("leaves it alone when the read lands before the message", async () => {
