@@ -23,6 +23,31 @@ def test_rss_feed_block_does_not_inherit_wall_clock_timeout():
     assert ReadRSSFeedBlock().execution_timeout_seconds is None
 
 
+async def test_rss_feed_block_skips_final_sleep_for_one_shot(monkeypatch):
+    sleep_calls = []
+
+    async def parse_feed(url):
+        return {"entries": []}
+
+    async def sleep(delay):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=False,
+    )
+    outputs = [output async for output in block.run(input_data)]
+
+    assert outputs == [("entries", [])]
+    assert sleep_calls == []
+
+
 async def test_execute_preserves_insufficient_balance_error_type():
     error = InsufficientBalanceError(
         message="Producer wording is irrelevant to classification",
