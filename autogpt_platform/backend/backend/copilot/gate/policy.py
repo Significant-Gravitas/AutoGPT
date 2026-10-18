@@ -102,7 +102,6 @@ _READ = frozenset(
 
 _WORKSPACE = frozenset(
     {
-        "TodoWrite",
         "add_understanding",
         "memory_store",
         "start_desktop",

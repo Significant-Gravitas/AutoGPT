@@ -164,10 +164,10 @@ async def test_record_phase_cost_tags_sync_baseline_provider_ollama_under_local(
 
 
 @pytest.mark.asyncio
-async def test_record_phase_cost_tags_sync_baseline_provider_anthropic_under_subscription():
-    """Subscription / direct_anthropic transports label sync_baseline
-    rows as ``anthropic`` so dream + chat spend roll up together
-    under one provider on the admin dashboard."""
+async def test_record_phase_cost_tags_sync_baseline_provider_anthropic_on_direct():
+    """The direct_anthropic route labels sync_baseline rows as
+    ``anthropic`` so dream + chat spend roll up together under one
+    provider on the admin dashboard."""
     spy = AsyncMock()
     with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
         billing_mod,

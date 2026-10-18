@@ -7,20 +7,22 @@ Each cell of the ``(mode, tier)`` matrix resolves through three layers:
    slugs directly).
 2. The catalog's routing cell (``catalog.py`` ``routing`` section, surface
    ``"copilot"``) — our cloud's deployment config, shipped with the code.
-3. The static ``ChatConfig`` default (env vars) — the bootstrap floor.
+3. The platform route's tier (``CHAT_STANDARD_MODEL`` /
+   ``CHAT_ADVANCED_MODEL``, else the route's default) — the bootstrap floor.
 
 On our cloud, the registry is the serve-time gate for layers 1 and 2: a slug
 the catalog doesn't know, or one with ``is_enabled=False`` (the kill switch),
 is refused — loudly (log + Sentry) — and resolution falls through to the next
 layer. ``visibility=HIDDEN`` models DO serve when routed: that's the
 pre-launch testing state (registered + routable, not shown in pickers).
-Self-hosted installs and local transports skip the gate entirely (their LD
+Self-hosted installs and the local route skip the gate entirely (their LD
 and env slugs are their own business — the shipped catalog must not veto an
 operator's custom model). An EMPTY registry never gates anything either;
 production processes always load it (fail-hard boot), so that branch is
 defense-in-depth for exotic embedders only.
 
-Matrix:
+Matrix (every platform route runs the SDK engine, which reads the
+``thinking`` row; nothing reads ``fast`` any more):
 
     +----------+----------+----------+
     |          | standard | advanced |
@@ -52,11 +54,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
-from backend.integrations.codex.transport import (
-    CodexCredentialLease,
-    get_codex_transport,
-)
-from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.codex.transport import CodexCredentialLease
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -85,22 +83,18 @@ class ResolvedCodexModel(NamedTuple):
     model: str
     effort: CodexReasoningEffort | None
     source: CodexRoutingSource
+    # The account's advertised window for ``model``, when the payload carried
+    # one; the SDK env pins to it instead of the engine constant.
+    context_window: int | None = None
+    auto_compact_token_limit: int | None = None
 
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
-    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard bootstrap
-    # default (2026-09); gpt-5.6-luna remains a selectable catalog model,
-    # it's just no longer the default fallback here or in catalog.py's
-    # routing cell.
-    ("fast", "standard"): LLMModel.GPT6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
     ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
 }
 
 _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
-    ("fast", "standard"): "low",
-    ("fast", "advanced"): "medium",
     ("thinking", "standard"): "high",
     ("thinking", "advanced"): "xhigh",
 }
@@ -190,18 +184,9 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     return reason
 
 
-def _config_default(config: ChatConfig, mode: ModelMode, tier: ModelTier) -> str:
-    if mode == "fast":
-        return (
-            config.fast_advanced_model
-            if tier == "advanced"
-            else config.fast_standard_model
-        )
-    return (
-        config.thinking_advanced_model
-        if tier == "advanced"
-        else config.thinking_standard_model
-    )
+def _config_default(config: ChatConfig, tier: ModelTier) -> str:
+    """The platform route's model for *tier* (``ChatConfig.tier_model``)."""
+    return config.tier_model(tier) or ""
 
 
 async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str | None:
@@ -273,12 +258,12 @@ async def _env_floor(
     refuses it (refusing would leave nothing). A kill switch pointing here
     is an incident the operator must hear about: log + Sentry, then serve.
     """
-    env_slug = _config_default(config, mode, tier).strip()
+    env_slug = _config_default(config, tier)
     if await _registry_refuses(env_slug, "env") is not None:
         logger.error(
             "[model_router] env default %r is refused by the catalog "
             "but served anyway (last-resort floor) — change the "
-            "CHAT_*_MODEL default or the routing cell",
+            "CHAT_STANDARD_MODEL / CHAT_ADVANCED_MODEL or the routing cell",
             env_slug,
         )
     return ResolvedModel(env_slug, "env")
@@ -303,13 +288,12 @@ async def resolve_model_route(
     # - self-hosted installs (behave_as != CLOUD) keep LD/env authority over
     #   their own slugs; the shipped catalog must not veto an operator's
     #   custom model (they can't edit our catalog to register it)
-    # - local transports (Ollama/vLLM) pass slugs through verbatim; catalog
+    # - the local route (Ollama/vLLM) passes slugs through verbatim; catalog
     #   gating would refuse every local model and a cloud-slug cell would
     #   404 at request time
     # Both resolve LD → env, exactly as before the catalog existed.
     gated = (
-        settings.config.behave_as == BehaveAs.CLOUD
-        and config.baseline_provider != "local"
+        settings.config.behave_as == BehaveAs.CLOUD and config.platform_route != "local"
     )
 
     if user_id:
@@ -318,7 +302,7 @@ async def resolve_model_route(
             return ResolvedModel(ld_slug, "ld")
 
     if not gated:
-        return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
+        return ResolvedModel(_config_default(config, tier), "env")
 
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
     if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:
@@ -332,12 +316,15 @@ async def resolve_model_route(
 
 
 async def resolve_codex_model_route(
-    mode: ModelMode,
+    mode: Literal["thinking"],
     tier: ModelTier,
-    credential_lease: CredentialLease | CodexCredentialLease,
+    credential_lease: CodexCredentialLease,
 ) -> ResolvedCodexModel:
-    """Resolve a Codex model against both the catalog and the account."""
-    advertised = await _advertised_codex_models(credential_lease)
+    """Resolve a Codex model against both the catalog and the account.
+
+    Codex runs on the SDK engine only, so *mode* is always ``"thinking"``.
+    """
+    advertised = await credential_lease.models()
 
     if catalog_route := _codex_catalog_route(advertised, mode, tier):
         return catalog_route
@@ -349,14 +336,6 @@ async def resolve_codex_model_route(
         return account_route
 
     raise RuntimeError("codex_model_unavailable")
-
-
-async def _advertised_codex_models(
-    credential_lease: CredentialLease | CodexCredentialLease,
-) -> list[CodexModelInfo]:
-    if isinstance(credential_lease, CodexCredentialLease):
-        return await credential_lease.models()
-    return await get_codex_transport().models(credential_lease)
 
 
 def _codex_catalog_route(
@@ -432,6 +411,8 @@ def _resolved_codex_model(
         model.model,
         _codex_effort(model, mode, tier),
         source,
+        model.context_window,
+        model.auto_compact_token_limit,
     )
 
 

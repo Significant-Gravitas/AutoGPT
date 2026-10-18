@@ -54,9 +54,9 @@ class PaginatedMessages(BaseModel):
 # Cap on messages eagerly loaded with a session. Set above the realistic p99
 # of any actual copilot conversation (typical: 10-100 msgs; power user: a few
 # hundred; cap engages only on pathological multi-thousand-message sessions).
-# Older history beyond the cap relies on the GCS transcript checkpoint via
-# ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
-# a transcript, the cap-hit warning below makes the case observable in logs.
+# Older history beyond the cap relies on the CLI session the turn resumes
+# from storage — if a session somehow exceeds this cap WITHOUT one, the
+# cap-hit warning below makes the case observable in logs.
 MAX_LOADED_CHAT_MESSAGES = 1000
 
 
@@ -1224,7 +1224,7 @@ async def update_message_content_by_sequence(
     to a message that was already saved to the DB.
 
     Authorization note: session_id is a high-entropy UUID generated at session
-    creation time.  Callers (inject_user_context) only receive a session_id
+    creation time.  Callers (inject_context_blocks) only receive a session_id
     after the service layer has already validated that the requesting user owns
     the session, so a userId join is not required here.
 

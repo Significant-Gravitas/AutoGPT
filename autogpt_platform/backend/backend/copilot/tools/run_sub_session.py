@@ -276,7 +276,6 @@ class RunSubSessionTool(BaseTool):
             # An isolate shares its spawner's memory namespace, so it must not
             # write to it; depth bounds how far it may spawn onward.
             spawn=SpawnRequest(may_spawn=True, shares_memory=True),
-            allow_queue=False,
             message_metadata=sent_from_metadata(session),
         )
         elapsed = time.monotonic() - started_at
@@ -496,28 +495,8 @@ def response_from_outcome(
     the files are mined from ``result.tool_calls`` as a fallback.
     ``failed`` returns the error marker with the same handles.
     ``running`` returns just the polling handles so the agent can resume.
-    ``queued`` means the target session already had a turn in flight; the
-    message was appended to its pending buffer and will be processed by
-    the existing turn on its next drain.
     """
     link = _sub_session_link(inner_session_id)
-    if outcome == "queued":
-        return SubSessionStatusResponse(
-            message=(
-                f"Target session already had a turn in flight; the message "
-                f"was queued ({result.pending_buffer_length} now pending) and "
-                "will be processed by the existing turn on its next drain. "
-                f"Call tool:get_sub_session_result to poll progress"
-                f"{f' or watch live at {link}' if link else ''}."
-            ),
-            session_id=parent_session_id,
-            status="queued",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
     if outcome == "queued_for_slot":
         return SubSessionStatusResponse(
             message=(

@@ -11,3 +11,4 @@ classic/forge/tests/vcr_cassettes/**/**.y*ml linguist-generated
 
 .github/scripts/platform-single-container-*.sh text eol=lf
 autogpt_platform/single-container/*.sh text eol=lf
+autogpt_platform/backend/scripts/*.sh text eol=lf

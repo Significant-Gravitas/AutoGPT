@@ -7,7 +7,6 @@ tests will catch it immediately.
 """
 
 import inspect
-from typing import cast
 
 import pytest
 
@@ -91,40 +90,23 @@ def test_agent_options_accepts_required_fields():
     assert opts.cwd == "/tmp"
 
 
-def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_sections():
-    """Verify ClaudeAgentOptions accepts the exact preset dict _build_system_prompt_value produces.
-
-    The Turn 1 (non-resume) code path includes ``exclude_dynamic_sections=True`` in
-    the preset dict for cross-user caching.  This compat test mirrors that exact
-    shape so any SDK version that starts rejecting unknown keys will be caught
-    here rather than at runtime.
-    """
+def test_live_prompt_reaches_the_cli_as_its_prompt_flag():
+    """The live prompt's dict form must still put the prompt text on the
+    CLI's command line, as the raw string did."""
     from claude_agent_sdk import ClaudeAgentOptions
-    from claude_agent_sdk.types import SystemPromptPreset
-
-    from .service import _build_system_prompt_value
-
-    preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
-    assert isinstance(
-        preset, dict
-    ), "_build_system_prompt_value must return a dict when caching is on"
-    assert preset.get("exclude_dynamic_sections") is True, (
-        "Turn 1 must strip dynamic sections to keep the prefix cacheable " "cross-user"
+    from claude_agent_sdk._internal.transport.subprocess_cli import (
+        SubprocessCLITransport,
     )
 
-    sdk_preset = cast(SystemPromptPreset, preset)
-    opts = ClaudeAgentOptions(system_prompt=sdk_preset)
-    assert opts.system_prompt == sdk_preset
-
-
-def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
-    """When cross_user_cache=False (feature flag disabled globally), the
-    helper returns a plain string; the CLI will receive --system-prompt
-    (replace-mode) and skip the preset entirely."""
     from .service import _build_system_prompt_value
 
-    result = _build_system_prompt_value("my prompt", cross_user_cache=False)
-    assert result == "my prompt", "Must return the raw string, not a preset dict"
+    value = _build_system_prompt_value("my prompt", live=True)
+    transport = SubprocessCLITransport(
+        prompt="", options=ClaudeAgentOptions(system_prompt=value, cli_path="claude")
+    )
+
+    cmd = transport._build_command()
+    assert cmd[cmd.index("--system-prompt") + 1] == "my prompt"
 
 
 def test_agent_options_accepts_all_our_fields():
@@ -134,6 +116,7 @@ def test_agent_options_accepts_all_our_fields():
     fields_we_use = [
         "system_prompt",
         "mcp_servers",
+        "tools",
         "allowed_tools",
         "disallowed_tools",
         "hooks",
@@ -143,7 +126,6 @@ def test_agent_options_accepts_all_our_fields():
         "resume",
         "max_buffer_size",
         "stderr",
-        "fallback_model",
         "max_turns",
         "max_budget_usd",
     ]
@@ -243,7 +225,7 @@ def test_sdk_exports_hook_event_type(hook_event: str):
 # features incompatible with OpenRouter (``tool_reference`` content
 # blocks, ``context-management-2025-06-27`` beta).  We neutralise these
 # at runtime by injecting ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1``
-# into the CLI subprocess env (see ``build_sdk_env()`` in ``env.py``).
+# into the CLI subprocess env (see ``route_launch_env()`` in ``env.py``).
 #
 # This test is the cheapest possible regression guard: it pins the
 # bundled CLI to a known-good version.  If anyone bumps
@@ -255,7 +237,7 @@ def test_sdk_exports_hook_event_type(hook_event: str):
 # CLI versions bisect-verified as OpenRouter-safe.  2.1.63 and 2.1.70 pre-date
 # the context-management beta regression and work without any env var.  2.1.97+
 # requires ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`` (injected by
-# ``build_sdk_env()`` in ``env.py``) to strip the beta header.
+# ``route_launch_env()`` in ``env.py``) to strip the beta header.
 _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
     {
         "2.1.63",  # claude-agent-sdk 0.1.45 -- original pin from PR #12294.
@@ -264,7 +246,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #          OpenRouter-safe in #12742.
         "2.1.97",  # claude-agent-sdk 0.1.58 -- OpenRouter-safe only with
         #          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (injected by
-        #          build_sdk_env() in env.py).
+        #          route_launch_env() in env.py).
         "2.1.116",  # claude-agent-sdk 0.1.64 -- first bundled version that
         #           fixes the --resume + excludeDynamicSections=True crash
         #           (introduced in 2.1.98), unlocking cross-user prompt
@@ -275,7 +257,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           an experimental beta here, still stripped by
         #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.
         "2.1.259",  # claude-agent-sdk 0.2.152 -- wire shape measured identical
-        #           to 2.1.248 on both the bare and the build_sdk_env-pinned
+        #           to 2.1.248 on both the bare and the route_launch_env-pinned
         #           path: same anthropic-beta list, same message roles, same
         #           body keys.  Verified via cli_openrouter_compat_test.py.
         "2.1.281",  # claude-agent-sdk 0.2.159 -- 2.1.280+ is required for
@@ -286,7 +268,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           CLI rejects the slug the same way 2.1.279 rejected
         #           claude-opus-5-5.  Still ships the
         #           context-management-2025-06-27 beta string, so the
-        #           build_sdk_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+        #           route_launch_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
         #           guard remains required -- see
         #           cli_openrouter_compat_test.py, which CI runs.
     }

@@ -1,7 +1,7 @@
 """Unit tests for extracted service helpers.
 
-Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``,
-``ReducedContext``, and the ``is_parallel_continuation`` logic.
+Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``
+and ``ReducedContext``.
 """
 
 from __future__ import annotations
@@ -13,10 +13,9 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
-from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
+from backend.copilot.route_profile import RouteProfile, codex_profile, platform_profile
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     compress_context,
@@ -24,31 +23,37 @@ from backend.util.prompt import (
     get_compression_target,
 )
 
+from ..constants import COPILOT_ERROR_PREFIX
 from ..model import ChatMessage, ChatSession
-from ..model_router import ResolvedModel
 from ..transcript_builder import TranscriptBuilder
-from .compaction import CompactionStats
+from .compaction import CompactionStats, CompactionTracker
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
-    _BARE_MESSAGE_TOKEN_FLOOR,
-    _RETRY_TARGET_TOKENS,
     ReducedContext,
     _build_query_message,
-    _compaction_target_tokens,
     _compress_messages,
     _compression_model,
+    _context_limit_without_compaction,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
-    _is_tool_only_message,
     _iter_sdk_messages,
-    _normalize_model_name,
     _reduce_context,
-    _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _retry_reduced_context,
     _TokenUsage,
     _will_compact,
 )
+
+
+def _profile(
+    model: str = "claude-sonnet-4-6", route: str = "direct_anthropic"
+) -> RouteProfile:
+    """A turn's route profile for *model* on the platform *route*."""
+    cfg = ChatConfig(
+        platform_route=route, anthropic_api_key="k", openrouter_api_key="k"
+    )
+    return platform_profile(cfg, model, "env")
+
 
 # ---------------------------------------------------------------------------
 # _is_prompt_too_long
@@ -135,9 +140,6 @@ class TestIsPromptTooLong:
 class TestReduceContext:
     @pytest.mark.asyncio
     async def test_first_retry_compaction_success(self) -> None:
-        # After compaction the retry runs WITHOUT --resume because we cannot
-        # inject the compacted content into the CLI's native session file format.
-        # The compacted builder state is still set for future upload_transcript.
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
         compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
 
@@ -152,15 +154,33 @@ class TestReduceContext:
                 return_value=True,
             ),
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert isinstance(ctx, ReducedContext)
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is False
-        assert ctx.tried_compaction is True
+
+    @pytest.mark.asyncio
+    async def test_compaction_success_keeps_the_pinned_budget(self) -> None:
+        # The retry still rebuilds its history from the DB rows, held to the
+        # budget the transcript was compacted to: the pinned window's, never
+        # the compressor's catalog default (far past the pin on Codex).
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
+        compact = AsyncMock(return_value=compacted)
+        profile = _profile("anthropic/claude-sonnet-5-5", "openrouter")
+
+        with (
+            patch("backend.copilot.sdk.service.compact_transcript", new=compact),
+            patch(
+                "backend.copilot.sdk.service.validate_transcript",
+                return_value=True,
+            ),
+        ):
+            ctx = await _reduce_context(transcript, "[test]", profile=profile)
+
+        assert ctx.transcript_lost is False
+        assert ctx.target_tokens == profile.compaction_target_tokens()
+        assert ctx.target_tokens == compact.await_args.kwargs["target_tokens"]
 
     @pytest.mark.asyncio
     async def test_compaction_fails_drops_transcript(self) -> None:
@@ -171,30 +191,27 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is True
-        assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
-    async def test_already_tried_compaction_skips(self) -> None:
+    async def test_a_later_retry_skips_compaction(self) -> None:
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        compact = AsyncMock()
 
-        ctx = await _reduce_context(transcript, True, "sess-123", "/tmp/cwd", "[test]")
+        with patch("backend.copilot.sdk.service.compact_transcript", new=compact):
+            ctx = await _reduce_context(
+                transcript, "[test]", profile=_profile(), attempt=2
+            )
 
-        assert ctx.use_resume is False
+        compact.assert_not_awaited()
         assert ctx.transcript_lost is True
-        assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
     async def test_empty_transcript_drops(self) -> None:
-        ctx = await _reduce_context("", False, "sess-123", "/tmp/cwd", "[test]")
+        ctx = await _reduce_context("", "[test]", profile=_profile())
 
-        assert ctx.use_resume is False
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
@@ -206,9 +223,7 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=transcript,  # same content
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
@@ -229,29 +244,104 @@ class TestReduceContext:
                 return_value=False,
             ),
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_1(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=1)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=1)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[0]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[0]
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_2(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=2)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=2)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[1]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[1]
 
     @pytest.mark.asyncio
     async def test_drop_clamps_attempt_beyond_limits(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=99)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=99)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[-1]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[-1]
+
+
+class TestCompactionTargetTokens:
+    """The retry's compaction target sits below the CLI's own threshold for
+    the turn's window and trigger, on every route."""
+
+    @pytest.mark.parametrize(
+        ("trigger", "expected"),
+        [
+            # 200K window with a 50% trigger -> CLI threshold 100K -> 80K
+            (50, 80_000),
+            # No trigger: the CLI's default (window - 13K = 187K) -> 167K
+            (None, 167_000),
+            # An aggressive 30% -> CLI threshold 60K -> 40K
+            (30, 40_000),
+        ],
+    )
+    def test_target_below_the_cli_threshold(self, trigger, expected) -> None:
+        profile = _profile().model_copy(
+            update={"window": 200_000, "trigger_pct": trigger}
+        )
+        assert profile.compaction_target_tokens() == expected
+
+    def test_openrouter_sonnet_compacts_at_half_its_window(self) -> None:
+        profile = _profile("anthropic/claude-sonnet-4-6", "openrouter")
+        assert (profile.window, profile.trigger_pct) == (200_000, 50)
+        assert profile.compaction_target_tokens() == 80_000
+
+    def test_moonshot_uses_the_cli_default_threshold(self) -> None:
+        # A Moonshot SKU keeps the CLI's own trigger on OpenRouter.
+        profile = _profile("moonshotai/kimi-k2.6", "openrouter")
+        assert profile.trigger_pct is None
+        assert profile.compaction_target_tokens() == profile.window - 13_000 - 20_000
+
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "moonshotai/kimi-k2.6"])
+    def test_codex_compacts_at_its_engine_default(self, model) -> None:
+        # min(272000*90//100, 272000-13000) - 20000 = 224800, whatever the
+        # slug looks like: the Codex route keeps its own trigger.
+        profile = codex_profile(
+            model, effort=None, routing_source="env", codex_engine=None
+        )
+        assert profile.compaction_target_tokens() == 224_800
+
+    def test_floor_at_10k_for_an_extremely_aggressive_trigger(self) -> None:
+        # 1% of a 50K window -> CLI threshold 500 -> negative without the floor.
+        profile = _profile().model_copy(update={"window": 50_000, "trigger_pct": 1})
+        assert profile.compaction_target_tokens() == 10_000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "profile",
+        [
+            _profile("moonshotai/kimi-k2.6", "openrouter"),
+            codex_profile(
+                "gpt-6-astra", effort=None, routing_source="env", codex_engine=None
+            ),
+        ],
+        ids=["kimi", "codex"],
+    )
+    async def test_reduce_context_sizes_the_target_for_the_turns_route(
+        self, profile
+    ) -> None:
+        """The compactor LLM is fixed, but the target is sized for the route
+        the CLI is actually serving: its window and trigger."""
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        captured: dict = {}
+
+        async def fake_compact(content, *, model, log_prefix, target_tokens):
+            captured["target_tokens"] = target_tokens
+            return None
+
+        with patch(
+            "backend.copilot.sdk.service.compact_transcript", side_effect=fake_compact
+        ):
+            await _reduce_context(transcript, "[t]", profile=profile)
+
+        assert captured["target_tokens"] == profile.compaction_target_tokens()
 
 
 # ---------------------------------------------------------------------------
@@ -371,353 +461,8 @@ class TestIterSdkMessages:
 
 
 # ---------------------------------------------------------------------------
-# is_parallel_continuation logic
-# ---------------------------------------------------------------------------
-
-
-class TestIsParallelContinuation:
-    """Unit tests for the is_parallel_continuation expression in the streaming loop.
-
-    Verifies the vacuous-truth guard (empty content must return False) and the
-    boundary cases for mixed TextBlock+ToolUseBlock messages.
-    """
-
-    def _make_tool_block(self) -> MagicMock:
-        block = MagicMock(spec=ToolUseBlock)
-        return block
-
-    def test_all_tool_use_blocks_is_parallel(self):
-        """AssistantMessage with only ToolUseBlocks is a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [self._make_tool_block(), self._make_tool_block()]
-        assert _is_tool_only_message(msg) is True
-
-    def test_empty_content_is_not_parallel(self):
-        """AssistantMessage with empty content must NOT be treated as parallel.
-
-        Without the bool(sdk_msg.content) guard, all() on an empty iterable
-        returns True via vacuous truth — this test ensures the guard is present.
-        """
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = []
-        assert _is_tool_only_message(msg) is False
-
-    def test_mixed_text_and_tool_blocks_not_parallel(self):
-        """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        text_block = MagicMock(spec=TextBlock)
-        msg.content = [text_block, self._make_tool_block()]
-        assert _is_tool_only_message(msg) is False
-
-    def test_non_assistant_message_not_parallel(self):
-        """Non-AssistantMessage types are never parallel continuations."""
-        assert _is_tool_only_message("not a message") is False
-        assert _is_tool_only_message(None) is False
-        assert _is_tool_only_message(42) is False
-
-    def test_single_tool_block_is_parallel(self):
-        """Single ToolUseBlock AssistantMessage is a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [self._make_tool_block()]
-        assert _is_tool_only_message(msg) is True
-
-
-# ---------------------------------------------------------------------------
 # _normalize_model_name — used by per-request model override
 # ---------------------------------------------------------------------------
-
-
-class TestNormalizeModelName:
-    """Unit tests for the model-name normalisation helper.
-
-    The per-request model toggle calls _normalize_model_name with either
-    ``config.thinking_advanced_model`` (for 'advanced') or
-    ``config.thinking_standard_model`` (for 'standard').  These tests verify
-    the OpenRouter/direct-Anthropic split: OpenRouter routes by full
-    ``vendor/model`` slug, while direct-Anthropic strips the prefix and
-    converts dots to hyphens.
-    """
-
-    @pytest.fixture
-    def _direct_anthropic_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Force ``config.openrouter_active = False`` for prefix-strip tests.
-
-        Pins the SDK model fields to anthropic/* so the new
-        ``_validate_sdk_model_vendor_compatibility`` model_validator
-        permits ChatConfig construction.
-        """
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            # Aux key satisfies the new
-            # ``_validate_aux_client_for_direct_main`` validator — these
-            # tests target the SDK normalizer, not the aux check.
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    @pytest.fixture
-    def _openrouter_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Force ``config.openrouter_active = True`` for slug-preservation tests."""
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    def test_strips_anthropic_prefix(self, _direct_anthropic_config):
-        assert _normalize_model_name("anthropic/claude-opus-4-6") == "claude-opus-4-6"
-
-    def test_rejects_non_anthropic_vendor_in_direct_mode(
-        self, _direct_anthropic_config
-    ):
-        """Direct-Anthropic mode must fail loudly on non-Anthropic vendor
-        slugs — silent strip would send e.g. ``gpt-4o`` to the Anthropic
-        API and produce an opaque model_not_found error."""
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("openai/gpt-4o")
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("moonshotai/kimi-k2.6")
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("google/gemini-2.5-flash")
-
-    def test_already_normalized_unchanged(self, _direct_anthropic_config):
-        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
-
-    def test_empty_string_unchanged(self, _direct_anthropic_config):
-        assert _normalize_model_name("") == ""
-
-    def test_opus_model_dot_to_hyphen(self, _direct_anthropic_config):
-        """Direct-Anthropic mode: dots in versions become hyphens."""
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
-
-    def test_openrouter_keeps_anthropic_slug(self, _openrouter_config):
-        """OpenRouter routes by full slug — keep prefix and dots intact."""
-        assert (
-            _normalize_model_name("anthropic/claude-sonnet-4.6")
-            == "anthropic/claude-sonnet-4.6"
-        )
-
-    def test_openrouter_keeps_kimi_slug(self, _openrouter_config):
-        """Non-Anthropic vendors (Moonshot) require the prefix to route."""
-        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
-
-    @pytest.fixture
-    def _subscription_with_openrouter_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Subscription mode with leftover OpenRouter base_url + api_key.
-
-        Reproduces the bug: ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` plus
-        a populated ``CHAT_BASE_URL`` (e.g. left over from an earlier
-        OpenRouter setup) used to incorrectly preserve the OpenRouter slug
-        because the gate checked config shape (``openrouter_active``) not
-        actual transport.  The CLI subprocess uses OAuth here and rejects
-        the OpenRouter format.
-        """
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    def test_subscription_strips_anthropic_prefix_despite_openrouter_config(
-        self, _subscription_with_openrouter_config
-    ):
-        """Subscription transport must produce the CLI-friendly form even
-        when OpenRouter base_url + api_key are set — the CLI uses OAuth
-        and ignores those fields, so the OpenRouter slug would be rejected."""
-        assert _normalize_model_name("anthropic/claude-opus-4.7") == "claude-opus-4-7"
-
-    def test_subscription_rejects_non_anthropic_vendor(
-        self, _subscription_with_openrouter_config
-    ):
-        """The CLI subprocess can only talk to Anthropic models — Kimi via
-        Moonshot must raise so the resolver falls back to a tier default
-        instead of feeding an unroutable slug to the CLI."""
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("moonshotai/kimi-k2.6")
-
-
-# ---------------------------------------------------------------------------
-# ChatConfig.effective_transport — single source of truth for "which
-# transport will the SDK CLI actually use?"
-# ---------------------------------------------------------------------------
-
-
-class TestEffectiveTransport:
-    """Subscription mode wins over OpenRouter even when OpenRouter
-    base_url + api_key are set, because the CLI subprocess uses OAuth and
-    ignores ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (see ``build_sdk_env``
-    mode 1).  Picking the right transport here is what lets
-    ``_normalize_model_name`` produce the correct model-name format.
-    """
-
-    def test_subscription_wins_over_openrouter_config(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        assert cfg.effective_transport == "subscription"
-        # ``openrouter_active`` is still True (config-shape check) but
-        # the actual transport is subscription.
-        assert cfg.openrouter_active is True
-
-    def test_openrouter_when_subscription_disabled(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        assert cfg.effective_transport == "openrouter"
-
-    def test_direct_anthropic_when_no_openrouter_no_subscription(
-        self, _clean_config_env
-    ):
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            # Aux key satisfies the aux-credential validator.
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.effective_transport == "direct_anthropic"
-
-    def test_subscription_alone_is_subscription(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=True,
-            # ``_validate_aux_client_for_direct_main`` runs in subscription
-            # mode now (PR #13034 review): pin a direct key + Anthropic
-            # title model so the aux 401-trap validator is satisfied.
-            direct_anthropic_api_key="sk-ant-test",
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        assert cfg.effective_transport == "subscription"
-
-
-# ---------------------------------------------------------------------------
-# _resolve_sdk_model_for_request — transport-aware LD-override normalisation
-# ---------------------------------------------------------------------------
-
-
-class TestResolveSdkModelForRequestTransportAware:
-    """When subscription mode is on but the deployment also has OpenRouter
-    config populated (e.g. ``CHAT_BASE_URL`` left over from a previous
-    setup), an LD-served override must be normalised for the **subscription
-    CLI**, not passed through as the OpenRouter slug.  The CLI subprocess
-    uses OAuth and rejects ``anthropic/claude-opus-4.7`` with the model
-    error reproduced in local debugging:
-
-        ``There's an issue with the selected model
-        (anthropic/claude-opus-4.7). It may not exist or you may not have
-        access to it.``
-    """
-
-    @pytest.mark.asyncio
-    async def test_subscription_advanced_override_normalised_for_cli(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4.7",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="advanced", session_id="sess-adv", user_id="user-1"
-            )
-        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated
-        # form; and the LD routing source rides along for message stamping.
-        assert resolved == ("claude-opus-4-7", "ld")
-
-    @pytest.mark.asyncio
-    async def test_subscription_standard_no_override_returns_none(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """When LD agrees with the config default, subscription mode still
-        wins on the standard tier — returns ``None`` so the CLI picks the
-        subscription default model."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-std", user_id="user-1"
-            )
-        assert resolved == (None, "env")
-
-    @pytest.mark.asyncio
-    async def test_env_default_stamps_env_source(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """No LD opinion, no subscription: the config default serves and the
-        routing source says so — this is the value persisted onto SDK-path
-        assistant messages."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
-            ),
-        ):
-            model, source = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-env", user_id="user-1"
-            )
-        assert source == "env"
-        assert model is not None
 
 
 # ---------------------------------------------------------------------------
@@ -834,26 +579,17 @@ def _build_sdk_options(
     return kwargs
 
 
-def _build_retry_sdk_options(
-    initial_kwargs: dict,
-    ctx_use_resume: bool,
-    ctx_resume_file: str | None,
-    session_id: str,
-) -> dict:
+def _build_retry_sdk_options(initial_kwargs: dict, session_id: str) -> dict:
     """Mirror the retry branch in stream_chat_completion_sdk.
 
     Production-side companion: ``delete_stale_cli_session_file`` is invoked
-    on every non-resume retry path so the CLI doesn't trip "Session ID
-    already in use" when we re-attach ``session_id``.  This helper only
-    mirrors the kwarg shape (file-system side effect is tested separately).
+    on every retry so the CLI doesn't trip "Session ID already in use"
+    when we re-attach ``session_id``.  This helper only mirrors the kwarg
+    shape (file-system side effect is tested separately).
     """
     retry: dict = dict(initial_kwargs)
-    if ctx_use_resume and ctx_resume_file:
-        retry["resume"] = ctx_resume_file
-        retry.pop("session_id", None)
-    else:
-        retry.pop("resume", None)
-        retry["session_id"] = session_id
+    retry.pop("resume", None)
+    retry["session_id"] = session_id
     return retry
 
 
@@ -921,7 +657,7 @@ class TestSdkSessionIdSelection:
     def test_retry_keeps_session_id_for_t1(self):
         """Retry for T1 (or mode-switch T1) preserves session_id."""
         initial = _build_sdk_options(False, None, self.SESSION_ID)
-        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        retry = _build_retry_sdk_options(initial, self.SESSION_ID)
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
@@ -937,19 +673,10 @@ class TestSdkSessionIdSelection:
         bloated and every subsequent turn re-tripped prompt-too-long.
         """
         initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
-        # T2+ retry where context reduction dropped --resume
-        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        # T2+ retry: context reduction drops --resume
+        retry = _build_retry_sdk_options(initial, self.SESSION_ID)
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
-
-    def test_retry_t2_with_resume_sets_resume(self):
-        """Retry that still uses --resume keeps --resume and drops session_id."""
-        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
-        retry = _build_retry_sdk_options(
-            initial, True, self.SESSION_ID, self.SESSION_ID
-        )
-        assert retry.get("resume") == self.SESSION_ID
-        assert "session_id" not in retry
 
 
 # ---------------------------------------------------------------------------
@@ -958,14 +685,13 @@ class TestSdkSessionIdSelection:
 
 
 class TestRestoreCliSessionModeCheck:
-    """SDK skips --resume when the transcript was written by the baseline mode."""
+    """SDK skips --resume when the transcript was written by the old fast path."""
 
     @pytest.mark.asyncio
-    async def test_baseline_mode_transcript_skips_gcs_content(self, tmp_path):
-        """A transcript with mode='baseline' must not be used as the --resume source.
-
-        The mode check discards the GCS baseline content and falls back to DB
-        reconstruction from session.messages instead.
+    async def test_a_fast_path_transcript_is_treated_as_none(self, tmp_path):
+        """A transcript with mode='baseline' (a local chat from before the
+        one-engine upgrade) is neither resumed nor read: the turn's context is
+        the chat's own rows.
         """
         from datetime import UTC, datetime
 
@@ -996,15 +722,12 @@ class TestRestoreCliSessionModeCheck:
             mode="baseline",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         download_mock = AsyncMock(return_value=baseline_restore)
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=download_mock,
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",
@@ -1017,16 +740,14 @@ class TestRestoreCliSessionModeCheck:
 
         # download_transcript was called (attempted GCS restore)
         download_mock.assert_awaited_once()
-        # use_resume must be False — baseline transcripts cannot be used with --resume
         assert result.use_resume is False
-        # context_messages must be populated — new behaviour uses transcript content + gap
-        # instead of full DB reconstruction.
         assert result.context_messages is not None
-        # The baseline transcript has 1 user message (BASELINE_SENTINEL).
-        # Watermark=1 but position 0 is 'user', not 'assistant', so detect_gap returns [].
-        # Result: 1 message from transcript, no gap.
-        assert len(result.context_messages) == 1
-        assert "BASELINE_SENTINEL" in (result.context_messages[0].content or "")
+        assert [m.content for m in result.context_messages] == [
+            "hello-unique-marker",
+            "world-unique-marker",
+        ]
+        assert result.transcript_content == ""
+        assert result.transcript_msg_count == 2
 
     @pytest.mark.asyncio
     async def test_sdk_mode_transcript_allows_resume(self, tmp_path):
@@ -1085,14 +806,11 @@ class TestRestoreCliSessionModeCheck:
             mode="sdk",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=AsyncMock(return_value=sdk_restore),
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",
@@ -1104,317 +822,6 @@ class TestRestoreCliSessionModeCheck:
             )
 
         assert result.use_resume is True
-
-    @pytest.mark.asyncio
-    async def test_baseline_mode_context_messages_from_transcript_content(
-        self, tmp_path
-    ):
-        """mode='baseline' → context_messages populated from transcript content + gap.
-
-        When a baseline-mode transcript exists, extract_context_messages converts
-        the JSONL content to ChatMessage objects and returns them in context_messages.
-        use_resume must remain False.
-        """
-        import json as stdlib_json
-        from datetime import UTC, datetime
-
-        from backend.copilot.model import ChatMessage, ChatSession
-        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
-        from backend.copilot.transcript_builder import TranscriptBuilder
-
-        # Build a minimal valid JSONL transcript with 2 messages
-        lines = [
-            stdlib_json.dumps(
-                {
-                    "type": "user",
-                    "uuid": "uid-0",
-                    "parentUuid": "",
-                    "message": {"role": "user", "content": "TRANSCRIPT_USER"},
-                }
-            ),
-            stdlib_json.dumps(
-                {
-                    "type": "assistant",
-                    "uuid": "uid-1",
-                    "parentUuid": "uid-0",
-                    "message": {
-                        "role": "assistant",
-                        "id": "msg_1",
-                        "model": "test",
-                        "type": "message",
-                        "stop_reason": STOP_REASON_END_TURN,
-                        "content": [{"type": "text", "text": "TRANSCRIPT_ASSISTANT"}],
-                    },
-                }
-            ),
-        ]
-        content = ("\n".join(lines) + "\n").encode("utf-8")
-
-        session = ChatSession(
-            session_id="test-session",
-            user_id="user-1",
-            messages=[
-                ChatMessage(role="user", content="DB_USER", sequence=0),
-                ChatMessage(role="assistant", content="DB_ASSISTANT", sequence=1),
-                ChatMessage(role="user", content="current turn", sequence=2),
-            ],
-            title="test",
-            usage=[],
-            started_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-        builder = TranscriptBuilder()
-        baseline_restore = TranscriptDownload(
-            content=content,
-            message_count=2,
-            mode="baseline",
-        )
-
-        import backend.copilot.sdk.service as _svc_mod
-
-        with (
-            patch(
-                "backend.copilot.sdk.service.download_transcript",
-                new=AsyncMock(return_value=baseline_restore),
-            ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
-        ):
-            result = await _restore_cli_session_for_turn(
-                user_id="user-1",
-                session_id="test-session",
-                session=session,
-                sdk_cwd=str(tmp_path),
-                transcript_builder=builder,
-                log_prefix="[Test]",
-            )
-
-        assert result.use_resume is False
-        assert result.context_messages is not None
-        # Transcript content has 2 messages, no gap (watermark=2, session prior=2)
-        assert len(result.context_messages) == 2
-        assert result.context_messages[0].role == "user"
-        assert result.context_messages[1].role == "assistant"
-        assert "TRANSCRIPT_ASSISTANT" in (result.context_messages[1].content or "")
-        # transcript_content must be non-empty so the _seed_transcript guard in
-        # stream_chat_completion_sdk skips DB reconstruction (which would duplicate
-        # builder entries since load_previous appends).
-        assert result.transcript_content != ""
-
-    @pytest.mark.asyncio
-    async def test_baseline_mode_gap_present_context_includes_gap(self, tmp_path):
-        """mode='baseline' + gap → context_messages includes transcript msgs and gap."""
-        import json as stdlib_json
-        from datetime import UTC, datetime
-
-        from backend.copilot.model import ChatMessage, ChatSession
-        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
-        from backend.copilot.transcript_builder import TranscriptBuilder
-
-        # Transcript covers only 2 messages; session has 4 prior + current turn
-        lines = [
-            stdlib_json.dumps(
-                {
-                    "type": "user",
-                    "uuid": "uid-0",
-                    "parentUuid": "",
-                    "message": {"role": "user", "content": "TRANSCRIPT_USER_0"},
-                }
-            ),
-            stdlib_json.dumps(
-                {
-                    "type": "assistant",
-                    "uuid": "uid-1",
-                    "parentUuid": "uid-0",
-                    "message": {
-                        "role": "assistant",
-                        "id": "msg_1",
-                        "model": "test",
-                        "type": "message",
-                        "stop_reason": STOP_REASON_END_TURN,
-                        "content": [{"type": "text", "text": "TRANSCRIPT_ASSISTANT_1"}],
-                    },
-                }
-            ),
-        ]
-        content = ("\n".join(lines) + "\n").encode("utf-8")
-
-        session = ChatSession(
-            session_id="test-session",
-            user_id="user-1",
-            messages=[
-                ChatMessage(role="user", content="DB_USER_0", sequence=0),
-                ChatMessage(role="assistant", content="DB_ASSISTANT_1", sequence=1),
-                ChatMessage(role="user", content="GAP_USER_2", sequence=2),
-                ChatMessage(role="assistant", content="GAP_ASSISTANT_3", sequence=3),
-                ChatMessage(role="user", content="current turn", sequence=4),
-            ],
-            title="test",
-            usage=[],
-            started_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-        builder = TranscriptBuilder()
-        baseline_restore = TranscriptDownload(
-            content=content,
-            message_count=2,  # watermark=2; session has 4 prior → gap of 2
-            mode="baseline",
-        )
-
-        import backend.copilot.sdk.service as _svc_mod
-
-        with (
-            patch(
-                "backend.copilot.sdk.service.download_transcript",
-                new=AsyncMock(return_value=baseline_restore),
-            ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
-        ):
-            result = await _restore_cli_session_for_turn(
-                user_id="user-1",
-                session_id="test-session",
-                session=session,
-                sdk_cwd=str(tmp_path),
-                transcript_builder=builder,
-                log_prefix="[Test]",
-            )
-
-        assert result.use_resume is False
-        assert result.context_messages is not None
-        # 2 from transcript + 2 gap messages = 4 total
-        assert len(result.context_messages) == 4
-        roles = [m.role for m in result.context_messages]
-        assert roles == ["user", "assistant", "user", "assistant"]
-        # Gap messages come from DB (ChatMessage objects)
-        gap_user = result.context_messages[2]
-        gap_asst = result.context_messages[3]
-        assert gap_user.content == "GAP_USER_2"
-        assert gap_asst.content == "GAP_ASSISTANT_3"
-
-
-# ---------------------------------------------------------------------------
-# _compaction_target_tokens — keeps our retry compaction below the CLI's
-# autocompact threshold so a compacted retry doesn't immediately re-trigger
-# the CLI's own autocompact on the next call.
-# ---------------------------------------------------------------------------
-
-
-class TestCompactionTargetTokens:
-    @pytest.mark.parametrize(
-        ("model", "window", "pct", "expected"),
-        [
-            # Sonnet 200K window with PCT=50 → CLI threshold 100K → target 80K
-            ("anthropic/claude-sonnet-4-6", 200_000, 50, 80_000),
-            # Sonnet 200K with PCT=0 → CLI uses ~93% (window-13K=187K) → 167K target
-            ("anthropic/claude-sonnet-4-6", 200_000, 0, 167_000),
-            # Aggressive PCT=30 on 200K window → CLI threshold 60K → target 40K
-            ("anthropic/claude-sonnet-4-6", 200_000, 30, 40_000),
-        ],
-    )
-    def test_anthropic_target_below_cli_threshold(
-        self, model, window, pct, expected
-    ) -> None:
-        with (
-            patch("backend.util.prompt.get_context_window", return_value=window),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
-        ):
-            mock_cfg.claude_agent_autocompact_pct_override = pct
-            assert _compaction_target_tokens(model) == expected
-
-    def test_moonshot_uses_cli_default_threshold(self) -> None:
-        # Moonshot routes ignore PCT override (config.gate skips the env var
-        # entirely), so our target should mirror the CLI's ~93% default
-        # regardless of the configured pct value.
-        with (
-            patch("backend.util.prompt.get_context_window", return_value=262_144),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
-        ):
-            mock_cfg.claude_agent_autocompact_pct_override = 50  # ignored
-            # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
-            assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
-
-    def test_unknown_model_falls_back_to_default_threshold(self) -> None:
-        from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD
-
-        with patch("backend.util.prompt.get_context_window", return_value=None):
-            assert _compaction_target_tokens("unknown/model") == DEFAULT_TOKEN_THRESHOLD
-
-    def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
-        # PCT=1 on a 50K window → CLI threshold = 500 → target would be
-        # negative without the floor.
-        with (
-            patch("backend.util.prompt.get_context_window", return_value=50_000),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
-        ):
-            mock_cfg.claude_agent_autocompact_pct_override = 1
-            assert _compaction_target_tokens("anthropic/foo") == 10_000
-
-    def test_resolve_env_model_prefers_moonshot_fallback(self) -> None:
-        """When the primary is Anthropic and the fallback is Moonshot, the
-        env-gate model resolves to the fallback so a 529-triggered swap to
-        Kimi still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``."""
-        from backend.copilot.sdk.service import _resolve_env_model
-
-        assert (
-            _resolve_env_model("anthropic/claude-sonnet-4-6", "moonshotai/kimi-k2.6")
-            == "moonshotai/kimi-k2.6"
-        )
-
-    def test_resolve_env_model_keeps_primary_when_fallback_anthropic(self) -> None:
-        from backend.copilot.sdk.service import _resolve_env_model
-
-        assert (
-            _resolve_env_model(
-                "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-3-5"
-            )
-            == "anthropic/claude-sonnet-4-6"
-        )
-
-    def test_resolve_env_model_keeps_primary_when_no_fallback(self) -> None:
-        from backend.copilot.sdk.service import _resolve_env_model
-
-        assert (
-            _resolve_env_model("anthropic/claude-sonnet-4-6", None)
-            == "anthropic/claude-sonnet-4-6"
-        )
-
-    @pytest.mark.asyncio
-    async def test_reduce_context_uses_runtime_model_for_target(self) -> None:
-        """Compactor LLM is fixed (Sonnet) but target must be sized for the
-        RUNTIME model that the CLI is actually serving — otherwise a Kimi
-        runtime gets a 200K-window-derived target while the CLI threshold
-        is computed against Kimi's 256K window.
-        """
-        from backend.copilot.sdk.service import _reduce_context
-
-        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
-        captured: dict = {}
-
-        async def fake_compact(content, *, model, log_prefix, target_tokens):
-            captured["target_tokens"] = target_tokens
-            captured["compactor_model"] = model
-            return None
-
-        with (
-            patch(
-                "backend.copilot.sdk.service.compact_transcript",
-                side_effect=fake_compact,
-            ),
-            patch(
-                "backend.copilot.sdk.service._compaction_target_tokens",
-                side_effect=lambda m: 12345 if "kimi" in m else 99999,
-            ),
-        ):
-            await _reduce_context(
-                transcript,
-                False,
-                "sess",
-                "/tmp",
-                "[t]",
-                runtime_model="moonshotai/kimi-k2.6",
-            )
-
-        # Target derived from the RUNTIME model, not the compactor model.
-        assert captured["target_tokens"] == 12345
 
 
 # ---------------------------------------------------------------------------
@@ -1796,9 +1203,10 @@ class TestSdkServingSegment:
         from backend.copilot.sdk.service import stream_chat_completion_sdk
 
         source = inspect.getsource(stream_chat_completion_sdk)
+        flat = " ".join(source.split())
 
         assert "turn_segment = _sdk_serving_segment(credential_lease)" in source
-        assert "pre_turn_message_count,\n                turn_segment," in source
+        assert "pre_turn_message_count, turn_segment," in flat
         assert "session_segment(session)" not in source
 
 
@@ -1866,6 +1274,10 @@ def _limit(model: str = "gpt-4o") -> int:
     return get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
 
 
+# The budget the turn would hand ``_will_compact``; the tests size their
+# payloads against ``_limit`` so the two stay in step.
+_TARGET = get_compression_target("gpt-4o")
+
 _FILLER = "the quick brown fox jumps over the lazy dog "
 
 
@@ -1897,16 +1309,21 @@ def _band_history(
 
 class TestWillCompact:
     def test_false_for_short_history(self):
-        assert _will_compact([_msg("user", "hi")], "gpt-4o").expected is False
+        assert (
+            _will_compact(
+                [_msg("user", "hi")], "gpt-4o", target_tokens=_TARGET
+            ).expected
+            is False
+        )
 
     def test_false_for_empty_history(self):
-        assert _will_compact([], "gpt-4o").expected is False
+        assert _will_compact([], "gpt-4o", target_tokens=_TARGET).expected is False
 
     def test_true_when_history_exceeds_the_compression_target(self):
         # get_compression_target for gpt-4o is well under 1M tokens; a
         # megabyte of prose comfortably clears it.
         big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
-        forecast = _will_compact(big, "gpt-4o")
+        forecast = _will_compact(big, "gpt-4o", target_tokens=_TARGET)
         assert forecast.expected is True
         # The size rides along so the client can pace its progress curve
         # against the real size of the work instead of a constant floor.
@@ -1918,7 +1335,7 @@ class TestWillCompact:
             _msg("reasoning", "word " * 200_000),
             _msg("user", "hi"),
         ]
-        assert _will_compact(rows, "gpt-4o").expected is False
+        assert _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected is False
 
     def test_counts_tool_call_arguments(self):
         """Tool-call payloads must be counted, not silently dropped.
@@ -1946,7 +1363,7 @@ class TestWillCompact:
             ),
             _msg("user", "ship it"),
         ]
-        assert _will_compact(rows, "gpt-4o").expected is True
+        assert _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected is True
 
     def test_tokenizer_failure_degrades_to_a_false_negative(self):
         """The prediction is cosmetic; nothing it does may kill the stream.
@@ -1957,12 +1374,18 @@ class TestWillCompact:
         ``emit_pre_query_end`` covers with a self-contained row.
         """
         over_threshold = _band_history(1.1)
-        assert _will_compact(over_threshold, "gpt-4o").expected is True
+        assert (
+            _will_compact(over_threshold, "gpt-4o", target_tokens=_TARGET).expected
+            is True
+        )
         with patch(
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=RuntimeError("tiktoken download failed"),
         ):
-            assert _will_compact(over_threshold, "gpt-4o").expected is False
+            assert (
+                _will_compact(over_threshold, "gpt-4o", target_tokens=_TARGET).expected
+                is False
+            )
 
     def test_huge_history_skips_the_tokenizer_entirely(self):
         """The expensive path must not run where it costs the most.
@@ -1976,7 +1399,7 @@ class TestWillCompact:
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=AssertionError("tokenizer must not run on a huge history"),
         ):
-            forecast = _will_compact(huge, "gpt-4o")
+            forecast = _will_compact(huge, "gpt-4o", target_tokens=_TARGET)
         assert forecast.expected is True
         # No estimate was taken, but the client still needs something to pace
         # against, so the character count stands in for one.
@@ -1988,7 +1411,9 @@ class TestWillCompact:
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=AssertionError("tokenizer must not run on a tiny history"),
         ):
-            assert _will_compact(small, "gpt-4o").expected is False
+            assert (
+                _will_compact(small, "gpt-4o", target_tokens=_TARGET).expected is False
+            )
 
 
 def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
@@ -2010,7 +1435,7 @@ class TestExpectPreQueryCompaction:
         # Scenario A compresses nothing, so the pre-check must stay False
         # even though the cumulative history exceeds the target.
         messages = _big_history()
-        assert _will_compact(messages, "gpt-4o").expected is True
+        assert _will_compact(messages, "gpt-4o", target_tokens=_TARGET).expected is True
         assert (
             _expect_pre_query_compaction(
                 messages,
@@ -2018,6 +1443,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=len(messages) - 1,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2030,6 +1456,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=False,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2051,6 +1478,7 @@ class TestExpectPreQueryCompaction:
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
                 prior_messages=small_prior,
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2063,36 +1491,9 @@ class TestExpectPreQueryCompaction:
                 use_resume=False,
                 transcript_msg_count=0,
                 session_msg_ceiling=1,
+                target_tokens=_TARGET,
             )
         ).expected is False
-
-    def test_no_resume_below_the_bare_message_floor_never_predicts(self):
-        """``_build_query_message`` abandons history injection entirely once
-        the retry budget reaches ``_BARE_MESSAGE_TOKEN_FLOOR``, so the mirror
-        must too — otherwise the row opens for a branch that returns the bare
-        message and compresses nothing."""
-        messages = _big_history()
-        assert (
-            _expect_pre_query_compaction(
-                messages,
-                "gpt-4o",
-                use_resume=False,
-                transcript_msg_count=0,
-                session_msg_ceiling=len(messages),
-                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR,
-            )
-        ).expected is False
-        # A budget above the floor still compresses, so the row still opens.
-        assert (
-            _expect_pre_query_compaction(
-                messages,
-                "gpt-4o",
-                use_resume=False,
-                transcript_msg_count=0,
-                session_msg_ceiling=len(messages),
-                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR + 1,
-            )
-        ).expected is True
 
     def test_resume_with_zero_watermark_never_predicts(self):
         messages = _big_history()
@@ -2103,6 +1504,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2117,6 +1519,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2135,12 +1538,13 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
-    def test_resume_misaligned_watermark_never_predicts(self):
-        # prior[transcript_msg_count - 1] is a user row — _build_query_message
-        # skips the gap entirely, so no compaction row should open.
+    def test_resume_watermark_after_a_user_row_predicts_from_the_rest(self):
+        # The watermark is a sequence: rows 1.. are uncovered whatever role
+        # row 0 has, and _build_query_message compresses them.
         messages = _big_history()
         assert (
             _expect_pre_query_compaction(
@@ -2149,8 +1553,51 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=1,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
+            )
+        ).expected is True
+
+    def test_resume_gap_error_markers_never_predict(self):
+        # Markers are never sent, so only the small row is left to compress;
+        # counted, the two large markers would predict a compaction.
+        big_marker = f"{COPILOT_ERROR_PREFIX} " + "word " * 100_000
+        messages = [
+            _seq_msg("user", "hi", 0),
+            _seq_msg("assistant", "ok", 1),
+            _seq_msg("user", "small question", 2),
+            _seq_msg("assistant", big_marker, 3),
+            _seq_msg("assistant", big_marker, 4),
+            _seq_msg("user", "again", 5),
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=2,
+                session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
+
+    def test_resume_forecast_measures_the_gap_against_the_turn_budget(self):
+        # The same uncovered rows predict a compaction under a tight budget and
+        # none under a generous one: the resume branch reads the target the
+        # turn hands it, the pinned window's, not a constant of its own.
+        messages = _big_history()
+
+        def forecast(target_tokens: int) -> bool:
+            return _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=1,
+                session_msg_ceiling=len(messages),
+                target_tokens=target_tokens,
+            ).expected
+
+        assert forecast(_TARGET) is True
+        assert forecast(10_000_000) is False
 
     def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
         # The windowed view starts above absolute sequence 0, so the
@@ -2167,6 +1614,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=102,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2182,6 +1630,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=200,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2242,10 +1691,26 @@ _DIFFERENTIAL_CASES: list[dict] = [
         "prior_messages": None,
     },
     {
-        "name": "resume, watermark misaligned on a user row",
+        "name": "resume, watermark right after a user row",
         "use_resume": True,
         "transcript_msg_count": 1,
         "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, big gap with reasoning rows and an error marker",
+        "use_resume": True,
+        "transcript_msg_count": 3,
+        "messages": [
+            _seq_msg("user", "hi", 0),
+            _seq_msg("reasoning", "word " * 30_000, 1),
+            _seq_msg("assistant", "ok", 2),
+            _seq_msg("user", "word " * 30_000, 3),
+            _seq_msg("reasoning", "word " * 30_000, 4),
+            _seq_msg("assistant", "word " * 30_000, 5),
+            _seq_msg("assistant", f"{COPILOT_ERROR_PREFIX} " + "word " * 30_000, 6),
+            _seq_msg("user", "again", 7),
+        ],
         "prior_messages": None,
     },
     {
@@ -2316,6 +1781,7 @@ class TestPredictorMatchesCompressor:
             transcript_msg_count=case["transcript_msg_count"],
             session_msg_ceiling=ceiling,
             prior_messages=case["prior_messages"],
+            target_tokens=_TARGET,
         )
 
         # Spy on the compressor: run the real pre-check against the slice
@@ -2339,7 +1805,7 @@ class TestPredictorMatchesCompressor:
         )
 
         would_compact = any(
-            _will_compact(slice_, _compression_model()).expected
+            _will_compact(slice_, _compression_model(), target_tokens=_TARGET).expected
             for slice_ in compressed_slices
         )
 
@@ -2381,7 +1847,10 @@ class TestWillCompactThresholdMatchesCompressContext:
         result = await compress_context(payload, model="gpt-4o", client=None)
 
         assert result.was_compacted is expected
-        assert _will_compact(rows, "gpt-4o").expected is result.was_compacted
+        assert (
+            _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected
+            is result.was_compacted
+        )
 
     @pytest.mark.asyncio
     async def test_threshold_reads_the_compressors_own_constants(self):
@@ -2415,7 +1884,7 @@ class TestWillCompactThresholdMatchesCompressContext:
 
 def _summarized() -> ReducedContext:
     """``_reduce_context``'s success exit: the transcript came back compacted."""
-    return ReducedContext(TranscriptBuilder(), False, None, False, True)
+    return ReducedContext(TranscriptBuilder(), False)
 
 
 def _dropped() -> ReducedContext:
@@ -2424,7 +1893,7 @@ def _dropped() -> ReducedContext:
     Reached both when ``compact_transcript`` fails on the first retry and on
     every later retry.
     """
-    return ReducedContext(TranscriptBuilder(), False, None, True, True, 50_000)
+    return ReducedContext(TranscriptBuilder(), True, 50_000)
 
 
 class TestRetryReducedContext:
@@ -2474,9 +1943,7 @@ class TestRetryReducedContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
         assert _retry_reduced_context(reduced=ctx, compaction_stats=None) is False
@@ -2510,7 +1977,7 @@ class TestCompressionModelIsShared:
 
         captured: dict[str, str] = {}
 
-        async def _fake_run(messages, model, log_prefix, target_tokens=None):
+        async def _fake_run(messages, model, log_prefix, target_tokens=None, **_):
             captured["model"] = model
             return CompressResult(
                 messages=list(messages),
@@ -2542,9 +2009,10 @@ class TestSeedTranscript:
         next turn's ``--resume`` context shows the live message twice and the
         watermark is two rows ahead of reality.
         """
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
         from .compaction import _persist
         from .service import _seed_transcript
-        from .transcript_builder import TranscriptBuilder
 
         session = _make_session(
             [
@@ -2567,13 +2035,13 @@ class TestSeedTranscript:
             "backend.copilot.sdk.service._compress_messages", _passthrough
         )
 
-        content, covers, count = await _seed_transcript(
+        content, count = await _seed_transcript(
             session,
             TranscriptBuilder(),
-            False,
             0,
             "[test]",
             ceiling,
+            seed_target=30_000,
         )
 
         assert [(m.role, m.content) for m in seen[0]] == [
@@ -2581,7 +2049,6 @@ class TestSeedTranscript:
             ("assistant", "a1"),
         ]
         assert "current turn" not in content
-        assert covers is True
         assert count == 2
 
 
@@ -2610,3 +2077,109 @@ class TestCompressionFailureIsReportedAsADrop:
         assert stats.dropped is True
         assert stats.messages_before == 3
         assert stats.tokens_after is None
+
+
+class TestContextLimitWithoutCompaction:
+    def test_first_attempt_with_nothing_attempted(self):
+        alarm = _context_limit_without_compaction(0, CompactionTracker())
+        assert alarm is not None
+        assert "before any compaction was attempted" in alarm
+
+    @pytest.mark.asyncio
+    async def test_first_attempt_after_a_cycle_that_did_not_land(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(tokens_before=191_536, messages_before=92),
+            after_source="no_summary_line",
+        )
+        alarm = _context_limit_without_compaction(0, tracker)
+        assert alarm is not None
+        assert "1 compaction attempt(s) and none landed" in alarm
+        assert "sdk_internal" in alarm
+
+    @pytest.mark.asyncio
+    async def test_quiet_once_a_compaction_landed(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(
+                tokens_before=191_536,
+                tokens_after=31_000,
+                messages_before=92,
+                messages_after=12,
+            ),
+            after_source="read",
+        )
+        assert _context_limit_without_compaction(0, tracker) is None
+
+    def test_quiet_on_our_own_retries(self):
+        assert _context_limit_without_compaction(1, CompactionTracker()) is None
+
+
+class TestMeasureSdkCompactionWaitsForTheSummary:
+    """Measured against CLI 2.1.274: the summary lands ~30 s after PreCompact."""
+
+    @staticmethod
+    def _ctx_state():
+        tracker = CompactionTracker()
+        tracker.on_compact("/projects/s/s.jsonl")
+        ctx = MagicMock()
+        ctx.compaction = tracker
+        state = MagicMock()
+        state.transcript_builder.entries_as_dicts.return_value = []
+        return tracker, ctx, state
+
+    @pytest.mark.asyncio
+    async def test_no_summary_yet_keeps_the_cycle_open_until_final(self):
+        from backend.copilot.sdk import service as svc
+
+        _, ctx, state = self._ctx_state()
+        with (
+            patch.object(
+                svc,
+                "read_compacted_entries_detailed",
+                return_value=(None, "no_summary_line"),
+            ),
+            patch.object(svc, "sdk_compaction_stats", return_value=None),
+        ):
+            assert await svc._measure_sdk_compaction(ctx, state, final=False) == (
+                False,
+                None,
+                None,
+                None,
+            )
+            measured, compacted, _, after = await svc._measure_sdk_compaction(
+                ctx, state, final=True
+            )
+        assert measured is True and compacted is None
+        assert after == "no_summary_line"
+
+    @pytest.mark.asyncio
+    async def test_previous_cycles_summary_is_stale_not_this_cycles(self):
+        from backend.copilot.sdk import service as svc
+
+        tracker, ctx, state = self._ctx_state()
+        old = [{"uuid": "cs1", "isCompactSummary": True}]
+        tracker.note_summary(old)
+        new = [{"uuid": "cs2", "isCompactSummary": True}]
+        with patch.object(svc, "sdk_compaction_stats", return_value=None):
+            with patch.object(
+                svc, "read_compacted_entries_detailed", return_value=(old, "read")
+            ):
+                assert await svc._measure_sdk_compaction(ctx, state, final=False) == (
+                    False,
+                    None,
+                    None,
+                    None,
+                )
+            with patch.object(
+                svc, "read_compacted_entries_detailed", return_value=(new, "read")
+            ):
+                measured, compacted, _, after = await svc._measure_sdk_compaction(
+                    ctx, state, final=False
+                )
+        assert measured is True and compacted == new and after == "read"
+        assert tracker.resolve_after_source(new, "read") == "stale_summary"

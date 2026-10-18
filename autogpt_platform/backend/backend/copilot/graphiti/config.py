@@ -46,7 +46,7 @@ class GraphitiConfig(BaseSettings):
 
     All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
     LLM/embedder keys fall back to the Otto-dedicated keys
-    (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
+    (``CHAT_OPENROUTER_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
     tracked under Otto, then to the platform-wide OpenRouter / OpenAI
     keys as a last resort.
     """
@@ -59,7 +59,7 @@ class GraphitiConfig(BaseSettings):
     falkordb_password: str = Field(default="")
 
     # LLM for entity extraction (used by graphiti-core during ingestion).
-    # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``
+    # Default is a cloud OpenAI-compat slug. Under ``CHAT_PLATFORM_ROUTE=local``
     # ``_apply_local_graphiti_models`` rewrites this to the same Ollama
     # default that dev's PR #12993 uses for the chat path so a single
     # ``ollama pull`` powers both surfaces.
@@ -73,7 +73,7 @@ class GraphitiConfig(BaseSettings):
     )
     llm_api_key: str = Field(
         default="",
-        description="API key for LLM — empty falls back to CHAT_API_KEY, then OPEN_ROUTER_API_KEY",
+        description="API key for LLM — empty falls back to CHAT_OPENROUTER_API_KEY, then OPEN_ROUTER_API_KEY",
     )
 
     # Embedder (separate from LLM — embeddings go direct to OpenAI).
@@ -187,11 +187,10 @@ class GraphitiConfig(BaseSettings):
         """Return ``(api_key, base_url)`` when the active chat transport
         is ``local`` — otherwise ``None``.
 
-        Holy-grail integration with dev's ``TransportProfile`` from
-        PR #12993: under ``CHAT_USE_LOCAL=true``, graphiti's entity
+        Under ``CHAT_PLATFORM_ROUTE=local``, graphiti's entity
         extraction + embedder need to hit the same self-hosted backend
         that the chat layer was pointed at. The cloud-key fallback chain
-        (CHAT_API_KEY → OPEN_ROUTER_API_KEY) returns either nothing or
+        (CHAT_OPENROUTER_API_KEY → OPEN_ROUTER_API_KEY) returns either nothing or
         a stray cloud key the operator forgot to unset, which would
         send a request to the wrong endpoint and 401.
 
@@ -208,16 +207,18 @@ class GraphitiConfig(BaseSettings):
         # actually called.
         from backend.copilot.sdk.env import config as chat_cfg
 
-        if chat_cfg.transport.name != "local":
+        if chat_cfg.platform_route != "local":
             return None
-        return chat_cfg.api_key or "", chat_cfg.base_url or ""
+        return chat_cfg.local_api_key or "local", chat_cfg.local_openai_base_url or ""
 
     def resolve_llm_api_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
         # Prefer the Otto-dedicated key so memory costs are tracked
         # separately from the platform-wide OpenRouter key.
-        cloud_key = os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY")
+        cloud_key = os.getenv("CHAT_OPENROUTER_API_KEY") or os.getenv(
+            "OPEN_ROUTER_API_KEY"
+        )
         if cloud_key:
             return cloud_key
         # Last resort: under local transport, inherit the placeholder
@@ -268,10 +269,9 @@ class GraphitiConfig(BaseSettings):
     @model_validator(mode="after")
     def _apply_local_graphiti_models(self) -> "GraphitiConfig":
         """Rewrite cloud model defaults to local-friendly slugs under
-        ``CHAT_USE_LOCAL=true``.
+        ``CHAT_PLATFORM_ROUTE=local``.
 
-        Mirror of dev's ``_apply_local_aux_models`` pattern on
-        ``ChatConfig`` (PR #12993). Three slots get rewritten when
+        Three slots get rewritten when
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
@@ -304,7 +304,7 @@ class GraphitiConfig(BaseSettings):
             # else is unaffected.
             return self
 
-        if chat_cfg.transport.name != "local":
+        if chat_cfg.platform_route != "local":
             return self
 
         if self.llm_model == _DEFAULT_LLM_MODEL:

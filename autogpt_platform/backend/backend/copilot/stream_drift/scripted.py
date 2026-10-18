@@ -9,9 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from claude_agent_sdk import Message
-from openai.types.chat import ChatCompletionChunk
 
-from backend.copilot.baseline import service as baseline
 from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
@@ -33,57 +31,6 @@ def session_with_prompt(prompt: str) -> ChatSession:
     session.title = "Drift fixture"
     session.messages.append(ChatMessage(role="user", content=prompt))
     return session
-
-
-async def baseline_turn(
-    session: ChatSession, turn_id: str
-) -> AsyncGenerator[StreamBaseResponse, None]:
-    """The baseline engine; its provider and I/O come from the ``baseline_io`` fixture."""
-    async for event in baseline.stream_chat_completion_baseline(
-        session.session_id,
-        user_id=session.user_id,
-        session=session,
-        is_user_message=False,
-        envelope=root_envelope(turn_id, session_id=session.session_id),
-    ):
-        yield event
-
-
-def provider_round(
-    deltas: list[str],
-    *,
-    tool_call: dict[str, str] | None = None,
-    reasoning: list[str] | None = None,
-) -> MagicMock:
-    """One scripted OpenAI-compatible response: reasoning deltas, text
-    deltas, then a tool call."""
-    chunks = [_chunk({"reasoning": delta}) for delta in reasoning or []]
-    chunks += [_chunk({"content": delta}) for delta in deltas]
-    if tool_call:
-        chunks.append(
-            _chunk(
-                {
-                    "tool_calls": [
-                        {
-                            "index": 0,
-                            "id": tool_call["id"],
-                            "type": "function",
-                            "function": {
-                                "name": tool_call["name"],
-                                "arguments": f'{{"url": "{tool_call["url"]}"}}',
-                            },
-                        }
-                    ]
-                }
-            )
-        )
-    chunks.append(
-        _chunk({}, finish_reason="tool_calls" if tool_call else "stop", usage=True)
-    )
-    stream = MagicMock()
-    stream.__aiter__.return_value = chunks
-    stream.close = AsyncMock()
-    return stream
 
 
 async def sdk_turn(
@@ -114,7 +61,6 @@ async def sdk_turn(
         query_message="",
         compaction_stats=None,
         use_resume=False,
-        resume_file=None,
         transcript_msg_count=0,
         adapter=SDKResponseAdapter(
             message_id=message_id, session_id=session.session_id
@@ -152,11 +98,13 @@ async def sdk_service_turn(
     *,
     queued_after_first: list[PendingMessage],
     held_results: list[PendingMessage] | None = None,
+    queued_at_start: list[PendingMessage] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
     its turn-end persist and auto-continue included. ``held_results`` are the
-    answered cards' results the turn opens with. Only what reaches beyond the
+    answered cards' results the turn opens with, ``queued_at_start`` the
+    follow-ups drained before its first query. Only what reaches beyond the
     process (CLI, sandbox, RPC services, billing) is stubbed."""
     scripted = iter(queries)
 
@@ -184,15 +132,15 @@ async def sdk_service_turn(
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),
-        "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
+        "_build_system_prompt": AsyncMock(return_value="System prompt"),
+        "fetch_business_understanding": AsyncMock(return_value=None),
         "download_transcript": AsyncMock(return_value=None),
         "upload_transcript": AsyncMock(),
         "create_copilot_mcp_server": MagicMock(),
         "create_security_hooks": MagicMock(),
         "get_copilot_tool_names": MagicMock(return_value=[]),
         "get_sdk_disallowed_tools": MagicMock(return_value=[]),
-        "build_sdk_env": MagicMock(return_value={}),
-        "_resolve_sdk_model": MagicMock(return_value=None),
+        "route_launch_env": MagicMock(return_value={}),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
         "resolve_turn_budget": AsyncMock(
@@ -200,21 +148,21 @@ async def sdk_service_turn(
         ),
         "gate_auto_continue": AsyncMock(return_value=AutoContinueGate(proceed=True)),
         "drain_pending_safe": AsyncMock(
-            side_effect=[[], queued_after_first] + [[]] * len(queries)
+            side_effect=[queued_at_start or [], queued_after_first]
+            + [[]] * len(queries)
         ),
         "resolve_answered": AsyncMock(return_value=held_results or []),
         "build_session_context": AsyncMock(return_value=""),
-        "build_skills_context": AsyncMock(return_value=""),
+        "skills_context_block": AsyncMock(return_value=None),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
         "build_turn_budget_block": AsyncMock(return_value=""),
         "persist_and_record_usage": AsyncMock(),
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
-                "api_key": UNSENT_MODEL_KEY,
-                "use_claude_code_subscription": False,
+                "platform_route": "openrouter",
+                "openrouter_api_key": UNSENT_MODEL_KEY,
                 "use_e2b_sandbox": False,
-                "claude_agent_fallback_model": None,
                 "claude_agent_max_transient_retries": 1,
             }
         ),
@@ -231,28 +179,3 @@ async def sdk_service_turn(
             envelope=root_envelope(turn_id, session_id=session.session_id),
         ):
             yield event
-
-
-def _chunk(
-    delta: dict[str, Any], *, finish_reason: str | None = None, usage: bool = False
-) -> ChatCompletionChunk:
-    return ChatCompletionChunk.model_validate(
-        {
-            "id": "round",
-            "object": "chat.completion.chunk",
-            "created": 0,
-            "model": "anthropic/claude-sonnet-4-6",
-            "choices": [{"index": 0, "finish_reason": finish_reason, "delta": delta}],
-            **(
-                {
-                    "usage": {
-                        "prompt_tokens": 100,
-                        "completion_tokens": 20,
-                        "total_tokens": 120,
-                    }
-                }
-                if usage
-                else {}
-            ),
-        }
-    )

@@ -58,7 +58,8 @@ Recursion inheritance
 :meth:`CopilotPermissions.merged_with_parent` produces a new instance that
 is at most as permissive as the parent:
 
-- Tools: effective-allowed sets are intersected then stored as a whitelist.
+- Tools: effective-allowed sets are intersected then stored as a whitelist
+  (a blacklist of every tool when nothing is left).
 - Blocks: the parent is stored in ``_parent`` and consulted during every
   :meth:`is_block_allowed` call so both constraints must pass.
 """
@@ -289,16 +290,24 @@ the model as available tools.
 """
 
 # SDK built-in tool names — tools provided by the Claude Code CLI that our
-# code does not implement directly.  ``TodoWrite`` is DELIBERATELY excluded:
-# baseline mode ships an MCP-wrapped platform version
-# (``tools/todo_write.py``), while SDK mode still uses the CLI-native
-# original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
-# ``Task`` remains an SDK-only built-in
-# (for queue-backed context-isolation on baseline, use ``run_sub_session``
-# instead).
+# code does not implement directly.  ``TodoWrite`` is the CLI's own
+# checklist, always on (``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py``).
+# ``Agent``/``Task`` (the CLI sub-agent tool) stay accepted for saved graphs
+# and routines but are off on the SDK path unless an operator enables them
+# (``claude_agent_extra_builtin_tools``); ``run_sub_session`` is the
+# delegation path on both engines.
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
-    {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
+    {
+        "Agent",
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Task",
+        "TodoWrite",
+        "WebSearch",
+        "Write",
+    }
 )
 
 # Platform tool names — everything that isn't an SDK built-in or a gate.
@@ -314,6 +323,14 @@ _FULL_UUID_RE = re.compile(
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
 
+# The CLI's sub-agent tool under its new and old name.  The CLI drops the
+# tool when either name is disallowed, so a list that names one names both,
+# whether it allows or denies.
+_SUBAGENT_TOOL_ALIASES: dict[str, tuple[str, ...]] = {
+    "Agent": ("Task",),
+    "Task": ("Agent",),
+}
+
 # Tools that a blacklist entry must deny alongside the capability named.
 #
 # A blacklist is written against the tools that existed when it was written,
@@ -323,6 +340,7 @@ _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 # everything the bot has already said in them.
 _IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
     "post_to_chat_platform": ("edit_chat_platform_message",),
+    **_SUBAGENT_TOOL_ALIASES,
 }
 
 
@@ -336,14 +354,15 @@ def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
 # Tools that a whitelist entry must allow alongside the capability named.
 #
 # The mirror of the above: a whitelist is also written against the tools that
-# existed when it was written, and the gates are the one case where the tool
-# that does the work was renamed out from under it. A saved list naming
+# existed when it was written, and for the gates the tool that does the work
+# was renamed out from under it. A saved list naming
 # ``run_block`` meant "you may run blocks", which now happens through
 # ``run_capability`` -- a name no existing list can contain. Without this the
 # gate stays open and the tool that opens it is never handed to the model.
 _IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
     BLOCK_GATE: ("run_capability",),
     MCP_GATE: ("run_capability",),
+    **_SUBAGENT_TOOL_ALIASES,
 }
 
 
@@ -471,16 +490,21 @@ class CopilotPermissions(BaseModel):
     ) -> CopilotPermissions:
         """Return a new instance that is at most as permissive as *parent*.
 
-        - Tools: intersection of effective-allowed sets, stored as a whitelist.
+        - Tools: intersection of effective-allowed sets, stored as a whitelist;
+          an empty intersection is stored as a blacklist of every tool, since
+          an empty whitelist means no filter.
         - Blocks: parent is stored internally; both constraints are applied
           during :meth:`is_block_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
         ) & parent.effective_allowed_tools(all_tools)
+        tools, tools_exclude = (
+            (sorted(merged_tools), False) if merged_tools else (sorted(all_tools), True)
+        )
         result = CopilotPermissions(
-            tools=sorted(merged_tools),
-            tools_exclude=False,
+            tools=tools,
+            tools_exclude=tools_exclude,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
         )
@@ -510,22 +534,6 @@ def all_known_tool_names() -> frozenset[str]:
     """
     _assert_tool_names_consistent()
     return ALL_TOOL_NAMES
-
-
-def validate_tool_names(tools: list[str]) -> list[str]:
-    """Return entries in *tools* that are not valid tool names.
-
-    Args:
-        tools: List of short tool name strings to validate.
-
-    Returns:
-        List of invalid names (empty if all are valid).
-    """
-    return [
-        t
-        for t in tools
-        if t not in ALL_TOOL_NAMES and t not in DISABLED_LEGACY_TOOL_NAMES
-    ]
 
 
 _tool_names_checked = False
@@ -604,6 +612,7 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    extra_builtins: Iterable[str] = (),
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -613,7 +622,12 @@ def apply_tool_permissions(
     applies *permissions* on top.  Tools belonging to any *disabled_groups*
     are hidden from the base allowed list — use this to gate capability
     groups (e.g. ``"graphiti"`` when the memory backend is off for the
-    current user).
+    current user).  *extra_builtins* joins the base allowed list before
+    *permissions* narrows it, so a whitelist still decides.
+
+    A name the base list does not hold drops out: ``Agent`` and ``Task``
+    stay valid in saved permission lists but grant nothing unless an
+    operator turned the CLI sub-agent tool back on.
 
     Returns:
         ``(allowed_tools, extra_disallowed)`` where *allowed_tools* is the
@@ -623,7 +637,6 @@ def apply_tool_permissions(
     """
     from backend.copilot.sdk.tool_adapter import (
         _READ_TOOL_NAME,
-        BASELINE_ONLY_MCP_TOOLS,
         MCP_TOOL_PREFIX,
         get_copilot_tool_names,
         get_sdk_disallowed_tools,
@@ -631,7 +644,9 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        extra_builtins=extra_builtins,
     )
     base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
@@ -666,14 +681,7 @@ def apply_tool_permissions(
     # keeping only those present in the original base_allowed list.
     def to_sdk_names(short: str) -> list[str]:
         names: list[str] = []
-        if short in BASELINE_ONLY_MCP_TOOLS:
-            # Baseline ships MCP versions of these (Task/TodoWrite) for
-            # model-flexibility parity, but SDK mode uses the CLI-native
-            # originals. Permissions target the CLI built-in here so
-            # ``base_allowed`` (which excludes the MCP wrappers) still
-            # matches.
-            names.append(short)
-        elif short in TOOL_REGISTRY:
+        if short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below

@@ -72,7 +72,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   describe("stream drift — guards", () => {
     it.each([
       "dummy-text-turn",
-      "baseline-tool-turn",
+      "sdk-tool-turn",
       // A tool result that lands after the next text: the backend ends the
       // text block before the step closes (#14762), or the parser dies.
       "sdk-late-tool-result",
@@ -111,7 +111,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       "the end-of-turn reconcile keeps every message's element",
       { timeout: 60_000 },
       async () => {
-        const turn = loadRecordedTurn("baseline-tool-turn");
+        const turn = loadRecordedTurn("sdk-tool-turn");
         const sim = createBackendSim([{ turn }]);
         renderAgainst(sim);
         await sendPrompt(sim, turn);
@@ -141,7 +141,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       "a reload into a running turn resumes it once",
       { timeout: 60_000 },
       async () => {
-        const turn = loadRecordedTurn("baseline-tool-turn");
+        const turn = loadRecordedTurn("sdk-tool-turn");
         const sim = createBackendSim([{ turn }]);
         sim.beginRunning();
         sim.publish(9);

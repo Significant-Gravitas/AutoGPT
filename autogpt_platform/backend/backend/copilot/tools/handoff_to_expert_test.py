@@ -644,7 +644,7 @@ class TestTerminalResponse:
         r = await self._handoff()
         assert r.elapsed_seconds is None
 
-    @pytest.mark.parametrize("outcome", ["running", "queued", "completed"])
+    @pytest.mark.parametrize("outcome", ["running", "queued_for_slot", "completed"])
     @pytest.mark.asyncio
     async def test_every_outcome_that_means_the_target_has_it_is_a_transfer(
         self, roster, mock_turn, mock_sessions, outcome
@@ -715,7 +715,7 @@ class TestFailedTransfer:
     async def test_a_successful_transfer_keeps_the_receiving_thread(
         self, roster, mock_turn, mock_sessions, deleted_sessions
     ):
-        await self._handoff(mock_turn, "queued")
+        await self._handoff(mock_turn, "queued_for_slot")
         assert deleted_sessions == []
 
 

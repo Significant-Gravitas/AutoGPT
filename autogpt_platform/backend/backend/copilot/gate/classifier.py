@@ -19,12 +19,18 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.util.llm.providers import call_provider_openai_compat_sync
 
 from . import jev
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# The model the action supervisor runs on, vetted for this job. Never the
+# operator's own tier: swapping a security classifier for whichever small
+# model a local server runs is exactly the substitution nobody would notice.
+_GATE_MODEL = "anthropic/claude-haiku-4-5"
 
 ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
@@ -142,7 +148,7 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
         response = await asyncio.wait_for(
             call_provider_openai_compat_sync(
                 client=_get_aux_client(),
-                model=config.gate_model,
+                model=normalize_model_for_transport(_GATE_MODEL, config),
                 messages=[
                     {"role": "system", "content": ACTION_RUBRIC},
                     {"role": "user", "content": prompt},

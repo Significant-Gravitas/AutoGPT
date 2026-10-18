@@ -27,7 +27,7 @@ from backend.copilot.tools.skills import (
     SkillWrite,
     build_skills_update_notice,
     list_user_skills,
-    render_skills_index,
+    skills_index_entries,
     store_user_skill,
     store_user_skills,
 )
@@ -382,7 +382,7 @@ def test_the_index_names_each_update_state():
         ),
         skills_module.ParsedSkill(name="d", description="D.", body=""),
     ]
-    lines = render_skills_index(skills).splitlines()
+    lines = skills_index_entries(skills)
     assert "newer marketplace version" in lines[0] and "customized" in lines[0]
     assert "merged" in lines[1]
     assert "no longer offered" in lines[2]

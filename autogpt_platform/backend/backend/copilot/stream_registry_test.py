@@ -641,20 +641,6 @@ def test_reconstruct_chunk_round_trips_pending_drained():
     ]
 
 
-def test_reconstruct_mode_changed_chunk():
-    """Regression: MODE_CHANGED was missing from the reconstruction map, so
-    the picker-sync event was silently dropped after the Redis stream."""
-    from backend.copilot.response_model import StreamModeChanged
-    from backend.copilot.stream_registry import _reconstruct_chunk
-
-    chunk = _reconstruct_chunk(
-        {"type": "data-mode-changed", "mode": "extended_thinking"}
-    )
-    assert isinstance(chunk, StreamModeChanged)
-    assert chunk.mode == "extended_thinking"
-    assert '"data"' in chunk.to_sse()
-
-
 def test_reconstruct_chunk_round_trips_compaction_progress():
     """Regression: ``data-compaction`` was added to the wire protocol without
     being registered here, so every live compaction phase was dropped on the
@@ -686,11 +672,6 @@ def test_reconstruct_chunk_round_trips_compaction_progress():
     assert '"data"' in chunk.to_sse()
 
 
-# ``data-cursor`` is deprecated and no longer emitted by new subscriptions
-# (see ``StreamCursor``), so it is the one type that may stay unmapped.
-_UNRELAYED_RESPONSE_TYPES = {"CURSOR"}
-
-
 def test_every_response_type_survives_the_relay():
     """Every event the backend can publish must be reconstructable.
 
@@ -706,7 +687,7 @@ def test_every_response_type_survives_the_relay():
         for member in ResponseType
         if member.value in stream_registry.CHUNK_TYPE_TO_CLASS
     }
-    expected = {m.name for m in ResponseType} - _UNRELAYED_RESPONSE_TYPES
+    expected = {m.name for m in ResponseType}
 
     missing = sorted(expected - mapped)
     assert not missing, (
@@ -750,12 +731,7 @@ class TestEveryPartSurvivesReplay:
 
         # Parts nothing can emit, so nothing can fail to deliver:
         #   StreamHeartbeat rides as an SSE comment, never as a chunk.
-        #   StreamCursor is deprecated and no longer constructed anywhere.
-        #     (Its docstring says it is kept so older stored chunks can be
-        #     reconstructed, which the missing map entry does not actually
-        #     deliver -- harmless while nothing emits it, but not what the
-        #     docstring claims.)
-        never_published = {"StreamHeartbeat", "StreamCursor"}
+        never_published = {"StreamHeartbeat"}
 
         missing = []
         for name, cls in inspect.getmembers(response_model, inspect.isclass):

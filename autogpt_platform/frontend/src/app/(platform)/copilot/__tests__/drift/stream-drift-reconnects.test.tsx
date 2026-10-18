@@ -56,11 +56,11 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
   return { ...actual, toast: toastMock };
 });
 
-const toolTurn = loadRecordedTurn("baseline-tool-turn");
+const toolTurn = loadRecordedTurn("sdk-tool-turn");
 const textTurn = loadRecordedTurn("dummy-text-turn");
-// Frames 0-8 end the first text block; 10-11 open the tool call.
+// Frames 0-8 end the first text block; 9-10 open the tool call.
 const FIRST_TEXT_BLOCK_DONE = 9;
-const TOOL_CALL_OPEN = 12;
+const TOOL_CALL_OPEN = 11;
 
 beforeEach(() => {
   resetChatState();

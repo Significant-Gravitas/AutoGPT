@@ -36,9 +36,6 @@ def real_catalog():
 @pytest.fixture(autouse=True)
 def engine(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(
-        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=False)
-    )
-    mocker.patch.object(
         provider_tiers,
         "resolve_model_route",
         new=AsyncMock(

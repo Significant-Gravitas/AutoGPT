@@ -1064,27 +1064,19 @@ async def _log_all_phase_costs(
 
 
 def _anthropic_api_key() -> str | None:
-    """Look up the Anthropic key from the copilot config first, then
-    fall back to the shared settings key.
+    """The dream pass's Batch key (``ChatConfig.batch_anthropic_api_key``),
+    on the routes that use the Batch API; None elsewhere.
 
-    Mirrors what ``backend/executor/batch_executor.py::_default_api_key_for``
-    does — callbacks live in their own subprocess so they need to
-    re-resolve the key on their own.
+    Mirrors ``backend/executor/batch_executor.py::_default_api_key_for`` —
+    callbacks live in their own subprocess so they need to re-resolve the
+    key on their own.
     """
     try:
         from backend.copilot.config import ChatConfig
 
-        cfg = ChatConfig()
-        if cfg.direct_anthropic_api_key:
-            return cfg.direct_anthropic_api_key
+        return ChatConfig().batch_anthropic_api_key
     except Exception:
-        logger.debug("ChatConfig unavailable during dream batch callback")
-    try:
-        from backend.util.settings import Settings
-
-        key = Settings().secrets.anthropic_api_key
-        return key or None
-    except Exception:
+        logger.warning("ChatConfig unavailable during dream batch callback")
         return None
 
 

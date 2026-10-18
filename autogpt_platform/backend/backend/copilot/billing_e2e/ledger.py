@@ -12,7 +12,6 @@ import pytest
 from pydantic import BaseModel
 
 from backend.copilot import token_tracking
-from backend.copilot.baseline import service as baseline_service
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.tree import TurnEnvelope
 from backend.data.platform_cost import PlatformCostEntry
@@ -97,6 +96,5 @@ def _deferred_tasks() -> list[asyncio.Task]:
     tasks = [
         *logs,
         *sdk_service._background_tasks,
-        *baseline_service._background_tasks,
     ]
     return [task for task in tasks if task.get_loop() is loop and not task.done()]

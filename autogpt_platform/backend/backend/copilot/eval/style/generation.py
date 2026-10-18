@@ -1,6 +1,6 @@
-"""One expert turn the way the baseline engine sends it: production's system
-prompt, first-turn context blocks and tool schemas, the routed model, the
-OpenAI-compat transport.
+"""One expert turn over the platform route's OpenAI-compatible API:
+production's system prompt, first-turn context blocks and tool schemas, the
+routed model.
 
 Tool calls get a stub result and the loop continues, so the model reaches
 its written answer instead of narrating a tool call as text — which is what
@@ -19,12 +19,6 @@ from openai.types.chat import (
 from pydantic import BaseModel, Field
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.baseline.service import (
-    _build_cached_system_message,
-    _fresh_anthropic_caching_headers,
-    _mark_tools_with_cache_control,
-    _supports_prompt_cache_markers,
-)
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools import (
@@ -56,6 +50,12 @@ from backend.copilot.tools.workspace_files import WorkspaceFileListResponse
 from backend.util.llm.conversions import extract_openrouter_cost
 
 from .assembly import DELEGATION_ENABLED, chat_system_prompt
+from .cache_markers import (
+    cached_system_message,
+    caching_headers,
+    mark_tools_with_cache_control,
+    supports_prompt_cache_markers,
+)
 from .models import Usage
 from .scorer import to_usage
 
@@ -99,8 +99,8 @@ class Turn(BaseModel):
 
 
 def chat_client(config: ChatConfig) -> openai.AsyncOpenAI:
-    """The baseline engine's main client: OpenRouter, or api.anthropic.com's
-    OpenAI-compat endpoint when only an Anthropic key is configured."""
+    """The platform route's OpenAI-compatible API: OpenRouter, or
+    api.anthropic.com's OpenAI-compat endpoint on the direct route."""
     api_key, base_url = config.main_client_credentials
     return openai.AsyncOpenAI(api_key=api_key or "", base_url=base_url)
 
@@ -138,16 +138,12 @@ async def generate_turn(
     system: dict[str, Any] = {"role": "system", "content": chat_system_prompt(expert)}
     tools: list[dict[str, Any]] = [dict(t) for t in expert_tools(expert)]
     headers: dict[str, str] | None = None
-    if _supports_prompt_cache_markers(model):
-        system = _build_cached_system_message(system)
-        tools = _mark_tools_with_cache_control(tools)
-        headers = _fresh_anthropic_caching_headers()
+    if supports_prompt_cache_markers(model):
+        system = cached_system_message(system)
+        tools = mark_tools_with_cache_control(tools)
+        headers = caching_headers()
     messages: list[dict[str, Any]] = [system, {"role": "user", "content": user_message}]
-    extra_body = (
-        {"usage": {"include": True}}
-        if config.baseline_provider == "openrouter"
-        else None
-    )
+    extra_body = {"usage": {"include": True}} if config.aux_uses_openrouter else None
     turn = Turn(
         text="", truncated=False, usage=Usage(model=model, cost_usd=0.0), tool_calls=[]
     )

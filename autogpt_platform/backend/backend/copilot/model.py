@@ -5,20 +5,6 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Literal, Self, cast
 
-from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionDeveloperMessageParam,
-    ChatCompletionFunctionMessageParam,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionToolMessageParam,
-    ChatCompletionUserMessageParam,
-)
-from openai.types.chat.chat_completion_assistant_message_param import FunctionCall
-from openai.types.chat.chat_completion_message_tool_call_param import (
-    ChatCompletionMessageToolCallParam,
-    Function,
-)
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -39,25 +25,17 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
+from .prompt_origin import (
+    PromptOrigin,
+    is_redelivered_prompt,
+    split_prompt_origin,
+    with_prompt_origin,
+)
+from .route_table import RoutingSource
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
-
-# The routing layer that picked a turn's model. Defined here — on the
-# persistence model, the lowest layer — so ChatMessage can type its
-# stamped column and model_router / the SDK service import the ONE
-# definition instead of re-declaring the Literal. ("fallback" is stamped,
-# never routed: it marks a CLI 529-overload fallback to a different model.)
-RoutingSource = Literal[
-    "ld",
-    "catalog",
-    "env",
-    "fallback",
-    "preferred",
-    "account_default",
-    "account_available",
-]
 
 # Who opened a session. ``interactive`` means a human is typing into it (web
 # chat, a linked chat platform); ``automation`` means a graph block or a
@@ -228,6 +206,13 @@ class ChatMessage(BaseModel):
     # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
+    # Set on a prompt row the platform wrote on the user's behalf (a
+    # scheduled turn). Stored inside the ``metadata`` column but excluded
+    # from payloads: see ``copilot/prompt_origin.py``. Like routing_source it
+    # is dropped by anything that serializes the row (the Redis session
+    # cache, a DatabaseManager RPC response); the DB row keeps it.
+    prompt_origin: PromptOrigin | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -273,6 +258,9 @@ class ChatMessage(BaseModel):
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
+        metadata, prompt_origin = split_prompt_origin(
+            _parse_json_field(prisma_message.metadata)
+        )
         return ChatMessage(
             id=prisma_message.id,
             role=prisma_message.role,
@@ -286,7 +274,8 @@ class ChatMessage(BaseModel):
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
             session_id=prisma_message.sessionId,
-            metadata=_parse_json_field(prisma_message.metadata),
+            metadata=metadata,
+            prompt_origin=prompt_origin,
             model=prisma_message.model,
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
@@ -360,17 +349,32 @@ def maybe_append_user_message(
 
     The route handler already persists the user message before enqueueing,
     so we check trailing same-role messages to avoid re-appending when the
-    session cache is slightly stale.
+    session cache is slightly stale. A scheduled prompt, whose *metadata*
+    carries its origin, is checked by its fire instead (see
+    ``is_redelivered_prompt``), so every fire of a repeating prompt gets
+    its own row.
 
     Returns True if the message was appended, False if skipped.
     """
     if not message:
         return False
     role = "user" if is_user_message else "assistant"
-    if is_message_duplicate(session.messages, role, message):
+    row_metadata, prompt_origin = split_prompt_origin(metadata or None)
+    if prompt_origin is None:
+        duplicate = is_message_duplicate(session.messages, role, message)
+    else:
+        duplicate = is_redelivered_prompt(
+            session.messages, role, message, prompt_origin
+        )
+    if duplicate:
         return False
     session.messages.append(
-        ChatMessage(role=role, content=message, metadata=metadata or None)
+        ChatMessage(
+            role=role,
+            content=message,
+            metadata=row_metadata,
+            prompt_origin=prompt_origin,
+        )
     )
     return True
 
@@ -467,11 +471,10 @@ class ChatSession(ChatSessionInfo):
     # In-flight tool-call names for the CURRENT turn.  Not persisted to
     # DB and not serialised on the wire — ``PrivateAttr`` keeps this a
     # process-local scratch buffer that's invisible to ``model_dump`` /
-    # ``model_dump_json`` / the redis cache path.  Populated by the
-    # baseline tool executor the moment a tool is dispatched so in-turn
-    # guards (e.g. ``require_guide_read``) can see the call before it
-    # lands in ``messages`` at turn-end.  Cleared when the turn
-    # completes.
+    # ``model_dump_json`` / the redis cache path.  Populated the moment a
+    # tool is dispatched so in-turn guards (e.g. ``require_guide_read``)
+    # can see the call before it lands in ``messages`` at turn-end.
+    # Cleared when the turn completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
     # Optional argument capture for in-flight tool calls.  Some guards
@@ -493,9 +496,9 @@ class ChatSession(ChatSessionInfo):
 
     sdk_turn_active: bool = Field(default=False, exclude=True)
     """Per-turn runtime flag: True while the SDK service is running this
-    turn (set at turn start, never persisted). Lets shared tools branch on
-    the execution path — e.g. enter_agent_building_mode restarts in-turn on
-    SDK but degrades gracefully on the baseline path."""
+    turn (set at turn start, never persisted). Lets shared tools tell a
+    running turn from a call outside one — e.g. enter_agent_building_mode
+    restarts the turn only when there is one to restart."""
 
     building_mode_requested: bool = Field(default=False, exclude=True)
     """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
@@ -634,156 +637,6 @@ class ChatSession(ChatSessionInfo):
                 if name == tool_name:
                     return True
         return False
-
-    def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
-        """Attach a tool_call to the current turn's assistant message.
-
-        Searches backwards for the most recent assistant message (stopping at
-        any user message boundary). If found, appends the tool_call to it.
-        Otherwise creates a new assistant message with the tool_call.
-        """
-        for msg in reversed(self.messages):
-            if msg.role == "user":
-                break
-            if msg.role == "assistant":
-                if not msg.tool_calls:
-                    msg.tool_calls = []
-                msg.tool_calls.append(tool_call)
-                msg.mark_tool_calls_pending_save()
-                return
-
-        self.messages.append(
-            ChatMessage(role="assistant", content="", tool_calls=[tool_call])
-        )
-
-    def to_openai_messages(self) -> list[ChatCompletionMessageParam]:
-        messages = []
-        for message in self.messages:
-            if message.role == "developer":
-                m = ChatCompletionDeveloperMessageParam(
-                    role="developer",
-                    content=message.content or "",
-                )
-                if message.name:
-                    m["name"] = message.name
-                messages.append(m)
-            elif message.role == "system":
-                m = ChatCompletionSystemMessageParam(
-                    role="system",
-                    content=message.content or "",
-                )
-                if message.name:
-                    m["name"] = message.name
-                messages.append(m)
-            elif message.role == "user":
-                m = ChatCompletionUserMessageParam(
-                    role="user",
-                    content=message.content or "",
-                )
-                if message.name:
-                    m["name"] = message.name
-                messages.append(m)
-            elif message.role == "assistant":
-                m = ChatCompletionAssistantMessageParam(
-                    role="assistant",
-                    content=message.content or "",
-                )
-                if message.function_call:
-                    m["function_call"] = FunctionCall(
-                        arguments=message.function_call["arguments"],
-                        name=message.function_call["name"],
-                    )
-                if message.refusal:
-                    m["refusal"] = message.refusal
-                if message.tool_calls:
-                    t: list[ChatCompletionMessageToolCallParam] = []
-                    for tool_call in message.tool_calls:
-                        # Tool calls are stored with nested structure: {id, type, function: {name, arguments}}
-                        function_data = tool_call.get("function", {})
-
-                        # Skip tool calls that are missing required fields
-                        if "id" not in tool_call or "name" not in function_data:
-                            logger.warning(
-                                f"Skipping invalid tool call: missing required fields. "
-                                f"Got: {tool_call.keys()}, function keys: {function_data.keys()}"
-                            )
-                            continue
-
-                        # Arguments are stored as a JSON string
-                        arguments_str = function_data.get("arguments", "{}")
-
-                        t.append(
-                            ChatCompletionMessageToolCallParam(
-                                id=tool_call["id"],
-                                type="function",
-                                function=Function(
-                                    arguments=arguments_str,
-                                    name=function_data["name"],
-                                ),
-                            )
-                        )
-                    m["tool_calls"] = t
-                if message.name:
-                    m["name"] = message.name
-                messages.append(m)
-            elif message.role == "tool":
-                messages.append(
-                    ChatCompletionToolMessageParam(
-                        role="tool",
-                        content=message.content or "",
-                        tool_call_id=message.tool_call_id or "",
-                    )
-                )
-            elif message.role == "function":
-                messages.append(
-                    ChatCompletionFunctionMessageParam(
-                        role="function",
-                        content=message.content,
-                        name=message.name or "",
-                    )
-                )
-        return self._merge_consecutive_assistant_messages(messages)
-
-    @staticmethod
-    def _merge_consecutive_assistant_messages(
-        messages: list[ChatCompletionMessageParam],
-    ) -> list[ChatCompletionMessageParam]:
-        """Merge consecutive assistant messages into single messages.
-
-        Long-running tool flows can create split assistant messages: one with
-        text content and another with tool_calls. Anthropic's API requires
-        tool_result blocks to reference a tool_use in the immediately preceding
-        assistant message, so these splits cause 400 errors via OpenRouter.
-        """
-        if len(messages) < 2:
-            return messages
-
-        result: list[ChatCompletionMessageParam] = [messages[0]]
-        for msg in messages[1:]:
-            prev = result[-1]
-            if prev.get("role") != "assistant" or msg.get("role") != "assistant":
-                result.append(msg)
-                continue
-
-            prev = cast(ChatCompletionAssistantMessageParam, prev)
-            curr = cast(ChatCompletionAssistantMessageParam, msg)
-
-            curr_content = curr.get("content") or ""
-            if curr_content:
-                prev_content = prev.get("content") or ""
-                prev["content"] = (
-                    f"{prev_content}\n{curr_content}" if prev_content else curr_content
-                )
-
-            curr_tool_calls = curr.get("tool_calls")
-            if curr_tool_calls:
-                prev_tool_calls = prev.get("tool_calls")
-                prev["tool_calls"] = (
-                    list(prev_tool_calls) + list(curr_tool_calls)
-                    if prev_tool_calls
-                    else list(curr_tool_calls)
-                )
-        return result
 
 
 def _parse_json_field(value: str | dict | list | None, default: Any = None) -> Any:
@@ -1172,7 +1025,7 @@ async def _save_session_to_db(
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
                     "langfuse_trace_id": msg.langfuse_trace_id,
-                    "metadata": msg.metadata,
+                    "metadata": with_prompt_origin(msg.metadata, msg.prompt_origin),
                 }
             )
         logger.info(

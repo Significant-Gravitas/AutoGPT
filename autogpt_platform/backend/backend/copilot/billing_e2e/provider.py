@@ -32,6 +32,8 @@ class FakeProvider:
         self.turn = 0
         self.calls: list[Call] = []
         self.unexpected: list[str] = []
+        # The User-Agent of every model request, to check which CLI ran.
+        self.user_agents: list[str] = []
         self.generation_lookups_fail = False
         self.faults: list[PlannedFault] = []
         self.faults_served: list[PlannedFault] = []
@@ -65,10 +67,14 @@ class FakeProvider:
             app.router.add_post(
                 f"{prefix}/v1/chat/completions", partial(self._chat, route=route)
             )
+            # A local server (llama.cpp, Ollama) answers Anthropic's Messages
+            # API too: the local route's pass-through adapter sends it there.
+            app.router.add_post(
+                f"{prefix}/v1/messages", partial(self._messages, route=route)
+            )
             if route != "ollama":
-                app.router.add_post(
-                    f"{prefix}/v1/messages", partial(self._messages, route=route)
-                )
+                # The CLI lists models when it starts; the list is not billed.
+                app.router.add_get(f"{prefix}/v1/models", self._model_list)
         app.router.add_post("/codex/responses", self._responses)
         app.router.add_post("/graph/copilot/conversations", self._graph_conversation)
         app.router.add_post(
@@ -82,6 +88,7 @@ class FakeProvider:
         return app
 
     async def _messages(self, request: web.Request, route: Route) -> web.StreamResponse:
+        self.user_agents.append(request.headers.get("User-Agent", ""))
         if failed := self._fault(request):
             return failed
         body = await request.json()
@@ -178,6 +185,11 @@ class FakeProvider:
         # The local transport reads the loaded model's window before a turn.
         return web.json_response(
             {"models": [{"name": "llama3.1:8b", "context_length": 131_072}]}
+        )
+
+    async def _model_list(self, _request: web.Request) -> web.Response:
+        return web.json_response(
+            {"data": [], "has_more": False, "first_id": None, "last_id": None}
         )
 
     async def _reachable(self, _request: web.Request) -> web.Response:

@@ -3,7 +3,7 @@ import type { PersistedRow } from "../../turnLog";
 import type { SessionView } from "../../turnRuntime";
 import { loadRecordedTurn } from "../recordedTurns";
 
-const FIXTURE = loadRecordedTurn("baseline-tool-turn");
+const FIXTURE = loadRecordedTurn("sdk-tool-turn");
 const HEARTBEAT_MS = 10_000;
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
@@ -55,7 +55,7 @@ interface FaultTurn {
  * persists its prompt and registers its turn before the response starts, as
  * `stream_chat_post` does; a send while a turn runs joins its pending queue
  * and becomes the next turn; a resume serves a turn's entries after a cursor.
- * Every turn replays the recorded `baseline-tool-turn` under its own id.
+ * Every turn replays the recorded `sdk-tool-turn` under its own id.
  */
 export class FaultServer {
   history: Row[] = [];

@@ -26,7 +26,11 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
-from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.route_profile import user_key_profile
+from backend.copilot.sdk.env import common_launch_options
+from backend.copilot.sdk.env import config as chat_config
+from backend.copilot.sdk.env import route_launch_env
+from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -409,18 +413,15 @@ def _select_final_answer_parts(
 def sdk_disallowed_tools() -> list[str]:
     """Disable ALL known SDK built-in tools — only graph MCP tools available.
 
-    This blocklist is the ONLY thing that removes a built-in: per the SDK,
-    ``allowed_tools`` merely auto-approves without prompting, and the base set
-    is controlled by ``tools`` (unset here, so every Claude Code default stays
-    in the model's context).  A built-in missing from this list is therefore
-    callable, not blocked — which is why it is derived from the copilot's own
-    inventory rather than kept in sync by hand.
+    ``tools=[]`` is what keeps built-ins out of the model's context; this
+    blocklist is the second layer, derived from the copilot's own inventory
+    rather than kept in sync by hand.  ``allowed_tools`` merely auto-approves.
     """
     # Local import: tool_adapter pulls in the whole copilot tool registry,
     # which every block load should not have to pay for.
     from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
 
-    return [*get_sdk_builtin_tools(), "NotebookEdit"]
+    return get_sdk_builtin_tools()
 
 
 class OrchestratorBlock(Block):
@@ -999,65 +1000,6 @@ class OrchestratorBlock(Block):
             raise ValueError("; ".join(validation_errors_list))
 
         return resp
-
-    def _process_tool_calls(
-        self, response: Any, tool_functions: list[dict[str, Any]]
-    ) -> list[ToolInfo]:
-        """Process tool calls and extract tool definitions, arguments, and input data.
-
-        Returns a list of tool info dicts with:
-        - tool_call: The original tool call object
-        - tool_name: The function name
-        - tool_def: The tool definition from tool_functions
-        - input_data: Processed input data dict (includes None values)
-        - field_mapping: Field name mapping for the tool
-        """
-        if not response.tool_calls:
-            return []
-
-        processed_tools = []
-        for tool_call in response.tool_calls:
-            tool_name = tool_call.function.name
-            tool_args = json.loads(tool_call.function.arguments)
-
-            tool_def = next(
-                (
-                    tool
-                    for tool in tool_functions
-                    if tool["function"]["name"] == tool_name
-                ),
-                None,
-            )
-            if not tool_def:
-                if len(tool_functions) == 1:
-                    tool_def = tool_functions[0]
-                else:
-                    continue
-
-            # Build input data for the tool
-            input_data = {}
-            field_mapping = tool_def["function"].get("_field_mapping", {})
-            if "function" in tool_def and "parameters" in tool_def["function"]:
-                expected_args = tool_def["function"]["parameters"].get("properties", {})
-                for clean_arg_name in expected_args:
-                    original_field_name = field_mapping.get(
-                        clean_arg_name, clean_arg_name
-                    )
-                    arg_value = tool_args.get(clean_arg_name)
-                    # Include all expected parameters, even if None (for backward compatibility with tests)
-                    input_data[original_field_name] = arg_value
-
-            processed_tools.append(
-                ToolInfo(
-                    tool_call=tool_call,
-                    tool_name=tool_name,
-                    tool_def=tool_def,
-                    input_data=input_data,
-                    field_mapping=field_mapping,
-                )
-            )
-
-        return processed_tools
 
     def _update_conversation(
         self,
@@ -1680,6 +1622,10 @@ class OrchestratorBlock(Block):
             UserMessage,
         )
 
+        # Deferred like the SDK above: the hooks import the copilot's tool
+        # registry, which imports the blocks.
+        from backend.copilot.sdk.security_hooks import create_security_hooks
+
         # Build MCP server from graph-connected tools
         mcp_server = self._create_graph_mcp_server(
             tool_functions, execution_params, execution_processor
@@ -1707,52 +1653,22 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
-        provider = credentials.provider
-        api_key = credentials.api_key.get_secret_value()
-        if provider == "open_router":
-            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
-            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
-            # vars to the OpenRouter key.  OpenRouter accepts either
-            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
-            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
-            # whichever the Claude Code CLI happens to send on the wire is
-            # a valid OR credential.
-            #
-            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
-            # omit it or set it to an empty string.  The Claude Agent SDK
-            # merges ``options.env`` on top of ``os.environ``, so omitting
-            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
-            # (e.g. a deployment's direct-Anthropic key) leak through to
-            # OpenRouter and 401.  Setting it to ``""`` was the previous
-            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
-            # layer treats the empty string as set and emits
-            # ``x-api-key:`` (empty value), which OpenRouter rejects with
-            # ``invalid x-api-key``.  Using the OR key for both vars
-            # avoids both failure modes.
-            #
-            # NOTE: We use the platform's global OpenRouter base URL from
-            # ChatConfig.  Per-credential base URLs are not yet supported;
-            # if the user's credential targets a custom proxy, the SDK will
-            # still route through the platform's configured endpoint.
-            or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
-                "/"
-            )
-            if or_base.endswith("/v1"):
-                or_base = or_base[:-3]
-            sdk_env = {
-                "ANTHROPIC_BASE_URL": or_base,
-                "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": api_key,
-            }
-        else:
-            # Direct Anthropic key
-            sdk_env = {"ANTHROPIC_API_KEY": api_key}
-
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
         # and works in containerised environments with read-only root filesystems.
         sdk_cwd = tempfile.mkdtemp(
             prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
+        )
+        # The copilot's launch on the same route: the same hardening, window
+        # and trigger. The user's own key goes to OpenRouter or Anthropic,
+        # never to a URL the deployment configured for its own chat.
+        sdk_env = route_launch_env(
+            user_key_profile(
+                credentials.provider,
+                credentials.api_key.get_secret_value(),
+                input_data.model.value or None,
+            ),
+            sdk_cwd=sdk_cwd,
         )
 
         # ``final_response_parts`` is the agent's *final answer* — only the
@@ -1781,11 +1697,20 @@ class OrchestratorBlock(Block):
             options = ClaudeAgentOptions(
                 system_prompt=input_data.sys_prompt or "",
                 mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
+                # Graph MCP tools only: no CLI built-in is declared.
+                tools=[],
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,
+                hooks=create_security_hooks(
+                    execution_params.user_id,
+                    sdk_cwd=sdk_cwd,
+                    max_subtasks=chat_config.claude_agent_max_subtasks,
+                    allowed_tools=allowed_tools,
+                ),
+                **common_launch_options(),
             )
 
             # Strip system messages from prompt — they're already passed via
@@ -1827,7 +1752,7 @@ class OrchestratorBlock(Block):
             # span from the trace.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
-            async with ClaudeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()

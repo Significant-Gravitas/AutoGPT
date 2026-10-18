@@ -1,10 +1,7 @@
-"""Unit tests for engine routing in the processor.
+"""Unit tests for the copilot processor.
 
-Nothing outside the server can name an engine, so the decision is one
-chain: the SDK kill switch, then a Claude Code subscription, then the
-``COPILOT_SDK`` flag, then the config default. The tests import the real
-production helper from ``processor.py`` so that chain has meaningful
-coverage.
+Nothing outside the server can name an engine: every platform route runs
+on the SDK engine, and a connected account brings its own.
 """
 
 import asyncio
@@ -19,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.config import ChatConfig
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
@@ -27,7 +24,11 @@ from backend.copilot.executor.processor import (
     _wait_for_expert_setup,
     sync_fail_close_session,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -35,6 +36,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import ChatSession
+from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
     StreamError,
@@ -42,6 +44,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.session_kind import SessionKind
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -76,109 +79,48 @@ def allowance_admits_every_turn(mocker):
     )
 
 
-class TestResolveUseSdk:
-    """Which engine runs a turn — entirely the server's call."""
+class TestPlatformEngine:
+    """Every platform-route turn runs on the SDK engine, whatever the route;
+    on ``disabled`` the SDK turn refuses itself."""
 
     @pytest.mark.asyncio
-    async def test_subscription_override_routes_to_sdk(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
+    @pytest.mark.parametrize(
+        "route", ["openrouter", "direct_anthropic", "subscription", "local", "disabled"]
+    )
+    async def test_a_platform_turn_runs_on_the_sdk_engine(self, route) -> None:
+        engines: list[str] = []
+
+        def sdk_stream(**_kwargs):
+            engines.append("sdk")
+            return MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=ChatConfig(platform_route=route),
+            ),
+            patch(
+                "backend.copilot.executor.processor.sdk_service.stream_chat_completion_sdk",
+                side_effect=sdk_stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=_TrackedStream(events=[]),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+            ),
         ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=True,
-                    config_default=False,
-                )
-                is True
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
             )
 
-    @pytest.mark.asyncio
-    async def test_feature_flag_routes_to_sdk(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is True
-            )
-
-    @pytest.mark.asyncio
-    async def test_config_default_is_the_flag_fallback(self):
-        captured: dict[str, object] = {}
-
-        async def _flag(_flag_name, _user, default=False):
-            captured["default"] = default
-            return default
-
-        with patch("backend.copilot.engine.is_feature_enabled", new=_flag):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=True,
-                )
-                is True
-            )
-        assert captured["default"] is True
-
-    @pytest.mark.asyncio
-    async def test_everything_disabled_routes_to_baseline(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is False
-            )
-
-    @pytest.mark.asyncio
-    async def test_thinking_unavailable_forces_baseline(self):
-        """The kill switch wins over subscription and flag alike.
-
-        Set where the SDK transport simply cannot run — today
-        ``CHAT_USE_LOCAL=true``, since Ollama does not speak Anthropic's
-        wire protocol.
-        """
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=True,
-                    config_default=True,
-                    thinking_available=False,
-                )
-                is False
-            )
-
-    @pytest.mark.asyncio
-    async def test_anonymous_user_is_routable(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    None,
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is False
-            )
+        assert engines == ["sdk"]
 
 
 class _TrackedStream:
@@ -782,7 +724,6 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
         side_effect=PermissionError("expert is not owned by user")
     )
     dummy_engine = MagicMock()
-    baseline_engine = MagicMock()
     sdk_engine = MagicMock()
     upsert = AsyncMock()
     mark_completed = AsyncMock()
@@ -802,10 +743,6 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
             dummy_engine,
         ),
         patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline",
-            baseline_engine,
-        ),
-        patch(
             "backend.copilot.sdk.service.stream_chat_completion_sdk",
             sdk_engine,
         ),
@@ -823,7 +760,6 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
         )
 
     dummy_engine.assert_not_called()
-    baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
     upsert.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
@@ -860,7 +796,6 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     expert_store = MagicMock()
     expert_store.resolve_private_expert_tenancy = AsyncMock(side_effect=domain_error)
     dummy_engine = MagicMock()
-    baseline_engine = MagicMock()
     sdk_engine = MagicMock()
     mark_completed = AsyncMock()
 
@@ -876,10 +811,6 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_dummy",
             dummy_engine,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline",
-            baseline_engine,
         ),
         patch(
             "backend.copilot.sdk.service.stream_chat_completion_sdk",
@@ -901,7 +832,6 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     assert str(exc_info.value) == expected_message
     assert exc_info.value.__cause__ is domain_error
     dummy_engine.assert_not_called()
-    baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
     mark_completed.assert_awaited_once_with(
         "sess-1",
@@ -980,7 +910,6 @@ async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     microsoft_stream = MagicMock(return_value=MagicMock())
-    baseline_stream = MagicMock()
     sdk_stream = MagicMock()
 
     with (
@@ -995,10 +924,6 @@ async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_microsoft_365",
             microsoft_stream,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline",
-            baseline_stream,
         ),
         patch(
             "backend.copilot.sdk.service.stream_chat_completion_sdk",
@@ -1032,7 +957,6 @@ async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
     lease.release.assert_awaited_once()
     microsoft_stream.assert_called_once()
     assert microsoft_stream.call_args.kwargs["credential_lease"] is lease
-    baseline_stream.assert_not_called()
     sdk_stream.assert_not_called()
 
 
@@ -1044,7 +968,6 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     lease.release = AsyncMock()
     transport = MagicMock()
     transport.acquire_runtime_lease = AsyncMock(return_value=lease)
-    baseline_stream = MagicMock()
     sdk_stream = MagicMock(return_value=MagicMock())
 
     with (
@@ -1057,10 +980,6 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
             return_value=transport,
         ),
         patch("backend.integrations.codex.credential_codec.bundle_from_credentials"),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline",
-            baseline_stream,
-        ),
         patch(
             "backend.copilot.sdk.service.stream_chat_completion_sdk",
             sdk_stream,
@@ -1094,7 +1013,6 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     sdk_stream.assert_called_once()
     assert sdk_stream.call_args.kwargs["credential_lease"] is lease
     assert sdk_stream.call_args.kwargs["session"].session_id == "sess-codex"
-    baseline_stream.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1291,7 +1209,6 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
         side_effect=CodexCredentialBusyError("codex_credential_busy")
     )
     mark_completed = AsyncMock()
-    baseline_stream = MagicMock()
     sdk_stream = MagicMock()
     with (
         patch(
@@ -1301,10 +1218,6 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
         patch(
             "backend.integrations.codex.transport.get_codex_transport",
             return_value=transport,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_baseline",
-            baseline_stream,
         ),
         patch(
             "backend.copilot.sdk.service.stream_chat_completion_sdk",
@@ -1323,7 +1236,6 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
                 _make_log(),
             )
 
-    baseline_stream.assert_not_called()
     sdk_stream.assert_not_called()
     mark_completed.assert_awaited_once_with(
         "sess-codex",
@@ -1670,76 +1582,6 @@ class TestExecuteSafetyNet:
             pool.shutdown(wait=True)
 
 
-class TestBuildingModeForcesSdk:
-    """Engine pinning: a session whose history shows building mode must run
-    on the SDK engine even when the request asked for Fast."""
-
-    @pytest.mark.asyncio
-    async def test_forces_sdk_when_history_shows_building_mode(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        session = MagicMock()
-        with (
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch(
-                "backend.copilot.tools.helpers.session_entered_building_mode",
-                return_value=True,
-            ),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is True
-
-    @pytest.mark.asyncio
-    async def test_no_force_without_building_history(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        session = MagicMock()
-        with (
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch(
-                "backend.copilot.tools.helpers.session_entered_building_mode",
-                return_value=False,
-            ),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is False
-
-    @pytest.mark.asyncio
-    async def test_missing_session_does_not_force(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        with patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=None),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is False
-
-    @pytest.mark.asyncio
-    async def test_real_session_with_enter_call_forces_sdk(self):
-        """End-to-end through the real helper: a real ChatSession whose
-        history carries the enter_agent_building_mode call pins the engine."""
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-        from backend.copilot.model import ChatMessage, ChatSession
-
-        session = ChatSession.new(user_id="user-1", dry_run=False)
-        session.messages = [
-            ChatMessage(
-                role="assistant",
-                content="",
-                tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
-            )
-        ]
-        with patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=session),
-        ):
-            assert await _building_mode_forces_sdk(session.session_id) is True
-
-
 def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
     """A chat-platform prompt is authored off-platform by someone who need not
     be the account owner, so the turn's envelope must carry taint. This is the
@@ -1751,15 +1593,66 @@ def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
     clean = root_envelope("turn-1")
     assert clean.tainted is False
 
-    web = MagicMock()
-    web.metadata.source_platform = None
+    web = SessionKind.for_turn(ChatSession.new("user-1", dry_run=False))
     assert taint_for_source_platform(clean, web) is clean
 
-    slack = MagicMock()
-    slack.metadata.source_platform = "slack"
+    on_slack = ChatSession.new("user-1", dry_run=False)
+    on_slack.metadata.source_platform = "slack"
+    slack = SessionKind.for_turn(on_slack)
     promoted = taint_for_source_platform(clean, slack)
     assert promoted.tainted is True
     assert promoted.tree_id == clean.tree_id
 
     # No envelope (a legacy queue entry) stays None rather than inventing one.
     assert taint_for_source_platform(None, slack) is None
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_turn_hands_the_engine_a_stamped_prompt() -> None:
+    """The engine writes the prompt row from ``message_metadata``, so the
+    schedule's stamp has to be in it when the processor calls the engine."""
+    session = ChatSession.new("user-1", dry_run=False)
+    session.session_id = "sess-1"
+    stream_fn = MagicMock(return_value=MagicMock())
+    entry = _make_entry().model_copy(
+        update={
+            "is_user_message": False,
+            "scheduled": ScheduledTurnOrigin(schedule_id="job-1", routine_id="r-1"),
+        }
+    )
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            stream_fn,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            return_value=_TrackedStream(events=[]),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry, threading.Event(), MagicMock(), _make_log()
+        )
+
+    metadata = stream_fn.call_args.kwargs["message_metadata"]
+    assert split_prompt_origin(metadata) == (
+        None,
+        PromptOrigin(kind="scheduled_routine", schedule_id="job-1", routine_id="r-1"),
+    )
+    assert stream_fn.call_args.kwargs["is_user_message"] is False

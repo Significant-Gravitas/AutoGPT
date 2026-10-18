@@ -8,6 +8,7 @@ written as a marker row whose metadata rebuilds the card on reload. Older
 clients that don't know the card still render the row as a system note.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal
 
@@ -22,6 +23,13 @@ PauseReason = Literal["daily", "weekly", "trial", "task", "steps"]
 # Metadata key on the marker row. Namespaced for the same reason as
 # ``PROVIDER_FAILURE_KEY``: the bag is shared with other writers.
 PAUSE_KEY = "turn_paused"
+
+# Beside the card's part, not in it: whether the paused turn's envelope was
+# tainted, written on every marker, true or false. Keep going and the resume at
+# the budget reset carry on that turn's work, so they start with its taint. A
+# marker without the key reads as tainted: only one written before the key
+# lacks it, and it can't say how its turn ran.
+PAUSED_TURN_TAINTED_KEY = "turn_paused_tainted"
 
 _SUMMARIES: dict[PauseReason, str] = {
     "daily": "Paused: this task is out of today's budget.",
@@ -65,18 +73,36 @@ class TurnPause(BaseModel):
         return _SUMMARIES[self.reason]
 
 
-def append_pause_marker(session: ChatSession | None, pause: TurnPause) -> bool:
-    """Record the pause in the chat. Returns whether a row was added."""
+def append_pause_marker(
+    session: ChatSession | None, pause: TurnPause, *, tainted: bool = False
+) -> bool:
+    """Record the pause in the chat, and whether the paused turn ran tainted.
+    Returns whether a row was added."""
     if session is None or has_trailing_marker(session):
         return False
+    metadata: dict[str, Any] = {
+        PAUSE_KEY: pause.as_part(),
+        PAUSED_TURN_TAINTED_KEY: tainted,
+    }
     session.messages.append(
         ChatMessage(
             role="assistant",
             content=f"{COPILOT_SYSTEM_PREFIX} {pause.summary}",
-            metadata={PAUSE_KEY: pause.as_part()},
+            metadata=metadata,
         )
     )
     return True
+
+
+def continues_tainted(messages: Sequence[ChatMessage]) -> bool:
+    """Whether picking up the chat's latest pause starts a tainted turn: the
+    turn that paused ran tainted. False with no pause in *messages*. A marker
+    written before the field reads as tainted: whether its turn was is
+    unknown, so the turn that picks it up assumes it was."""
+    for message in reversed(messages):
+        if pause_of(message) is not None:
+            return (message.metadata or {}).get(PAUSED_TURN_TAINTED_KEY) is not False
+    return False
 
 
 def pause_of(message: ChatMessage) -> TurnPause | None:

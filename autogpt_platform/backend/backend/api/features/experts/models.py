@@ -267,6 +267,9 @@ class ExpertRoutine(BaseModel):
     # ``{provider: pin}``: the account each of its turns runs on where the
     # owner has several, chosen in the chat that set it up (SECRT-2804).
     credential_pins: CredentialPins = {}
+    # A turn that ran tainted created or switched it on, so its fires start
+    # tainted. Only ever rises (see the ``ExpertRoutine.tainted`` column).
+    tainted: bool = False
 
     @property
     def recurring(self) -> bool:

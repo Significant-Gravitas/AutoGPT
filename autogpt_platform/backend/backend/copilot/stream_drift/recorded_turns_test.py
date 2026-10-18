@@ -14,6 +14,7 @@ import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
     ThinkingBlock,
@@ -23,12 +24,10 @@ from claude_agent_sdk import (
 )
 from prisma.models import User
 
-from backend.copilot.baseline import service as baseline
 from backend.copilot.constants import COPILOT_NODE_PREFIX
 from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk import dummy
 from backend.copilot.sdk import service as sdk
 from backend.copilot.sdk.tool_adapter import cap_late_tool_result
@@ -43,7 +42,7 @@ from backend.data.user import get_or_create_user
 from backend.util.testing import is_tcp_port_reachable
 
 from .recording import check_fixture, persisted_session, record_turn
-from .scripted import baseline_turn, provider_round, sdk_service_turn, sdk_turn
+from .scripted import sdk_service_turn, sdk_turn
 
 pytestmark = pytest.mark.skipif(
     not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
@@ -73,36 +72,6 @@ async def test_dummy_text_turn(user_id: str) -> None:
     )
 
     check_fixture("dummy-text-turn", recorded)
-
-
-async def test_baseline_tool_turn(
-    monkeypatch: pytest.MonkeyPatch, baseline_offline: None, user_id: str
-) -> None:
-    session = await persisted_session(user_id, "What does example.com say?")
-    rounds = [
-        provider_round(
-            ["Let me ", "fetch that ", "page."],
-            tool_call={"id": "call-fetch", "name": "web_fetch", "url": "example.com"},
-        ),
-        provider_round(["It says ", "Example Domain."]),
-    ]
-    monkeypatch.setattr(baseline, "call_provider_stream", AsyncMock(side_effect=rounds))
-
-    async def execute(*, tool_call_id: str, **_: object) -> StreamToolOutputAvailable:
-        return StreamToolOutputAvailable(
-            toolCallId=tool_call_id,
-            toolName="web_fetch",
-            output="<h1>Example Domain</h1>",
-        )
-
-    monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
-    turn_id = str(uuid.uuid4())
-
-    recorded = await record_turn(
-        baseline_turn(session, turn_id), session=session, turn_id=turn_id
-    )
-
-    check_fixture("baseline-tool-turn", recorded)
 
 
 async def test_sdk_late_tool_result_turn(user_id: str) -> None:
@@ -143,46 +112,6 @@ async def test_sdk_late_tool_result_turn(user_id: str) -> None:
     )
 
     check_fixture("sdk-late-tool-result", recorded)
-
-
-async def test_baseline_drain_turn(
-    monkeypatch: pytest.MonkeyPatch, baseline_offline: None, user_id: str
-) -> None:
-    """Follow-ups drained at turn start and between rounds, with reasoning."""
-    session = await persisted_session(user_id, "Summarise example.com")
-    rounds = [
-        provider_round(
-            ["Fetching it."],
-            reasoning=["The user wants ", "a summary."],
-            tool_call={"id": "call-fetch", "name": "web_fetch", "url": "example.com"},
-        ),
-        provider_round(["It is a placeholder page."], reasoning=["Short answer."]),
-    ]
-    monkeypatch.setattr(baseline, "call_provider_stream", AsyncMock(side_effect=rounds))
-
-    async def execute(*, tool_call_id: str, **_: object) -> StreamToolOutputAvailable:
-        return StreamToolOutputAvailable(
-            toolCallId=tool_call_id, toolName="web_fetch", output="Example Domain"
-        )
-
-    monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
-    monkeypatch.setattr(
-        baseline,
-        "drain_pending_safe",
-        AsyncMock(return_value=[PendingMessage(content="Keep it short.")]),
-    )
-    monkeypatch.setattr(
-        baseline,
-        "drain_pending_messages",
-        AsyncMock(side_effect=[[PendingMessage(content="In French, please.")], []]),
-    )
-    turn_id = str(uuid.uuid4())
-
-    recorded = await record_turn(
-        baseline_turn(session, turn_id), session=session, turn_id=turn_id
-    )
-
-    check_fixture("baseline-drain-turn", recorded)
 
 
 async def test_sdk_reasoning_turn(
@@ -374,37 +303,6 @@ def _reply(text: str) -> list:
     ]
 
 
-async def test_baseline_consecutive_tools_turn(
-    monkeypatch: pytest.MonkeyPatch, baseline_offline: None, user_id: str
-) -> None:
-    """A tool call right after a tool result, with no text between them."""
-    session = await persisted_session(user_id, "Compare example.com and example.org")
-    rounds = [
-        provider_round(
-            [], tool_call={"id": "call-com", "name": "web_fetch", "url": "example.com"}
-        ),
-        provider_round(
-            [], tool_call={"id": "call-org", "name": "web_fetch", "url": "example.org"}
-        ),
-        provider_round(["Both are placeholder pages."]),
-    ]
-    monkeypatch.setattr(baseline, "call_provider_stream", AsyncMock(side_effect=rounds))
-
-    async def execute(*, tool_call_id: str, **_: object) -> StreamToolOutputAvailable:
-        return StreamToolOutputAvailable(
-            toolCallId=tool_call_id, toolName="web_fetch", output="Example Domain"
-        )
-
-    monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
-    turn_id = str(uuid.uuid4())
-
-    recorded = await record_turn(
-        baseline_turn(session, turn_id), session=session, turn_id=turn_id
-    )
-
-    check_fixture("baseline-consecutive-tools-turn", recorded)
-
-
 async def test_sdk_consecutive_tools_turn(user_id: str) -> None:
     """A tool call right after a tool result, with no text between them."""
     session = await persisted_session(user_id, "Count the files, then the lines")
@@ -444,3 +342,127 @@ async def test_sdk_consecutive_tools_turn(user_id: str) -> None:
     )
 
     check_fixture("sdk-consecutive-tools-turn", recorded)
+
+
+def _text_stream(*chunks: str) -> list:
+    """The CLI's partial text events for one text block, streamed in *chunks*."""
+    events = [
+        {"type": "message_start", "message": {}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+        *(
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": chunk},
+            }
+            for chunk in chunks
+        ),
+        {"type": "content_block_stop", "index": 0},
+    ]
+    return [
+        StreamEvent(uuid=str(uuid.uuid4()), session_id="drift", event=event)
+        for event in events
+    ]
+
+
+async def test_sdk_tool_turn(user_id: str) -> None:
+    """Streamed text, a tool call and its result, then a streamed answer: the
+    turn the frontend's replays and fault matrix run."""
+    session = await persisted_session(user_id, "What does example.com say?")
+    messages = [
+        SystemMessage(subtype="init", data={}),
+        *_text_stream("Let me ", "fetch that ", "page."),
+        AssistantMessage(
+            content=[
+                TextBlock(text="Let me fetch that page."),
+                ToolUseBlock(
+                    id="call-fetch", name="web_fetch", input={"url": "example.com"}
+                ),
+            ],
+            model="drift",
+        ),
+        UserMessage(
+            content=[
+                ToolResultBlock(
+                    tool_use_id="call-fetch", content="<h1>Example Domain</h1>"
+                )
+            ]
+        ),
+        *_text_stream("It says ", "Example Domain."),
+        AssistantMessage(
+            content=[TextBlock(text="It says Example Domain.")], model="drift"
+        ),
+        ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=2,
+            session_id="drift",
+        ),
+    ]
+
+    recorded = await record_turn(
+        sdk_turn(session, messages), session=session, turn_id=str(uuid.uuid4())
+    )
+
+    check_fixture("sdk-tool-turn", recorded)
+
+
+async def test_sdk_drain_turn(monkeypatch: pytest.MonkeyPatch, user_id: str) -> None:
+    """Follow-ups drained at turn start and after a tool call, with reasoning."""
+    session = await persisted_session(user_id, "Summarise example.com")
+    monkeypatch.setattr(
+        sdk,
+        "drain_pending_for_persist",
+        AsyncMock(side_effect=[[PendingMessage(content="In French, please.")], []]),
+    )
+    turn_id = str(uuid.uuid4())
+    query = [
+        SystemMessage(subtype="init", data={}),
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="The user wants a summary.", signature="s"),
+                TextBlock(text="Fetching it."),
+                ToolUseBlock(
+                    id="call-fetch", name="web_fetch", input={"url": "example.com"}
+                ),
+            ],
+            model="drift",
+        ),
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="call-fetch", content="Example Domain")
+            ]
+        ),
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="Short answer.", signature="s"),
+                TextBlock(text="It is a placeholder page."),
+            ],
+            model="drift",
+        ),
+        ResultMessage(
+            subtype="success",
+            result="It is a placeholder page.",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=2,
+            session_id="drift",
+        ),
+    ]
+
+    recorded = await record_turn(
+        sdk_service_turn(
+            session,
+            turn_id,
+            [query],
+            queued_after_first=[],
+            queued_at_start=[PendingMessage(content="Keep it short.")],
+        ),
+        session=session,
+        turn_id=turn_id,
+    )
+
+    check_fixture("sdk-drain-turn", recorded)

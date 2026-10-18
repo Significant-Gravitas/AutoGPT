@@ -54,7 +54,6 @@ class ResponseType(str, Enum):
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
-    CURSOR = "data-cursor"
     # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
     # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
     DREAM_OPERATIONS = "data-dream-operations"
@@ -65,7 +64,6 @@ class ResponseType(str, Enum):
     # Written by the stream route when a send joins a running turn's pending
     # queue, so the client can tell it from a turn that never started.
     FOLLOW_UP_QUEUED = "data-follow-up-queued"
-    MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
     # ``context_compaction`` tool row's JSON output.
@@ -343,48 +341,6 @@ class StreamHeartbeat(StreamBaseResponse):
         return ": heartbeat\n\n"
 
 
-class StreamCursor(StreamBaseResponse):
-    """Deprecated Redis-stream cursor data part.
-
-    Kept so older stored chunks or tests can still be reconstructed, but new
-    stream subscriptions no longer emit it. AI SDK resume needs a full replay
-    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
-    """
-
-    type: ResponseType = ResponseType.CURSOR
-    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
-
-    def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part."""
-        data = {
-            "type": self.type.value,
-            "data": {"chunkId": self.chunkId},
-        }
-        return f"data: {json.dumps(data)}\n\n"
-
-
-class StreamModeChanged(StreamBaseResponse):
-    """The backend switched the session's engine/mode server-side.
-
-    Emitted when a baseline turn registers an engine switch (agent building
-    mode) so the frontend can sync its Thinking/Fast mode picker to the
-    engine the session will actually run on.
-    """
-
-    type: ResponseType = ResponseType.MODE_CHANGED
-    mode: Literal["extended_thinking", "fast"] = Field(
-        ..., description="New effective mode"
-    )
-
-    def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part."""
-        data = {
-            "type": self.type.value,
-            "data": {"mode": self.mode},
-        }
-        return f"data: {json.dumps(data)}\n\n"
-
-
 class StreamProviderFailure(StreamBaseResponse):
     """The typed reason a provider refused this turn.
 
@@ -429,8 +385,8 @@ class StreamStatus(StreamBaseResponse):
 
     Emitted when the backend is about to enter a phase that would otherwise
     leave the user staring at a silent "Thinking…" bubble — e.g. the first
-    LLM call, the continuation after a tool result, compacting conversation
-    context on retry, or activating a fallback model. The copilot UI does
+    LLM call, the continuation after a tool result, or compacting
+    conversation context on retry. The copilot UI does
     not show `message` (it describes plumbing, not anything the user needs);
     it shows a plain "Thinking…" instead.
     """

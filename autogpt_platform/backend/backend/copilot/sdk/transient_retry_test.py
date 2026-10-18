@@ -55,7 +55,7 @@ from backend.copilot.sdk import service as sdk_service
 from backend.copilot.transcript import cli_session_path
 
 from .conftest import build_test_transcript
-from .retry_scenarios_test import _make_sdk_patches
+from .retry_scenarios_test import _make_sdk_patches, scenario_profile
 from .turn_cost_test import _SDK_CWD, _SESSION_ID, _SVC, _result
 
 _MODEL = "anthropic/claude-sonnet-4-6"
@@ -480,14 +480,8 @@ class _Turn:
                 [("user", "summary"), ("assistant", "summarized answer")]
             ),
             client_side_effect=self._launch,
+            profile=scenario_profile(_MODEL, "openrouter"),
         )
-        for target, kwargs in patches:
-            if target == f"{_SVC}.config":
-                kwargs.update(
-                    openrouter_active=True,
-                    sdk_reconcile_openrouter_cost=True,
-                    thinking_standard_model=_MODEL,
-                )
         with contextlib.ExitStack() as stack:
             for target, kwargs in patches:
                 self._mocks[target] = stack.enter_context(patch(target, **kwargs))
@@ -497,8 +491,8 @@ class _Turn:
             # under test.
             for name, value in (
                 ("build_skills_update_notice", None),
-                ("build_session_context", ""),
-                ("inject_user_context", None),
+                ("_first_turn_context_blocks", []),
+                ("inject_context_blocks", None),
                 ("resolve_answered", []),
                 ("drain_pending_for_persist", []),
             ):

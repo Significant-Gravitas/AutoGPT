@@ -19,6 +19,7 @@ worse than saying nothing, because the user plans around it.
 import logging
 import re
 import time
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
@@ -182,25 +183,6 @@ def classify(
     )
 
 
-# HTTP status the compat gateway should answer with for each kind, so the
-# CLI upstream of it can tell "stop asking" from "try again". A blanket 502
-# reads as a server fault and invites a retry that cannot succeed.
-_STATUS_BY_KIND: dict[ProviderFailureKind, int] = {
-    ProviderFailureKind.AUTH_EXPIRED: 401,
-    ProviderFailureKind.INVALID_CREDENTIAL: 401,
-    ProviderFailureKind.ENTITLEMENT_REQUIRED: 402,
-    ProviderFailureKind.POLICY_DENIED: 403,
-    ProviderFailureKind.MODEL_UNAVAILABLE: 404,
-    ProviderFailureKind.USAGE_LIMIT: 429,
-    ProviderFailureKind.TRANSIENT: 503,
-}
-
-
-def status_for(failure: "ProviderFailure") -> int:
-    """The status a gateway should return for this failure."""
-    return _STATUS_BY_KIND.get(failure.kind, 502)
-
-
 def _kind_of(exc: BaseException) -> ProviderFailureKind | None:
     if isinstance(exc, UserPaywalledError):
         return ProviderFailureKind.ENTITLEMENT_REQUIRED
@@ -247,6 +229,11 @@ def _resets_at(exc: BaseException) -> int | None:
     headers = getattr(response, "headers", None)
     if headers is None:
         return None
+    return reset_time_from_headers(headers)
+
+
+def reset_time_from_headers(headers: Mapping[str, str]) -> int | None:
+    """Parse provider reset metadata without retaining or logging raw headers."""
     raw = headers.get("x-ratelimit-reset-requests") or headers.get(
         "x-ratelimit-reset-tokens"
     )
@@ -255,7 +242,6 @@ def _resets_at(exc: BaseException) -> int | None:
     try:
         return _to_unix_seconds(str(raw))
     except (ValueError, TypeError):
-        logger.debug("Unparseable rate-limit reset header: %r", raw)
         return None
 
 

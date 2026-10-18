@@ -7,8 +7,6 @@ incoming message against the row the route saved, so the stored row and the
 dispatched message have to be the same string.
 """
 
-from typing import Any
-
 from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 
 KEEP_GOING_NOTE = (
@@ -32,22 +30,3 @@ def as_model_prompt(message: str) -> str:
     non-user message they receive.
     """
     return message.removeprefix(COPILOT_SYSTEM_PREFIX).strip()
-
-
-def send_trailing_note_as_user(messages: list[dict[str, Any]]) -> None:
-    """Send a note that ends a chat-completions request as the user turn.
-
-    The note is stored as the chat's last row, an assistant one, so a request
-    built from history ends on it. Sent as is, that is a prefill: Claude 4.6+
-    rejects it with a 400, and other models read the note as their own words.
-    Only the request changes; the stored row stays a note.
-    """
-    if not messages or not _is_note(messages[-1]):
-        return
-    messages[-1] = {"role": "user", "content": as_model_prompt(messages[-1]["content"])}
-
-
-def _is_note(entry: dict[str, Any]) -> bool:
-    if entry.get("role") != "assistant" or entry.get("tool_calls"):
-        return False
-    return str(entry.get("content") or "").startswith(COPILOT_SYSTEM_PREFIX)

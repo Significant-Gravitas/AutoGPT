@@ -28,28 +28,29 @@ def build_cli_cost_row(session_id: str, total: float) -> str:
 # field only needs one update across the SDK test suite.
 # ---------------------------------------------------------------------------
 _CONFIG_ENV_VARS = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_API_KEY",
+    # The platform route and every route's own settings: a developer's
+    # ``.env`` often sets these, and the test's constructor kwargs must decide.
+    "CHAT_PLATFORM_ROUTE",
+    "CHAT_OPENROUTER_API_KEY",
+    "CHAT_OPENROUTER_BASE_URL",
+    "CHAT_ANTHROPIC_API_KEY",
+    "CHAT_ANTHROPIC_BASE_URL",
+    "CHAT_LOCAL_BASE_URL",
+    "CHAT_LOCAL_API_KEY",
+    "CHAT_LOCAL_ADAPTER",
+    "CHAT_LOCAL_CONTEXT_TOKENS",
+    "CHAT_STANDARD_MODEL",
+    "CHAT_ADVANCED_MODEL",
+    # Integration keys and generic endpoints some readers fall back to.
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
-    "CHAT_BASE_URL",
+    "ANTHROPIC_API_KEY",
     "OPENROUTER_BASE_URL",
     "OPENAI_BASE_URL",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_CLAUDE_AGENT_SDK",
-    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
+    "CHAT_CLAUDE_AGENT_LIVE_SYSTEM_PROMPT",
+    "CHAT_CLAUDE_AGENT_STRIP_PROMPT_SNAPSHOTS",
     "CHAT_CLAUDE_AGENT_CLI_PATH",
     "CLAUDE_AGENT_CLI_PATH",
-    # Aux-client + title-model + direct-key vars: read by
-    # ``_validate_aux_client_for_direct_main`` to decide whether
-    # subscription / direct-Anthropic configs are safe.  Local ``.env``
-    # files often set these; clearing them ensures the test's explicit
-    # constructor kwargs (or lack thereof) drive the validator.
-    "CHAT_AUX_API_KEY",
-    "CHAT_AUX_BASE_URL",
-    "CHAT_TITLE_MODEL",
-    "CHAT_DIRECT_ANTHROPIC_API_KEY",
-    "ANTHROPIC_API_KEY",
 )
 
 

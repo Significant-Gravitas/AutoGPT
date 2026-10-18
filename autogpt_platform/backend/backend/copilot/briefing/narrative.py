@@ -95,6 +95,9 @@ async def compose_narrative(user_id: str, content: BriefingContent) -> str | Non
     ``None`` is a normal outcome, not an error: the caller persists the
     briefing either way and the renderer simply omits the lede.
     """
+    if not config.has_platform_api:
+        # A Claude login or a disabled route: no model of the platform's own.
+        return None
     system = _system_prompt()
     facts = _facts_block(content)
     loop = asyncio.get_running_loop()
@@ -106,7 +109,7 @@ async def compose_narrative(user_id: str, content: BriefingContent) -> str | Non
             break
         try:
             completion = await structured_completion(
-                model=config.title_model,
+                model=config.aux_model or "",
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": facts},

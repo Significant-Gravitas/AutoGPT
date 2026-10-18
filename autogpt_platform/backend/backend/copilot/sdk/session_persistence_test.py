@@ -42,7 +42,7 @@ from backend.copilot.sdk.service import (
     _StreamAccumulator,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
-from backend.copilot.turn_pause import TurnPause, pause_of
+from backend.copilot.turn_pause import TurnPause, continues_tainted, pause_of
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -63,6 +63,7 @@ def _make_ctx(session: ChatSession | None = None) -> MagicMock:
     ctx = MagicMock()
     ctx.session = session or _make_session()
     ctx.log_prefix = "[test]"
+    ctx.tainted = False
     return ctx
 
 
@@ -752,3 +753,21 @@ class TestPausePersistence:
         assert _dispatch_response(paused, acc, ctx, state, False, "[test]") is paused
         assert [m.content for m in session.messages][0] == "Where I got to: 5 of 12."
         assert pause_of(session.messages[-1]) == pause
+
+    @pytest.mark.parametrize("tainted", [True, False])
+    def test_the_pause_row_keeps_the_turns_taint(self, tainted: bool) -> None:
+        """The turn that picks the task back up reads it there."""
+        session = _make_session()
+        ctx = _make_ctx(session)
+        ctx.tainted = tainted
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+            has_appended_assistant=False,
+            has_tool_results=False,
+        )
+        paused = StreamTurnPaused(pause=TurnPause(reason="steps", steps=450).as_part())
+
+        _dispatch_response(paused, acc, ctx, _make_state(), False, "[test]")
+
+        assert continues_tainted(session.messages) is tainted

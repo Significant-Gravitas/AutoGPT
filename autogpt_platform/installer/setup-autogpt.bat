@@ -9,13 +9,17 @@ REM
 REM Optional flags:
 REM   /with-ollama           Install Ollama (via winget), pull a default chat
 REM                          model, and wire backend\.env so AutoPilot runs
-REM                          without any cloud API keys (CHAT_USE_LOCAL=true).
+REM                          without any cloud API keys
+REM                          (CHAT_PLATFORM_ROUTE=local).
 REM                          See docs/platform/copilot-local-llm.md.
 REM   /ollama-model=NAME     Model to pull (default: hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M).
 REM   /ollama-host=URL       Use an existing Ollama at this URL instead of
 REM                          installing one locally. Skips the Ollama install
-REM                          but still writes the CHAT_USE_LOCAL .env entries.
+REM                          but still writes the local-route .env entries.
 REM                          Example: /ollama-host=http://gpu-rig.lab:11434
+REM   /context-tokens=N      The context window Ollama loads the model with.
+REM                          Read from the server when omitted, and asked for
+REM                          when it can't be read. AutoPilot needs 65536+.
 REM ============================================================================
 
 REM --- Variables ---
@@ -26,6 +30,10 @@ set LOG_FILE=
 set WITH_OLLAMA=0
 set OLLAMA_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 set OLLAMA_HOST_URL=
+set LOCAL_CONTEXT_TOKENS=
+REM AutoPilot's prompt and tools beside a working conversation need this
+REM much context (backend/copilot/chat_env.py checks the same floor).
+set MIN_LOCAL_CONTEXT_TOKENS=65536
 
 REM --- Parse args ---
 REM NOTE: cmd.exe treats "=" as an argument delimiter (like space / comma /
@@ -54,6 +62,13 @@ if /I "%ARG%"=="/with-ollama" (
     set "OLLAMA_HOST_URL=%~2"
     set WITH_OLLAMA=1
     shift
+) else if /I "%ARG:~0,16%"=="/context-tokens=" (
+    set LOCAL_CONTEXT_TOKENS=%ARG:~16%
+    set WITH_OLLAMA=1
+) else if /I "%ARG%"=="/context-tokens" (
+    set "LOCAL_CONTEXT_TOKENS=%~2"
+    set WITH_OLLAMA=1
+    shift
 ) else if /I "%ARG%"=="/h" (
     goto print_help
 ) else if /I "%ARG%"=="/help" (
@@ -77,6 +92,8 @@ echo Optional flags:
 echo   /with-ollama           Install Ollama + pull default chat model + wire .env
 echo   /ollama-model=NAME     Model tag to pull (default: %OLLAMA_MODEL%)
 echo   /ollama-host=URL       Use existing Ollama at URL instead of installing
+echo   /context-tokens=N      Context window Ollama loads the model with
+echo                          ^(read from the server when omitted; 65536+^)
 echo.
 echo See docs/platform/copilot-local-llm.md for details.
 exit /b 0
@@ -148,6 +165,7 @@ call :init_env || exit /b 1
 REM --- Bootstrap Ollama (optional) ---
 if "%WITH_OLLAMA%"=="1" (
     call :bootstrap_ollama || exit /b 1
+    call :resolve_context_tokens || exit /b 1
     call :write_local_env || exit /b 1
 )
 
@@ -213,8 +231,8 @@ echo API available at: http://localhost:8006
 if "%WITH_OLLAMA%"=="1" (
     echo.
     echo AutoPilot wired to Ollama ^(model: %OLLAMA_MODEL%^)
-    echo Extended-thinking mode auto-downgrades to fast — Ollama doesn't speak
-    echo Anthropic's wire protocol. See docs/platform/copilot-local-llm.md.
+    echo Context window: %LOCAL_CONTEXT_TOKENS% tokens. Change the model or its
+    echo window in backend\.env; see docs/platform/copilot-local-llm.md.
 )
 echo.
 echo To stop services: docker compose down
@@ -258,7 +276,7 @@ exit /b 0
 if not "%OLLAMA_HOST_URL%"=="" (
     REM Normalize remote URL: strip a trailing slash and an optional /v1
     REM so the operator can pass either the Ollama root
-    REM ^(http://host:11434^) or a copy-pasted CHAT_BASE_URL ^(.../v1^).
+    REM ^(http://host:11434^) or a copy-pasted CHAT_LOCAL_BASE_URL ^(.../v1^).
     set OLLAMA_ROOT=%OLLAMA_HOST_URL%
     if "!OLLAMA_ROOT:~-1!"=="/" set OLLAMA_ROOT=!OLLAMA_ROOT:~0,-1!
     if /I "!OLLAMA_ROOT:~-3!"=="/v1" set OLLAMA_ROOT=!OLLAMA_ROOT:~0,-3!
@@ -386,6 +404,39 @@ echo   Ollama ready: http://localhost:11434
 exit /b 0
 
 
+:resolve_context_tokens
+REM CHAT_LOCAL_CONTEXT_TOKENS has to be the window the server really loads
+REM the model with: AutoPilot compacts its conversation to fit it, and a
+REM guess too high overflows the model while one too low throws history
+REM away. /context-tokens wins; otherwise load the model (a generate
+REM request with no prompt only loads it) and read the window back from
+REM /api/ps, and ask when the server doesn't say.
+set "PROBE_ROOT=%OLLAMA_HOST_URL%"
+if "%PROBE_ROOT%"=="" set "PROBE_ROOT=http://localhost:11434"
+if not "%LOCAL_CONTEXT_TOKENS%"=="" goto context_tokens_check
+echo Reading the context window Ollama loads %OLLAMA_MODEL% with...
+for /f "usebackq delims=" %%W in (`powershell -NoProfile -Command "try { $m = $env:OLLAMA_MODEL; $root = $env:PROBE_ROOT; $null = Invoke-RestMethod -Method Post -Uri ($root + '/api/generate') -ContentType 'application/json' -Body (ConvertTo-Json -InputObject @{ model = $m; keep_alive = '10m' }) -TimeoutSec 600; $ps = Invoke-RestMethod -Uri ($root + '/api/ps') -TimeoutSec 10; foreach ($x in $ps.models) { if (($x.name -eq $m -or $x.name -eq ($m + ':latest')) -and $x.context_length) { [int64]$x.context_length; break } } } catch { }"`) do set "LOCAL_CONTEXT_TOKENS=%%W"
+if not "%LOCAL_CONTEXT_TOKENS%"=="" goto context_tokens_check
+echo Ollama at %PROBE_ROOT% did not report the context window it loads %OLLAMA_MODEL% with.
+set /p "LOCAL_CONTEXT_TOKENS=Context window in tokens, at least %MIN_LOCAL_CONTEXT_TOKENS%: "
+:context_tokens_check
+echo(%LOCAL_CONTEXT_TOKENS%|findstr /r /x "[0-9][0-9]*" >nul
+if errorlevel 1 (
+    echo Could not determine the context window Ollama loads %OLLAMA_MODEL% with.
+    echo Re-run with /context-tokens=N, at least %MIN_LOCAL_CONTEXT_TOKENS%.
+    pause
+    exit /b 1
+)
+if %LOCAL_CONTEXT_TOKENS% LSS %MIN_LOCAL_CONTEXT_TOKENS% (
+    echo Ollama loads %OLLAMA_MODEL% with a %LOCAL_CONTEXT_TOKENS%-token context window; AutoPilot needs at least %MIN_LOCAL_CONTEXT_TOKENS%.
+    echo Raise OLLAMA_CONTEXT_LENGTH, or use a model with a larger window, and re-run.
+    pause
+    exit /b 1
+)
+echo   Context window: %LOCAL_CONTEXT_TOKENS% tokens.
+exit /b 0
+
+
 :write_local_env
 REM Write backend\.env wiring for the local transport. We use
 REM host.docker.internal rather than 127.0.0.1 because Docker Desktop
@@ -423,7 +474,7 @@ REM Append a fresh block via per-line >> redirects — NOT a parenthesised
 REM ( ... ) >> .env group. START_MARKER ends in ")" (...with-ollama) ===),
 REM and an unescaped ")" inside a () block closes the group early, so the
 REM marker and every line after it get echoed to the console instead of
-REM written to .env (CHAT_USE_LOCAL never lands -> AutoPilot 401s). No
+REM written to .env (the local route never lands). No
 REM space before ">>" so model slugs don't gain a trailing space.
 REM Ollama-side env knobs OLLAMA_HOST and OLLAMA_CONTEXT_LENGTH are set on
 REM the host via setx above, NOT in backend\.env ^(.env is read by
@@ -431,14 +482,16 @@ REM containers, where those vars belong to the Ollama process itself^).
 echo.>>.env
 echo %START_MARKER%>>.env
 echo # See docs/platform/copilot-local-llm.md for the full reference.>>.env
-echo CHAT_USE_LOCAL=true>>.env
-echo CHAT_BASE_URL=%HOST_URL%/v1>>.env
-echo CHAT_API_KEY=ollama>>.env
-echo CHAT_FAST_STANDARD_MODEL=%OLLAMA_MODEL%>>.env
-echo CHAT_FAST_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
+REM Ollama takes no key, so CHAT_LOCAL_API_KEY stays unset.
+echo CHAT_PLATFORM_ROUTE=local>>.env
+echo CHAT_LOCAL_BASE_URL=%HOST_URL%/v1>>.env
+echo CHAT_LOCAL_ADAPTER=openai_chat>>.env
+echo CHAT_LOCAL_CONTEXT_TOKENS=%LOCAL_CONTEXT_TOKENS%>>.env
+echo CHAT_STANDARD_MODEL=%OLLAMA_MODEL%>>.env
+echo CHAT_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
 echo OLLAMA_HOST=%HOST_URL%>>.env
 echo %END_MARKER%>>.env
 
-echo   wrote backend\.env ^(CHAT_USE_LOCAL=true, Ollama at %HOST_URL%^)
+echo   wrote backend\.env ^(CHAT_PLATFORM_ROUTE=local, Ollama at %HOST_URL%, %LOCAL_CONTEXT_TOKENS%-token window^)
 cd /d "%REPO_DIR%"
 exit /b 0

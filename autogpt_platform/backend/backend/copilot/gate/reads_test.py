@@ -35,6 +35,7 @@ from backend.copilot.sdk.tool_adapter import (
     create_tool_handler,
     set_execution_context,
 )
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.trial_cost_context import (
@@ -438,39 +439,30 @@ async def test_several_reads_hold_at_once(rows):
     assert len(rows.rows) == 2 and len(rows.held) == 2
 
 
-@pytest.mark.parametrize("engine", ["sdk", "baseline"])
 async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
-    rows, engine
+    rows,
 ):
-    """Above 30K, where a plain pending message would cut it, and on the SDK
-    engine above the 70K cap, so the stored bytes are already capped."""
+    """Above the 70K cap, where a plain pending message would cut it, so the
+    stored bytes are already capped."""
     from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 
-    content = "y" * (75_000 if engine == "sdk" else 45_000)
+    content = "y" * 75_000
     session = _session()
     set_execution_context("user-1", session)
-    if engine == "sdk":
-        wrapper = _make_truncating_wrapper(
-            create_tool_handler(_Fetch(content)), "web_fetch"
-        )
-        with patch(
-            "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
-        ):
-            with patch(f"{_READS}.judge_content", _judge(_CLEAN)):
-                direct = _text_from_mcp_result(await wrapper({"url": "other"}))
-            with patch(f"{_READS}.judge_content", _judge(_HELD)):
-                await wrapper({"url": "u"})
-        cap = cap_late_tool_result
-    else:
+    wrapper = _make_truncating_wrapper(
+        create_tool_handler(_Fetch(content)), "web_fetch"
+    )
+    with patch(
+        "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
+    ):
         with patch(f"{_READS}.judge_content", _judge(_CLEAN)):
-            direct = (await _call(_Fetch(content), session, {"url": "other"})).output
+            direct = _text_from_mcp_result(await wrapper({"url": "other"}))
         with patch(f"{_READS}.judge_content", _judge(_HELD)):
-            await _call(_Fetch(content), session)
-        cap = str  # the baseline passes no cap: execute already capped
+            await wrapper({"url": "u"})
 
     (call,) = rows.held
     rows.answer(ReviewStatus.APPROVED)
-    late = await held._deliver("user-1", session, call, cap)
+    late = await held._deliver("user-1", session, call, cap_late_tool_result)
 
     body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
     assert body == direct
@@ -1398,7 +1390,7 @@ async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
 
     async def turn():
         # Fired by the scheduler into the user's own chat, so the gate is on.
-        set_turn_unattended(session, scheduled=True)
+        set_turn_unattended(SessionKind.for_turn(session, scheduled=True).unattended)
         return await _call(_Unattended("", name=tool_name), session)
 
     judge = _judge(_HELD)

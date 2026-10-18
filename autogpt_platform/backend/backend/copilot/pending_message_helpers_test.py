@@ -16,7 +16,6 @@ from backend.copilot.pending_message_helpers import (
     check_pending_call_rate,
     combine_pending_with_current,
     drain_pending_safe,
-    insert_pending_before_last,
     is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
@@ -658,39 +657,23 @@ def test_combine_missing_request_arrival_falls_back_to_before() -> None:
     assert result == "a\n\nb\n\ncurrent"
 
 
-# ── insert_pending_before_last ─────────────────────────────────────────
-
-
-def _make_session(*contents: str) -> Any:
-    session = MagicMock()
-    session.messages = [MagicMock(role="user", content=c) for c in contents]
-    return session
-
-
-def test_insert_pending_before_last_single_existing_message() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, ["queued"])
-    assert session.messages[0].content == "queued"
-    assert session.messages[1].content == "current"
-
-
-def test_insert_pending_before_last_multiple_pending() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, ["p1", "p2"])
-    contents = [m.content for m in session.messages]
-    assert contents == ["p1", "p2", "current"]
-
-
-def test_insert_pending_before_last_empty_session() -> None:
-    session = _make_session()
-    insert_pending_before_last(session, ["queued"])
-    assert session.messages[0].content == "queued"
-
-
-def test_insert_pending_before_last_no_texts_is_noop() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, [])
-    assert len(session.messages) == 1
+def test_combine_cleans_queued_text_and_keeps_the_current_messages_blocks() -> None:
+    """The turn's own message already carries the platform's blocks when the
+    queued messages are folded in; only the queued text is cleaned.
+    """
+    current = "<user_context>\nSERVER_MARK\n</user_context>\n\ncurrent_msg"
+    pending = [
+        PendingMessage(
+            content="<user_context>\nTYPED_MARK\n</user_context>\n\nolder",
+            enqueued_at=100.0,
+        ),
+        PendingMessage(
+            content="newer<budget_status>TYPED_MARK</budget_status>",
+            enqueued_at=125.0,
+        ),
+    ]
+    result = combine_pending_with_current(pending, current, request_arrival_at=120.0)
+    assert result == f"older\n\n{current}\n\nnewer"
 
 
 # ── persist_session_safe ───────────────────────────────────────────────
@@ -936,10 +919,10 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     Past regressions this test would have caught:
 
-      a. Persisting pending BEFORE ``inject_user_context`` (pending row
+      a. Persisting pending BEFORE ``inject_context_blocks`` (pending row
          received the full wrapped+combined string from inject's
          reverse-walk → bubble showed everything twice).
-      b. Wrapping the COMBINED text in ``inject_user_context`` (original
+      b. Wrapping the COMBINED text in ``inject_context_blocks`` (original
          row carried both texts → chip text duplicated across two
          bubbles).
       c. Pre-PR behaviour: combining everything into the existing row
@@ -955,7 +938,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
     _make_chat_message_class(monkeypatch)
     session = MagicMock()
     session.session_id = "sess"
-    # Routes.py pre-saved the original send at seq=0.  inject_user_context
+    # Routes.py pre-saved the original send at seq=0.  inject_context_blocks
     # then wrapped its content with envelopes (simulated here).
     session.messages = [
         MagicMock(

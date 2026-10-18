@@ -23,15 +23,23 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from backend.data.db_accessors import chat_db
 from backend.util import json
 from backend.util.clients import get_openai_client
-from backend.util.prompt import CompressResult, compress_context
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    CompressResult,
+    compress_context,
+    get_compression_target,
+    token_len,
+    truncate_middle,
+)
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .config import ChatConfig
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
+config = ChatConfig()
 
 # UUIDs are hex + hyphens; strip everything else to prevent path injection.
 _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
@@ -47,7 +55,15 @@ STRIPPABLE_TYPES = frozenset(
     {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
 )
 
+# Attachment entries (``type: "attachment"``) that can be removed the same way,
+# keyed by ``attachment.type``.
+# - prompt_snapshot: the CLI's record of the system prompt and every tool
+#   description (134-180KB each, two per recording).
+STRIPPABLE_ATTACHMENT_TYPES = frozenset({"prompt_snapshot"})
 
+
+# "sdk": the Claude CLI's own session. "baseline": written by the old fast
+# path; stored metas still carry it, and the SDK does not resume them.
 TranscriptMode = Literal["sdk", "baseline"]
 
 
@@ -55,7 +71,6 @@ TranscriptMode = Literal["sdk", "baseline"]
 class TranscriptDownload:
     content: bytes | str
     message_count: int = 0
-    # "sdk" = Claude CLI native, "baseline" = TranscriptBuilder
     mode: TranscriptMode = "sdk"
 
 
@@ -68,168 +83,28 @@ _CLI_SESSION_STORAGE_PREFIX = "cli-sessions"
 # ---------------------------------------------------------------------------
 
 
-def strip_progress_entries(content: str) -> str:
-    """Remove progress/metadata entries from a JSONL transcript.
+def _strippable_attachment_types() -> frozenset[str]:
+    """Attachment types to drop from a stored transcript.
 
-    Removes entries whose ``type`` is in ``STRIPPABLE_TYPES`` and reparents
-    any remaining child entries so the ``parentUuid`` chain stays intact.
-    Typically reduces transcript size by ~30%.
-
-    Entries that are not stripped or reparented are kept as their original
-    raw JSON line to avoid unnecessary re-serialization that changes
-    whitespace or key ordering.
+    Recorded prompts are dropped only while launches send a live prompt.  A
+    launch that relies on the recording and finds none sends its own prompt
+    and records it again, so stripping under it would change the prompt (and
+    re-write the session's cache) every turn.
     """
-    lines = content.strip().split("\n")
-
-    # Parse entries, keeping the original line alongside the parsed dict.
-    parsed: list[tuple[str, dict | None]] = []
-    for line in lines:
-        parsed.append((line, json.loads(line, fallback=None)))
-
-    # First pass: identify stripped UUIDs and build parent map.
-    stripped_uuids: set[str] = set()
-    uuid_to_parent: dict[str, str] = {}
-
-    for _line, entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        uid = entry.get("uuid", "")
-        parent = entry.get("parentUuid", "")
-        if uid:
-            uuid_to_parent[uid] = parent
-        if (
-            entry.get("type", "") in STRIPPABLE_TYPES
-            and uid
-            and not entry.get("isCompactSummary")
-        ):
-            stripped_uuids.add(uid)
-
-    # Second pass: keep non-stripped entries, reparenting where needed.
-    # Preserve original line when no reparenting is required.
-    reparented: set[str] = set()
-    for _line, entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        parent = entry.get("parentUuid", "")
-        original_parent = parent
-        # seen_parents is local per-entry (not shared across iterations) so
-        # it can only detect cycles within a single ancestry walk, not across
-        # entries.  This is intentional: each entry's parent chain is
-        # independent, and reusing a global set would incorrectly short-circuit
-        # valid re-use of the same UUID as a parent in different subtrees.
-        seen_parents: set[str] = set()
-        while parent in stripped_uuids and parent not in seen_parents:
-            seen_parents.add(parent)
-            parent = uuid_to_parent.get(parent, "")
-        if parent != original_parent:
-            entry["parentUuid"] = parent
-            uid = entry.get("uuid", "")
-            if uid:
-                reparented.add(uid)
-
-    result_lines: list[str] = []
-    for line, entry in parsed:
-        if not isinstance(entry, dict):
-            result_lines.append(line)
-            continue
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
-            continue
-        uid = entry.get("uuid", "")
-        if uid in reparented:
-            # Re-serialize only entries whose parentUuid was changed.
-            result_lines.append(json.dumps(entry, separators=(",", ":")))
-        else:
-            result_lines.append(line)
-
-    return "\n".join(result_lines) + "\n"
-
-
-def strip_stale_thinking_blocks(content: str) -> str:
-    """Remove thinking/redacted_thinking blocks from non-last assistant entries.
-
-    The Anthropic API only requires thinking blocks in the **last** assistant
-    message to be value-identical to the original response.  Older assistant
-    entries carry stale thinking blocks that consume significant tokens
-    (often 10-50K each) without providing useful context for ``--resume``.
-
-    Stripping them before upload prevents the CLI from triggering compaction
-    every turn just to compress away the stale thinking bloat.
-    """
-    lines = content.strip().split("\n")
-    if not lines:
-        return content
-
-    parsed: list[tuple[str, dict | None]] = []
-    for line in lines:
-        parsed.append((line, json.loads(line, fallback=None)))
-
-    # Reverse scan to find the last assistant message ID and index.
-    last_asst_msg_id: str | None = None
-    last_asst_idx: int | None = None
-    for i in range(len(parsed) - 1, -1, -1):
-        _line, entry = parsed[i]
-        if not isinstance(entry, dict):
-            continue
-        msg = entry.get("message", {})
-        if msg.get("role") == "assistant":
-            last_asst_msg_id = msg.get("id")
-            last_asst_idx = i
-            break
-
-    if last_asst_idx is None:
-        return content
-
-    result_lines: list[str] = []
-    stripped_count = 0
-    for i, (line, entry) in enumerate(parsed):
-        if not isinstance(entry, dict):
-            result_lines.append(line)
-            continue
-
-        msg = entry.get("message", {})
-        # Only strip from assistant entries that are NOT the last turn.
-        # Use msg_id matching when available; fall back to index for entries
-        # without an id field.
-        is_last_turn = (
-            last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
-        ) or (last_asst_msg_id is None and i == last_asst_idx)
-        if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
-            content_blocks = msg["content"]
-            producing_model = msg.get("model") if isinstance(msg, dict) else None
-            filtered = [
-                b
-                for b in content_blocks
-                if not _should_strip_thinking_block(
-                    b,
-                    is_last_turn=is_last_turn,
-                    producing_model=producing_model,
-                )
-            ]
-            if len(filtered) < len(content_blocks):
-                stripped_count += len(content_blocks) - len(filtered)
-                entry = {**entry, "message": {**msg, "content": filtered}}
-                result_lines.append(json.dumps(entry, separators=(",", ":")))
-                continue
-
-        result_lines.append(line)
-
-    if stripped_count:
-        logger.info(
-            "[Transcript] Stripped %d stale thinking block(s) from non-last entries",
-            stripped_count,
-        )
-
-    return "\n".join(result_lines) + "\n"
+    if not config.claude_agent_live_system_prompt:
+        return frozenset()
+    if not config.claude_agent_strip_prompt_snapshots:
+        return frozenset()
+    return STRIPPABLE_ATTACHMENT_TYPES
 
 
 def strip_for_upload(content: str) -> str:
-    """Combined single-parse strip of progress entries and stale thinking blocks.
+    """Strip progress entries and stale thinking blocks in a single parse.
 
-    Equivalent to ``strip_stale_thinking_blocks(strip_progress_entries(content))``
-    but parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
-    passes on every upload.
+    Parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
+    passes on every upload.  Also drops the attachment entries listed in
+    ``STRIPPABLE_ATTACHMENT_TYPES`` when prompt snapshots are being stripped
+    (see :func:`_strippable_attachment_types`).
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -238,6 +113,8 @@ def strip_for_upload(content: str) -> str:
     parsed: list[tuple[str, dict | None]] = []
     for line in lines:
         parsed.append((line, json.loads(line, fallback=None)))
+
+    attachment_types = _strippable_attachment_types()
 
     # --- Phase 1: progress stripping (reparent children) ---
     stripped_uuids: set[str] = set()
@@ -250,11 +127,7 @@ def strip_for_upload(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if (
-            entry.get("type", "") in STRIPPABLE_TYPES
-            and uid
-            and not entry.get("isCompactSummary")
-        ):
+        if uid and _is_stripped_for_upload(entry, attachment_types):
             stripped_uuids.add(uid)
 
     reparented: set[str] = set()
@@ -280,9 +153,7 @@ def strip_for_upload(content: str) -> str:
         _line, entry = parsed[i]
         if not isinstance(entry, dict):
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_stripped_for_upload(entry, attachment_types):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
@@ -299,9 +170,7 @@ def strip_for_upload(content: str) -> str:
             continue
 
         # Drop progress/metadata entries
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_stripped_for_upload(entry, attachment_types):
             continue
 
         needs_reserialize = False
@@ -356,6 +225,18 @@ def strip_for_upload(content: str) -> str:
     return "\n".join(result_lines) + "\n"
 
 
+def _is_stripped_for_upload(entry: dict, attachment_types: frozenset[str]) -> bool:
+    if entry.get("isCompactSummary"):
+        return False
+    entry_type = entry.get("type", "")
+    if entry_type in STRIPPABLE_TYPES:
+        return True
+    if entry_type != "attachment":
+        return False
+    attachment = entry.get("attachment")
+    return isinstance(attachment, dict) and attachment.get("type") in attachment_types
+
+
 # ---------------------------------------------------------------------------
 # Local file I/O (write temp file for --resume)
 # ---------------------------------------------------------------------------
@@ -372,9 +253,6 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
-_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
-
-
 def projects_base() -> str:
     """Return the resolved path to the CLI's projects directory."""
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
@@ -382,10 +260,9 @@ def projects_base() -> str:
 
 
 _STALE_PROJECT_DIR_SECONDS = 12 * 3600  # 12 hours — matches max session lifetime
-_MAX_PROJECT_DIRS_TO_SWEEP = 50  # limit per sweep to avoid long pauses
 
 
-def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
+def cleanup_stale_project_dirs(encoded_cwd: str) -> int:
     """Remove CLI project directories older than ``_STALE_PROJECT_DIR_SECONDS``.
 
     Each CoPilot SDK turn creates a unique ``~/.claude/projects/<encoded-cwd>/``
@@ -394,11 +271,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     become stale.  This function sweeps old ones to prevent unbounded disk
     growth.
 
-    When *encoded_cwd* is provided the sweep is scoped to that single
-    directory, making the operation safe in multi-tenant environments where
-    multiple copilot sessions share the same host.  Without it the function
-    falls back to sweeping all directories matching the copilot naming pattern
-    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+    The sweep is scoped to the one directory *encoded_cwd* names, which keeps
+    it safe where several copilot sessions share a host.
 
     Returns the number of directories removed.
     """
@@ -409,98 +283,60 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     now = time.time()
     removed = 0
 
-    # Scoped mode: only clean up the one directory for the current session.
-    if encoded_cwd:
-        target = Path(_pbase) / encoded_cwd
-        if not target.is_dir():
-            return 0
-        # Guard: only sweep copilot-generated dirs.
-        if "-tmp-copilot-" not in target.name:
-            logger.warning(
-                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
-            )
-            return 0
-        try:
-            # st_mtime is used as a proxy for session activity. Claude CLI writes
-            # its JSONL transcript into this directory during each turn, so mtime
-            # advances on every turn. A directory whose mtime is older than
-            # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
-            # and is safe to remove (the session cannot --resume after cleanup).
-            age = now - target.stat().st_mtime
-        except OSError:
-            return 0
-        if age < _STALE_PROJECT_DIR_SECONDS:
-            return 0
-        try:
-            shutil.rmtree(target, ignore_errors=True)
-            removed = 1
-        except OSError:
-            pass
-        if removed:
-            logger.info(
-                "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
-                target.name,
-                int(age),
-                _STALE_PROJECT_DIR_SECONDS,
-            )
-        return removed
-
-    # Unscoped fallback: sweep all copilot dirs across the projects base.
-    # Only safe for single-tenant deployments; callers should prefer the
-    # scoped variant by passing encoded_cwd.
-    try:
-        entries = Path(_pbase).iterdir()
-    except OSError as e:
-        logger.warning("[Transcript] Failed to list projects dir: %s", e)
+    target = Path(_pbase) / encoded_cwd
+    if not target.is_dir():
         return 0
-
-    for entry in entries:
-        if removed >= _MAX_PROJECT_DIRS_TO_SWEEP:
-            break
-        # Only sweep copilot-generated dirs (pattern: -tmp-copilot- or
-        # -private-tmp-copilot-).
-        if "-tmp-copilot-" not in entry.name:
-            continue
-        if not entry.is_dir():
-            continue
-        try:
-            # See the scoped-mode comment above: st_mtime advances on every turn,
-            # so a stale mtime reliably indicates an inactive session.
-            age = now - entry.stat().st_mtime
-        except OSError:
-            continue
-        if age < _STALE_PROJECT_DIR_SECONDS:
-            continue
-
-        try:
-            shutil.rmtree(entry, ignore_errors=True)
-            removed += 1
-        except OSError:
-            pass
-
+    # Guard: only sweep copilot-generated dirs.
+    if "-tmp-copilot-" not in target.name:
+        logger.warning(
+            "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
+        )
+        return 0
+    try:
+        # st_mtime is used as a proxy for session activity. Claude CLI writes
+        # its JSONL transcript into this directory during each turn, so mtime
+        # advances on every turn. A directory whose mtime is older than
+        # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
+        # and is safe to remove (the session cannot --resume after cleanup).
+        age = now - target.stat().st_mtime
+    except OSError:
+        return 0
+    if age < _STALE_PROJECT_DIR_SECONDS:
+        return 0
+    try:
+        shutil.rmtree(target, ignore_errors=True)
+        removed = 1
+    except OSError:
+        pass
     if removed:
         logger.info(
-            "[Transcript] Swept %d stale CLI project dirs (older than %ds)",
-            removed,
+            "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
+            target.name,
+            int(age),
             _STALE_PROJECT_DIR_SECONDS,
         )
     return removed
 
 
-def read_compacted_entries(transcript_path: str) -> list[dict] | None:
-    """Read compacted entries from the CLI session file after compaction.
+AfterSource = Literal[
+    "read", "stale_summary", "no_summary_line", "unreadable", "no_path", "outside_base"
+]
+"""How the post-compaction read behind a row/event resolved."""
 
-    Parses the JSONL file line-by-line, finds the ``isCompactSummary: true``
-    entry, and returns it plus all entries after it.
 
-    The CLI writes the compaction summary BEFORE sending the next message,
-    so the file is guaranteed to be flushed by the time we read it.
+def read_compacted_entries_detailed(
+    transcript_path: str,
+) -> tuple[list[dict] | None, AfterSource]:
+    """Read compacted entries plus the outcome of the read itself.
 
-    Returns a list of parsed dicts, or ``None`` if the file cannot be read
-    or no compaction summary is found.
+    Same contract as :func:`read_compacted_entries`, but the second
+    element names *why* entries are missing instead of collapsing every
+    failure into ``None``. A missing after-count with ``no_summary_line``
+    means the CLI compacted without writing a summary we can find;
+    ``unreadable``/``no_path``/``outside_base`` mean we never got to look.
     """
     if not transcript_path:
-        return None
+        return None, "no_path"
 
     _pbase = projects_base()
     real_path = os.path.realpath(transcript_path)
@@ -508,7 +344,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         logger.warning(
             "[Transcript] transcript_path outside projects base: %s", transcript_path
         )
-        return None
+        return None, "outside_base"
 
     try:
         content = Path(real_path).read_text()
@@ -516,7 +352,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         logger.warning(
             "[Transcript] Failed to read session file %s: %s", transcript_path, e
         )
-        return None
+        return None, "unreadable"
 
     lines = content.strip().split("\n")
     compact_idx: int | None = None
@@ -531,8 +367,11 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
             compact_idx = idx  # don't break — find the LAST summary
 
     if compact_idx is None:
-        logger.debug("[Transcript] No compaction summary found in %s", transcript_path)
-        return None
+        # INFO, not DEBUG: a compaction whose payoff we cannot measure is
+        # the exact signal the cascade diagnosis needs, and DEBUG never
+        # reaches the preview/prod logs where that diagnosis happens.
+        logger.info("[Transcript] No compaction summary found in %s", transcript_path)
+        return None, "no_summary_line"
 
     entries: list[dict] = []
     for line in lines[compact_idx:]:
@@ -548,46 +387,25 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         transcript_path,
         compact_idx + 1,
     )
-    return entries
+    return entries, "read"
 
 
-def write_transcript_to_tempfile(
-    transcript_content: str,
-    session_id: str,
-    cwd: str,
-) -> str | None:
-    """Write JSONL transcript to a temp file inside *cwd* for ``--resume``.
+def read_compacted_entries(transcript_path: str) -> list[dict] | None:
+    """Read compacted entries from the CLI session file after compaction.
 
-    The file lives in the session working directory so it is cleaned up
-    automatically when the session ends.
+    Parses the JSONL file line-by-line, finds the ``isCompactSummary: true``
+    entry, and returns it plus all entries after it.
 
-    Returns the absolute path to the file, or ``None`` on failure.
+    The CLI writes the compaction summary BEFORE sending the next message,
+    so the file is guaranteed to be flushed by the time we read it.
+
+    Returns a list of parsed dicts, or ``None`` if the file cannot be read
+    or no compaction summary is found. Prefer
+    :func:`read_compacted_entries_detailed` when the caller needs to know
+    *why* the read came back empty.
     """
-    # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
-    real_cwd = os.path.realpath(cwd)
-    if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
-        return None
-
-    try:
-        os.makedirs(real_cwd, exist_ok=True)
-        safe_id = _sanitize_id(session_id, max_len=8)
-        jsonl_path = os.path.realpath(
-            os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
-        )
-        if not jsonl_path.startswith(real_cwd):
-            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
-            return None
-
-        with open(jsonl_path, "w") as f:
-            f.write(transcript_content)
-
-        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
-        return jsonl_path
-
-    except OSError as e:
-        logger.warning("[Transcript] Failed to write resume file: %s", e)
-        return None
+    entries, _ = read_compacted_entries_detailed(transcript_path)
+    return entries
 
 
 def validate_transcript(content: str | None) -> bool:
@@ -656,16 +474,6 @@ def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
 
-def cli_session_cost_usd(content: str, session_id: str) -> float:
-    """The running cost the CLI restores on ``--resume`` from this session file.
-
-    The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
-    so its ``total_cost_usd`` counts on from this figure (0 with no such row).
-    """
-    entry = cli_session_cost_state(content, session_id)
-    return float(entry["totalCostUSD"]) if entry else 0.0
-
-
 def cli_session_cost_state(content: str, session_id: str) -> dict[str, Any] | None:
     """Return the last matching native CLI cost snapshot, including model usage."""
     for line in reversed(content.splitlines()):
@@ -731,7 +539,8 @@ async def upload_transcript(
     # leaves an orphaned JSONL (no meta) rather than an orphaned meta (wrong
     # watermark / mode paired with stale or absent content).
     # On any failure we roll back the other file so the pair is always absent
-    # together; download_transcript returns None when either file is missing.
+    # together: download_transcript returns None without the JSONL, and a
+    # JSONL without its meta would download with watermark 0 and mode "sdk".
     try:
         await storage.store(
             workspace_id=wid, file_id=fid, filename=fname, content=content
@@ -757,7 +566,8 @@ async def upload_transcript(
             await storage.delete(session_path)
         except Exception as rollback_err:
             logger.debug(
-                "%s Session rollback failed (harmless — download will return None): %s",
+                "%s Session rollback failed (the JSONL stays; it will download"
+                " with watermark 0): %s",
                 log_prefix,
                 rollback_err,
             )
@@ -863,221 +673,16 @@ def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
     return max(seqs) + 1 if seqs else 0
 
 
-def _gap_by_index(
-    session_messages: list[ChatMessage], watermark: int
-) -> list[ChatMessage]:
-    """Index-based gap fallback: ``session_messages`` is treated as the full
-    history (list-index == absolute sequence).  Used when no message in the
-    candidate set carries a sequence — only test fixtures and the post-DB-
-    failure cache state hit this in practice.
-    """
-    total = len(session_messages)
-    if watermark >= total - 1:
-        return []
-    if session_messages[watermark - 1].role != "assistant":
-        return []
-    return list(session_messages[watermark : total - 1])
-
-
-def _gap_by_sequence(
-    candidates: list[tuple[int, ChatMessage]],
-    watermark: int,
-) -> list[ChatMessage]:
-    """Sequence-based gap with role-shape sanity check.
-
-    ``watermark`` is the "next uncovered DB sequence" — the value persisted in
-    the transcript's ``message_count`` field.  Gap = candidates whose sequence
-    is at or above the watermark.
-
-    Returns [] when:
-    - No post-watermark candidates (transcript is current).
-    - The pre-watermark message immediately before the gap isn't an assistant
-      turn (data shift / deletion).
-    - The window starts above the watermark and the first gap message is a
-      tool row that boundary expansion failed to pair with its owner
-      (malformed window — would emit an orphan tool_result).
-    """
-    gap = [m for seq, m in candidates if seq >= watermark]
-    pre_gap = [(seq, m) for seq, m in candidates if seq < watermark]
-    if not gap:
-        return []
-
-    if pre_gap:
-        _, prev = max(pre_gap, key=lambda item: item[0])
-        if prev.role != "assistant":
-            return []
-        return gap
-
-    # Window starts above the watermark — can't see the pre-gap row to verify
-    # its role. ``get_chat_messages_paginated`` already does tool-pair boundary
-    # expansion so ``gap[0]`` is normally user (fresh turn) or assistant (turn
-    # that began before the cap).  Reject only when it's still a tool row
-    # (boundary expansion couldn't find the owner) — leaving that in would
-    # emit an unmatched tool_result.  The DB-side hole-fill prepends the
-    # missing user turn that bridges the transcript and ``gap[0]``.
-    if gap[0].role == "tool":
-        return []
-    window_start = min(seq for seq, _ in candidates if seq >= watermark)
-    if window_start > watermark:
-        logger.warning(
-            "detect_gap: window starts at seq=%d but watermark is %d — "
-            "DB-side hole-fill required",
-            window_start,
-            watermark,
-        )
-    return gap
-
-
-def detect_gap(
-    download: TranscriptDownload,
-    session_messages: list[ChatMessage],
-) -> list[ChatMessage]:
-    """Return chat-db messages at or after the transcript watermark
-    (excluding the current user turn).
-
-    ``download.message_count`` is the *next uncovered DB sequence* — the
-    sequence the next message will receive.  The gap is candidates with
-    ``sequence >= watermark`` after dropping reasoning rows (those are
-    persisted for frontend replay only and never sent to the model).
-
-    Two paths:
-    - **Sequence-based** (production): every prior message has a ``sequence``
-      (NOT NULL in schema). Filter by ``sequence >= watermark`` with a
-      role-shape sanity check at the boundary.
-    - **Index fallback**: triggered when no prior message has a sequence —
-      only test fixtures and the post-DB-failure cache state. Treats the list
-      as the full history and slices by index.
-
-    Hole-fill (sequences in DB but neither in transcript nor window) is
-    performed by ``extract_context_messages``, not here — this function stays
-    pure / sync.
-    """
-    if download.message_count == 0:
-        return []
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
-    if len(session_messages) < 2:
-        return []
-
-    candidates: list[tuple[int, ChatMessage]] = [
-        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
-    ]
-    if not candidates:
-        return _gap_by_index(session_messages, download.message_count)
-    return _gap_by_sequence(candidates, download.message_count)
-
-
-def _decode_transcript_content(content: bytes | str) -> str | None:
-    """Return decoded transcript content, or ``None`` on UTF-8 errors."""
-    if isinstance(content, str):
-        return content
-    try:
-        return content.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
-def _parse_transcript_to_messages(
-    download: TranscriptDownload,
-) -> list[ChatMessage] | None:
-    """Decode + parse a transcript download into ``ChatMessage`` rows, or
-    ``None`` if the download is empty / malformed."""
-    if not download.content:
-        return None
-    content_str = _decode_transcript_content(download.content)
-    if content_str is None:
-        return None
-    raw = _transcript_to_messages(content_str)
-    if not raw:
-        return None
-    return [ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
-
-
-async def fill_hole_between_transcript_and_gap(
-    session_id: str,
-    watermark: int,
-    gap: list[ChatMessage],
-) -> list[ChatMessage]:
-    """Fetch DB rows in the range ``[watermark, gap[0].sequence)``.
-
-    When the cap engaged and the transcript is stale, the windowed view
-    starts above the watermark — sequences in between live in DB but
-    neither in transcript nor in the loaded gap.  Returns [] when there is
-    no hole or the fetch fails (best-effort — partial context beats crash).
-    Reasoning rows in the range are filtered.
-    """
-    if not gap or gap[0].sequence is None:
-        return []
-    hole_end = gap[0].sequence
-    if watermark >= hole_end:
-        return []
-    try:
-        page = await chat_db().get_chat_messages_paginated(
-            session_id,
-            limit=hole_end - watermark,
-            after_sequence=watermark,
-            before_sequence=hole_end,
-        )
-        if page is None:
-            return []
-        return [m for m in page.messages if m.role != "reasoning"]
-    except Exception as e:
-        logger.error(
-            "fill_hole_between_transcript_and_gap: fetch failed for "
-            "session=%s range=[%d,%d): %s",
-            session_id,
-            watermark,
-            hole_end,
-            e,
-        )
-        return []
-
-
-async def extract_context_messages(
-    download: TranscriptDownload | None,
+def prior_context_messages(
     session_messages: "list[ChatMessage]",
-    *,
-    session_id: str | None = None,
 ) -> "list[ChatMessage]":
-    """Return context messages for the current turn: transcript + (hole-fill) + gap.
-
-    Shared primitive used by both SDK (``use_resume=False`` →
-    ``<conversation_history>`` injection) and baseline (OpenAI messages array)
-    paths.
-
-    Layered structure:
-    - **Transcript**: GCS-cached compaction (preserves ``isCompactSummary=True``).
-      Tool-use blocks are flattened to text via ``_flatten_assistant_content``.
-    - **Hole-fill** (only when cap-engaged + stale-transcript): sequences
-      ``[watermark, window_start)`` fetched directly from DB so the LLM never
-      sees a mid-conversation hole.  Requires ``session_id``.
-    - **Gap**: DB messages from the loaded window with ``sequence >= watermark``,
-      preserving structured ``tool_calls``.
-
-    Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.
-    """
-    # Drop reasoning rows — their content lives in transcript paths,
-    # not the public turn list.  Queue lifecycle is tracked on the
-    # owning ChatSession, not per message, so no per-row filtering
-    # for queued/running rows is needed here.
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
-    prior = session_messages[:-1]
-
-    if download is None:
-        return prior
-    transcript_msgs = _parse_transcript_to_messages(download)
-    if transcript_msgs is None:
-        return prior
-
-    gap = detect_gap(download, session_messages)
-    hole: list[ChatMessage] = []
-    if session_id and download.message_count > 0:
-        hole = await fill_hole_between_transcript_and_gap(
-            session_id, download.message_count, gap
-        )
-    return transcript_msgs + hole + gap
+    """The context a turn with no CLI session to resume re-sends as
+    ``<conversation_history>``: every row before the current turn's own
+    message (``session_messages[-1]``, which callers append themselves),
+    without ``role="reasoning"`` rows, whose content lives in the CLI's own
+    session. Queue lifecycle is tracked on the owning ChatSession, not per
+    message, so no row is filtered for being queued or running."""
+    return [m for m in session_messages if m.role != "reasoning"][:-1]
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
@@ -1373,7 +978,7 @@ def _messages_to_transcript(messages: list[dict]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
-_COMPACTION_TIMEOUT_SECONDS = 60
+_COMPACTION_TIMEOUT_SECONDS = 90
 _TRUNCATION_TIMEOUT_SECONDS = 30
 
 
@@ -1382,6 +987,9 @@ async def _run_compression(
     model: str,
     log_prefix: str,
     target_tokens: int | None = None,
+    *,
+    keep_recent_tokens: int | None = None,
+    truncate_tool_arguments: bool = False,
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback.
 
@@ -1406,7 +1014,12 @@ async def _run_compression(
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
         return await asyncio.wait_for(
             compress_context(
-                messages=messages, model=model, client=None, target_tokens=target_tokens
+                messages=messages,
+                model=model,
+                client=None,
+                target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
@@ -1417,6 +1030,8 @@ async def _run_compression(
                 model=model,
                 client=client,
                 target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_COMPACTION_TIMEOUT_SECONDS,
         )
@@ -1424,7 +1039,12 @@ async def _run_compression(
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await asyncio.wait_for(
             compress_context(
-                messages=messages, model=model, client=None, target_tokens=target_tokens
+                messages=messages,
+                model=model,
+                client=None,
+                target_tokens=target_tokens,
+                keep_recent_tokens=keep_recent_tokens,
+                truncate_tool_arguments=truncate_tool_arguments,
             ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
@@ -1538,30 +1158,72 @@ async def compact_transcript(
         return None
     try:
         result = await _run_compression(
-            messages, model, log_prefix, target_tokens=target_tokens
+            messages,
+            model,
+            log_prefix,
+            target_tokens=target_tokens,
+            keep_recent_tokens=_tail_budget_tokens(target_tokens, model),
         )
-        if not result.was_compacted:
+        if result.was_compacted and not result.messages:
+            logger.warning("%s Compressor returned empty messages", log_prefix)
+            return None
+        budget = (
+            target_tokens
+            if target_tokens is not None
+            else get_compression_target(model)
+        ) - DEFAULT_COMPRESSION_RESERVE
+        prefix_tokens = (
+            result.token_count if result.was_compacted else result.original_token_count
+        )
+        tail_tokens = _tail_token_count(tail_lines, model)
+        if prefix_tokens + tail_tokens > budget:
+            # The preserved final turn is what does not fit.  Its thinking
+            # blocks are untouchable (the API checks their signatures), but
+            # its text, tool_use inputs and tool_result strings are not.
+            # Before this, a final turn over budget made the whole compaction
+            # return None and the caller threw the transcript away.
+            trimmed = _truncate_tail_lines(
+                tail_lines, max(1_000, budget - prefix_tokens), model
+            )
+            if trimmed is None:
+                if not result.was_compacted:
+                    logger.warning(
+                        "%s Final turn exceeds the budget with nothing trimmable "
+                        "— signalling failure",
+                        log_prefix,
+                    )
+                    return None
+            else:
+                logger.info(
+                    "%s Trimmed the preserved final turn: %d -> %d tokens",
+                    log_prefix,
+                    tail_tokens,
+                    _tail_token_count(trimmed, model),
+                )
+                tail_lines = trimmed
+        elif not result.was_compacted:
             logger.warning(
                 "%s Compressor reports within budget but SDK rejected — "
                 "signalling failure",
                 log_prefix,
             )
             return None
-        if not result.messages:
-            logger.warning("%s Compressor returned empty messages", log_prefix)
-            return None
-        logger.info(
-            "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
-            log_prefix,
-            result.original_token_count,
-            result.token_count,
-            result.messages_summarized,
-            result.messages_dropped,
-        )
-        compressed_part = _messages_to_transcript(result.messages)
-
-        # Re-append the preserved tail (last assistant + trailing entries)
-        # with parentUuid patched to chain onto the compressed prefix.
+        if result.was_compacted:
+            logger.info(
+                "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped, "
+                "summary coverage %.0f%%)",
+                log_prefix,
+                result.original_token_count,
+                result.token_count,
+                result.messages_summarized,
+                result.messages_dropped,
+                result.summary_coverage * 100,
+            )
+            compressed_part = _messages_to_transcript(result.messages)
+        else:
+            # Only the final turn was trimmed; keep the prefix verbatim so its
+            # uuid chain and structured blocks survive untouched.
+            compressed_part = prefix_content
         tail_part = _rechain_tail(compressed_part, tail_lines)
         compacted = compressed_part + tail_part
 
@@ -1590,6 +1252,106 @@ async def compact_transcript(
             "%s Transcript compaction failed: %s", log_prefix, e, exc_info=True
         )
         return None
+
+
+def _tail_budget_tokens(target_tokens: int | None, model: str) -> int:
+    """Recent history kept verbatim beside the summary: a quarter of the
+    budget, never under 2K.  Sized in tokens, not messages, so a run of
+    large tool results can neither crowd out the summary nor be cut blind."""
+    budget = (
+        target_tokens if target_tokens is not None else get_compression_target(model)
+    )
+    return max(2_000, budget // 4)
+
+
+def _tail_token_count(tail_lines: list[str], model: str) -> int:
+    total = 0
+    for line in tail_lines:
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        content = (entry.get("message") or {}).get("content")
+        text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, separators=(",", ":"))
+        )
+        # Only ``message.content`` reaches the API; uuid, parentUuid and the
+        # other JSONL fields are CLI bookkeeping.  The 3-token per-message
+        # wrapper matches _msg_tokens on the prefix side.
+        total += 3 + token_len(text, model)
+    return total
+
+
+def _truncate_tail_lines(
+    tail_lines: list[str], max_tokens: int, model: str
+) -> list[str] | None:
+    """Shrink the preserved final turn to about *max_tokens*.
+
+    Text blocks, ``tool_use`` inputs and ``tool_result`` strings are
+    middle-out truncated in proportion to their size; ``thinking`` and
+    ``redacted_thinking`` blocks are never touched, since the API requires
+    them value-identical to the original.  A truncated ``tool_use`` input
+    becomes ``{"_truncated": "<head … tail>"}`` so it stays a JSON object.
+    Returns None when nothing in the turn can be trimmed enough to matter.
+    """
+    entries = [json.loads(line, fallback=None) for line in tail_lines]
+    parts: list[tuple[dict, str]] = []
+    untouched = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        message = entry.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append((message, "content"))
+            continue
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            kind = block.get("type")
+            if kind == "text" and isinstance(block.get("text"), str):
+                parts.append((block, "text"))
+            elif kind == "tool_use":
+                parts.append((block, "input"))
+            elif kind == "tool_result" and isinstance(block.get("content"), str):
+                parts.append((block, "content"))
+            else:
+                untouched += token_len(json.dumps(block, separators=(",", ":")), model)
+    if not parts:
+        return None
+
+    def current(ref: dict, key: str) -> str:
+        value = ref.get(key)
+        return (
+            value
+            if isinstance(value, str)
+            else json.dumps(value, separators=(",", ":"))
+        )
+
+    sizes = [token_len(current(ref, key), model) for ref, key in parts]
+    available = max_tokens - untouched
+    cut_total = sum(sizes)
+    if available <= 0 or cut_total <= available:
+        return None
+    # A small part keeps at least 32 tokens, unless so many parts share the
+    # budget that even the floors would overrun it.
+    floor = min(32, max(1, available // len(parts)))
+    for (ref, key), size in zip(parts, sizes):
+        share = max(floor, int(available * size / cut_total))
+        if size <= share:
+            continue
+        text = truncate_middle(current(ref, key), model, share)
+        if key == "input":
+            ref["input"] = {"_truncated": text}
+        else:
+            ref[key] = text
+    return [
+        json.dumps(entry, separators=(",", ":")) if isinstance(entry, dict) else line
+        for entry, line in zip(entries, tail_lines)
+    ]
 
 
 def _rechain_tail(compressed_prefix: str, tail_lines: list[str]) -> str:

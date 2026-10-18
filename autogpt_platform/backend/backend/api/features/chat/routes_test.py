@@ -1,6 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -12,6 +13,7 @@ import httpx
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.models import ChatMessage as PrismaChatMessage
 from pydantic import SecretStr
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
@@ -20,10 +22,11 @@ from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
-from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import AutopilotMode, ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -108,6 +111,12 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.CLOUD)
+    # The hosted deployment's own chat model.
+    mocker.patch.object(
+        chat_transports,
+        "config",
+        ChatConfig(platform_route="openrouter", openrouter_api_key="k"),
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -1821,13 +1830,10 @@ def _set_self_hosted_chat_config(
     configured: bool,
 ) -> None:
     mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.LOCAL)
-    self_hosted_config = MagicMock()
-    self_hosted_config.test_mode = False
-    self_hosted_config.use_claude_code_subscription = False
-    self_hosted_config.main_client_credentials = (
-        ("configured-key", "http://llm.example/v1")
+    self_hosted_config = (
+        ChatConfig(platform_route="openrouter", openrouter_api_key="configured-key")
         if configured
-        else (None, "https://api.anthropic.com/v1/")
+        else ChatConfig(platform_route="disabled", test_mode=False)
     )
     mocker.patch.object(chat_transports, "config", self_hosted_config)
 
@@ -4798,7 +4804,15 @@ def _mock_route_change(
     *,
     transports: list,
     success: bool = True,
+    builder_graph_id: str | None = None,
 ):
+    info = _make_session_info()
+    info.metadata.builder_graph_id = builder_graph_id
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=info,
+    )
     mocker.patch(
         "backend.api.features.chat.routes.get_chat_transports",
         new_callable=AsyncMock,
@@ -4826,6 +4840,27 @@ def test_change_connection_moves_the_chat(
 
     assert response.status_code == 200
     mock_update.assert_called_once_with("sess-1", test_user_id, "platform", None)
+
+
+def test_change_connection_keeps_a_builder_chat_on_the_platform_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A builder chat runs on the platform route only, as when it was
+    created; the same refusal the creation path gives."""
+    mock_update = _mock_route_change(
+        mocker,
+        transports=[_transport("codex", "cred-1")],
+        builder_graph_id="graph-1",
+    )
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_builder_session_unsupported"
+    mock_update.assert_not_called()
 
 
 def test_change_connection_refuses_a_route_the_user_does_not_have(
@@ -5200,6 +5235,58 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+def _history_with_assistant_row(
+    mocker: pytest_mock.MockerFixture, metadata: dict | None
+) -> list[dict]:
+    page, _ = _make_paginated_messages(mocker)
+    page.messages.append(
+        ChatMessage.from_db(
+            PrismaChatMessage(
+                id="msg-1",
+                createdAt=datetime(2026, 10, 5, 9, 0, tzinfo=UTC),
+                sessionId="sess-1",
+                role="assistant",
+                content="Check the inbox.",
+                sequence=1,
+                metadata=None if metadata is None else json.dumps(metadata),
+            )
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    response = client.get("/sessions/sess-1")
+    assert response.status_code == 200
+    assert "prompt_origin" not in response.text
+    return response.json()["messages"]
+
+
+def test_get_session_history_is_unchanged_by_a_scheduled_prompt_stamp(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The stamp lives in the row's metadata column, and the frontend keeps any
+    assistant row with metadata as its own bubble — so it must not reach the
+    payload, not even as an empty bag."""
+    stamp = with_prompt_origin(
+        None,
+        PromptOrigin(
+            kind="scheduled_followup",
+            schedule_id="job-1",
+            fired_at=datetime(2026, 10, 5, 9, 0, tzinfo=UTC),
+        ),
+    )
+
+    stamped = _history_with_assistant_row(mocker, stamp)
+    plain = _history_with_assistant_row(mocker, None)
+
+    assert stamped == plain
+    assert stamped[1]["role"] == "assistant"
+    assert stamped[1]["content"] == "Check the inbox."
+    assert stamped[1]["metadata"] is None
 
 
 def test_create_session_passes_a_picked_mode_through(

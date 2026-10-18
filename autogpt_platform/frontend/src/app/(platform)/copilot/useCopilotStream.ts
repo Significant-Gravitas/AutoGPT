@@ -31,7 +31,6 @@ import {
   hasActiveBackendStream,
   hasInProgressAssistantParts,
   hasVisibleAssistantContent,
-  isEngineSwitchPart,
 } from "./helpers";
 import { asMidTurnFallbackRow } from "./components/ChatMessagesContainer/midTurnSplit";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
@@ -59,15 +58,7 @@ import { useWakeResync } from "./useWakeResync";
  * `active_stream=true`, triggering unnecessary reconnect cycles.
  */
 const FINISH_REFETCH_SETTLE_MS = 500;
-// Server-initiated continuation turns (e.g. the engine switch after
-// enter_agent_building_mode) are dispatched via RabbitMQ right after the
-// previous turn completes — one 500ms check can outrun the dispatch, so the
-// post-finish active-stream probe retries before giving up. Ordinary turns
-// keep a single probe; the extended window only runs when this turn emitted
-// a data-mode-changed part (a continuation is actually pending), and it
-// brackets the backend's dispatch retry ceiling (3 attempts, ~3s backoff).
-const FINISH_REFETCH_ATTEMPTS_DEFAULT = 1;
-const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
+const FINISH_REFETCH_ATTEMPTS = 1;
 
 /**
  * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
@@ -162,7 +153,6 @@ export function useCopilotStream({
   // mount (= this session): the parent remounts on session switch, so a
   // plain boolean can't bleed state across sessions.
   const isUserStoppingRef = useRef(false);
-  const pendingEngineSwitchRef = useRef(false);
   // Cleared once consumed, so a later failure without an envelope cannot
   // inherit the explanation of an earlier one.
   const providerFailureRef = useRef<ProviderFailure | null>(null);
@@ -227,10 +217,7 @@ export function useCopilotStream({
         return;
       }
 
-      const attempts = pendingEngineSwitchRef.current
-        ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
-        : FINISH_REFETCH_ATTEMPTS_DEFAULT;
-      pendingEngineSwitchRef.current = false;
+      const attempts = FINISH_REFETCH_ATTEMPTS;
       providerFailureRef.current = null;
       setIsFinishProbing(true);
       try {
@@ -362,12 +349,6 @@ export function useCopilotStream({
     }
 
     function handleData(dataPart: { type: string; data?: unknown }) {
-      // The execution engine is an internal detail with no control and no
-      // display — but a switch still takes longer to settle, so the signal
-      // is kept to widen the post-finish refetch window below.
-      if (isEngineSwitchPart(dataPart)) {
-        pendingEngineSwitchRef.current = true;
-      }
       // The envelope always precedes the error frame it explains, so
       // stashing it here means handleError has it in hand.
       const failure = parseProviderFailurePart(dataPart);

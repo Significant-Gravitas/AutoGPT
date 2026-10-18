@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.blocks.autopilot import AutoPilotBlock
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
     CAPABILITY_GATE_NAMES,
@@ -15,8 +16,8 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     apply_tool_permissions,
     validate_block_identifiers,
-    validate_tool_names,
 )
+from backend.copilot.sdk.tool_adapter import SDK_SUBAGENT_TOOLS, get_sdk_declared_tools
 from backend.copilot.tools import TOOL_REGISTRY
 
 # ---------------------------------------------------------------------------
@@ -254,6 +255,50 @@ class TestMergedWithParent:
         assert not merged.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
 
+class TestMergeWithNoToolInCommon:
+    """A parent and a child with no tool in common leave the turn no tool but
+    the internal ``read_tool_result``."""
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize(
+        "parent, child",
+        [
+            pytest.param(
+                CopilotPermissions(tools=["Agent"], tools_exclude=True),
+                CopilotPermissions(tools=["Task"], tools_exclude=False),
+                id="parent-blacklists-Agent-child-whitelists-Task",
+            ),
+            pytest.param(
+                CopilotPermissions(tools=["Agent"], tools_exclude=False),
+                CopilotPermissions(tools=["Task"], tools_exclude=True),
+                id="parent-whitelists-Agent-child-blacklists-Task",
+            ),
+            pytest.param(
+                CopilotPermissions(tools=["web_fetch"], tools_exclude=False),
+                CopilotPermissions(tools=["get_platform_info"], tools_exclude=False),
+                id="disjoint-whitelists",
+            ),
+        ],
+    )
+    def test_allows_only_read_tool_result(
+        self, parent: CopilotPermissions, child: CopilotPermissions, use_e2b: bool
+    ) -> None:
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == frozenset()
+        allowed, _ = apply_tool_permissions(merged, use_e2b=use_e2b)
+        assert allowed == ["mcp__copilot__read_tool_result"]
+
+    def test_survives_a_round_trip_through_storage(self) -> None:
+        parent = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+        child = CopilotPermissions(tools=["get_platform_info"], tools_exclude=False)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        stored = CopilotPermissions.model_validate(merged.model_dump())
+
+        assert stored.effective_allowed_tools(ALL_TOOL_NAMES) == frozenset()
+
+
 # ---------------------------------------------------------------------------
 # CopilotPermissions.is_empty
 # ---------------------------------------------------------------------------
@@ -273,34 +318,6 @@ class TestIsEmpty:
         perms = CopilotPermissions()
         perms._parent = CopilotPermissions(tools=["bash_exec"])
         assert not perms.is_empty()
-
-
-# ---------------------------------------------------------------------------
-# validate_tool_names
-# ---------------------------------------------------------------------------
-
-
-class TestValidateToolNames:
-    def test_valid_registry_tool(self):
-        assert validate_tool_names(["run_block", "web_fetch"]) == []
-
-    def test_valid_sdk_builtin(self):
-        assert validate_tool_names(["Read", "Task", "WebSearch"]) == []
-
-    def test_disabled_legacy_tool_name_is_accepted(self):
-        assert validate_tool_names(["ask_question"]) == []
-
-    def test_invalid_tool(self):
-        result = validate_tool_names(["nonexistent_tool"])
-        assert "nonexistent_tool" in result
-
-    def test_mixed(self):
-        result = validate_tool_names(["run_block", "fake_tool"])
-        assert "fake_tool" in result
-        assert "run_block" not in result
-
-    def test_empty_list(self):
-        assert validate_tool_names([]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -627,11 +644,7 @@ class TestApplyToolPermissions:
 
 class TestSdkBuiltinToolNames:
     def test_expected_builtins_present(self):
-        # ``TodoWrite`` is DELIBERATELY absent: baseline ships an MCP-wrapped
-        # platform version for model-flexibility parity, so it appears in
-        # PLATFORM_TOOL_NAMES / TOOL_REGISTRY instead. ``Task`` remains
-        # SDK-only — baseline uses ``run_sub_session`` for the equivalent
-        # context-isolation role.
+        # ``TodoWrite`` is the CLI's own checklist; no platform tool shadows it.
         expected = {
             "Agent",
             "Read",
@@ -640,10 +653,11 @@ class TestSdkBuiltinToolNames:
             "Glob",
             "Grep",
             "Task",
+            "TodoWrite",
             "WebSearch",
         }
         assert expected.issubset(SDK_BUILTIN_TOOL_NAMES)
-        assert "TodoWrite" not in SDK_BUILTIN_TOOL_NAMES
+        assert "TodoWrite" not in PLATFORM_TOOL_NAMES
 
     def test_platform_names_match_tool_registry(self):
         """PLATFORM_TOOL_NAMES (derived from ToolName Literal) must match TOOL_REGISTRY keys."""
@@ -814,3 +828,132 @@ class TestApplyToolPermissionsIsLossless:
             for name in allowed_unfiltered
             if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
         }
+
+
+class TestSubAgentToolIsInert:
+    """Saved graphs, routines and delegated turns may still name ``Agent`` or
+    ``Task``.  The CLI sub-agent tool is off by default, so those names must
+    still validate and must grant nothing, while the turn keeps the rest of
+    what its list allows."""
+
+    def test_saved_block_input_naming_the_sub_agent_tool_validates(self) -> None:
+        data = AutoPilotBlock.Input.model_validate(
+            {"prompt": "hi", "tools": ["Agent", "Task", "TodoWrite", "Glob"]}
+        )
+
+        assert data.tools == ["Agent", "Task", "TodoWrite", "Glob"]
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_whitelist_naming_it_keeps_its_other_tools(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(
+            tools=["Agent", "Task", "web_fetch", "TodoWrite"], tools_exclude=False
+        )
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+
+        assert "mcp__copilot__web_fetch" in allowed
+        assert "TodoWrite" in allowed
+        assert not {"Agent", "Task"} & set(allowed)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_blacklist_naming_it_changes_nothing(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(tools=["Agent", "Task"], tools_exclude=True)
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+        unfiltered, _ = apply_tool_permissions(CopilotPermissions(), use_e2b=use_e2b)
+
+        assert set(allowed) == set(unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_operator_extra_is_still_narrowed_by_a_whitelist(
+        self, use_e2b: bool
+    ) -> None:
+        with_agent = CopilotPermissions(
+            tools=["Agent", "web_fetch"], tools_exclude=False
+        )
+        without_agent = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+
+        allowed_with, _ = apply_tool_permissions(
+            with_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+        allowed_without, _ = apply_tool_permissions(
+            without_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert "Agent" in allowed_with
+        assert "Agent" not in allowed_without
+
+
+class TestSubAgentToolAliases:
+    """``Agent`` and ``Task`` are one CLI tool, which the CLI drops when either
+    name is disallowed.  A list naming one must decide both, or an
+    operator-enabled sub-agent tool passes the hook but is never declared."""
+
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_whitelist_naming_one_alias_grants_both(self, named: str) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=False)
+
+        effective = perms.effective_allowed_tools(ALL_TOOL_NAMES)
+
+        assert set(SDK_SUBAGENT_TOOLS) <= effective
+
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_blacklist_naming_one_alias_denies_both(self, named: str) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=True)
+
+        effective = perms.effective_allowed_tools(ALL_TOOL_NAMES)
+
+        assert not set(SDK_SUBAGENT_TOOLS) & effective
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_whitelist_naming_one_alias_keeps_the_tool_declared(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        perms = CopilotPermissions(tools=[named, "web_fetch"], tools_exclude=False)
+
+        allowed, disallowed = apply_tool_permissions(
+            perms, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert set(SDK_SUBAGENT_TOOLS) <= set(allowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(disallowed)
+        assert set(SDK_SUBAGENT_TOOLS) <= set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_blacklist_naming_one_alias_removes_the_tool(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=True)
+
+        allowed, disallowed = apply_tool_permissions(
+            perms, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert not set(SDK_SUBAGENT_TOOLS) & set(allowed)
+        assert set(SDK_SUBAGENT_TOOLS) <= set(disallowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_parent_blacklist_naming_one_alias_bounds_a_delegated_turn(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        # The merge stores what both sides allow as a whitelist, so the
+        # parent's denial must already cover the other name.
+        parent = CopilotPermissions(tools=[named], tools_exclude=True)
+        merged = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        allowed, disallowed = apply_tool_permissions(
+            merged, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert not set(SDK_SUBAGENT_TOOLS) & set(allowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )

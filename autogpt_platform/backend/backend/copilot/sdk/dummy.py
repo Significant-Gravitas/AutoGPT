@@ -93,7 +93,7 @@ async def stream_chat_completion_dummy(
     message_id = str(uuid.uuid4())
     text_block_id = str(uuid.uuid4())
 
-    # Start the stream (matches baseline: StreamStart → StreamStartStep)
+    # Start the stream (as the engine does: StreamStart → StreamStartStep)
     yield StreamStart(messageId=message_id, sessionId=session_id)
     yield StreamStartStep()
 

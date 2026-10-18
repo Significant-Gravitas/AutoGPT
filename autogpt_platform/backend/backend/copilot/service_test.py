@@ -24,12 +24,6 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    from .config import ChatConfig
-
-    cfg = ChatConfig()
-    if not cfg.claude_agent_use_resume:
-        return pytest.skip("CLAUDE_AGENT_USE_RESUME is not enabled, skipping test")
-
     session = await create_chat_session(test_user_id, dry_run=False)
     session = await upsert_chat_session(session)
 

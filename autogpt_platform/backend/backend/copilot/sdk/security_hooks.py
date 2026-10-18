@@ -7,23 +7,22 @@ ensuring multi-user isolation and preventing unauthorized operations.
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
 
-from backend.copilot.context import (
-    get_execution_context,
-    is_allowed_local_path,
-    is_sdk_tool_path,
-)
+from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
+from .after_compaction import AFTER_COMPACTION_MAX_PARTS
+from .after_compaction_handout import AfterCompactionHandout
 from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
+    SDK_SUBAGENT_TOOLS,
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
@@ -31,9 +30,18 @@ from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
 
-# The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
-# Shared across all sessions — used by security hooks for sub-agent detection.
-_SUBAGENT_TOOLS: frozenset[str] = frozenset({"Task", "Agent"})
+# ``SessionStart`` is missing from the Python SDK's ``HookEvent`` literal, but
+# the CLI runs SDK callback hooks for it: with matcher ``compact`` it fires
+# right after the CLI compacts the conversation, and its
+# ``additionalContext`` is saved into the session (an ``attachment`` line that
+# ``strip_for_upload`` keeps), so later ``--resume`` turns still carry it.
+# Measured with a stub API against claude-agent-sdk 0.2.161 / CLI 2.1.284 and
+# 0.2.156 / 2.1.276: at a turn boundary and inside a tool loop, and across a
+# ``--resume`` in a new CLI process.
+_SESSION_START_EVENT = cast(HookEvent, "SessionStart")
+# The CLI waits on this hook before it carries on after the summary, so it is
+# bounded; a timeout only costs the re-sent context, never the turn.
+_AFTER_COMPACTION_HOOK_TIMEOUT_S = 30.0
 
 # Unicode ranges stripped by _sanitize():
 #   - BiDi overrides (U+202A-U+202E, U+2066-U+2069) can trick reviewers
@@ -93,33 +101,13 @@ def _landing_refusal(governor: TurnGovernor | None) -> str | None:
 def _validate_workspace_path(
     tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None
 ) -> dict[str, Any]:
-    """Validate that a workspace-scoped tool only accesses allowed paths.
-
-    For ``Read``: only SDK artifact paths (tool-results/, tool-outputs/) are
-    permitted.  The workspace directory is served by the ``read_file`` MCP
-    tool which enforces per-session isolation.
-
-    For ``Glob`` / ``Grep``: the full workspace (sdk_cwd) is allowed in
-    addition to SDK artifact paths.
+    """Validate that a workspace-scoped tool (``Glob`` / ``Grep``) only
+    accesses the workspace (sdk_cwd) and the SDK's artifact paths.
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
-
-    if tool_name == "Read":
-        # Narrow carve-out: only allow SDK artifact paths for the native Read tool.
-        # ``is_sdk_tool_path`` validates session membership via _current_project_dir,
-        # preventing cross-session access to another session's tool-results directory.
-        # All other file reads must go through the read_file MCP tool.
-        if is_sdk_tool_path(path):
-            return {}
-        logger.warning(f"Blocked Read outside SDK artifact paths: {path}")
-        return _deny(
-            "[SECURITY] The SDK 'Read' tool can only access tool-results/ or "
-            "tool-outputs/ paths. Use the 'read_file' MCP tool to read workspace files. "
-            "This is enforced by the platform and cannot be bypassed."
-        )
 
     if is_allowed_local_path(path, sdk_cwd):
         return {}
@@ -134,20 +122,20 @@ def _validate_workspace_path(
 
 
 def _validate_tool_access(
-    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None = None
+    tool_name: str,
+    tool_input: dict[str, Any],
+    sdk_cwd: str | None = None,
+    allowed_tools: Collection[str] = frozenset(),
 ) -> dict[str, Any]:
     """Validate that a tool call is allowed.
+
+    A tool outside *allowed_tools* is denied: ``allowed_tools`` on
+    ``ClaudeAgentOptions`` only pre-approves, so a CLI built-in that needs no
+    permission runs unless this hook refuses it.
 
     Returns:
         Empty dict to allow, or dict with hookSpecificOutput to deny
     """
-    # Workspace-scoped tools: allowed only within the SDK workspace directory.
-    # Check this BEFORE the blocked-tools list because Read is blocked in
-    # general but must remain accessible for tool-results/tool-outputs paths
-    # that the SDK uses internally for oversized result handling.
-    if tool_name in WORKSPACE_SCOPED_TOOLS:
-        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
-
     # Block forbidden tools
     if tool_name in BLOCKED_TOOLS:
         logger.warning(f"Blocked tool access attempt: {tool_name}")
@@ -156,6 +144,13 @@ def _validate_tool_access(
             "This is enforced by the platform and cannot be bypassed. "
             "Use the CoPilot-specific MCP tools instead."
         )
+
+    if tool_name not in allowed_tools:
+        return _deny_unlisted(tool_name)
+
+    # Workspace-scoped tools: allowed only within the SDK workspace directory.
+    if tool_name in WORKSPACE_SCOPED_TOOLS:
+        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     # Check for dangerous patterns in tool input
     # Use json.dumps for predictable format (str() produces Python repr)
@@ -172,6 +167,14 @@ def _validate_tool_access(
             )
 
     return {}
+
+
+def _deny_unlisted(tool_name: str) -> dict[str, Any]:
+    logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    return _deny(
+        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
+        "This is enforced by the platform and cannot be bypassed."
+    )
 
 
 def _validate_user_isolation(
@@ -211,7 +214,10 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    context_after_compaction: Callable[[], Awaitable[list[str]]] | None = None,
     governor: TurnGovernor | None = None,
+    *,
+    allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -220,6 +226,7 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
+    - SessionStart (``compact``): Re-send context the compaction summary dropped
     - SubagentStart: Log sub-agent lifecycle start
     - SubagentStop: Log sub-agent lifecycle end
 
@@ -229,20 +236,28 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        context_after_compaction: Returns what to hand the model right after
+            the CLI compacts the conversation — the first-turn blocks the
+            summary does not carry — as at most
+            ``AFTER_COMPACTION_MAX_PARTS`` parts, each within the CLI's
+            per-callback cap.  ``[]`` sends nothing.
         governor: The turn's spend and step governor. Once it is landing the
             turn, every tool call -- the main agent's and its sub-agents' --
             is refused with a reason that asks for a checkpoint.
+        allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
+            every other tool is denied.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
     """
+    allowed = frozenset(allowed_tools)
     try:
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        # Sub-agents run in the foreground (build_sdk_env sets
+        # Sub-agents run in the foreground (route_launch_env sets
         # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
         # as long as the sub-agent and PostToolUse releases the slot when it
         # finishes.
@@ -270,7 +285,7 @@ def create_security_hooks(
 
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
-            if tool_name in _SUBAGENT_TOOLS:
+            if tool_name in SDK_SUBAGENT_TOOLS:
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
@@ -289,12 +304,16 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Only block non-CoPilot tools; our MCP-registered tools
-            # (including Read for oversized results) are already sandboxed.
+            # Our MCP tools sandbox themselves, so they skip the path and
+            # pattern checks — but not the allowed set.
             if not is_copilot_tool:
-                result = _validate_tool_access(clean_name, tool_input, sdk_cwd)
+                result = _validate_tool_access(
+                    clean_name, tool_input, sdk_cwd, allowed_tools=allowed
+                )
                 if result:
                     return cast(SyncHookJSONOutput, result)
+            elif tool_name not in allowed:
+                return cast(SyncHookJSONOutput, _deny_unlisted(tool_name))
 
             # Validate user isolation
             result = _validate_user_isolation(clean_name, tool_input, user_id)
@@ -302,7 +321,7 @@ def create_security_hooks(
                 return cast(SyncHookJSONOutput, result)
 
             # Reserve the sub-agent slot only after all validations pass
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
@@ -324,7 +343,7 @@ def create_security_hooks(
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
             """Release a sub-agent concurrency slot if one was reserved."""
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
                 subagent_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Sub-agent slot released, active=%d/%d, user=%s",
@@ -460,6 +479,55 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
+        async def _rebuild_after_compaction() -> list[str]:
+            if context_after_compaction is None:
+                return []
+            try:
+                return await context_after_compaction()
+            except Exception:
+                logger.exception(
+                    "[SDK] Could not rebuild the context to re-send after"
+                    " compaction (user=%s)",
+                    user_id,
+                )
+                return []
+
+        after_compaction = AfterCompactionHandout(_rebuild_after_compaction)
+
+        def session_start_hook(part: int):
+            async def hook(
+                input_data: HookInput,
+                tool_use_id: str | None,
+                context: HookContext,
+            ) -> SyncHookJSONOutput:
+                """Hand the model back part of what the compaction dropped.
+
+                The first-turn blocks (skills index, workflows, follow-ups,
+                working dir, user context) live in the session's first user
+                message, which compaction replaces with a summary.  The CLI
+                starts these callbacks together and puts their
+                ``additionalContext`` right after the summary in the order
+                they answer; ``after_compaction`` rebuilds the context once
+                per compaction and lets the parts answer in order.
+                """
+                _ = context, tool_use_id
+                if input_data.get("source") != "compact":
+                    return cast(SyncHookJSONOutput, {})
+                text = await after_compaction.part(part)
+                if not text:
+                    return cast(SyncHookJSONOutput, {})
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "SessionStart",
+                            "additionalContext": text,
+                        }
+                    },
+                )
+
+            return hook
+
         async def subagent_start_hook(
             input_data: HookInput,
             tool_use_id: str | None,
@@ -498,7 +566,7 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        return {
+        hooks: dict[HookEvent, list[HookMatcher]] = {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -508,6 +576,20 @@ def create_security_hooks(
             "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
+        if context_after_compaction is not None:
+            # One callback per part: the CLI caps each callback's context on
+            # its own (``after_compaction.py``).
+            hooks[_SESSION_START_EVENT] = [
+                HookMatcher(
+                    matcher="compact",
+                    hooks=[
+                        session_start_hook(part)
+                        for part in range(AFTER_COMPACTION_MAX_PARTS)
+                    ],
+                    timeout=_AFTER_COMPACTION_HOOK_TIMEOUT_S,
+                )
+            ]
+        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

@@ -79,14 +79,9 @@ COMPACTION_TOOL_NAME = "context_compaction"
 # view_agent_output (wait_if_running), run_sub_session (wait_for_result),
 # get_sub_session_result (wait_if_running), and run_block (hard cap).
 #
-# Chosen so the stream idle timeout (2× this) always has headroom — a tool
-# that returns right at the cap can't race the idle watchdog.
+# Far below HUNG_TOOL_CAP_SECONDS, the SDK turn's watchdog for a pending
+# tool, so a tool that returns right at the cap never races it.
 MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
-
-# Idle-stream watchdog: abort the SDK stream if no meaningful event arrives
-# for this long. Derived from MAX_TOOL_WAIT_SECONDS so the invariant
-# "no tool blocks >= idle_timeout" holds by construction.
-STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
 
 # The SDK turn gives up on a tool that is still pending after this long, aborts
 # the stream and pauses the E2B box.

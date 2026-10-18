@@ -2,31 +2,40 @@
 
 import asyncio
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import claude_agent_sdk
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage
 from mcp.types import ListToolsRequest, ToolAnnotations
+from pydantic import SecretStr
 
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
+from backend.data.model import APIKeyCredentials
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
-    BASELINE_ONLY_MCP_TOOLS,
     BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    _warn_unknown_builtins,
     cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_copilot_tool_names,
+    get_sdk_builtin_tools,
+    get_sdk_declared_tools,
     get_sdk_disallowed_tools,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
@@ -775,15 +784,153 @@ class TestSDKDisallowedTools:
         assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
         assert tool in BLOCKED_TOOLS
 
-    def test_orchestrator_block_disallows_every_known_builtin(self):
-        # The orchestrator's model gets graph MCP tools only, so its blocklist
-        # must cover everything the copilot blocks *and* everything the
-        # copilot deliberately keeps (sub-agents, todo list, file search).
-        from backend.blocks.orchestrator import sdk_disallowed_tools
+    @pytest.mark.asyncio
+    async def test_orchestrator_block_declares_no_builtin(self):
+        # The orchestrator's model gets graph MCP tools only: ``tools=[]``
+        # declares no built-in, and its blocklist still covers every one
+        # the copilot knows, kept or blocked.
+        options = await _orchestrator_sdk_options()
 
-        blocked = set(sdk_disallowed_tools())
-        assert set(get_sdk_disallowed_tools(use_e2b=True)) <= blocked
-        assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= blocked
+        assert options.tools == []
+        assert set(get_sdk_builtin_tools()) <= set(options.disallowed_tools)
+        assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= set(
+            options.disallowed_tools
+        )
+
+
+class _RecordingClient:
+    """Stands in for ``ClaudeSDKClient``: records the options, runs nothing."""
+
+    built: list[ClaudeAgentOptions] = []
+
+    def __init__(self, options: ClaudeAgentOptions) -> None:
+        self.built.append(options)
+
+    async def __aenter__(self) -> "_RecordingClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def query(self, prompt: str) -> None:
+        return None
+
+    async def receive_response(self):
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="sess-1",
+        )
+
+
+async def _orchestrator_sdk_options() -> ClaudeAgentOptions:
+    input_data = MagicMock(sys_prompt="", prompt="hi")
+    input_data.model.value = "claude-test"
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+    _RecordingClient.built = []
+    with patch.object(claude_agent_sdk, "ClaudeSDKClient", _RecordingClient):
+        async for _ in OrchestratorBlock()._execute_tools_sdk_mode(
+            input_data=input_data,
+            credentials=credentials,
+            tool_functions=[],
+            prompt=[{"role": "user", "content": "hi"}],
+            execution_params=MagicMock(graph_exec_id="graph-exec-1"),
+            execution_processor=MagicMock(),
+        ):
+            pass
+    (options,) = _RecordingClient.built
+    return options
+
+
+# ---------------------------------------------------------------------------
+# get_copilot_tool_names / get_sdk_declared_tools — the built-in allow-list
+# ---------------------------------------------------------------------------
+
+
+def _builtins(names: list[str]) -> set[str]:
+    return {n for n in names if not n.startswith("mcp__")}
+
+
+class TestDeclaredBuiltinTools:
+    @pytest.mark.parametrize(
+        "use_e2b, expected",
+        [(False, ["Glob", "Grep", "TodoWrite"]), (True, ["TodoWrite"])],
+    )
+    def test_declares_exactly_the_builtins_a_session_may_call(
+        self, use_e2b: bool, expected: list[str]
+    ):
+        allowed = get_copilot_tool_names(use_e2b=use_e2b)
+        disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        assert sorted(get_sdk_declared_tools(allowed, disallowed)) == expected
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sub_agent_tool_is_off_by_default(self, use_e2b: bool):
+        allowed = get_copilot_tool_names(use_e2b=use_e2b)
+
+        assert not {"Agent", "Task"} & set(allowed)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", ["Agent", "Task"])
+    def test_extra_builtin_brings_back_the_sub_agent_tool(
+        self, use_e2b: bool, named: str
+    ):
+        allowed = get_copilot_tool_names(use_e2b=use_e2b, extra_builtins=[named])
+        declared = get_sdk_declared_tools(
+            allowed, get_sdk_disallowed_tools(use_e2b=use_e2b)
+        )
+
+        assert {"Agent", "Task"} <= set(allowed)
+        assert {"Agent", "Task"} <= set(declared)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_extra_builtin_cannot_lift_a_disallowed_tool(self, use_e2b: bool):
+        extra = ["Bash", "WebFetch", "Skill", "mcp__copilot__nope"]
+        if use_e2b:
+            extra.append("Glob")
+        allowed = get_copilot_tool_names(use_e2b=use_e2b, extra_builtins=extra)
+
+        assert _builtins(allowed) == _builtins(get_copilot_tool_names(use_e2b=use_e2b))
+        assert "mcp__copilot__nope" not in allowed
+
+    def test_extra_builtin_that_is_no_cli_tool_is_logged_once_and_ignored(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        _warn_unknown_builtins.cache_clear()
+
+        with caplog.at_level(logging.WARNING):
+            allowed = get_copilot_tool_names(extra_builtins=["agent", "Bogus"])
+            get_copilot_tool_names(extra_builtins=["agent", "Bogus"])
+
+        assert not {"agent", "Bogus"} & set(allowed)
+        assert [
+            r.getMessage()
+            for r in caplog.records
+            if "claude_agent_extra_builtin_tools" in r.getMessage()
+        ] == [
+            "claude_agent_extra_builtin_tools: agent, Bogus is not a Claude Code "
+            "built-in tool; ignored"
+        ]
+
+    def test_declared_tools_drop_mcp_and_disallowed_names(self):
+        declared = get_sdk_declared_tools(
+            ["mcp__copilot__find_capability", "Read", "Glob", "TodoWrite", "Glob"],
+            ["Read"],
+        )
+
+        assert declared == ["Glob", "TodoWrite"]
+
+    def test_orchestrator_inventory_keeps_the_sub_agent_tool(self):
+        assert {"Agent", "Task"} <= set(get_sdk_builtin_tools())
 
 
 # ---------------------------------------------------------------------------
@@ -1280,18 +1427,17 @@ class TestCreateCopilotMcpServerHidden:
             assert short in registered
 
     @pytest.mark.asyncio
-    async def test_baseline_only_tools_never_registered(self):
-        """Baseline-only MCP wrappers (TodoWrite) must not register on the
-        SDK server. They are excluded from ``allowed_tools`` (SDK mode uses
-        the CLI-native built-ins), so advertising them makes the model call
-        a tool the CLI can never approve — it answers "Claude requested
-        permissions to use mcp__copilot__TodoWrite, but you haven't granted
-        it yet" and the model silently abandons the checklist."""
-        assert "TodoWrite" in BASELINE_ONLY_MCP_TOOLS
+    async def test_no_mcp_checklist_shadows_the_cli_built_in(self):
+        """The checklist is the CLI's own ``TodoWrite``. An MCP wrapper of the
+        same name would be advertised to the model but never approved — it
+        answers "Claude requested permissions to use mcp__copilot__TodoWrite,
+        but you haven't granted it yet" and the model silently abandons the
+        checklist."""
+        assert "TodoWrite" not in TOOL_REGISTRY
         for use_e2b in (False, True):
             server = create_copilot_mcp_server(use_e2b=use_e2b)
             registered = await self._registered_tool_names(server)
-            assert not BASELINE_ONLY_MCP_TOOLS & registered
+            assert "TodoWrite" not in registered
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
@@ -1395,9 +1541,7 @@ class TestCreateCopilotMcpServerHidden:
         return {
             name
             for name, tool in TOOL_REGISTRY.items()
-            if name not in BASELINE_ONLY_MCP_TOOLS
-            and name not in DEFERRED_TOOL_NAMES
-            and tool.is_available
+            if name not in DEFERRED_TOOL_NAMES and tool.is_available
         }
 
     @staticmethod

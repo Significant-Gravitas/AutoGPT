@@ -14,13 +14,14 @@ from backend.copilot.transcript import (
     _messages_to_transcript,
     _run_compression,
     _transcript_to_messages,
+    compact_transcript,
+    validate_transcript,
 )
 from backend.util import json
 from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import _friendly_error_text, _is_prompt_too_long
-from .transcript import compact_transcript, validate_transcript
 
 # ---------------------------------------------------------------------------
 # _flatten_assistant_content
@@ -389,18 +390,14 @@ class TestCompactTranscript:
                 ("assistant", "Hi there"),
             ]
         )
-        mock_result = type(
-            "CompressResult",
-            (),
-            {
-                "was_compacted": False,
-                "messages": [],
-                "original_token_count": 100,
-                "token_count": 100,
-                "messages_summarized": 0,
-                "messages_dropped": 0,
-            },
-        )()
+        mock_result = CompressResult(
+            was_compacted=False,
+            messages=[],
+            original_token_count=100,
+            token_count=100,
+            messages_summarized=0,
+            messages_dropped=0,
+        )
         with patch(
             "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
@@ -424,18 +421,14 @@ class TestCompactTranscript:
             {"role": "user", "content": "[summary]"},
             {"role": "assistant", "content": "Summarized response"},
         ]
-        mock_result = type(
-            "CompressResult",
-            (),
-            {
-                "was_compacted": True,
-                "messages": compacted_msgs,
-                "original_token_count": 500,
-                "token_count": 100,
-                "messages_summarized": 2,
-                "messages_dropped": 0,
-            },
-        )()
+        mock_result = CompressResult(
+            was_compacted=True,
+            messages=compacted_msgs,
+            original_token_count=500,
+            token_count=100,
+            messages_summarized=2,
+            messages_dropped=0,
+        )
         with patch(
             "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,

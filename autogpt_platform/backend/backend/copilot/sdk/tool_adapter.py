@@ -5,6 +5,7 @@ into in-process MCP tools that can be used with the Claude Agent SDK.
 """
 
 import asyncio
+import functools
 import itertools
 import json
 import logging
@@ -948,18 +949,12 @@ def create_copilot_mcp_server(
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
-        # Baseline-only wrappers (TodoWrite) must not be registered here:
-        # SDK mode uses the CLI-native built-ins, and these names are
-        # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
-        # can never approve makes the model call it, receive a permission
-        # denial, and silently abandon the feature (e.g. the task checklist).
         # Deferred tools are reached through run_capability, not by name.
-        # ``is_available`` is the env check the baseline path applies in
-        # ``get_available_tools``; without it this engine offers browser
-        # tools on a box with no agent-browser binary.
+        # ``is_available`` is the env check ``get_available_tools`` applies;
+        # without it this engine offers browser tools on a box with no
+        # agent-browser binary.
         if (
             tool_name in hidden
-            or tool_name in BASELINE_ONLY_MCP_TOOLS
             or tool_name in DEFERRED_TOOL_NAMES
             or not base_tool.is_available
         ):
@@ -1091,17 +1086,21 @@ def create_copilot_mcp_server(
 # Security hooks validate that file paths stay within sdk_cwd.
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
-# Task/Agent allows spawning sub-agents (rate-limited by security hooks).
-#   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
-# WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
 # WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
 # ``mcp__copilot__web_search`` so cost tracking is unified across paths.
-_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "TodoWrite"]
+_SDK_BUILTIN_ALWAYS = ["TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
+
+# The CLI's sub-agent tool ("Task" before v2.x, "Agent" since).  Off by
+# default: its sub-agents get none of the copilot system prompt and their
+# cost is not counted.  ``run_sub_session`` is the copilot's own delegation
+# path.  An operator or eval arm turns it back on with
+# ``claude_agent_extra_builtin_tools``.
+SDK_SUBAGENT_TOOLS = ("Agent", "Task")
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
@@ -1132,6 +1131,16 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
 #   exposed lets the model promise unattended monitoring that silently never
 #   fires — `schedule_followup` is the primitive that actually persists.
+# ListAgents/SendMessage: reach other CLI sessions in the same pod.
+# NotebookEdit: writes files outside the MCP Write/Edit tools.
+# Skill: Claude Code's own skills; copilot skills go through read_skill.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.
+# EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
+# TaskStop: unused here, and permissions cannot name it, so filtered sessions
+#   would drop it anyway.
+# A built-in in neither this list nor _SDK_BUILTIN_* is not declared to the
+# model (see get_sdk_declared_tools) and is denied by security_hooks; this
+# list is the second layer for a built-in that is declared anyway.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1146,6 +1155,13 @@ SDK_DISALLOWED_TOOLS = [
     "CronDelete",
     "ListAgents",
     "SendMessage",
+    "NotebookEdit",
+    "Skill",
+    "Workflow",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
+    "TaskStop",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1160,15 +1176,9 @@ BLOCKED_TOOLS = {
 }
 
 # Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-# Read is included because the SDK reads back oversized tool results from
-# tool-results/ and tool-outputs/ directories.  It is also in
-# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
-# but the security hooks check workspace scope BEFORE the blocked list
-# so that these internal reads are permitted.
-# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
-WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
+# Read, Write and Edit are NOT included: they are disallowed built-ins, and
+# the MCP equivalents replace them.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
 
 # Dangerous patterns in tool inputs
 DANGEROUS_PATTERNS = [
@@ -1187,27 +1197,12 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
-# Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
-# Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
-# keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
-# there is no double exposure.  These names are both excluded from
-# ``allowed_tools`` (see ``_registry_mcp_tools``) AND skipped during MCP
-# server registration in ``create_copilot_mcp_server`` — filtering the
-# allowed list alone still advertises the tool to the model, which then
-# calls it and hits an unapprovable permission prompt.  Public (no leading
-# underscore) so a future refactor renaming it is visible at both call
-# sites — ``permissions.apply_tool_permissions`` maps short tool names back
-# to the CLI built-in form for SDK mode.
-BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
-
 
 def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
     return [
         f"{MCP_TOOL_PREFIX}{name}"
         for name in TOOL_REGISTRY.keys()
-        if name not in BASELINE_ONLY_MCP_TOOLS
-        and name not in DEFERRED_TOOL_NAMES
-        and name not in hidden
+        if name not in DEFERRED_TOOL_NAMES and name not in hidden
     ]
 
 
@@ -1223,19 +1218,111 @@ COPILOT_TOOL_NAMES = [
     *_SDK_BUILTIN_TOOLS,
 ]
 
+# AutoPilot's own tools by the bare name chat history stores them under:
+# ``response_adapter`` strips ``MCP_TOOL_PREFIX`` from what the SDK declares.
+_SDK_MCP_TOOL_SHORT_NAMES: frozenset[str] = frozenset(
+    [
+        *(
+            name.removeprefix(MCP_TOOL_PREFIX)
+            for name in COPILOT_TOOL_NAMES
+            if name.startswith(MCP_TOOL_PREFIX)
+        ),
+        *E2B_FILE_TOOL_NAMES,
+    ]
+)
+
+
+def sdk_declared_tool_name(name: str) -> str:
+    """The name the SDK declares a tool under, from the name history stores.
+
+    ``mcp__copilot__<name>`` for AutoPilot's own tools; a CLI built-in or any
+    other name is declared as it is stored.
+    """
+    if name in _SDK_MCP_TOOL_SHORT_NAMES:
+        return f"{MCP_TOOL_PREFIX}{name}"
+    return name
+
 
 def get_copilot_tool_names(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    extra_builtins: Iterable[str] = (),
 ) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
+
+    This is also the set the PreToolUse hook enforces and, through
+    :func:`get_sdk_declared_tools`, the source of ``tools``.
 
     When *use_e2b* is True the SDK built-in file tools are replaced by MCP
     equivalents that route to the E2B sandbox.  Tools belonging to any of
     *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
-    in ``backend.copilot.tools`` for the full list.
+    in ``backend.copilot.tools`` for the full list.  *extra_builtins* is
+    ``ChatConfig.claude_agent_extra_builtin_tools``: CLI built-ins an operator
+    turned back on (``Agent`` brings its ``Task`` alias); a name on the
+    disallowed list stays off.
     """
+    names = _base_copilot_tool_names(use_e2b=use_e2b, disabled_groups=disabled_groups)
+    blocked = set(get_sdk_disallowed_tools(use_e2b=use_e2b))
+    extra = [
+        name
+        for name in _with_subagent_alias(_known_builtins(extra_builtins))
+        if name not in blocked
+    ]
+    return list(dict.fromkeys([*names, *extra]))
+
+
+def _known_builtins(names: Iterable[str]) -> list[str]:
+    """*names* without those that are no Claude Code built-in, which the CLI
+    would ignore; they are logged once per process, so an operator's typo in
+    ``claude_agent_extra_builtin_tools`` shows up in the logs."""
+    known = set(get_sdk_builtin_tools())
+    names = list(names)
+    unknown = tuple(dict.fromkeys(name for name in names if name not in known))
+    if unknown:
+        _warn_unknown_builtins(unknown)
+    return [name for name in names if name in known]
+
+
+@functools.cache
+def _warn_unknown_builtins(unknown: tuple[str, ...]) -> None:
+    logger.warning(
+        "claude_agent_extra_builtin_tools: %s is not a Claude Code built-in "
+        "tool; ignored",
+        ", ".join(unknown),
+    )
+
+
+def get_sdk_declared_tools(
+    allowed: Iterable[str], disallowed: Iterable[str]
+) -> list[str]:
+    """Build the ``tools`` list for :class:`ClaudeAgentOptions`.
+
+    ``tools`` decides which CLI built-ins the model is shown at all:
+    ``allowed_tools`` only pre-approves and ``disallowed_tools`` only removes
+    names it knows, so without it every built-in a CLI release ships is
+    declared.  Deriving it from the session's *allowed* set, minus what
+    *disallowed* removes, declares exactly the built-ins the PreToolUse hook
+    lets through.  MCP tools are not affected by ``tools``.
+    """
+    removed = set(disallowed)
+    return [
+        name
+        for name in dict.fromkeys(allowed)
+        if not name.startswith("mcp__") and name not in removed
+    ]
+
+
+def _with_subagent_alias(names: Iterable[str]) -> list[str]:
+    names = list(names)
+    if any(name in SDK_SUBAGENT_TOOLS for name in names):
+        names.extend(SDK_SUBAGENT_TOOLS)
+    return list(dict.fromkeys(names))
+
+
+def _base_copilot_tool_names(
+    *, use_e2b: bool, disabled_groups: Iterable[ToolGroup]
+) -> list[str]:
     hidden_short_names = tool_names_in_groups(disabled_groups)
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
@@ -1273,4 +1360,6 @@ def get_sdk_builtin_tools() -> list[str]:
     its model graph MCP tools only — so a built-in that is new here (a CLI
     scheduler, say) is blocked there without a second, hand-synced edit.
     """
-    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS]))
+    return list(
+        dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS, *SDK_SUBAGENT_TOOLS])
+    )

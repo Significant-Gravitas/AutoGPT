@@ -6859,6 +6859,93 @@ async def test_a_routine_keeps_the_account_it_was_set_up_on(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_a_tainted_turn_made_stays_tainted_through_off_and_on(
+    server: SpinTestServer, test_user
+):
+    """Switched off, then on again by its owner in new words: the jobs it gets
+    each time start tainted, and the row the fire reads says so too."""
+    template = await _seed_template(name="Sweeper", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Inbox sweep",
+        prompt="Sweep the inbox.",
+        crons=["H 8 * * *"],
+        tainted=True,
+    )
+    assert created.tainted is True
+
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        await experts_db.enable_routine(test_user.id, hired.expert.id, created.id)
+        await experts_db.disable_routine(test_user.id, hired.expert.id, created.id)
+        reworded = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id, prompt="Sweep it daily."
+        )
+
+    stored = await experts_db.get_routine(created.id)
+    assert reworded.tainted is True
+    assert stored is not None and stored.tainted is True
+    jobs = scheduler.add_copilot_turn_schedule.await_args_list
+    assert [job.kwargs["tainted"] for job in jobs] == [True, True]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_owners_routine_and_its_jobs_stay_untainted(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Steady", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Morning triage",
+        prompt="Rank the overnight tickets.",
+        crons=["H 8 * * 1-5"],
+    )
+
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        enabled = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id
+        )
+
+    assert (created.tainted, enabled.tainted) == (False, False)
+    assert scheduler.add_copilot_turn_schedule.await_args.kwargs["tainted"] is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_switching_a_routine_on_in_a_tainted_turn_marks_it_for_good(
+    server: SpinTestServer, test_user
+):
+    """The owner switching it on again later does not clear the mark."""
+    template = await _seed_template(name="Marked", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Weekly digest",
+        prompt="Digest the week.",
+        crons=["H 9 * * 1"],
+    )
+
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        marked = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id, tainted=True
+        )
+        await experts_db.disable_routine(test_user.id, hired.expert.id, created.id)
+        again = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id
+        )
+
+    assert (created.tainted, marked.tainted, again.tainted) == (False, True, True)
+    jobs = scheduler.add_copilot_turn_schedule.await_args_list
+    assert [job.kwargs["tainted"] for job in jobs] == [True, True]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_routine_belongs_to_its_owner_only(
     server: SpinTestServer, test_user, other_user
 ):

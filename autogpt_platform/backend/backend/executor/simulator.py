@@ -45,41 +45,33 @@ from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.trial_cost_context import attributed_usage
-from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.json import strip_code_fence
 
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  The
-# choice is forced by three independent routing constraints; Flash-Lite
-# is the smallest enum member that satisfies all three:
+# Dry runs run on the platform route's own model, through its side-call
+# client (``get_platform_aux_client``), never an integration key. The route
+# picks the model (``ChatConfig.simulation_model``): Gemini 2.5 Flash-Lite on
+# OpenRouter, Claude Haiku on direct Anthropic, the standard tier on local.
+# A route without an API (a Claude login, disabled) cannot simulate.
 #
-# 1. **LLM-simulation path** (``_call_llm_for_simulation``) calls
-#    OpenRouter's OpenAI-compat endpoint with
-#    ``response_format=json_object`` and ``json.loads()`` the response.
-#    Claude via OR's OpenAI-compat wraps JSON in markdown code fences
-#    (```​``json\\n{...}\\n``​```) even when JSON mode is requested
-#    — ``json.loads`` trips on the leading backtick with
-#    ``Expecting value: line 1 column 1 (char 0)``.  Gemini emits raw JSON.
-# 2. **Orchestrator BUILT_IN dry-run path** (``llm.llm_call``) dispatches
-#    on ``llm_model.metadata.provider``, not credential type.  A Claude
-#    default would land in the Anthropic-Python-SDK branch against
-#    ``api.anthropic.com`` with the platform OR key → 401.  Gemini has
-#    ``metadata.provider == "open_router"`` so dispatch routes through
-#    the OpenRouter branch correctly.
-# 3. **Orchestrator EXTENDED_THINKING dry-run path** would impose
-#    ``model.value.startswith("claude")`` (orchestrator.py SDK guard) —
-#    Flash-Lite would fail that check, which is why we override
-#    ``execution_mode`` to BUILT_IN below regardless of user choice.
-#
-# Configurable via ``ChatConfig.simulation_model``
-# (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
-# constraints (1) and (2).
+# Claude wraps JSON in a Markdown fence even when JSON mode is requested,
+# so replies are unfenced before parsing. The orchestrator's BUILT_IN
+# dry run dispatches on ``llm_model.metadata.provider``, so it runs for
+# real only where that provider is the route's (see ``prepare_dry_run``).
 _DEFAULT_SIMULATOR_MODEL = LLMModel.GEMINI_2_5_FLASH_LITE.value
 
+_NO_PLATFORM_API = (
+    "[SIMULATOR ERROR — NOT A BLOCK FAILURE] Dry runs simulate blocks on the "
+    "platform's own model, and this platform route has none: a Claude "
+    "subscription (CHAT_PLATFORM_ROUTE=subscription) or a disabled route. "
+    "Choose an API route (openrouter, direct_anthropic or local) to simulate."
+)
+
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
-# the response usage object.  Same shape used by the baseline copilot service
-# and web_search tool — keep the three aligned.
+# the response usage object.  Same shape the web_search tool uses; keep the
+# two aligned.
 _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 
@@ -94,6 +86,13 @@ def _simulator_model() -> str:
         return chat_cfg.simulation_model or _DEFAULT_SIMULATOR_MODEL
     except Exception:
         return _DEFAULT_SIMULATOR_MODEL
+
+
+def _platform_client() -> "Any | None":
+    """The platform route's side-call client; None without an API."""
+    from backend.copilot.service import get_platform_aux_client  # noqa: PLC0415
+
+    return get_platform_aux_client()
 
 
 _TEMPERATURE = 0.2
@@ -162,8 +161,8 @@ async def _call_llm_for_simulation(
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
     Handles client acquisition, retries on invalid JSON, logging, and platform
-    cost tracking.  The dry-run simulator calls OpenRouter on the platform's
-    key rather than a user's own API credentials, so every successful call is
+    cost tracking.  The dry-run simulator calls the platform route's own model
+    rather than a user's own API credentials, so every successful call is
     recorded against the triggering ``user_id``'s rate-limit counter via
     ``persist_and_record_usage`` (same rails as every copilot turn).
 
@@ -173,41 +172,27 @@ async def _call_llm_for_simulation(
     anyway (a structurally imperfect simulation beats failing the dry run).
 
     Raises:
-        RuntimeError: If no LLM client is available.
+        RuntimeError: If the platform route has no API to simulate on.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
-    client = get_openai_client(prefer_openrouter=True)
+    client = _platform_client()
     if client is None:
-        raise RuntimeError(
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available. "
-            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
-            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
-            "docs/platform/copilot-local-llm.md."
-        )
+        raise RuntimeError(_NO_PLATFORM_API)
 
-    # ``_OPENROUTER_INCLUDE_USAGE_COST`` is OpenRouter-specific
-    # (``{"usage": {"include": True}}``). Cloud OpenAI ignores unknown
-    # body keys; stricter local OpenAI-compat backends (LiteLLM proxy
-    # with strict mode, some vLLM configs) reject them. Mirror the
-    # ``baseline/service.py`` policy: only send when actually routing
-    # through OpenRouter.
-    #
-    # Local backends govern their own context window at launch (e.g.
-    # OLLAMA_CONTEXT_LENGTH), so we send no per-request num_ctx hint —
-    # Ollama's OpenAI shim ignores ``options.num_ctx`` anyway.
-    from backend.copilot.sdk.env import config as chat_cfg
+    from backend.copilot.model_normalize import (  # noqa: PLC0415
+        normalize_model_for_transport,
+    )
+    from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
 
-    if chat_cfg.transport.name == "local":
-        extra_body: dict[str, Any] = {}
-    else:
-        # Shallow-copy the constant rather than sharing the reference — see
-        # the matching pattern in ``baseline/service.py`` and
-        # ``activity_status_generator.py``. Defends against intermediate
-        # layers ever mutating ``extra_body`` and corrupting the shared
-        # module-level dict for every future call.
-        extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
-
-    model = _simulator_model()
+    # ``_OPENROUTER_INCLUDE_USAGE_COST`` is OpenRouter-specific; Anthropic's
+    # OpenAI-compatible endpoint and stricter local backends reject unknown
+    # body keys, so only OpenRouter gets it (a copy, so nothing downstream
+    # can mutate the shared constant). Local backends govern their own
+    # context window at launch, so no per-request num_ctx hint either.
+    extra_body: dict[str, Any] = (
+        dict(_OPENROUTER_INCLUDE_USAGE_COST) if chat_cfg.aux_uses_openrouter else {}
+    )
+    model = normalize_model_for_transport(_simulator_model(), chat_cfg)
     last_error: Exception | None = None
     last_parsed: dict[str, Any] | None = None
     messages: list[ChatCompletionMessageParam] = [
@@ -226,7 +211,7 @@ async def _call_llm_for_simulation(
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
             raw = response.choices[0].message.content or ""
-            parsed = json.loads(raw)
+            parsed = json.loads(strip_code_fence(raw))
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
 
@@ -273,11 +258,7 @@ async def _call_llm_for_simulation(
                 usage=usage,
                 user_id=user_id,
                 model=model,
-                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
-                # non-local call physically hits OpenRouter regardless of the chat
-                # transport identity — label it accordingly (not ``cost_log_provider``,
-                # which would mislabel subscription / direct_anthropic as ``anthropic``).
-                provider=openrouter_helper_cost_provider(),
+                provider=chat_cfg.aux_provider_label,
             )
             return parsed
 
@@ -321,9 +302,8 @@ def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
     when the request body includes ``usage: {"include": True}``.  The typed
     ``CompletionUsage`` does not declare it, so we read it off ``model_extra``
     (pydantic v2's container for extras) to keep access fully typed — no
-    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``
-    and ``backend.copilot.baseline.service._extract_usage_cost``; keep the
-    three in sync.
+    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``;
+    keep the two in sync.
     """
     if usage is None:
         return None
@@ -474,13 +454,31 @@ Available output pins: {json.dumps(required_output_properties)}
 # ---------------------------------------------------------------------------
 
 
-def _get_platform_openrouter_key() -> str | None:
-    """Return the platform's OpenRouter API key, or None if unavailable."""
+def _platform_dry_run_key() -> tuple[str, str] | None:
+    """``(provider, key)`` the OrchestratorBlock's dry run executes on: the
+    platform route's own key on the route's provider, where the block's LLM
+    client reaches the route's URL (OpenRouter's or Anthropic's own). None
+    otherwise (a local server, a custom URL, a route without an API), and
+    the block is simulated instead."""
     try:
-        from backend.util.settings import Settings  # noqa: PLC0415
+        from backend.copilot.config import ANTHROPIC_API_URL  # noqa: PLC0415
+        from backend.copilot.route_table import OPENROUTER_ROOT_URL  # noqa: PLC0415
+        from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
+        from backend.integrations.providers import ProviderName  # noqa: PLC0415
 
-        key = Settings().secrets.open_router_api_key
-        return key if key else None
+        route = chat_cfg.platform_route
+        if route == "openrouter" and chat_cfg.openrouter_api_key:
+            own_url = chat_cfg.openrouter_base_url.rstrip("/") == OPENROUTER_ROOT_URL
+            key = chat_cfg.openrouter_api_key
+            provider = ProviderName.OPEN_ROUTER.value
+        elif route == "direct_anthropic" and chat_cfg.anthropic_api_key:
+            base = (chat_cfg.anthropic_base_url or ANTHROPIC_API_URL).rstrip("/")
+            own_url = base == ANTHROPIC_API_URL
+            key = chat_cfg.anthropic_api_key
+            provider = ProviderName.ANTHROPIC.value
+        else:
+            return None
+        return (provider, key) if own_url else None
     except Exception:
         return None
 
@@ -492,22 +490,23 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
     for real with cheap settings, or ``None`` when the block should be
     LLM-simulated instead.
 
-    - **OrchestratorBlock** executes for real with the platform's simulation
-      model (iterations capped to 1).  Uses the platform OpenRouter key so no
-      user credentials are needed.  Falls back to LLM simulation if the
-      platform key is unavailable.
+    - **OrchestratorBlock** executes for real with the platform route's
+      simulation model and own key, so no user credentials are needed
+      (``_platform_dry_run_key``).  Falls back to LLM simulation where the
+      route cannot run it.
     - **AgentExecutorBlock** executes for real so it can spawn a child graph
       execution.  The child graph inherits ``dry_run=True`` and its blocks
       are simulated.  No credentials are needed.
     """
     if isinstance(block, OrchestratorBlock):
-        or_key = _get_platform_openrouter_key()
-        if not or_key:
+        platform_key = _platform_dry_run_key()
+        if platform_key is None:
             logger.info(
-                "Dry-run: no platform OpenRouter key, "
-                "falling back to LLM simulation for OrchestratorBlock"
+                "Dry-run: the platform route cannot run OrchestratorBlock, "
+                "falling back to LLM simulation"
             )
             return None
+        dry_run_provider, dry_run_key = platform_key
 
         # Dry-run iteration cap: platform pays for simulation tokens, but
         # capping at 1 starves multi-role orchestration patterns (e.g.
@@ -539,7 +538,7 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # accepts both the snapshot and the OR slug.
         #
         # Fall back to the default if the configured override is malformed
-        # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
+        # or unmapped — a model the enum does not know (a local tier)
         # shouldn't take out every dry-run.  The default is asserted as
         # ``LLMModel``-parseable by ``TestDefaultSimulatorModel``, so the
         # fallback ``LLMModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
@@ -562,29 +561,19 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # manager.py using _dry_run_api_key.
         #
         # Force ``execution_mode = BUILT_IN`` for the dry-run, regardless
-        # of what the user picked.  With Flash-Lite as the sim model:
-        #
-        #   - BUILT_IN routes ``llm.llm_call`` to the open_router branch
-        #     (dispatch on ``metadata.provider``) → OpenAI SDK against
-        #     openrouter.ai with the platform OR key → works.
-        #   - EXTENDED_THINKING would hit the SDK subprocess's
-        #     ``model.value.startswith("claude")`` guard
-        #     (orchestrator.py) and ``ValueError`` immediately — Flash-Lite
-        #     is not Claude.
-        #
-        # Honouring the user's pick of EXTENDED_THINKING would force the
-        # sim model back to Claude (Haiku, etc.), which then trips the
-        # JSON-mode markdown-wrap on the LLM-simulation path for every
-        # *other* block in the same graph.  BUILT_IN sidesteps every
-        # path-specific quirk by staying on the simpler OpenAI-SDK-
-        # with-tool-calling route — the actual purpose of dry-run is a
-        # smoke check, not a perfect mirror of EXTENDED_THINKING.
+        # of what the user picked: BUILT_IN routes ``llm.llm_call`` by the
+        # model's ``metadata.provider`` — Flash-Lite to OpenRouter, Haiku to
+        # Anthropic, each on the route's own key — while EXTENDED_THINKING
+        # would start the SDK subprocess, which takes Claude models only.
+        # The purpose of dry-run is a smoke check, not a perfect mirror of
+        # EXTENDED_THINKING.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
             "execution_mode": ExecutionMode.BUILT_IN.value,
-            "_dry_run_api_key": or_key,
+            "_dry_run_api_key": dry_run_key,
+            "_dry_run_provider": dry_run_provider,
         }
 
     if isinstance(block, AgentExecutorBlock):
@@ -598,10 +587,11 @@ def get_dry_run_credentials(
 ) -> Any | None:
     """Build an ``APIKeyCredentials`` for dry-run OrchestratorBlock execution.
 
-    Returns credentials using the platform's OpenRouter key (injected by
-    ``prepare_dry_run``), or ``None`` if not a dry-run override.
+    Returns credentials using the platform route's key and provider
+    (injected by ``prepare_dry_run``), or ``None`` if not a dry-run override.
     """
     api_key = input_data.pop("_dry_run_api_key", None)
+    provider = input_data.pop("_dry_run_provider", None)
     if not api_key:
         return None
 
@@ -611,7 +601,7 @@ def get_dry_run_credentials(
 
         return APIKeyCredentials(
             id="dry-run-platform",
-            provider=ProviderName.OPEN_ROUTER,
+            provider=ProviderName(provider or ProviderName.OPEN_ROUTER.value),
             api_key=api_key,
             title="Dry-run simulation",
             expires_at=None,

@@ -20,7 +20,6 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel
-from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
     ModelMode,
@@ -63,14 +62,13 @@ class ProviderTiersResponse(BaseModel):
 
 
 async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
-    """What every provider's tiers resolve to for this user's engine.
+    """What every provider's tiers resolve to for this user.
 
-    User-scoped only because the engine is: which models a tier maps to
-    depends on whether the turn will run on the SDK path. It says nothing
-    about whether the user may use either provider.
+    User-scoped because per-user flag targeting can move a tier's model.
+    It says nothing about whether the user may use either provider.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
+    mode: ModelMode = "thinking"
     platform = await platform_tier_models(mode, user_id, config)
     codex = codex_tier_models(mode)
     return [
@@ -85,21 +83,6 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
             tiers=_as_tiers(codex),
         ),
     ]
-
-
-async def resolve_engine_mode(user_id: str, config: ChatConfig) -> ModelMode:
-    """One engine decision per response.
-
-    It is a property of the deployment and the user, not of which connection
-    they pick, so it is resolved once rather than per provider.
-    """
-    use_sdk = await resolve_use_sdk(
-        user_id,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    return "thinking" if use_sdk else "fast"
 
 
 async def platform_tier_models(

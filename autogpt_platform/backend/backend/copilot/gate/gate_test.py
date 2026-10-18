@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.gate import (
     RUN_FILES_KEY,
     active_mode,
@@ -472,7 +473,11 @@ async def test_a_rule_set_on_a_bare_tool_card_decides_its_next_call(
 async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     gate_on, clean_session_state
 ):
-    from backend.copilot.service import inject_user_context
+    from backend.copilot.service import (
+        SKILLS_CONTEXT_TAG,
+        inject_context_blocks,
+        injected_context_blocks,
+    )
     from backend.data.understanding import BusinessUnderstanding
 
     words = "Hey Otto, I need a programmer to work on the AutoGPT platform"
@@ -486,14 +491,19 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
         business_name="AutoGPT",
         pain_points=["Shipping features fast"],
     )
-    await inject_user_context(
-        understanding,
+    await inject_context_blocks(
+        await injected_context_blocks(
+            understanding,
+            env_ctx="/home/user",
+            session_ctx="session_id: session-1",
+            skills=ContextBlock(
+                tag=SKILLS_CONTEXT_TAG, head="- skill: " + "summarise a document. " * 60
+            ),
+            kickoff_turn=False,
+        ),
         words,
         "session-1",
         session.messages,
-        env_ctx="/home/user",
-        session_ctx="session_id: session-1",
-        skills_ctx="- skill: " + "summarise a document. " * 60,
     )
     assert session.messages[-1].content.startswith("<available_skills>")
 

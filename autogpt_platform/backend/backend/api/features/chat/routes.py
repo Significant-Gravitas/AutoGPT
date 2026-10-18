@@ -1211,6 +1211,18 @@ async def change_session_connection_route(
             status_code=422,
             detail=f"{auth_provider}_credential_required",
         )
+    # A builder chat runs on the platform route only, as when it was created.
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    if session.metadata.builder_graph_id is not None and auth_provider != "platform":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{auth_provider}_builder_session_unsupported",
+        )
 
     transports = await get_chat_transports(user_id)
     target = next(

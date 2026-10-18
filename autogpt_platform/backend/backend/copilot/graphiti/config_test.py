@@ -10,14 +10,13 @@ _ENV_VARS_TO_CLEAR = (
     "GRAPHITI_FALKORDB_HOST",
     "GRAPHITI_FALKORDB_PORT",
     "GRAPHITI_FALKORDB_PASSWORD",
-    "CHAT_API_KEY",
+    "CHAT_OPENROUTER_API_KEY",
     "CHAT_OPENAI_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
-    "CHAT_USE_LOCAL",
-    "CHAT_USE_OPENROUTER",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_BASE_URL",
+    "CHAT_PLATFORM_ROUTE",
+    "CHAT_LOCAL_BASE_URL",
+    "CHAT_LOCAL_API_KEY",
     "GRAPHITI_LLM_MODEL",
     "GRAPHITI_RERANKER_MODEL",
     "GRAPHITI_EMBEDDER_MODEL",
@@ -35,7 +34,7 @@ def _patch_chat_cfg(monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig) -> None:
 
     GraphitiConfig resolvers lazy-import ``chat_cfg`` inside
     ``_chat_local_fallback``; patching the module attribute is the
-    cleanest way to pin a specific transport per test.
+    cleanest way to pin a specific route per test.
     """
     from backend.copilot.sdk import env
 
@@ -43,10 +42,18 @@ def _patch_chat_cfg(monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig) -> None:
 
 
 def _local_chat_cfg(
-    api_key: str = "ollama-placeholder",
+    api_key: str | None = "ollama-placeholder",
     base_url: str = "http://localhost:11434/v1",
 ) -> ChatConfig:
-    return ChatConfig(use_local=True, api_key=api_key, base_url=base_url)
+    return ChatConfig(
+        platform_route="local",
+        local_api_key=api_key,
+        local_base_url=base_url,
+        local_adapter="openai_chat",
+        local_context_tokens=131_072,
+        standard_model="llama3.1:8b",
+        advanced_model="llama3.1:8b",
+    )
 
 
 def test_graphiti_config_reads_backend_env_defaults() -> None:
@@ -61,10 +68,10 @@ class TestResolveLlmApiKey:
         cfg = GraphitiConfig(llm_api_key="my-llm-key")
         assert cfg.resolve_llm_api_key() == "my-llm-key"
 
-    def test_falls_back_to_chat_api_key_first(
+    def test_falls_back_to_the_chat_openrouter_key_first(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("CHAT_API_KEY", "autopilot-key")
+        monkeypatch.setenv("CHAT_OPENROUTER_API_KEY", "autopilot-key")
         monkeypatch.setenv("OPEN_ROUTER_API_KEY", "platform-key")
         cfg = GraphitiConfig(llm_api_key="")
         assert cfg.resolve_llm_api_key() == "autopilot-key"
@@ -80,12 +87,12 @@ class TestResolveLlmApiKey:
         cfg = GraphitiConfig(llm_api_key="")
         assert cfg.resolve_llm_api_key() == ""
 
-    def test_inherits_chat_api_key_under_local_transport(
+    def test_inherits_the_local_key_on_the_local_route(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Under ``CHAT_USE_LOCAL=true`` with no graphiti override and
-        no cloud key, the resolver falls through to the chat-config
-        placeholder so the Ollama backend gets a non-empty bearer."""
+        """On ``CHAT_PLATFORM_ROUTE=local`` with no graphiti override and
+        no cloud key, the resolver falls through to the local server's
+        key so the Ollama backend gets a non-empty bearer."""
         _patch_chat_cfg(monkeypatch, _local_chat_cfg(api_key="ollama-x"))
         cfg = GraphitiConfig(llm_api_key="")
         assert cfg.resolve_llm_api_key() == "ollama-x"
@@ -93,11 +100,11 @@ class TestResolveLlmApiKey:
     def test_cloud_key_still_wins_over_local_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``CHAT_API_KEY`` (the Otto-dedicated cloud key)
-        beats the local fallback — covers the mixed-mode case where
+        """``CHAT_OPENROUTER_API_KEY`` (the Otto-dedicated cloud key)
+        beats the local fallback â€” covers the mixed-mode case where
         an operator switched the chat layer to local but left a
         cloud key around."""
-        monkeypatch.setenv("CHAT_API_KEY", "autopilot-cloud-key")
+        monkeypatch.setenv("CHAT_OPENROUTER_API_KEY", "autopilot-cloud-key")
         _patch_chat_cfg(monkeypatch, _local_chat_cfg(api_key="ollama-x"))
         cfg = GraphitiConfig(llm_api_key="")
         assert cfg.resolve_llm_api_key() == "autopilot-cloud-key"
@@ -113,12 +120,12 @@ class TestResolveLlmBaseUrl:
         result = cfg.resolve_llm_base_url()
         assert result == "https://openrouter.ai/api/v1"
 
-    def test_inherits_chat_base_url_under_local_transport(
+    def test_inherits_chat_base_url_on_the_local_route(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Under local transport, graphiti's entity extraction must
-        hit the same Ollama (or vLLM, …) endpoint as the chat layer
-        — not the OpenRouter default. Otherwise the per-turn graphiti
+        hit the same Ollama (or vLLM, â€¦) endpoint as the chat layer
+        â€” not the OpenRouter default. Otherwise the per-turn graphiti
         ingest 401s against a placeholder key."""
         _patch_chat_cfg(
             monkeypatch,
@@ -152,7 +159,7 @@ class TestResolveEmbedderApiKey:
         cfg = GraphitiConfig(embedder_api_key="")
         assert cfg.resolve_embedder_api_key() == ""
 
-    def test_inherits_chat_api_key_under_local_transport(
+    def test_inherits_chat_api_key_on_the_local_route(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg(api_key="ollama-y"))
@@ -169,12 +176,12 @@ class TestResolveEmbedderBaseUrl:
         cfg = GraphitiConfig(embedder_base_url="")
         assert cfg.resolve_embedder_base_url() is None
 
-    def test_inherits_chat_base_url_under_local_transport(
+    def test_inherits_chat_base_url_on_the_local_route(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Local transport directs embeddings to the same self-hosted
         backend. Operators still need to pull an embedding-capable
-        model into Ollama (e.g. ``nomic-embed-text``) — covered in
+        model into Ollama (e.g. ``nomic-embed-text``) â€” covered in
         docs/platform/copilot-local-llm.md."""
         _patch_chat_cfg(
             monkeypatch,
@@ -186,7 +193,7 @@ class TestResolveEmbedderBaseUrl:
 
 class TestApplyLocalGraphitiModels:
     """``_apply_local_graphiti_models`` rewires cloud model defaults
-    to local-friendly slugs under ``CHAT_USE_LOCAL=true`` so a fresh
+    to local-friendly slugs on ``CHAT_PLATFORM_ROUTE=local`` so a fresh
     install of AutoGPT + Ollama works end-to-end without setting a
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
@@ -199,19 +206,19 @@ class TestApplyLocalGraphitiModels:
         if reranker_override is not None:
             monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", reranker_override)
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
+        # llm_model: gpt-4.1-mini â†’ Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
         assert cfg.reranker_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
-        # embedder: text-embedding-3-small → nomic-embed-text
+        # embedder: text-embedding-3-small â†’ nomic-embed-text
         assert cfg.embedder_model == "nomic-embed-text"
 
     def test_operator_override_passes_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Operators with custom Ollama tags (``qwen3:8b``,
-        ``hf.co/...``) keep their override — the validator only
+        ``hf.co/...``) keep their override â€” the validator only
         rewrites *literal* cloud defaults."""
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         monkeypatch.setenv("GRAPHITI_LLM_MODEL", "qwen3:8b")
@@ -226,15 +233,11 @@ class TestApplyLocalGraphitiModels:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenRouter / direct-Anthropic transports leave the cloud
-        defaults alone — graphiti's ``gpt-4.1-mini`` stays put for
+        defaults alone â€” graphiti's ``gpt-4.1-mini`` stays put for
         anyone who isn't on a self-hosted backend."""
         _patch_chat_cfg(
             monkeypatch,
-            ChatConfig(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
+            ChatConfig(platform_route="openrouter", openrouter_api_key="or-key"),
         )
         cfg = GraphitiConfig()
         assert cfg.llm_model == "gpt-4.1-mini"
@@ -246,11 +249,7 @@ class TestApplyLocalGraphitiModels:
     ) -> None:
         _patch_chat_cfg(
             monkeypatch,
-            ChatConfig(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
+            ChatConfig(platform_route="openrouter", openrouter_api_key="or-key"),
         )
         monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "gpt-5.6-luna")
         cfg = GraphitiConfig()

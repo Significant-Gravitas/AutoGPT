@@ -10,22 +10,25 @@ charged. Each turn must charge the user's spend counters and the turn tree
 once, for the turn's own calls, and write one cost-log row whose tokens are
 the provider's.
 
-The SDK scenarios run the bundled Claude Code CLI, so they skip where there is
-none (the Windows wheel ships without one); CI runs them on Linux.
+The SDK scenarios run the pinned Claude Code CLI (``CLAUDE_AGENT_CLI_PATH``,
+else the one bundled with the SDK), so they skip where there is none (the
+Windows wheel ships without one); CI runs them on Linux. Each checks the
+provider saw that binary's own version.
 """
 
 from pathlib import Path
 
 import pytest
 
-from backend.copilot.baseline import service as baseline_service
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
-from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
+from backend.copilot.sdk.cli_openrouter_compat_test import (
+    _resolve_cli_path,
+    assert_pinned_cli,
+)
 
 from .audit import audit_thread
-from .baseline_turns import BaselineTurns
 from .ledger import PlatformLedger
 from .m365_turns import MICROSOFT_365_CREDENTIAL_ID, Microsoft365Turns
 from .provider import FakeProvider
@@ -73,6 +76,9 @@ async def test_each_turn_is_charged_what_its_provider_billed(
     findings = audit_thread(
         scenario, provider, ledger, session, usage_by_turn, cli_resumed, metered
     )
+    cli_path = _resolve_cli_path()
+    if scenario.needs_cli and not scenario.through_gateway and cli_path is not None:
+        assert_pinned_cli(provider.user_agents, cli_path)
     gap = scenario.known_gap
     unexplained = [f.message for f in findings if gap is None or f.check != gap.check]
     assert not unexplained, "\n".join(unexplained)
@@ -88,16 +94,9 @@ def _turn_runner(
     provider: FakeProvider,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> SdkTurns | BaselineTurns | Microsoft365Turns:
+) -> SdkTurns | Microsoft365Turns:
     if scenario.engine == "microsoft_365":
         return Microsoft365Turns(monkeypatch, provider)
-    if scenario.engine == "baseline":
-        return BaselineTurns(
-            monkeypatch,
-            _config(baseline_service.config, scenario, provider),
-            base_url=f"{provider.url}{scenario.client_path}",
-            model=scenario.model,
-        )
     return SdkTurns(
         tmp_path,
         monkeypatch,
@@ -115,16 +114,14 @@ def _config(base: ChatConfig, scenario: Scenario, provider: FakeProvider) -> Cha
     }
     # Pinned so the deployment's own settings cannot change the path a
     # scenario takes; each scenario overrides what it is about.
+    cli_path = _resolve_cli_path()
     return base.model_copy(
         update={
-            "use_local": False,
-            "use_claude_code_subscription": False,
+            "platform_route": "disabled",
             "use_e2b_sandbox": False,
-            "claude_agent_fallback_model": None,
-            "claude_agent_cli_path": None,
-            "claude_agent_use_resume": True,
+            # The pinned binary, never whichever ``claude`` is on PATH.
+            "claude_agent_cli_path": str(cli_path) if cli_path else None,
             "claude_agent_max_transient_retries": 3,
-            "sdk_reconcile_openrouter_cost": True,
             **overrides,
         }
     )

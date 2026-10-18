@@ -1,12 +1,15 @@
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.copilot.model_router import resolve_codex_model_route
+from backend.copilot.model_router import (
+    _resolved_codex_model,
+    resolve_codex_model_route,
+)
 from backend.data.llm_registry import registry
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
-from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.codex.transport import CodexCredentialLease
 
 
 @pytest.fixture(scope="session", name="server")
@@ -26,6 +29,8 @@ def _model(
     hidden: bool = False,
     default_effort: CodexReasoningEffort = "medium",
     efforts: list[CodexReasoningEffort] | None = None,
+    context_window: int | None = None,
+    auto_compact_token_limit: int | None = None,
 ) -> CodexModelInfo:
     return CodexModelInfo(
         model=model,
@@ -35,11 +40,13 @@ def _model(
         default_reasoning_effort=default_effort,
         supported_reasoning_efforts=efforts or ["low", "medium", "high", "xhigh"],
         input_modalities=["text"],
+        context_window=context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
     )
 
 
-def _lease() -> CredentialLease:
-    return cast(CredentialLease, object())
+def _lease(models: list[CodexModelInfo]) -> CodexCredentialLease:
+    return cast(CodexCredentialLease, MagicMock(models=AsyncMock(return_value=models)))
 
 
 @pytest.fixture
@@ -60,28 +67,15 @@ def catalog_state():
     ) = old
 
 
-def _transport(monkeypatch, models: list[CodexModelInfo]):
-    transport = AsyncMock()
-    transport.models.return_value = models
-    monkeypatch.setattr(
-        "backend.copilot.model_router.get_codex_transport",
-        lambda: transport,
-    )
-    return transport
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "mode,tier,expected_model,expected_effort",
     [
-        ("fast", "standard", "gpt-6-luna", "low"),
-        ("fast", "advanced", "gpt-6-astra", "medium"),
         ("thinking", "standard", "gpt-5.6-terra", "high"),
         ("thinking", "advanced", "gpt-6-astra", "xhigh"),
     ],
 )
 async def test_catalog_cells_select_latest_advertised_model(
-    monkeypatch,
     catalog_state,
     mode,
     tier,
@@ -94,8 +88,8 @@ async def test_catalog_cells_select_latest_advertised_model(
         _model("gpt-5.6-sol", default=True),
         _model("gpt-6-astra"),
     ]
-    transport = _transport(monkeypatch, models)
-    lease = _lease()
+    advertised = AsyncMock(return_value=models)
+    lease = cast(CodexCredentialLease, MagicMock(models=advertised))
 
     resolved = await resolve_codex_model_route(
         mode,
@@ -103,17 +97,15 @@ async def test_catalog_cells_select_latest_advertised_model(
         lease,
     )
 
-    assert resolved == (expected_model, expected_effort, "catalog")
-    transport.models.assert_awaited_once_with(lease)
+    assert resolved[:3] == (expected_model, expected_effort, "catalog")
+    advertised.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
 async def test_unavailable_catalog_model_uses_visible_account_default(
-    monkeypatch,
     catalog_state,
 ):
-    _transport(
-        monkeypatch,
+    lease = _lease(
         [
             _model("codex-auto-review", hidden=True),
             _model(
@@ -128,16 +120,15 @@ async def test_unavailable_catalog_model_uses_visible_account_default(
     resolved = await resolve_codex_model_route(
         "thinking",
         "advanced",
-        _lease(),
+        lease,
     )
 
-    assert resolved == ("gpt-5.4", "low", "account_default")
+    assert resolved[:3] == ("gpt-5.4", "low", "account_default")
 
 
 @pytest.mark.asyncio
-async def test_no_default_uses_first_visible_account_model(monkeypatch, catalog_state):
-    _transport(
-        monkeypatch,
+async def test_no_default_uses_first_visible_account_model(catalog_state):
+    lease = _lease(
         [
             _model("codex-auto-review", hidden=True),
             _model("gpt-5.2", efforts=["medium"]),
@@ -145,35 +136,34 @@ async def test_no_default_uses_first_visible_account_model(monkeypatch, catalog_
     )
 
     resolved = await resolve_codex_model_route(
-        "fast",
+        "thinking",
         "standard",
-        _lease(),
+        lease,
     )
 
-    assert resolved == ("gpt-5.2", "medium", "account_available")
+    assert resolved[:3] == ("gpt-5.2", "medium", "account_available")
 
 
 @pytest.mark.asyncio
-async def test_empty_visible_catalog_fails_closed(monkeypatch, catalog_state):
-    _transport(monkeypatch, [_model("codex-auto-review", hidden=True, default=True)])
+async def test_empty_visible_catalog_fails_closed(catalog_state):
+    lease = _lease([_model("codex-auto-review", hidden=True, default=True)])
 
     with pytest.raises(RuntimeError, match="codex_model_unavailable"):
         await resolve_codex_model_route(
-            "fast",
+            "thinking",
             "standard",
-            _lease(),
+            lease,
         )
 
 
 @pytest.mark.asyncio
-async def test_disabled_account_default_is_not_used(monkeypatch, catalog_state):
+async def test_disabled_account_default_is_not_used(catalog_state):
     disabled = registry._dynamic_models["gpt-5.4-2026-03-05"].model_copy(
         update={"is_enabled": False}
     )
     registry._dynamic_models["gpt-5.4-2026-03-05"] = disabled
     registry._date_stripped_models["gpt-5.4"] = disabled
-    _transport(
-        monkeypatch,
+    lease = _lease(
         [
             _model("gpt-5.4", default=True),
             _model("gpt-5.2", efforts=["medium"]),
@@ -181,9 +171,25 @@ async def test_disabled_account_default_is_not_used(monkeypatch, catalog_state):
     )
 
     resolved = await resolve_codex_model_route(
-        "fast",
+        "thinking",
         "standard",
-        _lease(),
+        lease,
     )
 
-    assert resolved == ("gpt-5.2", "medium", "account_available")
+    assert resolved[:3] == ("gpt-5.2", "medium", "account_available")
+
+
+def test_resolved_model_carries_the_account_window() -> None:
+    info = _model(
+        "gpt-6-astra", context_window=272_000, auto_compact_token_limit=244_800
+    )
+    resolved = _resolved_codex_model(info, "thinking", "advanced", "catalog")
+    assert (resolved.model, resolved.effort, resolved.source)[0] == "gpt-6-astra"
+    assert resolved.context_window == 272_000
+    assert resolved.auto_compact_token_limit == 244_800
+    assert (
+        _resolved_codex_model(
+            _model("gpt-6-astra"), "thinking", "advanced", "catalog"
+        ).context_window
+        is None
+    )

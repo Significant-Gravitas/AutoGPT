@@ -52,7 +52,6 @@ from .response_model import (
     StreamFinishStep,
     StreamFollowUpQueued,
     StreamHeartbeat,
-    StreamModeChanged,
     StreamPendingDrained,
     StreamProviderFailure,
     StreamReasoningDelta,
@@ -115,9 +114,6 @@ def _stream_entries(
         entries.append((_as_text(stream), decoded))
     return entries
 
-
-# Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
-_local_sessions: dict[str, asyncio.Task] = {}
 
 # Track listener tasks per subscriber queue for cleanup
 # Maps queue id() to (session_id, asyncio.Task) for proper cleanup on unsubscribe
@@ -1141,9 +1137,6 @@ async def mark_session_completed(
         )
     await _trim_to_last_checkpoint(redis, turn_id)
 
-    # Clean up local session reference if exists
-    _local_sessions.pop(session_id, None)
-
     # Publish copilot completion notification via WebSocket
     if meta:
         parsed = _parse_session_meta(meta, session_id)
@@ -1216,39 +1209,6 @@ async def get_session(session_id: str) -> ActiveSession | None:
         return None
 
     return _parse_session_meta(meta, session_id)
-
-
-async def get_session_with_expiry_info(
-    session_id: str,
-) -> tuple[ActiveSession | None, str | None]:
-    """Get a session by its ID with expiration detection.
-
-    Returns (session, error_code) where error_code is:
-    - None if session found
-    - "SESSION_EXPIRED" if stream exists but metadata is gone (TTL expired)
-    - "SESSION_NOT_FOUND" if neither exists
-
-    Args:
-        session_id: Session ID to look up
-
-    Returns:
-        Tuple of (ActiveSession or None, error_code or None)
-    """
-    redis = await get_redis_async()
-    meta_key = _get_session_meta_key(session_id)
-
-    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-
-    if not meta:
-        # Metadata expired — we can't resolve turn_id, so check using
-        # session_id as a best-effort fallback for the stream key.
-        stream_key = _get_turn_stream_key(session_id)
-        stream_len = await redis.xlen(stream_key)
-        if stream_len > 0:
-            return None, "SESSION_EXPIRED"
-        return None, "SESSION_NOT_FOUND"
-
-    return _parse_session_meta(meta, session_id), None
 
 
 async def get_active_session(
@@ -1354,7 +1314,6 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
     ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
-    ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.TURN_PAUSED.value: StreamTurnPaused,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
@@ -1383,18 +1342,6 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     except Exception as e:
         logger.warning(f"Failed to reconstruct chunk of type {chunk_type}: {e}")
         return None
-
-
-async def set_session_asyncio_task(session_id: str, asyncio_task: asyncio.Task) -> None:
-    """Track the asyncio.Task for a session (local reference only).
-
-    This is just for cleanup purposes - the session state is in Redis.
-
-    Args:
-        session_id: Session ID
-        asyncio_task: The asyncio Task to track
-    """
-    _local_sessions[session_id] = asyncio_task
 
 
 async def unsubscribe_from_session(

@@ -9,6 +9,7 @@
 import logging
 import time
 from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -26,6 +27,7 @@ from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.copilot.tree import (
     SpawnRequest,
     TreeRefusal,
@@ -273,6 +275,18 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    fired_at: datetime | None = None
+    """When the scheduler dispatched the turn. ``None`` for entries queued
+    before the field existed."""
+
+    def prompt_origin(self) -> PromptOrigin:
+        """The stamp the turn's prompt row carries."""
+        return PromptOrigin(
+            kind="scheduled_routine" if self.routine_id else "scheduled_followup",
+            schedule_id=self.schedule_id,
+            routine_id=self.routine_id,
+            fired_at=self.fired_at,
+        )
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -342,6 +356,16 @@ class CoPilotExecutionEntry(BaseModel):
     turn. Marks the turn's LLM analytics rather than dropping them; see
     ``llm_attribution.set_turn_impersonated``."""
 
+    voice: bool = False
+    """The user spoke this turn's message (voice mode). The engine adds the
+    platform's ``<voice_turn>`` instruction to what the model reads; the
+    stored row keeps the user's words."""
+
+    from_chat_platform: bool = False
+    """The prompt was written on a linked chat platform, by someone who need not
+    be the account owner: the executor taints the turn whatever the chat's
+    own record says (``SessionKind.from_chat_platform``)."""
+
     credential_pins: CredentialPins = Field(default_factory=dict)
     """``{provider: pin}``: the accounts the schedule that fired this turn was
     set up to run on. They win over the chat's own picks, and a pinned account
@@ -376,6 +400,13 @@ class CoPilotExecutionEntry(BaseModel):
     enqueued_at: float = 0.0
     """Unix-epoch seconds when the turn was published, for its queue wait."""
 
+    def row_metadata(self) -> dict[str, Any] | None:
+        """Metadata for the prompt row the engine writes: ``message_metadata``,
+        plus the schedule's stamp when the scheduler fired this turn."""
+        if self.scheduled is None:
+            return self.message_metadata
+        return with_prompt_origin(self.message_metadata, self.scheduled.prompt_origin())
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -407,6 +438,8 @@ async def enqueue_copilot_turn(
     envelope: TurnEnvelope,
     unattended: bool = False,
     impersonated: bool = False,
+    voice: bool = False,
+    from_chat_platform: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     tool_name: str | None = None,
@@ -433,7 +466,6 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
         permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
@@ -459,6 +491,8 @@ async def enqueue_copilot_turn(
         envelope=envelope,
         unattended=unattended,
         impersonated=impersonated,
+        voice=voice,
+        from_chat_platform=from_chat_platform,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
         trace_headers=(
@@ -504,6 +538,8 @@ async def schedule_turn(
     scheduled: ScheduledTurnOrigin | None = None,
     delegated: bool = False,
     impersonated: bool = False,
+    root: bool = False,
+    tainted: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -543,12 +579,7 @@ async def schedule_turn(
     with 5 running + 10 queued can't slip a 16th task through this
     path; ``acquire_turn_slot`` only sees the running pool.
     """
-    if user_id:
-        from backend.copilot.turn_queue import count_inflight_turns
-
-        inflight_cap = get_inflight_turn_limit()
-        if await count_inflight_turns(user_id) >= inflight_cap:
-            raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    await check_inflight_cap(user_id)
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
@@ -576,7 +607,25 @@ async def schedule_turn(
             credential_pins=credential_pins,
             scheduled=scheduled,
             impersonated=impersonated,
+            root=root,
+            tainted=tainted,
         )
+
+
+async def check_inflight_cap(user_id: str | None) -> None:
+    """Refuse a turn past the user's in-flight cap (running + queued): the
+    admission for callers with no queue to fall back on, which then take a
+    slot sized to the same cap.
+
+    Raises :class:`ConcurrentTurnLimitError`, before any side effect.
+    """
+    if not user_id:
+        return
+    from backend.copilot.turn_queue import count_inflight_turns
+
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(user_id) >= inflight_cap:
+        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
 
 
 async def dispatch_turn(
@@ -606,6 +655,9 @@ async def dispatch_turn(
     root: bool = False,
     envelope: TurnEnvelope | None = None,
     impersonated: bool = False,
+    voice: bool = False,
+    from_chat_platform: bool = False,
+    tainted: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -633,6 +685,10 @@ async def dispatch_turn(
     call was held under): it is re-checked instead, narrowed by today's
     ``permissions``, and its node is not released if dispatch fails.
 
+    ``tainted`` mints the envelope tainted, as ``from_chat_platform`` does: a
+    turn that picks a paused one's work back up (Keep going, the resume at the
+    budget reset) keeps that turn's taint.
+
     The same rule decides the turn's Sentry trace: it continues the caller's
     only when it derives its envelope from the caller's context, because a
     root or a re-admitted turn was caused by something other than the code
@@ -646,7 +702,13 @@ async def dispatch_turn(
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
-            turn_id, session_id, user_id, permissions, spawn, root=root
+            turn_id,
+            session_id,
+            user_id,
+            permissions,
+            spawn,
+            root=root,
+            tainted=from_chat_platform or tainted,
         )
     else:
         await readmit_turn(envelope, user_id=user_id)
@@ -696,6 +758,8 @@ async def dispatch_turn(
             envelope=envelope,
             unattended=unattended,
             impersonated=impersonated,
+            voice=voice,
+            from_chat_platform=from_chat_platform,
             credential_pins=credential_pins,
             scheduled=scheduled,
             tool_name=tool_name,
@@ -778,6 +842,7 @@ async def _admitted_turn_envelope(
     spawn: SpawnRequest | None,
     *,
     root: bool = False,
+    tainted: bool = False,
 ) -> TurnEnvelope:
     """Derive this turn's envelope from the running turn's (a child) or mint
     a root, then admit it against the tree ledger.
@@ -799,12 +864,16 @@ async def _admitted_turn_envelope(
             "This task's context was lost, so its limits cannot be carried "
             "over. Start it again from the top."
         )
+    # *tainted* goes on the envelope itself, not only on the queue entry: an
+    # executor older than the entry's field still runs the turn tainted.
     if spawner is None:
-        envelope = root_envelope(turn_id, session_id=session_id)
+        envelope = root_envelope(turn_id, session_id=session_id, tainted=tainted)
     else:
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
         )
+        if tainted and not envelope.tainted:
+            envelope = envelope.model_copy(update={"tainted": True})
     await admit_turn(envelope, user_id=user_id)
     return envelope
 
@@ -851,6 +920,9 @@ async def schedule_chat_turn(
     session_source_platform: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
+    from_chat_platform: bool = False,
+    tainted: bool = False,
+    capacity: int | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -887,22 +959,21 @@ async def schedule_chat_turn(
     # Deferred so the executor module stays a leaf for the queue dataclasses
     # (only the chat HTTP path persists user messages this way).
     from backend.copilot.model import ChatMessage, append_and_save_message
-    from backend.copilot.prompting import VOICE_TURN_PREFIX
     from backend.copilot.service import strip_server_injected_tags
     from backend.copilot.tracking import track_user_message
 
-    # Prefix before persistence, not after: the services dedup the incoming
-    # message against the row saved here, and a prefix applied later fails
-    # that match and saves the turn a second time. Display strips it again.
+    # A voice turn's text is sanitised before it is saved, as the engine
+    # sanitises what it receives: the two must match, or the engine's
+    # duplicate check saves the turn a second time. The platform's own
+    # <voice_turn> instruction travels on the turn (``voice``) and the engine
+    # adds it to the query after its own strip, so the row keeps the user's
+    # words.
     raw_message_length = len(message)
-    if message and voice and is_user_message and not message_already_persisted:
-        # Sanitise here, not in the engines: they strip inbound tags at their
-        # own entry points, which is after this function has already saved the
-        # row. A forged </voice_turn> would close the server's block, and the
-        # display stripper would take the user's own text with it.
-        message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
+    spoken = voice and is_user_message
+    if message and spoken and not message_already_persisted:
+        message = strip_server_injected_tags(message)
 
-    async with acquire_turn_slot(user_id, session_id) as slot:
+    async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
         if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         is_duplicate = False
@@ -949,6 +1020,9 @@ async def schedule_chat_turn(
             permissions=permissions,
             request_arrival_at=request_arrival_at,
             impersonated=impersonated,
+            voice=spoken,
+            from_chat_platform=from_chat_platform,
+            tainted=tainted,
         )
         return turn_id
 

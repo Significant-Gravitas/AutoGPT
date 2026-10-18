@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -28,6 +28,13 @@ with open(sys.argv[1], newline='', encoding='utf-8') as source:
 print(f'{len(rows) - 1} rows validated')
 """
 FIXTURE = "name,count\napples,1\npears,2\npeaches,3\n"
+
+
+@pytest.fixture(autouse=True)
+def platform_api():
+    """Run on a route with a platform API; the dev default is ``disabled``."""
+    with patch.object(nightly.ChatConfig, "has_platform_api", True):
+        yield
 
 
 def proposal(revision: int):

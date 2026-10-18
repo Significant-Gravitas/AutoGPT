@@ -250,6 +250,13 @@ if [ "${1:-}" = volume ] && [ "${2:-}" = create ]; then
 	printf 'autogpt-platform-data\n'
 	exit 0
 fi
+if [ "${1:-}" = run ] && [ "${2:-}" = --rm ]; then
+	if [ "${FAKE_CHAT_CHECK_FAIL:-false}" = true ]; then
+		printf '  - CHAT_USE_LOCAL is no longer read: replaced by CHAT_PLATFORM_ROUTE=local\n' >&2
+		exit 2
+	fi
+	exit 0
+fi
 if [ "${1:-}" = run ]; then
 	if [ "${FAKE_DOCKER_RUN_FAIL:-false}" = true ]; then exit 1; fi
 	printf 'fake-container-id\n'
@@ -312,6 +319,14 @@ test "$(file_mode "${default_dir}/autogpt.env")" = 600
 test "$(file_mode "${default_dir}/install-id")" = 600
 test "$(file_mode "${default_dir}/install-state")" = 600
 grep -Fxq 'AUTOGPT_PUBLIC_URL=http://localhost:3000' "${default_dir}/autogpt.env"
+grep -Fxq 'CHAT_PLATFORM_ROUTE=disabled' "${default_dir}/autogpt.env"
+# The chat settings are checked in the selected image, without a network,
+# before the appliance container is created.
+assert_contains 'run --rm --network none --env-file' "$log"
+chat_check_line="$(grep -n '^run --rm ' "$docker_log" | cut -d: -f1)"
+appliance_line="$(grep -n '^run --detach ' "$docker_log" | cut -d: -f1)"
+[ "$chat_check_line" -lt "$appliance_line" ]
+assert_contains 'docker.io/significantgravitas/autogpt@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$(grep '^run --rm ' "$docker_log")"
 
 : >"$docker_log"
 : >"$volume_state"
@@ -415,6 +430,14 @@ test -f "${retry_dir}/install-state"
 : >"$volume_state"
 assert_fake_fails 'Installer state already exists but persistent volume autogpt-platform-data is missing' "$retry_dir" \
 	bash "$installer" --skip-preflight --dir "$retry_dir"
+
+chat_check_dir="${test_root}/chat-check-failure"
+: >"$volume_state"
+: >"$docker_log"
+assert_fake_fails 'Update the chat settings named above' "$chat_check_dir" \
+	env FAKE_CHAT_CHECK_FAIL=true bash "$installer" --skip-preflight --dir "$chat_check_dir"
+assert_not_contains 'run --detach' "$(cat "$docker_log")"
+[ ! -e "${chat_check_dir}/install-state" ]
 
 run_failure_dir="${test_root}/run-failure"
 : >"$volume_state"

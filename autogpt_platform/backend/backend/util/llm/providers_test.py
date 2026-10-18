@@ -800,7 +800,8 @@ class TestAIMLAPI:
 
 @pytest.fixture(autouse=True)
 def _reset_chat_base_url_cache():
-    """The ChatConfig.base_url read is memoized module-wide; clear it so
+    """The local route's URL read (``ChatConfig.local_openai_base_url``) is
+    memoized module-wide; clear it so
     each test's patched ``backend.copilot.config.ChatConfig`` is the one
     actually constructed."""
     from backend.util.llm.providers import _read_chat_config_base_url
@@ -850,7 +851,7 @@ def _patched_ollama_dispatch(
         patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
         patch(
             "backend.copilot.config.ChatConfig",
-            return_value=SimpleNamespace(base_url=chat_base_url),
+            return_value=SimpleNamespace(local_openai_base_url=chat_base_url),
         ),
         patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
     ):
@@ -1036,7 +1037,7 @@ class TestOllamaTrustedHosts:
             settings.config.ollama_host
         ]
         assert any(
-            "Could not read ChatConfig.base_url" in rec.message
+            "Could not read the local route's URL" in rec.message
             for rec in caplog.records
         )
 
@@ -1052,7 +1053,9 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                return_value=SimpleNamespace(
+                    local_openai_base_url="http://192.168.1.50:11434/v1"
+                ),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -1072,13 +1075,13 @@ class TestOllamaTrustedHosts:
         """``ChatConfig`` is a pydantic-settings class with
         ``env_file=".env"`` — constructing it per dispatch meant dotenv
         disk I/O and repeated validator warnings on every Ollama call.
-        The base_url read must be memoized after the first success while
+        The URL read must be memoized after the first success while
         every dispatch still gets the cached value in its trust list."""
         captured: dict = {}
         validate_mock = AsyncMock(return_value=None)
         chat_config_ctor = MagicMock(
             return_value=SimpleNamespace(
-                base_url="http://host.docker.internal:11434/v1"
+                local_openai_base_url="http://host.docker.internal:11434/v1"
             )
         )
         with (
@@ -1118,7 +1121,7 @@ class TestOllamaTrustedHosts:
         chat_config_ctor = MagicMock(
             side_effect=[
                 ValueError("transient misconfiguration"),
-                SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                SimpleNamespace(local_openai_base_url="http://192.168.1.50:11434/v1"),
             ]
         )
         with (
@@ -1153,7 +1156,7 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url=None),
+                return_value=SimpleNamespace(local_openai_base_url=None),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -2056,119 +2059,6 @@ def _fake_async_iter(items):
 # ---------------------------------------------------------------------------
 
 
-class TestCallProviderStream:
-    """Regression coverage for ``call_provider_stream``. The chat
-    baseline path delegates here; behavior changes break chat in
-    user-facing ways (tokens stop streaming, tool calls drop, etc.)."""
-
-    @pytest.mark.asyncio
-    async def test_uses_provided_client_directly(self):
-        """When a ``client`` is passed, the helper does NOT construct a
-        new one — preserves the chat layer's module-cached
-        Langfuse-wrapped client + its pooled HTTP connections."""
-        from backend.util.llm.providers import call_provider_stream
-
-        sentinel_stream = MagicMock(name="async_stream")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=sentinel_stream)
-
-        result = await call_provider_stream(
-            client=client,
-            model="gpt-4o",
-            messages=[_msg("user", "hi")],
-            extra_body={"foo": "bar"},
-            stream_options={"include_usage": True},
-        )
-
-        assert result is sentinel_stream
-        client.chat.completions.create.assert_awaited_once()
-        kwargs = client.chat.completions.create.await_args.kwargs
-        assert kwargs["stream"] is True
-        assert kwargs["model"] == "gpt-4o"
-        assert kwargs["extra_body"] == {"foo": "bar"}
-        assert kwargs["stream_options"] == {"include_usage": True}
-
-    @pytest.mark.asyncio
-    async def test_builds_client_via_factory_when_not_provided(self):
-        """When no ``client`` is passed, the helper instantiates one
-        via ``client_factory(base_url, api_key)``. The chat layer uses
-        this branch to inject ``LangfuseAsyncOpenAI`` as the factory."""
-        from backend.util.llm.providers import call_provider_stream
-
-        captured: dict[str, object] = {}
-
-        class _StubClient:
-            def __init__(self, *, base_url: str, api_key: str):
-                captured["base_url"] = base_url
-                captured["api_key"] = api_key
-                self.chat = SimpleNamespace(completions=SimpleNamespace())
-                self.chat.completions.create = AsyncMock(return_value="stream")
-
-        result = await call_provider_stream(
-            model="claude-sonnet-4-6",
-            messages=[_msg("user", "hi")],
-            base_url="https://api.test/v1",
-            api_key="sk-test",
-            client_factory=_StubClient,
-        )
-
-        assert result == "stream"
-        assert captured == {
-            "base_url": "https://api.test/v1",
-            "api_key": "sk-test",
-        }
-
-    @pytest.mark.asyncio
-    async def test_omit_max_tokens_drops_field_from_create_call(self):
-        """OpenRouter's thinking routes inject their own ``max_tokens``
-        default and 400 if the client sends one too. The chat baseline
-        passes ``openai.omit`` to skip the field; the helper must
-        actually drop it from create_kwargs (not pass it as the omit
-        sentinel which would still register as 'present' on the dict)."""
-        import openai
-
-        from backend.util.llm.providers import call_provider_stream
-
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value="s")
-        await call_provider_stream(
-            client=client,
-            model="x",
-            messages=[_msg("user", "hi")],
-            max_tokens=openai.omit,
-        )
-        kwargs = client.chat.completions.create.await_args.kwargs
-        assert "max_tokens" not in kwargs
-
-    @pytest.mark.asyncio
-    async def test_real_max_tokens_lands_in_create_kwargs(self):
-        """Direct-Anthropic mode passes an explicit max_tokens because
-        Anthropic refuses to default it when thinking is enabled. That
-        value must reach the SDK call."""
-        from backend.util.llm.providers import call_provider_stream
-
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value="s")
-        await call_provider_stream(
-            client=client,
-            model="claude-opus-4-1",
-            messages=[_msg("user", "hi")],
-            max_tokens=8192,
-        )
-        kwargs = client.chat.completions.create.await_args.kwargs
-        assert kwargs["max_tokens"] == 8192
-
-    @pytest.mark.asyncio
-    async def test_raises_when_neither_client_nor_credentials(self):
-        from backend.util.llm.providers import call_provider_stream
-
-        with pytest.raises(ValueError, match="pass either"):
-            await call_provider_stream(
-                model="x",
-                messages=[_msg("user", "hi")],
-            )
-
-
 class TestCallProviderOpenAICompatSync:
     @pytest.mark.asyncio
     async def test_uses_provided_client_directly(self):
@@ -2475,3 +2365,32 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "groq", "ollama", "llama_api"])
+async def test_a_base_url_is_refused_where_the_provider_takes_none(provider):
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider=provider,
+            model="m",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            base_url="https://proxy.example/v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submission_takes_no_base_url():
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            execution_mode="batch",
+            custom_id="c",
+            base_url="https://proxy.example",
+        )

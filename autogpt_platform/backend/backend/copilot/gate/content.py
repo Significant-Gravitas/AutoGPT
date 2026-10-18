@@ -19,6 +19,7 @@ from typesafe_sdk import Choice, Noul, Score
 from backend.blocks.typesafe._budget import MAX_REQUEST_BYTES, prepare_state
 from backend.blocks.typesafe._client import call_jev
 from backend.copilot.config import ChatConfig
+from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import Settings
 
@@ -26,6 +27,10 @@ from .classifier import fence, parse_answer
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# The content judge's model, vetted for this job: Haiku missed most
+# injections in pages past a few hundred characters.
+_JUDGE_MODEL = "anthropic/claude-sonnet-5"
 _api_key = Settings().secrets.typesafe_jev_api_key
 
 CONTENT_RUBRIC = (Path(__file__).parent / "content_rubric.txt").read_text(
@@ -52,7 +57,7 @@ _FLAG_LINE = (
 _MAX_TOKENS = 1024
 _CHUNK_OVERLAP = 2_000
 # Past this a read goes to the LLM whole: a 70k-character read of three-byte text
-# takes 9, so only an uncapped read (the baseline engine's) reaches the cap.
+# takes 9, so only an uncapped read reaches the cap.
 _MAX_JEV_CHUNKS = 10
 _JEV_CONCURRENCY = 4
 _JEV_NOULS = ("must_hold", "q1", "q2", "q3")
@@ -286,7 +291,7 @@ async def _ask(messages: list[dict[str, Any]]) -> str:
     response = await asyncio.wait_for(
         call_provider_openai_compat_sync(
             client=_get_aux_client(),
-            model=config.gate_content_model,
+            model=normalize_model_for_transport(_JUDGE_MODEL, config),
             messages=messages,
             max_tokens=_MAX_TOKENS,
             timeout_seconds=config.content_judge_timeout_s,

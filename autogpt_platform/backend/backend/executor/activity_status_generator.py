@@ -20,9 +20,9 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
-from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.json import strip_code_fence
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
@@ -41,9 +41,8 @@ _MAX_OUTPUT_TOKENS = 150
 
 # Sentinel for ``generate_activity_status_for_execution.model_name``. The
 # parameter defaults to this for cloud routing. Under the local transport
-# we only override to ``ChatConfig.title_model`` when the caller didn't
-# supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
-# uses for ``title_model`` / ``simulation_model``.
+# we only override to the local server's standard tier when the caller didn't
+# supply an explicit value.
 _DEFAULT_MODEL_NAME = "gpt-4o-mini"
 INSUFFICIENT_BALANCE_GUIDANCE = "Please make more credits available and try again."
 INSUFFICIENT_BALANCE_SUMMARY = (
@@ -206,6 +205,13 @@ class ActivityStatusResponse(TypedDict):
     correctness_score: float
 
 
+def _platform_client() -> "Any | None":
+    """The platform route's side-call client; None without an API."""
+    from backend.copilot.service import get_platform_aux_client  # noqa: PLC0415
+
+    return get_platform_aux_client()
+
+
 def _truncate_uuid(uuid_str: str) -> str:
     """Truncate UUID to first segment to reduce payload size."""
     if not uuid_str:
@@ -310,22 +316,13 @@ async def generate_activity_status_for_execution(
         )
         return deterministic_result
 
-    # Acquire an OpenRouter-backed (or local-transport) OpenAI client.
-    # Activity-status generation under OpenRouter is only meaningful when we
-    # can record real USD cost in PlatformCostLog; without OpenRouter the
-    # upstream platform cost would be tokens-only, so we skip rather than
-    # fall back to direct-OpenAI which produces no provider_cost. Under
-    # ``CHAT_USE_LOCAL=true`` the helper instead returns a client pointed at
-    # the operator's Ollama / vLLM / LiteLLM endpoint and we generate the
-    # status off the local model — there's no provider_cost field on
-    # local-stack usage chunks but the status itself is still useful.
-    # ``None`` means neither path is configured, in which case skip.
-    # Same gating pattern as backend/executor/simulator.py.
-    client = get_openai_client(prefer_openrouter=True)
+    # The platform route's own API, through its side-call client, never an
+    # integration key. A route without one (a Claude login, disabled) has no
+    # model to write the status with, so skip.
+    client = _platform_client()
     if client is None:
         logger.debug(
-            "No LLM client configured (OpenRouter or local) — "
-            "skipping activity status generation"
+            "The platform route has no API — skipping activity status generation"
         )
         return None
 
@@ -380,50 +377,37 @@ async def generate_activity_status_for_execution(
             f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(messages, indent=2)}"
         )
 
-        # Under the local OpenAI-compat transport (CHAT_USE_LOCAL=true) the
-        # client is pointed at Ollama / vLLM / LiteLLM, not OpenRouter:
+        # The model, by route, unless the caller named one (an admin reroute
+        # or a test), which wins:
         #
-        # - The hardcoded ``gpt-4o-mini`` default is meaningless against a
-        #   local server, and the ``openai/`` prefix coercion would mangle
-        #   bare Ollama tags (``qwen3:0.6b`` → ``openai/qwen3:0.6b``) into
-        #   404s. Use ``ChatConfig.title_model`` instead — it auto-derives
-        #   from the operator's chosen ``fast_standard_model`` under
-        #   ``use_local`` and is already shaped for the local backend.
-        # - ``extra_body={"usage": {"include": True}}`` is OpenRouter's
-        #   piggybacked-cost extension; local backends don't implement it
-        #   and may reject the request body. Local sends an empty
-        #   ``extra_body`` instead — the backend's own launched context
-        #   window (e.g. OLLAMA_CONTEXT_LENGTH) governs, read back at
-        #   runtime by ``local_context_probe`` for compaction.
+        # - OpenRouter: ``gpt-4o-mini``, namespaced as OpenRouter writes it
+        #   (already-prefixed names pass through), with OpenRouter's
+        #   piggybacked-cost ``extra_body`` (a copy, so nothing downstream
+        #   can mutate the shared constant).
+        # - Direct Anthropic: the route's side-call model (Claude Haiku),
+        #   which Anthropic serves; it sends native Claude ids.
+        # - Local: the server's standard tier, which it serves by that name.
         #
-        # Same gating pattern as ``backend/copilot/baseline/service.py`` and
-        # ``backend/executor/simulator.py`` — keep the three in sync.
-        from backend.copilot.sdk.env import config as chat_cfg
+        # Off OpenRouter the request carries no extra body: Anthropic's
+        # OpenAI-compatible endpoint and local backends may reject it.
+        from backend.copilot.model_normalize import (  # noqa: PLC0415
+            normalize_model_for_transport,
+        )
+        from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
 
-        is_local_transport = chat_cfg.transport.name == "local"
-        if is_local_transport:
-            # Only auto-override to ``chat_cfg.title_model`` when the caller
-            # left ``model_name`` at its cloud-routing default. An explicit
-            # caller-supplied value (e.g. an admin reroute or a test) wins
-            # — we mustn't silently discard it. Same pattern
-            # ``ChatConfig._apply_local_aux_models`` uses for the field defaults.
-            or_model = (
-                chat_cfg.title_model
-                if model_name == _DEFAULT_MODEL_NAME
-                else model_name
-            )
-            extra_body: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {}
+        if model_name != _DEFAULT_MODEL_NAME:
+            or_model = model_name
+        elif chat_cfg.platform_route == "openrouter":
+            or_model = f"openai/{model_name}"
         else:
-            # Model values arriving without a provider prefix (e.g. "gpt-4o-mini")
-            # need to be remapped to OpenRouter's namespaced form. Already-prefixed
-            # values (e.g. "openai/gpt-4o-mini", "anthropic/claude-...") pass through.
-            or_model = model_name if "/" in model_name else f"openai/{model_name}"
-            # Shallow-copy the module-level constant rather than sharing
-            # the reference. The OpenAI SDK treats ``extra_body`` as opaque
-            # pass-through, but if any intermediate layer ever mutates it
-            # the shared constant would leak across coroutines. Mirrors the
-            # defensive ``dict(...)`` ``baseline/service.py`` already uses.
+            or_model = chat_cfg.aux_model or model_name
+        if chat_cfg.aux_uses_openrouter:
+            if "/" not in or_model:
+                or_model = f"openai/{or_model}"
             extra_body = dict(_OPENROUTER_INCLUDE_USAGE_COST)
+        else:
+            or_model = normalize_model_for_transport(or_model, chat_cfg)
 
         # Track the most recent attempt's usage so we can persist cost even
         # when every retry fails — the API calls were billed regardless of
@@ -444,7 +428,7 @@ async def generate_activity_status_for_execution(
                 if not response.choices:
                     raise ValueError("OpenRouter returned empty choices array")
                 raw = response.choices[0].message.content or ""
-                candidate = json.loads(raw)
+                candidate = json.loads(strip_code_fence(raw))
                 if not isinstance(candidate, dict):
                     raise ValueError(
                         f"OpenRouter returned non-object JSON: {raw[:200]}"
@@ -482,11 +466,7 @@ async def generate_activity_status_for_execution(
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             model_name=or_model,
-            # This helper routes through ``get_openai_client(prefer_openrouter=True)``,
-            # so a non-local call physically hits OpenRouter regardless of the chat
-            # transport identity — label it accordingly (not ``cost_log_provider``,
-            # which would mislabel subscription / direct_anthropic as ``anthropic``).
-            provider=openrouter_helper_cost_provider(),
+            provider=chat_cfg.aux_provider_label,
             db_client=db_client,
         )
 

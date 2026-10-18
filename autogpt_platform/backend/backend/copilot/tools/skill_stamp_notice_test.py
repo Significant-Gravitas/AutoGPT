@@ -45,8 +45,9 @@ async def test_baseline_stamp_is_silent_but_later_body_update_is_reported(
             origin=skills.SKILL_ORIGIN_MARKETPLACE,
             version_origin="imported" if tracked else None,
         )
-        context = await skills.build_skills_context(USER)
-        history = [f"<available_skills>{context}</available_skills>"]
+        index = await skills.skills_context_block(USER)
+        assert index is not None
+        history = [index.text]
         await skills.build_skills_update_notice(
             USER, prior_contents=history, session_id="chat-1"
         )

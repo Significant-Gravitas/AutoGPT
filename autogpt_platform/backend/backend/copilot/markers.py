@@ -2,8 +2,8 @@
 
 A stream error lives only on the wire. When the SSE connection ends the
 message is gone, and a reloaded chat shows the user's question followed by
-nothing at all -- no answer, no error, no sign anything happened. The SDK
-path solved this by appending a marker row; the baseline path never did.
+nothing at all -- no answer, no error, no sign anything happened. The
+engine solves this by appending a marker row.
 
 The prefixes are a frontend rendering contract, not decoration:
 ``COPILOT_ERROR_PREFIX`` renders an error card, and
@@ -90,16 +90,3 @@ def append_error_marker(
         )
     )
     return True
-
-
-def provider_failure_of(message: ChatMessage) -> dict[str, Any] | None:
-    """The typed failure recorded on a marker row, if it carries one.
-
-    ``None`` for every marker written before this existed, and for a failure
-    the classifier declined to name. Callers fall back to the prefix, which
-    is what they had before.
-    """
-    if not is_error_marker(message) or not message.metadata:
-        return None
-    failure = message.metadata.get(PROVIDER_FAILURE_KEY)
-    return failure if isinstance(failure, dict) else None

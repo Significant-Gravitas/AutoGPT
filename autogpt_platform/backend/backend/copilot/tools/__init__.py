@@ -89,7 +89,6 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
-from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
@@ -161,7 +160,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "message_session": MessageSessionTool(),
     "delegate_to_expert": DelegateToExpertTool(),
     "list_team": ListTeamTool(),
-    "TodoWrite": TodoWriteTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),

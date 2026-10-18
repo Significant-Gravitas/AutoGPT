@@ -15,6 +15,7 @@ from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
@@ -2063,7 +2064,9 @@ async def _prepare_exa_search(
     redis.hgetall = AsyncMock(return_value=chat_picks or {})
 
     async def turn():
-        set_turn_unattended(session, scheduled=scheduled)
+        set_turn_unattended(
+            SessionKind.for_turn(session, scheduled=scheduled).unattended
+        )
         set_turn_credential_pins(pins)
         with (
             patch(

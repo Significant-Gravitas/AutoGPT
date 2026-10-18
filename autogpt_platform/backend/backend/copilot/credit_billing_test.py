@@ -22,6 +22,7 @@ from backend.copilot.credit_billing import (
     wait_for_cost,
 )
 from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.route_table import PlatformRoute, platform_row
 from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.sdk.usage_meter import UsageMeter, cli_price_ratio
 from backend.copilot.turn_pause import TurnPause
@@ -46,10 +47,14 @@ def credits(mocker) -> MagicMock:
     db.get_org_credits = AsyncMock(return_value=0)
     db.spend_org_credits = AsyncMock(return_value=0)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
-    # A deployment that bills credits, on a route the SDK engine can take.
+    # A deployment that bills credits, on a route whose engine caps a turn's
+    # dollars.
     mocker.patch(_CREDITS_ON, True)
     mocker.patch.object(
-        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=True
+        ChatConfig,
+        "route_row",
+        new_callable=PropertyMock,
+        return_value=platform_row("openrouter"),
     )
     return db
 
@@ -127,14 +132,21 @@ async def test_no_turn_bills_to_credits_where_credits_are_off(credits, mocker):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["local", None], ids=["local", "disabled"])
 async def test_no_turn_bills_to_credits_without_the_engine_that_caps_it(
-    credits, mocker
+    credits, mocker, route: PlatformRoute | None
 ):
+    """The local route's engine has no dollar ceiling, and a disabled route
+    runs no turn of its own."""
     mocker.patch.object(
-        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=False
+        ChatConfig,
+        "route_row",
+        new_callable=PropertyMock,
+        return_value=platform_row(route) if route else None,
     )
 
     assert await _bill(organization_id=None) is None
+    credits.get_credits.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,7 @@ from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_chat_outcome
+from backend.copilot.tree import running_turn_tainted
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -293,6 +294,11 @@ class ScheduleFollowupTool(BaseTool):
                 team_id=session.team_id if session else None,
                 expert_id=session.expert_id if session else None,
                 credential_pins=pins,
+                # So every fire starts with this turn's taint, in whichever
+                # chat it lands.
+                tainted=running_turn_tainted(
+                    session.metadata.source_platform if session else None
+                ),
             )
         except ValueError as e:
             return ErrorResponse(

@@ -95,15 +95,20 @@ async def run_skill_learning_pass(
         started_at=datetime.now(timezone.utc),
     )
     try:
+        config = config or ChatConfig()
+        if not config.has_platform_api:
+            # A Claude login or a disabled route: no model of the platform's
+            # own to review with. Skip before any source is reserved: the
+            # dispatch's refusal would come after a model attempt was spent,
+            # and three of those settle a source unreviewed.
+            return finish(result, skip_reason="no_platform_api")
         if not await is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id):
             return finish(result, skip_reason="skill_learning_disabled")
         lock = await _acquire_lease(user_id)
         if lock is None:
             return finish(result, skip_reason="lease_held")
         try:
-            await _run_under_lease(
-                user_id, result, source_ids, config or ChatConfig(), lock
-            )
+            await _run_under_lease(user_id, result, source_ids, config, lock)
         finally:
             await _release_lease(lock)
     except Exception as exc:

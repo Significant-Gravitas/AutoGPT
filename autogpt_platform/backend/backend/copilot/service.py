@@ -1,4 +1,4 @@
-"""CoPilot service — shared helpers used by both SDK and baseline paths.
+"""CoPilot service — helpers shared by the SDK engine and the side calls.
 
 This module contains:
 - System prompt building (Langfuse + static fallback, cache-optimised)
@@ -13,6 +13,7 @@ import logging
 import re
 import threading
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from langfuse import get_client
@@ -32,10 +33,10 @@ from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
-from .config import ChatConfig, CopilotLLMModel
+from .config import ChatConfig
+from .context_blocks import ContextBlock, render_context_blocks
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
-from .expert_kickoff import is_expert_kickoff_message
 from .llm_attribution import openrouter_attribution
 from .model import (
     ChatMessage,
@@ -44,6 +45,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
+from .model_normalize import normalize_model_for_transport
 from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
 logger = logging.getLogger(__name__)
@@ -60,22 +62,6 @@ _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 _TITLE_TIMEOUT_SECONDS = 30
 
 
-def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
-    """Return the configured SDK model for the given tier.
-
-    The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
-    SDK CLI refuses non-Anthropic endpoints — so both SDK tiers resolve
-    to the ``thinking_*_model`` cells.  Baseline has its own resolver
-    (``_resolve_baseline_model``) that reads the ``fast_*_model`` cells;
-    the two paths diverge deliberately at the config layer so a cheaper
-    baseline provider can't break SDK, or vice versa.
-    """
-    if tier == "advanced":
-        return config.thinking_advanced_model
-    return config.thinking_standard_model
-
-
-_main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
 
@@ -83,69 +69,52 @@ _langfuse = None
 # fetch, and the lock that hands the next window to one caller.
 # See _get_prompt_bounded_stale().
 _cached_prompt: str | None = None
+# The same copy paired with its Langfuse version, read by system_prompt_source().
+_cached_prompt_identity: tuple[str, int | None] | None = None
 _last_prompt_revalidation = 0.0
 _prompt_revalidation_lock = threading.Lock()
 
 _PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
 
-
-def _get_main_client() -> LangfuseAsyncOpenAI:
-    """Main OpenAI-compat client used by the baseline path.
-
-    Driven by ``config.main_client_credentials`` so a deployment can flip
-    ``CHAT_USE_OPENROUTER=false`` (+ ``ANTHROPIC_API_KEY``) to route the
-    main path straight to api.anthropic.com without disturbing aux
-    callers (title generation, builder helpers) that still need
-    OpenRouter for non-Anthropic models.
-    """
-    global _main_client
-    if _main_client is None:
-        api_key, base_url = config.main_client_credentials
-        kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against Otto's heavy system
-        # prompt. The OpenAI client default (600 s) is too short for that
-        # case — extend it under the local transport. Cloud transports
-        # keep the SDK default so genuine hangs still surface promptly.
-        if config.transport.name == "local":
-            kwargs["timeout"] = config.local_request_timeout_s
-        _main_client = LangfuseAsyncOpenAI(**kwargs)
-    return _main_client
+# Cache writes on a title call are priced at the hour-long rate, the costlier
+# of the two; a title prompt is rarely long enough to be cached at all.
+_TITLE_CACHE_TTL = "1h"
 
 
 def _get_aux_client() -> LangfuseAsyncOpenAI:
     """Auxiliary OpenAI-compat client.
 
-    Used for non-Anthropic helpers (title generation, builder helpers)
-    that need to keep talking to OpenRouter even when the main client is
-    pointed at Anthropic directly.  Defaults to OpenRouter; falls back
-    to the main client's creds when ``CHAT_AUX_API_KEY`` /
-    ``CHAT_AUX_BASE_URL`` are unset (preserves single-key deployments).
+    Used for side calls (title generation, gates, builder helpers). It is
+    the platform route's own API; a route without one (a Claude login,
+    connected accounts only) has no side-call client at all.
     """
     global _aux_client
     if _aux_client is None:
         api_key, base_url = config.aux_client_credentials
+        if base_url is None:
+            # Never an integration key the environment happens to hold.
+            raise RuntimeError(
+                f"The {config.platform_route} platform route has no API for "
+                "side calls"
+            )
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local transport routes aux through the same self-hosted backend
-        # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
-        # client timeout to match ``_get_main_client`` so title generation
-        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
-        if config.transport.name == "local":
+        # The local route sends side calls to the self-hosted backend
+        # (Ollama et al.); extend the client timeout to the route's own so
+        # title generation on a CPU-only host doesn't surface as an opaque
+        # 600 s timeout.
+        if config.platform_route == "local":
             kwargs["timeout"] = config.local_request_timeout_s
         _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
 
 
-# Back-compat alias.  Existing callers and tests import this name; new
-# code should pick the explicit ``_get_main_client`` / ``_get_aux_client``.
-_get_openai_client = _get_main_client
-
-
-def reset_clients() -> None:
-    """Test-only: drop the cached OpenAI clients so the next call re-reads config."""
-    global _main_client, _aux_client
-    _main_client = None
-    _aux_client = None
+def get_platform_aux_client() -> LangfuseAsyncOpenAI | None:
+    """The platform route's side-call client for work outside a chat turn
+    (dry-run simulation, activity text); None on a route without an API:
+    a Claude login, or a disabled route."""
+    if config.aux_client_credentials[1] is None:
+        return None
+    return _get_aux_client()
 
 
 def _get_langfuse():
@@ -157,7 +126,7 @@ def _get_langfuse():
 
 # Shared constant for the XML tag name used to wrap per-user context when
 # injecting it into the first user message. Referenced by both the cacheable
-# system prompt (so the LLM knows to parse it) and inject_user_context()
+# system prompt (so the LLM knows to parse it) and injected_context_blocks()
 # (which writes the tag). Keeping both in sync prevents drift.
 USER_CONTEXT_TAG = "user_context"
 
@@ -171,10 +140,9 @@ MEMORY_CONTEXT_TAG = "memory_context"
 # without polluting the cacheable system prompt.  Server-injected only.
 ENV_CONTEXT_TAG = "env_context"
 
-# Tag name for the per-turn budget hint block (baseline-only — the SDK CLI
-# has its own running-cost reminder via ``max_budget_usd``).  Kept as a
-# distinct tag so it does not nest inside ``<env_context>`` and so users
-# cannot spoof a fake budget figure to the model.  Server-injected only.
+# Tag of the first-turn budget hint the old fast path wrote.  Nothing writes
+# it now, but stored first messages still carry it, so the display strip
+# and the sanitizer keep the name.
 BUDGET_CONTEXT_TAG = "budget_context"
 
 # Tag name for the per-session follow-up awareness block injected into the
@@ -212,19 +180,30 @@ SKILLS_UPDATE_TAG = "skills_update"
 # turn's model input only, never persisted. Server-injected only.
 SEEN_CAPABILITIES_TAG = "seen_capabilities"
 
+# Tag name for the per-turn budget line
+# (``budget_signal.build_turn_budget_block``) prepended to a turn's model
+# input. Server-injected only.
+BUDGET_STATUS_TAG = "budget_status"
+
+# Tag name for the earlier-conversation block a turn without ``--resume``
+# carries ahead of the user's message. Server-injected only.
+CONVERSATION_HISTORY_TAG = "conversation_history"
+
+# Tag name for the block a queued follow-up reaches the model in, between
+# tool calls (``pending_messages.format_pending_as_followup``).
+USER_FOLLOW_UP_TAG = "user_follow_up"
+
 # Builder-binding tag names (``builder_context`` per-turn prefix, and
 # ``builder_session`` static system-prompt suffix) are defined in
-# ``backend.copilot.builder_context``; the system prompt below refers to
-# them by literal string to avoid a cross-module import cycle.
+# ``backend.copilot.builder_context``; the system prompt below and
+# SERVER_INJECTED_BLOCK_TAGS refer to them by literal string to avoid a
+# cross-module import cycle.
 
 # Static system prompt for token caching — identical for all users.
 # User-specific context is injected into the first user message instead,
 # so the system prompt never changes and can be cached across all sessions.
 #
-# NOTE: This constant is part of the module's public API — it is imported by
-# sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
-# prompt_cache_test.py. The leading underscore is retained for backwards
-# compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
+# Tests read it under this name; CACHEABLE_SYSTEM_PROMPT is the public alias.
 _CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
@@ -254,26 +233,17 @@ CACHEABLE_SYSTEM_PROMPT = _CACHEABLE_SYSTEM_PROMPT
 # user_context prefix helpers
 # ---------------------------------------------------------------------------
 #
-# These two helpers are the *single source of truth* for the on-the-wire format
-# of the injected `<user_context>` block. `inject_user_context()` writes via
-# `format_user_context_prefix()`; the chat-history GET endpoint reads via
-# `strip_user_context_prefix()`. Keeping both behind a shared format prevents
-# silent drift between the writer and the reader.
+# `inject_context_blocks()` writes the `<user_context>` block on the first
+# row; the display strip (`strip_injected_context_for_display`) peels it,
+# with every other block in STORED_ROW_BLOCK_TAGS, back off the stored
+# message.
 
-# Matches a `<user_context>...</user_context>` block at the very start of a
-# message followed by exactly the `\n\n` separator that the formatter writes.
-# `re.DOTALL` lets `.*?` span newlines; the leading `^` keeps embedded literal
-# blocks later in the message untouched.
-_USER_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{USER_CONTEXT_TAG}>.*?</{USER_CONTEXT_TAG}>\n\n", re.DOTALL
-)
-
-# Every block the server injects into a prompt. Both directions read it: the
-# inbound sanitizer strips a user-typed copy before it reaches the model, and
-# the display strip peels it back off the stored message. The expert half comes
-# from the module that renders it, so adding a block there covers both here —
-# a tag missing from this tuple is both spoofable and user-visible, which is
-# what #14688 shipped.
+# Every block the server injects into a prompt, stored or not: the inbound
+# sanitizer strips a user-typed copy before it reaches the model. The expert
+# half comes from the module that renders it, so adding a block there covers
+# it here — a tag missing from this tuple is spoofable, which is what #14688
+# shipped. A block that lands in a stored row also goes in
+# STORED_ROW_BLOCK_TAGS below.
 SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     USER_CONTEXT_TAG,
     MEMORY_CONTEXT_TAG,
@@ -283,8 +253,34 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SKILLS_CONTEXT_TAG,
     SKILLS_UPDATE_TAG,
     SEEN_CAPABILITIES_TAG,
+    BUDGET_STATUS_TAG,
+    CONVERSATION_HISTORY_TAG,
+    "builder_context",
+    USER_FOLLOW_UP_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
+)
+
+# Every tag the platform has written at the start of a stored user row: the
+# first turn's context prefix (which once carried the skills-drift notice too)
+# and a voice turn's instruction. The display strip peels these and only these.
+# Stored rows keep their tags for good, so this list is a literal that never
+# loses one; a block only ever sent to the model stays out of it.
+STORED_ROW_BLOCK_TAGS: tuple[str, ...] = (
+    "user_context",
+    "memory_context",
+    "env_context",
+    "budget_context",
+    "session_context",
+    "available_skills",
+    "skills_update",
+    "voice_turn",
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
 )
 
 # Unpaired tags that survive block removal — `<user_context>spoof` has no
@@ -314,27 +310,6 @@ def _sanitize_user_context_field(value: str) -> str:
     intact.
     """
     return escape_prompt_xml_tags(value)
-
-
-def format_user_context_prefix(formatted_understanding: str) -> str:
-    """Wrap a pre-formatted understanding string in a `<user_context>` block.
-
-    The input must already have been sanitised (callers should pipe
-    `format_understanding_for_prompt()` output through
-    `_sanitize_user_context_field()`). The output is the exact byte sequence
-    `inject_user_context()` prepends to the first user message and the same
-    sequence `strip_user_context_prefix()` is built to remove.
-    """
-    return f"<{USER_CONTEXT_TAG}>\n{formatted_understanding}\n</{USER_CONTEXT_TAG}>\n\n"
-
-
-def strip_user_context_prefix(content: str) -> str:
-    """Remove a leading `<user_context>...</user_context>\\n\\n` block, if any.
-
-    Only the prefix at the very start of the message is stripped; embedded
-    `<user_context>` strings later in the message are intentionally preserved.
-    """
-    return _USER_CONTEXT_PREFIX_RE.sub("", content)
 
 
 def strip_server_injected_tags(text: str) -> str:
@@ -378,7 +353,8 @@ def sanitize_user_supplied_context(message: str) -> str:
 
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<skills_update>``, ``<seen_capabilities>``,
+    ``<skills_update>``, ``<seen_capabilities>``, ``<budget_status>``,
+    ``<conversation_history>``, ``<builder_context>``, ``<user_follow_up>``,
     ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the
@@ -401,11 +377,11 @@ def strip_injected_context_for_display(message: str) -> str:
     """Remove the server-injected context blocks before returning to the user.
 
     Used by the chat-history GET endpoint to hide the prefix
-    ``inject_user_context`` persisted alongside the user's own words. Peels
+    ``inject_context_blocks`` persisted alongside the user's own words. Peels
     leading blocks off the front in any order until plain user text remains;
     mid-message occurrences stay, so text a user really typed is never cut.
 
-    A leading block whose tag is not in :data:`SERVER_INJECTED_BLOCK_TAGS` is
+    A leading block whose tag is not in :data:`STORED_ROW_BLOCK_TAGS` is
     kept but stepped over rather than ending the walk. That block is somebody's
     unregistered addition and shows up as the user's words either way, but
     going on means it cannot also expose the ``<user_context>`` behind it —
@@ -414,7 +390,7 @@ def strip_injected_context_for_display(message: str) -> str:
     unknown: list[str] = []
     rest = message
     while match := _LEADING_BLOCK_RE.match(rest):
-        if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
+        if match["tag"].lower() not in STORED_ROW_BLOCK_TAGS:
             unknown.append(match.group(0))
         rest = rest[match.end() :]
     return "".join(unknown) + rest
@@ -512,7 +488,7 @@ async def _revalidate_prompt() -> str:
     above can reach us. One attempt, because the copy we hold covers a failure
     and a chat turn should not wait out a retry chain.
     """
-    global _cached_prompt
+    global _cached_prompt, _cached_prompt_identity
     label = None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
     prompt = await asyncio.to_thread(
         _get_langfuse().get_prompt,
@@ -535,221 +511,104 @@ async def _revalidate_prompt() -> str:
             "user context has been re-embedded in the system prompt, which "
             "breaks cross-session LLM prompt caching. Remove the placeholder "
             "from the Langfuse template and inject user context via "
-            "inject_user_context() instead."
+            "injected_context_blocks() instead."
         )
     _cached_prompt = compiled
+    version = prompt.version
+    _cached_prompt_identity = (compiled, version if isinstance(version, int) else None)
     return compiled
 
 
-async def _build_system_prompt(
-    user_id: str | None,
-) -> tuple[str, BusinessUnderstanding | None]:
-    """Build a fully static system prompt suitable for LLM token caching.
+def system_prompt_source(system_prompt: str) -> tuple[str, int | None]:
+    """The base prompt *system_prompt* was assembled on, for measurement.
 
-    User-specific context is NOT embedded here. Callers must inject the
-    returned understanding into the first user message via inject_user_context()
-    so the system prompt stays identical across all users and sessions,
-    enabling cross-session cache hits.
-
-    Returns:
-        Tuple of (static_prompt, understanding_object_or_None)
+    Returns ``("fallback", None)`` for the in-code prompt, else the Langfuse
+    prompt name with the version this process holds, or ``None`` as the
+    version when the copy held now is not the one *system_prompt* starts with.
     """
-    understanding: BusinessUnderstanding | None = None
-    if user_id:
-        try:
-            understanding = await understanding_db().get_business_understanding(user_id)
-        except Exception as e:
-            logger.warning(f"Failed to fetch business understanding: {e}")
-
-    prompt = await _fetch_langfuse_prompt() or _CACHEABLE_SYSTEM_PROMPT
-    return prompt, understanding
+    if system_prompt.startswith(_CACHEABLE_SYSTEM_PROMPT):
+        return "fallback", None
+    identity = _cached_prompt_identity
+    if identity is not None and system_prompt.startswith(identity[0]):
+        return config.langfuse_prompt_name, identity[1]
+    return config.langfuse_prompt_name, None
 
 
-async def inject_user_context(
-    understanding: BusinessUnderstanding | None,
+async def _build_system_prompt() -> str:
+    """The static system prompt: Langfuse's, else the in-code fallback.
+
+    User-specific context is NOT embedded here: the caller fetches the
+    user's understanding (:func:`fetch_business_understanding`) and
+    ``injected_context_blocks`` puts it in the first user message, so the
+    system prompt stays identical across users and sessions and caches
+    across them.
+    """
+    return await _fetch_langfuse_prompt() or _CACHEABLE_SYSTEM_PROMPT
+
+
+async def fetch_business_understanding(
+    user_id: str | None,
+) -> BusinessUnderstanding | None:
+    """The user's business understanding for ``<user_context>``, or ``None``.
+
+    Never raises: a lookup failure is logged and the turn goes on without it.
+    """
+    if not user_id:
+        return None
+    try:
+        return await understanding_db().get_business_understanding(user_id)
+    except Exception as e:
+        logger.warning(f"Failed to fetch business understanding: {e}")
+        return None
+
+
+async def inject_context_blocks(
+    blocks: Sequence[ContextBlock],
     message: str,
     session_id: str,
     session_messages: list[ChatMessage],
-    warm_ctx: str = "",
-    env_ctx: str = "",
-    budget_ctx: str = "",
-    session_ctx: str = "",
-    skills_ctx: str = "",
-    user_id: str | None = None,
-    expert_id: str | None = None,
 ) -> str | None:
-    """Prepend trusted context blocks to the first user message.
-
-    Builds the first-turn message in this order (all optional):
-    ``<memory_context>`` → ``<env_context>`` → ``<user_context>`` → sanitised user text.
+    """Lead the first user message with the trusted *blocks* and save it.
 
     Updates the in-memory session_messages list and persists the prefixed
     content to the DB so resumed sessions and page reloads retain
     personalisation.
 
-    A hire's kickoff turn (the server-written message that opens the
-    onboarding card) gets neither ``<user_context>`` nor the teammate roster.
-    The card must come from the expert's own role, and both blocks are
-    exactly the kind of context the model otherwise borrows its questions
-    from — a "Finding leads" pain point or a sales teammate's workflows put
-    lead-gen options on a developer's card. What the expert needs to know
-    about the user, the card asks for itself.
-
     Untrusted input — both the user-supplied ``message`` and the user-owned
-    fields inside ``understanding`` — is stripped/escaped before being placed
-    inside the trusted ``<user_context>`` block. This prevents a user from
-    spoofing their own (or another user's) personalisation context by
-    supplying a literal ``<user_context>...</user_context>`` tag in the
-    message body or in any of their understanding fields.
-
-    When ``understanding`` is ``None``, no trusted context is wrapped but the
-    first user message is still sanitised in place so that attacker tags
-    typed by new users do not reach the LLM.
-
-    Args:
-        understanding: Business context fetched from the DB, or ``None``.
-        message: The raw user-supplied message text (may contain attacker tags).
-        session_id: Used as the DB key for persisting the updated content.
-        session_messages: The in-memory message list for the current session.
-        warm_ctx: Trusted Graphiti warm-context string to inject as a
-            ``<memory_context>`` block before the ``<user_context>`` prefix.
-            Passed as server-side data — never sanitised (caller is responsible
-            for ensuring the value is not user-supplied).  Empty string → block
-            is omitted.
-        env_ctx: Trusted environment context string to inject as an
-            ``<env_context>`` block (e.g. working directory).  Prepended AFTER
-            ``sanitize_user_supplied_context`` runs so the server-injected block
-            is never stripped by the sanitizer.  Empty string → block is omitted.
-        session_ctx: Trusted per-session follow-up awareness string to inject as
-            a ``<session_context>`` block (session_id + pending follow-up
-            summary).  Same trust contract as ``env_ctx`` — prepended AFTER
-            sanitisation, never user-supplied.  Empty string → block is omitted.
-        skills_ctx: Trusted per-user skill index string to inject as an
-            ``<available_skills>`` block.  Same trust contract as ``env_ctx``
-            — prepended AFTER sanitisation, never user-supplied.  Empty
-            string → block is omitted.
-        expert_id: Hired expert this session is scoped to, or ``None`` for a
-            plain Otto session.  Used to build the ``<expert_workflows>``
-            (expert session) or ``<team_context>`` (plain session) prefix via
-            ``build_expert_context``.  The expert's persona is NOT injected
-            here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
-            in the system prompt instead, where it outranks message context.
-            Lookup failures degrade silently to no block.
+    fields inside the business understanding — is stripped/escaped before it
+    reaches the model: the message here, the understanding where its
+    ``<user_context>`` block is built (:func:`injected_context_blocks`). This
+    prevents a user from spoofing their own (or another user's)
+    personalisation context by supplying a literal
+    ``<user_context>...</user_context>`` tag in the message body or in any of
+    their understanding fields.  With no blocks, the first user message is
+    still sanitised in place, so attacker tags typed by new users do not
+    reach the LLM.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
         ``session_messages`` contains at least one user-role message.
         This is **always a non-empty string** when a user message exists,
         even if the content is unchanged (i.e. no attacker tags were found
-        and no understanding was injected).  Callers should therefore
+        and no blocks were given).  Callers should therefore
         **not** use ``if result is not None`` as a proxy for "something
         changed" -- use it only to detect "no user message was present".
 
         ``None`` -- only when ``session_messages`` contains **no** user-role
         message at all.
     """
-    # The SDK and baseline services call strip_user_context_tags (an alias for
+    # The SDK service calls strip_user_context_tags (an alias for
     # sanitize_user_supplied_context) at their entry points on every turn, so
-    # `message` is already clean when inject_user_context is reached on turn 1.
-    # The call below is therefore technically redundant for those callers, but
-    # it is kept so that this function remains safe to call directly (e.g. from
+    # `message` is already clean when this is reached on turn 1.  The call
+    # below is therefore technically redundant for those callers, but it is
+    # kept so that this function remains safe to call directly (e.g. from
     # tests) without prior sanitization — and because the operation is
-    # idempotent (a second pass over already-clean text is a no-op).
-    sanitized_message = sanitize_user_supplied_context(message)
-    kickoff_turn = _is_expert_kickoff_turn(session_messages)
-
-    if understanding is None or kickoff_turn:
-        # No trusted context to inject — but we still need to persist the
-        # sanitised message so a later resume / page-reload replay doesn't
-        # feed the attacker tags back into the LLM.
-        final_message = sanitized_message
-    else:
-        raw_ctx = format_understanding_for_prompt(understanding)
-        # Append subscription tier so the agent has ambient awareness.
-        if user_id:
-            from .rate_limit import get_user_tier
-
-            tier = await get_user_tier(user_id)
-            tier_line = f"Plan: {tier.value}"
-            raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
-        if not raw_ctx:
-            # All BusinessUnderstanding fields are empty/None — injecting an
-            # empty <user_context>\n\n</user_context> block adds no value and
-            # wastes tokens. Fall back to the bare sanitized message instead.
-            final_message = sanitized_message
-        else:
-            # _sanitize_user_context_field is applied to the combined output of
-            # format_understanding_for_prompt rather than to each individual
-            # field. This is intentional: format_understanding_for_prompt
-            # produces a single structured string from trusted DB data, so the
-            # trust boundary is at the DB read, not at each field boundary.
-            # Sanitizing at the combined level is both correct and sufficient —
-            # it strips any residual tag-like sequences before the string is
-            # wrapped in the <user_context> block that the LLM sees.
-            user_ctx = _sanitize_user_context_field(raw_ctx)
-            final_message = format_user_context_prefix(user_ctx) + sanitized_message
-
-    # Prepend environment context AFTER sanitization so the server-injected
-    # block is never stripped by sanitize_user_supplied_context.
-    if env_ctx:
-        final_message = (
-            f"<{ENV_CONTEXT_TAG}>\n{env_ctx}\n</{ENV_CONTEXT_TAG}>\n\n" + final_message
-        )
-    # Prepend budget context as its own block so the per-turn USD hint does
-    # NOT nest inside ``<env_context>`` (whose system-prompt contract says
-    # it carries the working directory only).  Server-injected — sanitised
-    # against user spoofing in ``sanitize_user_supplied_context``.  The
-    # cacheable system prompt is intentionally NOT updated to describe this
-    # tag: doing so would invalidate the cross-user prompt cache for an
-    # informational hint with negligible spoof-impact.
-    if budget_ctx:
-        final_message = (
-            f"<{BUDGET_CONTEXT_TAG}>\n{budget_ctx}\n</{BUDGET_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
-    # Prepend the per-session follow-up awareness block.  Sits between
-    # budget_context and memory_context so memory still ends up at the very
-    # top of the message (highest-priority context).  Like env/budget, this
-    # is server-injected so the sanitizer ran before this prepend; user-typed
-    # ``<session_context>`` blocks were stripped above.
-    if session_ctx:
-        final_message = (
-            f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
-    # Prepend the expert identity/workflows block (expert session) or team
-    # awareness block (plain session).  Server-injected after sanitisation
-    # like the other trusted blocks; degrades to "" on any lookup failure so
-    # the turn proceeds as plain Otto.  Per-session dynamic, so it sits
-    # below the cached <available_skills> prefix.
-    expert_ctx = await build_expert_context(
-        user_id, expert_id, include_teammates=not kickoff_turn
+    # idempotent (a second pass over already-clean text is a no-op).  The
+    # blocks go on after it, so the trusted server-injected blocks are never
+    # stripped.
+    final_message = render_context_blocks(blocks) + sanitize_user_supplied_context(
+        message
     )
-    if expert_ctx:
-        final_message = expert_ctx + final_message
-    # Prepend Graphiti warm context as a <memory_context> block AFTER
-    # sanitization so the trusted server-injected block is never stripped by
-    # ``sanitize_user_supplied_context``.  Memory must land BELOW
-    # ``<available_skills>`` in the final message because Graphiti
-    # recomputes the warm context every turn via a similarity search keyed
-    # on the current message — if it sat in the cached prefix it would
-    # defeat the per-user skill cache below.
-    if warm_ctx:
-        final_message = (
-            f"<{MEMORY_CONTEXT_TAG}>\n{warm_ctx}\n</{MEMORY_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
-    # Prepend the per-user skill index as the OUTERMOST <available_skills>
-    # block.  The cache breakpoint regex matches at
-    # ``</available_skills>\n\n`` so ONLY the skill index sits on the
-    # cached side; memory_context / session_context / budget_context /
-    # env_context / user_context / user text all land on the variable side
-    # (correct — they're per-turn dynamic).
-    if skills_ctx:
-        final_message = (
-            f"<{SKILLS_CONTEXT_TAG}>\n{skills_ctx}\n</{SKILLS_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
 
     # Scan in reverse so we target the current turn's user message, not
     # an older one that may exist when pending messages have been drained.
@@ -766,23 +625,115 @@ async def inject_user_context(
                     )
                 else:
                     logger.warning(
-                        f"[inject_user_context] Cannot persist user context for session "
+                        f"[inject_context_blocks] Cannot persist user context for session "
                         f"{session_id}: first user message has no sequence number"
                     )
             return final_message
     return None
 
 
-def _is_expert_kickoff_turn(session_messages: list[ChatMessage]) -> bool:
-    """Whether the current turn's user message is the hire's kickoff."""
-    for session_msg in reversed(session_messages):
-        if session_msg.role == "user":
-            return is_expert_kickoff_message(session_msg)
-    return False
+async def injected_context_blocks(
+    understanding: BusinessUnderstanding | None,
+    *,
+    warm_ctx: str = "",
+    env_ctx: str = "",
+    session_ctx: str = "",
+    skills: ContextBlock | None = None,
+    user_id: str | None = None,
+    expert_id: str | None = None,
+    kickoff_turn: bool = False,
+) -> list[ContextBlock]:
+    """The trusted server blocks that lead a session's first user message, in
+    message order.
+
+    The first turn writes them on its row (:func:`inject_context_blocks`); the
+    SDK hands them, rebuilt, to a context that has lost that message: a later
+    turn that cannot ``--resume``, and the CLI's compaction.  Every one is
+    server-written and goes in after the message is sanitised, so none is
+    stripped; an empty body leaves its block out.
+
+    A hire's kickoff turn (``kickoff_turn``: the server-written message that
+    opens the onboarding card) gets neither ``<user_context>`` nor the teammate
+    roster.  The card must come from the expert's own role, and both blocks are
+    exactly the kind of context the model otherwise borrows its questions from
+    — a "Finding leads" pain point or a sales teammate's workflows put lead-gen
+    options on a developer's card.  What the expert needs to know about the
+    user, the card asks for itself.
+
+    Args:
+        understanding: Business context fetched from the DB, or ``None``.
+        warm_ctx: Graphiti warm context for ``<memory_context>``.  Server-side
+            data, never sanitised (the caller ensures it is not user-supplied).
+        env_ctx: ``<env_context>``, the working directory.
+        session_ctx: ``<session_context>``: the session id and a summary of
+            its pending follow-ups.
+        skills: The ``<available_skills>`` block, the per-user skill index.
+        expert_id: Hired expert this session is scoped to, or ``None`` for a
+            plain Otto session: ``<expert_workflows>`` and its kin, or
+            ``<team_context>`` (:func:`build_expert_context`).  The expert's
+            persona is NOT here — ``build_expert_identity_suffix`` puts
+            ``<expert_identity>`` in the system prompt instead, where it
+            outranks message context.  Lookup failures degrade silently to no
+            block, and the turn proceeds as plain Otto.
+    """
+    user = None if kickoff_turn else await _user_context_block(understanding, user_id)
+    expert = await build_expert_context(
+        user_id, expert_id, include_teammates=not kickoff_turn
+    )
+    # Outermost first.  The prompt cache's breakpoint regex matches at
+    # ``</available_skills>\n\n``, so ONLY the skill index sits on the cached
+    # side.  Memory is recomputed every turn by a similarity search keyed on the
+    # message, so it lands below the index, with the per-session expert or team
+    # blocks, follow-ups, working directory and user context.
+    blocks = [
+        skills,
+        _plain_block(MEMORY_CONTEXT_TAG, warm_ctx),
+        *expert,
+        _plain_block(SESSION_CONTEXT_TAG, session_ctx),
+        _plain_block(ENV_CONTEXT_TAG, env_ctx),
+        user,
+    ]
+    return [block for block in blocks if block is not None]
 
 
-def _normalize_title_model_for_aux() -> str:
-    """Return the title model in the form the aux client's transport expects.
+async def _user_context_block(
+    understanding: BusinessUnderstanding | None, user_id: str | None
+) -> ContextBlock | None:
+    """``<user_context>``: the business understanding, with the user's plan."""
+    if understanding is None:
+        return None
+    raw_ctx = format_understanding_for_prompt(understanding)
+    # Append subscription tier so the agent has ambient awareness.
+    if user_id:
+        from .rate_limit import get_user_tier
+
+        tier = await get_user_tier(user_id)
+        tier_line = f"Plan: {tier.value}"
+        raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
+    if not raw_ctx:
+        # All BusinessUnderstanding fields are empty/None — an empty
+        # <user_context>\n\n</user_context> block adds no value and wastes
+        # tokens.
+        return None
+    # _sanitize_user_context_field is applied to the combined output of
+    # format_understanding_for_prompt rather than to each individual field.
+    # This is intentional: format_understanding_for_prompt produces a single
+    # structured string from trusted DB data, so the trust boundary is at the
+    # DB read, not at each field boundary.  Sanitizing at the combined level is
+    # both correct and sufficient — it strips any residual tag-like sequences
+    # before the string is wrapped in the <user_context> block that the LLM
+    # sees.
+    return ContextBlock(
+        tag=USER_CONTEXT_TAG, head=_sanitize_user_context_field(raw_ctx)
+    )
+
+
+def _plain_block(tag: str, body: str) -> ContextBlock | None:
+    return ContextBlock(tag=tag, head=body) if body else None
+
+
+def _normalize_title_model_for_aux() -> str | None:
+    """The title model as the platform route sends it; None without one.
 
     OpenRouter routes by the full ``vendor/model`` slug, but Anthropic's
     OpenAI-compat endpoint rejects the ``anthropic/`` prefix and dot-separated
@@ -792,12 +743,10 @@ def _normalize_title_model_for_aux() -> str:
     Anthropic deployments fragment between normalized and unnormalized model
     names, breaking the admin dashboard's per-model rollups.
     """
-    title_model = config.title_model
-    if config.aux_provider_label == "anthropic":
-        if "/" in title_model:
-            title_model = title_model.split("/", 1)[1]
-        title_model = title_model.replace(".", "-")
-    return title_model
+    title_model = config.aux_model
+    if title_model is None or config.aux_client_credentials[1] is None:
+        return None
+    return normalize_model_for_transport(title_model, config)
 
 
 async def _generate_session_title(
@@ -855,6 +804,10 @@ async def _generate_session_title(
         # ``aux_client_credentials`` fallback) so the title model
         # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
         title_model = _normalize_title_model_for_aux()
+        if title_model is None:
+            # No platform API (a Claude login, connected accounts only):
+            # the title comes from the message itself.
+            return _fallback_title_from_message(message), None
 
         # Route through the shared providers helper so future provider
         # work (flex tier, new SDK upgrades, etc.) propagates here
@@ -1009,7 +962,7 @@ async def _record_title_generation_cost(
     # API call.  Without this the admin dashboard fragments between
     # ``anthropic/claude-haiku-4.5`` (raw config) and ``claude-haiku-4-5``
     # (the form the Anthropic OpenAI-compat endpoint actually saw).
-    model = _normalize_title_model_for_aux()
+    model = _normalize_title_model_for_aux() or ""
 
     # Direct-Anthropic responses don't carry an OpenRouter-style ``cost``
     # field on usage.model_extra, so ``_title_usage_from_response`` returns
@@ -1030,7 +983,7 @@ async def _record_title_generation_cost(
             completion_tokens=completion_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
-            cache_ttl=config.baseline_prompt_cache_ttl,
+            cache_ttl=_TITLE_CACHE_TTL,
         )
 
     # Nothing meaningful to record — skip the DB roundtrip entirely

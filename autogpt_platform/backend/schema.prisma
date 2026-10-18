@@ -1443,6 +1443,13 @@ model ExpertRoutine {
   // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
   // what archiving paused, never one the owner had switched off themselves.
   pausedByExpertArchive Boolean   @default(false)
+  // Set when a turn that ran tainted created or switched on this routine, so
+  // its fires start tainted. It only ever rises: the owner editing or
+  // rewording the routine later doesn't clear it; deleting it and creating it
+  // again does. False on rows from before the column, whose fires are tainted
+  // when the routine's chat was started on a chat platform, decided at fire
+  // time.
+  tainted               Boolean   @default(false)
 
   @@unique([expertId, key])
   @@index([expertId, createdAt, id])

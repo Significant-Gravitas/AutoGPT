@@ -12,7 +12,6 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 settings = Settings()
 
 if TYPE_CHECKING:
-    from anthropic import AsyncAnthropic
     from openai import AsyncOpenAI
 
     from backend.copilot.bot.app import CoPilotChatBridgeClient
@@ -168,7 +167,7 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     """Build the local-transport OpenAI client.
 
     Factored out so both ``prefer_openrouter`` arms of ``get_openai_client``
-    share a single cached instance under ``CHAT_USE_LOCAL=true`` — the cache
+    share a single cached instance under ``CHAT_PLATFORM_ROUTE=local`` — the cache
     keys on its own arglist (which is empty), not on the caller's
     ``prefer_openrouter`` kwarg, so we don't end up with two equivalent
     ``AsyncOpenAI`` instances pointed at the same endpoint.
@@ -185,8 +184,8 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     from backend.copilot.sdk.env import config as chat_cfg
 
     return AsyncOpenAI(
-        api_key=chat_cfg.api_key,
-        base_url=chat_cfg.base_url,
+        api_key=chat_cfg.local_api_key or "local",
+        base_url=chat_cfg.local_openai_base_url,
         timeout=chat_cfg.local_request_timeout_s,
     )
 
@@ -198,9 +197,9 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 
     Resolution order:
 
-    1. **Local transport** (``CHAT_USE_LOCAL=true``) wins unconditionally.
+    1. **Local transport** (``CHAT_PLATFORM_ROUTE=local``) wins unconditionally.
        Operators who opted into self-hosted shouldn't have platform helpers
-       (dry-run simulator, prompt compression, marketplace embeddings, …)
+       (onboarding extraction, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
        OpenAI-compatible endpoint Otto uses, with the same generous
@@ -215,8 +214,8 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        back to ``open_router_api_key`` via OpenRouter.
 
     Returns ``None`` only when none of the above resolve — callers must
-    handle that branch (see e.g. ``executor/simulator._run_simulation_llm``).
-    Note that under ``CHAT_USE_LOCAL=true`` this never returns ``None``,
+    handle that branch (see e.g. ``data/tally.py``).
+    Note that under ``CHAT_PLATFORM_ROUTE=local`` this never returns ``None``,
     so callers that previously used a ``None`` return as a "skip cloud-only
     feature" sentinel will instead exercise the local path — that is the
     intended behaviour for this PR.
@@ -224,10 +223,10 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     from openai import AsyncOpenAI
 
     # Local transport takes precedence so a stray ``OPENAI_API_KEY`` set
-    # for some other reason can't override an explicit ``CHAT_USE_LOCAL=true``.
+    # for some other reason can't override an explicit ``CHAT_PLATFORM_ROUTE=local``.
     from backend.copilot.sdk.env import config as chat_cfg
 
-    if chat_cfg.transport.name == "local":
+    if chat_cfg.platform_route == "local":
         return _get_local_openai_client()
 
     openai_key = settings.secrets.openai_internal_api_key
@@ -243,51 +242,6 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
         if openrouter_key:
             return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
     return None
-
-
-# ============ Anthropic Client ============ #
-
-
-@cached(ttl_seconds=3600)
-def get_anthropic_client() -> "AsyncAnthropic | None":
-    """Get a process-cached async Anthropic client.
-
-    Reads ``settings.secrets.anthropic_api_key`` (same env var the SDK
-    blocks consume). Returns ``None`` when no key is configured — caller
-    should fall back to OpenRouter-routed Anthropic via
-    ``get_openai_client(prefer_openrouter=True)`` for sync calls, or
-    skip the Anthropic-batch path entirely.
-
-    Used by the dream pass + future batch-mode LLM callers that need
-    direct Anthropic API access (batch API, prompt caching with
-    cache_control, tool-use forced structured output).
-    """
-    from anthropic import AsyncAnthropic
-
-    anthropic_key = settings.secrets.anthropic_api_key
-    if anthropic_key:
-        return AsyncAnthropic(api_key=anthropic_key)
-    return None
-
-
-def openrouter_helper_cost_provider() -> str:
-    """Cost-log provider for a client from ``get_openai_client(prefer_openrouter=True)``.
-
-    Mirrors that function's routing so the ``PlatformCostLog`` row names the
-    endpoint the call physically hit, not the chat transport identity:
-
-    - **Local transport** → ``"ollama"`` — the self-hosted endpoint
-      ``get_openai_client`` returns unconditionally under ``CHAT_USE_LOCAL``.
-    - **Every other transport** → ``"open_router"``. ``prefer_openrouter=True``
-      only ever returns an OpenRouter client or ``None`` — it never falls back
-      to direct Anthropic — so any call that actually billed went through
-      OpenRouter, even under ``subscription`` / ``direct_anthropic`` transport
-      with an ``OPEN_ROUTER_API_KEY`` present. Keying off
-      ``transport.cost_log_provider`` here would mislabel those as ``"anthropic"``.
-    """
-    from backend.copilot.sdk.env import config as chat_cfg
-
-    return "ollama" if chat_cfg.transport.name == "local" else "open_router"
 
 
 # ============ Notification Queue Helpers ============ #

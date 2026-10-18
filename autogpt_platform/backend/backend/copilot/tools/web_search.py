@@ -36,6 +36,8 @@ from openai.types.chat import ChatCompletion
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.settings import Settings
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, WebSearchResponse, WebSearchResult
@@ -65,6 +67,16 @@ _CITATION_MARKER = re.compile(r"\[(\d{1,3})\]")
 # cost into the response usage object.  Same dict shape the baseline
 # service uses — keep the two aligned.
 _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
+
+
+def _openrouter_credentials() -> tuple[str | None, str]:
+    """``(api_key, base_url)`` for the OpenRouter search models: the
+    platform route's own when it is OpenRouter, else the deployment's
+    OpenRouter integration key (search is served only by OpenRouter)."""
+    if _chat_config.platform_route == "openrouter":
+        api_key, base_url = _chat_config.main_client_credentials
+        return api_key, base_url or OPENROUTER_BASE_URL
+    return Settings().secrets.open_router_api_key or None, OPENROUTER_BASE_URL
 
 
 class WebSearchTool(BaseTool):
@@ -128,7 +140,7 @@ class WebSearchTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return bool(_chat_config.api_key and _chat_config.base_url)
+        return bool(_openrouter_credentials()[0])
 
     async def _execute(
         self,
@@ -154,7 +166,8 @@ class WebSearchTool(BaseTool):
             max_results = _DEFAULT_MAX_RESULTS
         max_results = max(1, min(max_results, _HARD_MAX_RESULTS))
 
-        if not _chat_config.api_key or not _chat_config.base_url:
+        api_key, base_url = _openrouter_credentials()
+        if not api_key:
             return ErrorResponse(
                 message=(
                     "Web search is unavailable — the deployment has no "
@@ -164,9 +177,7 @@ class WebSearchTool(BaseTool):
                 session_id=session_id,
             ).from_outside()
 
-        client = AsyncOpenAI(
-            api_key=_chat_config.api_key, base_url=_chat_config.base_url
-        )
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         model_used = _DEEP_MODEL if deep else _QUICK_MODEL
         max_tokens = _DEEP_MAX_TOKENS if deep else _QUICK_MAX_TOKENS
 

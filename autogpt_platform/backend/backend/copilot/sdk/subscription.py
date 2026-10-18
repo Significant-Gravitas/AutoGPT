@@ -4,12 +4,17 @@ Handles locating the SDK-bundled CLI binary, provisioning credentials from
 environment variables, and validating that subscription auth is functional.
 """
 
+import contextlib
 import functools
 import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
+
+from backend.copilot.sdk.launch_env import inherited_env
+from backend.copilot.sdk.route_credentials import subscription_env
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,11 @@ def provision_credentials_file() -> None:
 
     A ``CLAUDE_CODE_REFRESH_TOKEN`` env var is optional but recommended —
     it lets the CLI silently refresh an expired access token.
+
+    The directory is the owner's alone (0700) and the file is created
+    owner-only (0600), exclusively and without following a link. An
+    existing file (e.g. a volume mount) is kept, once it is a regular file
+    only its owner can read; anything else is refused.
     """
     access_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
     if not access_token:
@@ -55,13 +65,17 @@ def provision_credentials_file() -> None:
 
     creds_dir = os.path.expanduser("~/.claude")
     creds_path = os.path.join(creds_dir, ".credentials.json")
+    _ensure_private_dir(creds_dir)
 
     # Don't overwrite an existing credentials file (e.g. from a volume mount).
-    if os.path.exists(creds_path):
+    try:
+        existing = os.lstat(creds_path)
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        _require_private_file(creds_path, existing)
         logger.debug("Credentials file already exists at %s — skipping", creds_path)
         return
-
-    os.makedirs(creds_dir, exist_ok=True)
 
     creds = {
         "claudeAiOauth": {
@@ -75,9 +89,58 @@ def provision_credentials_file() -> None:
             ],
         }
     }
-    with open(creds_path, "w") as f:
-        json.dump(creds, f)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(creds_path, flags, 0o600)
+    except FileExistsError:
+        raise RuntimeError(
+            f"{creds_path} appeared while the Claude credentials were being "
+            "written; not writing them"
+        ) from None
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(creds, f)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(creds_path)
+        raise
     logger.info("Provisioned Claude credentials file at %s", creds_path)
+
+
+def _ensure_private_dir(path: str) -> None:
+    """Create *path* owner-only, or hold an existing one to that."""
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    info = os.stat(path)
+    if not stat.S_ISDIR(info.st_mode):
+        raise RuntimeError(f"{path} is not a directory; not writing Claude credentials")
+    if os.name != "posix":
+        return
+    if info.st_uid != os.geteuid():
+        raise RuntimeError(
+            f"{path} belongs to another user; not writing Claude credentials"
+        )
+    if stat.S_IMODE(info.st_mode) & 0o077:
+        os.chmod(path, 0o700)
+
+
+def _require_private_file(path: str, info: os.stat_result) -> None:
+    """Refuse an existing credentials file anyone but its owner could read
+    or replace, or one that is not a plain file."""
+    if stat.S_ISLNK(info.st_mode):
+        raise RuntimeError(f"{path} is a symbolic link; refusing to use it")
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError(f"{path} is not a regular file; refusing to use it")
+    if os.name != "posix":
+        return
+    if info.st_uid != os.geteuid():
+        raise RuntimeError(f"{path} belongs to another user; refusing to use it")
+    if stat.S_IMODE(info.st_mode) & 0o077:
+        raise RuntimeError(
+            f"{path} is readable or writable by other users; "
+            "make it owner-only (chmod 600) to use it"
+        )
 
 
 @functools.cache
@@ -96,6 +159,7 @@ def validate_subscription() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        env=inherited_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -113,12 +177,7 @@ def validate_subscription() -> None:
         capture_output=True,
         text=True,
         timeout=10,
-        env={
-            **os.environ,
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        },
+        env={**inherited_env(), **subscription_env()},
     )
     if auth_result.returncode != 0:
         raise RuntimeError(
@@ -135,10 +194,6 @@ def validate_subscription() -> None:
                 "Claude CLI reports loggedIn=false. Set CLAUDE_CODE_OAUTH_TOKEN "
                 "or run `claude login`."
             )
-        logger.info(
-            "Claude subscription auth: method=%s, email=%s",
-            status.get("authMethod"),
-            status.get("email"),
-        )
+        logger.info("Claude subscription auth: method=%s", status.get("authMethod"))
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")

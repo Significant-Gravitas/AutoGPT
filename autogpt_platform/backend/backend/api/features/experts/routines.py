@@ -76,6 +76,7 @@ def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
         customized=row.customizedAt is not None,
         grants_credentials=row.grantsCredentials,
         credential_pins=_credential_pins(row.credentialPins),
+        tainted=row.tainted,
     )
 
 
@@ -195,6 +196,7 @@ async def enable_routine(
     pinned_session_id: str | None = None,
     grants_credentials: bool | None = None,
     credential_pins: CredentialPins | None = None,
+    tainted: bool = False,
 ) -> ExpertRoutine:
     """Switch a routine on, resolving the proposal into what actually runs.
 
@@ -202,6 +204,10 @@ async def enable_routine(
     marks the row customized, which takes it out of reach of every later roster
     edit — from here on what this routine does is the owner's, not the
     template's.
+
+    *tainted* says the turn switching it on ran tainted. It marks the row,
+    which then stays marked; switching on from anywhere else leaves the mark
+    as it is.
 
     *session_mode* rewrites the row, not just its ``sessionId``: a row whose
     mode still read THREAD while its id pointed at a real chat fired correctly
@@ -282,6 +288,7 @@ async def enable_routine(
         run_at=resolved_run_at,
         session_id=pinned,
         user_timezone=user_timezone,
+        tainted=row.tainted or tainted,
     )
     now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {
@@ -307,6 +314,9 @@ async def enable_routine(
         data["credentialPins"] = _pins_json(credential_pins)
     if customized:
         data["customizedAt"] = now
+    # Only ever set, never cleared: a later switch-on by the owner keeps it.
+    if tainted:
+        data["tainted"] = True
     try:
         updated = await prisma.models.ExpertRoutine.prisma().update(
             where={"id": row.id}, data=data
@@ -358,6 +368,7 @@ async def create_routine(
     session_id: str | None = None,
     grants_credentials: bool = True,
     credential_pins: CredentialPins | None = None,
+    tainted: bool = False,
 ) -> ExpertRoutine:
     """Record standing work worked out with the owner in conversation.
 
@@ -373,6 +384,9 @@ async def create_routine(
     follow-up has: the prompt is the owner's own words, typed into their own
     chat. *grants_credentials* still defaults true rather than being assumed,
     so an owner who wants a routine that only reads and drafts can say so.
+
+    *tainted* says the turn creating it ran tainted, and marks the row for
+    good (see :func:`enable_routine`).
     """
     await _owned_owner(user_id, expert_id)
     if not title.strip() or not prompt.strip():
@@ -397,6 +411,7 @@ async def create_routine(
         "source": prisma.enums.ExpertRoutineSource.OWNER,
         "grantsCredentials": grants_credentials,
         "customizedAt": datetime.now(timezone.utc),
+        "tainted": tainted,
     }
     if credential_pins:
         data["credentialPins"] = _pins_json(credential_pins)

@@ -21,7 +21,7 @@ from backend.api.features.experts.roster import load_roster
 from backend.api.features.experts.roster_types import RosterEntry
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.context_blocks import render_context_blocks
 from backend.copilot.expert_context import (
     render_account_standing_work_block,
     render_expert_computer_block,
@@ -35,9 +35,9 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
-    get_sdk_supplement,
     get_team_building_supplement,
 )
+from backend.copilot.sdk.system_prompt import SystemPromptParts, assemble_system_prompt
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 from .models import Baseline, ExpertFixture, Rubric
@@ -127,58 +127,58 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
         # eval fixture has no account. ``<standing_work>`` is static text every
         # Otto turn carries, so leaving it out here would make this check pass
         # while production and the harness disagreed.
-        return (
-            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
-            + render_account_standing_work_block()
-        )
-    # ``<expert_computer>`` is only rendered when E2B actually backs the
-    # sandbox, so it is empty wherever E2B is unconfigured — which is why its
-    # absence here went unnoticed: CI has no E2B and both sides read "".
-    return (
-        render_expert_workflows_block(expert)
-        + render_expert_computer_block()
-        + render_team_context(
-            roster,
-            delegation_enabled=DELEGATION_ENABLED,
-            exclude_expert_id=expert.id,
-        )
-    )
+        blocks = [
+            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED),
+            render_account_standing_work_block(),
+        ]
+    else:
+        # ``<expert_computer>`` is only rendered when E2B actually backs the
+        # sandbox, so it is missing wherever E2B is unconfigured — which is why
+        # its absence here went unnoticed: CI has no E2B and both sides had no
+        # block.
+        blocks = [
+            render_expert_workflows_block(expert),
+            render_expert_computer_block(),
+            render_team_context(
+                roster,
+                delegation_enabled=DELEGATION_ENABLED,
+                exclude_expert_id=expert.id,
+            ),
+        ]
+    return render_context_blocks(block for block in blocks if block is not None)
 
 
 def chat_system_prompt(expert: Expert | None) -> str:
-    """The SDK engine's system prompt for an expert session (the assembly in
-    ``sdk/service.py``) with the flags such a session has on in production:
-    cloud sandbox, hire-experts, memory. ``None`` is plain Otto."""
-    suffix = render_expert_identity_suffix(expert) if expert else ""
-    return (
-        CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
-        + (get_delegation_supplement() if DELEGATION_ENABLED else "")
-        + get_expert_oversight_supplement(
-            experts_enabled=DELEGATION_ENABLED,
-            expert_id=expert.id if expert else None,
-        )
-        + get_team_building_supplement(
-            experts_enabled=DELEGATION_ENABLED,
-            expert_id=expert.id if expert else None,
-        )
-        + get_graphiti_supplement()
-        + suffix
+    """The SDK engine's system prompt for an expert session, assembled by
+    the engine's own ``assemble_system_prompt``, with the flags such a
+    session has on in production: cloud sandbox, hire-experts, memory.
+    ``None`` is plain Otto."""
+    expert_id = expert.id if expert else None
+    parts = SystemPromptParts(
+        base=CACHEABLE_SYSTEM_PROMPT,
+        use_e2b=True,
+        expert_session=expert is not None,
+        delegation=get_delegation_supplement() if DELEGATION_ENABLED else "",
+        oversight=get_expert_oversight_supplement(
+            experts_enabled=DELEGATION_ENABLED, expert_id=expert_id
+        ),
+        team_building=get_team_building_supplement(
+            experts_enabled=DELEGATION_ENABLED, expert_id=expert_id
+        ),
+        chat_platform="",
+        graphiti=get_graphiti_supplement(),
+        auto_mode="",
+        expert_identity=render_expert_identity_suffix(expert) if expert else "",
     )
+    return assemble_system_prompt(parts, building_suffix="")
 
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
-    """The model an expert turn runs on: the engine decision, then the
-    router's ``(mode, standard)`` cell. No user id, so LaunchDarkly is
+    """The model an expert turn runs on: the router's ``("thinking",
+    standard)`` cell. No user id, so LaunchDarkly is
     skipped and this is the catalog/env layer; a proposed LD value is
     checked by hand with ``--model``."""
-    use_sdk = await resolve_use_sdk(
-        None,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    mode: ModelMode = "thinking" if use_sdk else "fast"
+    mode: ModelMode = "thinking"
     route = await resolve_model_route(mode, "standard", None, config=config)
     return RoutedModel(
         mode=mode,

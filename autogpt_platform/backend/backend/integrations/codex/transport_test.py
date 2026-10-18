@@ -196,21 +196,3 @@ async def test_direct_invoke_records_the_latest_rate_limits() -> None:
         await transport.invoke(lease, CodexInvocationRequest(prompt="hello"))
 
     assert (await transport.rate_limits(lease)).plan_type == "pro"
-
-
-@pytest.mark.asyncio
-async def test_direct_agent_invoke_records_the_latest_rate_limits() -> None:
-    credentials = _credentials()
-    session = _session_with_rate_limits()
-    transport = CodexTransport()
-    lease = CodexCredentialLease(credentials, session)
-
-    with patch.object(transport, "_session_for", return_value=session):
-        await transport.invoke_agent(
-            lease,
-            CodexInvocationRequest(prompt="hello"),
-            [],
-            AsyncMock(),
-        )
-
-    assert (await transport.rate_limits(lease)).plan_type == "pro"

@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 # from the click, not from here.
 _TTL_SECONDS = 30 * 24 * 60 * 60
 _KEY = "copilot:gate:held:"
-# Above the largest result either engine hands the model (the baseline's
-# 100,000-character output cap plus the wrapper), so nothing is cut here.
+# Above the largest result a tool hands the model (the 100,000-character
+# output cap plus the wrapper), so nothing is cut here.
 _MAX_RESULT_CHARS = 120_000
 
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
@@ -73,6 +73,11 @@ class HeldResult(PendingMessage):
     32,000-character limit on a typed follow-up."""
 
     content: str = Field(min_length=1, max_length=_MAX_RESULT_CHARS)
+
+    def text_for_model(self) -> str:
+        """Built here around a tool's output, which reaches the model as it
+        would in a direct tool result."""
+        return self.content
 
 
 class HeldCall(BaseModel):

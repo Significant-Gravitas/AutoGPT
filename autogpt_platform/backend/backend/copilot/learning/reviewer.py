@@ -1,9 +1,9 @@
 """Reviewer model call and cost accounting for one learning review.
 
-Routes through the same transport + JSON-mode wrapper the dream pass uses
-(``dream/llm.structured_completion``) so every transport the platform
-supports works unchanged, and charges the spend through the normal usage
-ledger so learning appears next to chat spend under one provider label.
+Routes through the same route-following JSON-mode wrapper the dream pass
+uses (``dream/llm.structured_completion``): the platform route's key, URL
+and model names. The spend goes through the normal usage ledger, so
+learning appears next to chat spend under one provider label.
 """
 
 from __future__ import annotations
@@ -36,7 +36,9 @@ __all__ = ["DreamLLMError", "review_evidence", "record_review_cost", "reviewer_m
 
 
 def reviewer_model(config: ChatConfig) -> str:
-    return config.learning_reviewer_model.strip() or config.fast_standard_model
+    """The pinned reviewer, else the route's standard tier, as the dream
+    pass's phases use."""
+    return config.learning_reviewer_model.strip() or config.job_tier_model("standard")
 
 
 async def review_evidence(

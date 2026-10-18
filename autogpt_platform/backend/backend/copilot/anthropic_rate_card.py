@@ -1,9 +1,10 @@
-"""Anthropic rate-card lookup for direct-mode cost computation.
+"""Anthropic rate-card lookup: the platform's own price for tokens.
 
-Used by the baseline path when ``CHAT_USE_OPENROUTER=false`` — the
-OpenAI-compat endpoint at api.anthropic.com does **not** return a
-``usage.cost`` field (that is an OpenRouter extension), so we compute
-USD from token counts × per-model rates here.
+Anthropic's API reports tokens, not a cost (``usage.cost`` is an
+OpenRouter extension), so a turn on the direct route, an OpenRouter turn
+whose bill cannot be read back, and a side call on the direct route are
+priced here from token counts × per-model rates. The Claude Code CLI's
+own estimate is never charged: its price table can lag Anthropic's.
 
 Rates are vendored from LiteLLM's community-maintained pricing data
 (``model_prices_and_context_window.json``) — only the Anthropic
@@ -20,8 +21,8 @@ Anthropic prompt-caching docs (rates we apply when the source omits
 the 1h cache-write field on a model):
 https://docs.claude.com/en/docs/build-with-claude/prompt-caching
 
-Scope note: this rate card exists only for direct-Anthropic cost
-recovery on the OpenAI-compat transport. Per-model catalog costs (the
+Scope note: this rate card prices what the platform's own account
+spends on Anthropic models. Per-model catalog costs (the
 ones the platform manages) live in ``backend/data/llm_registry/
 catalog.py`` — see docs/platform/contributing/managing-llm-models.md.
 """
@@ -31,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,6 @@ _DEFAULT_CACHE_WRITE_5M_MULTIPLIER = 1.25
 # tail; an alarming bill is recoverable, a missing one is not.
 _FALLBACK_INPUT_PER_TOKEN = 15.0 / 1_000_000  # opus-4-1: $15/Mtok
 _FALLBACK_OUTPUT_PER_TOKEN = 75.0 / 1_000_000  # opus-4-1: $75/Mtok
-
-# Conservative output-token cap when the rate-card has no entry / no
-# max_output_tokens field — Opus 4.x publishes 32K, Sonnet 4.x publishes
-# 64K.  Pick the lower bound so a fresh slug we don't recognise can't
-# push the request over a concrete model's hard limit and 400 the API.
-_FALLBACK_MAX_OUTPUT_TOKENS = 32_000
 
 
 _rates_cache: dict[str, dict[str, Any]] | None = None
@@ -118,21 +113,6 @@ def _resolve_info(model: str) -> dict[str, Any] | None:
     return None
 
 
-def get_max_output_tokens(model: str) -> int:
-    """Return the model's max output tokens from the rate card, or a
-    conservative fallback when the rate card has no entry.
-
-    Used by the baseline path to cap ``max_tokens`` on direct-Anthropic
-    extended-thinking requests so ``budget_tokens + response margin`` never
-    exceeds the model's hard output limit (Anthropic 400s on overflow).
-    """
-    info = _resolve_info(model) or {}
-    raw = info.get("max_output_tokens")
-    if isinstance(raw, int) and raw > 0:
-        return raw
-    return _FALLBACK_MAX_OUTPUT_TOKENS
-
-
 def _is_anthropic_slug(model: str) -> bool:
     """Quick pre-check: does the slug look like an Anthropic model?
 
@@ -148,6 +128,101 @@ def _is_anthropic_slug(model: str) -> bool:
     if "/" in lowered:
         return False
     return lowered.startswith("claude-")
+
+
+def anthropic_usage_cost_usd(
+    *,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_5m_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
+) -> float | None:
+    """USD for Anthropic-native usage: ``input_tokens`` excludes the cache
+    buckets, and cache writes come split by their lifetime, as the
+    Messages API reports them (``usage.cache_creation``).
+
+    None for a slug that is not Anthropic's; an Anthropic slug the rate
+    card lacks is priced at the conservative fallback, as in
+    :func:`compute_anthropic_cost_usd`.
+    """
+    if not _is_anthropic_slug(model):
+        return None
+    rates = _rates_for(model)
+    return (
+        max(0, input_tokens) * rates.input
+        + max(0, output_tokens) * rates.output
+        + max(0, cache_read_tokens) * rates.cache_read
+        + max(0, cache_write_5m_tokens) * rates.cache_write_5m
+        + max(0, cache_write_1h_tokens) * rates.cache_write_1h
+    )
+
+
+def fallback_usage_cost_usd(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> float:
+    """USD for usage on a model no rate card prices: the conservative
+    fallback rates, every cache token at the input rate. Over-billing an
+    unknown model is recoverable; a missing charge is not."""
+    prompt = max(0, input_tokens + cache_read_tokens + cache_write_tokens)
+    return (
+        prompt * _FALLBACK_INPUT_PER_TOKEN
+        + max(0, output_tokens) * _FALLBACK_OUTPUT_PER_TOKEN
+    )
+
+
+class _Rates(NamedTuple):
+    input: float
+    output: float
+    cache_read: float
+    cache_write_5m: float
+    cache_write_1h: float
+
+
+def _rates_for(model: str) -> _Rates:
+    """Per-token rates for an Anthropic *model*, with the documented
+    multipliers where the entry omits a cache field and the fallback
+    rates where it has no entry."""
+    info: dict[str, Any] = _resolve_info(model) or {}
+    raw_input = info.get("input_cost_per_token")
+    raw_output = info.get("output_cost_per_token")
+    if isinstance(raw_input, (int, float)) and isinstance(raw_output, (int, float)):
+        input_per_tok, output_per_tok = float(raw_input), float(raw_output)
+    else:
+        logger.error(
+            "[rate_card] no entry for model=%s in anthropic_rates.json — "
+            "falling back to opus-4-1 rates ($15/$75 per Mtok) so cost "
+            "still records.  Run scripts/refresh_anthropic_rates.py to "
+            "add this model.",
+            model,
+        )
+        input_per_tok = _FALLBACK_INPUT_PER_TOKEN
+        output_per_tok = _FALLBACK_OUTPUT_PER_TOKEN
+        info = {}
+
+    def _rate(field: str, multiplier: float) -> float:
+        raw = info.get(field)
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        return input_per_tok * multiplier
+
+    return _Rates(
+        input=input_per_tok,
+        output=output_per_tok,
+        cache_read=_rate("cache_read_input_token_cost", _DEFAULT_CACHE_READ_MULTIPLIER),
+        cache_write_5m=_rate(
+            "cache_creation_input_token_cost", _DEFAULT_CACHE_WRITE_5M_MULTIPLIER
+        ),
+        cache_write_1h=_rate(
+            "cache_creation_input_token_cost_above_1hr",
+            _DEFAULT_CACHE_WRITE_1H_MULTIPLIER,
+        ),
+    )
 
 
 def compute_anthropic_cost_usd(
@@ -189,60 +264,19 @@ def compute_anthropic_cost_usd(
     """
     if not _is_anthropic_slug(model):
         return None
-    info: dict[str, Any] = _resolve_info(model) or {}
-    raw_input = info.get("input_cost_per_token")
-    raw_output = info.get("output_cost_per_token")
-    if isinstance(raw_input, (int, float)) and isinstance(raw_output, (int, float)):
-        input_per_tok: float = float(raw_input)
-        output_per_tok: float = float(raw_output)
-    else:
-        logger.error(
-            "[rate_card] no entry for model=%s in anthropic_rates.json — "
-            "falling back to opus-4-1 rates ($15/$75 per Mtok) so cost "
-            "still records.  Run scripts/refresh_anthropic_rates.py to "
-            "add this model.",
-            model,
-        )
-        input_per_tok = _FALLBACK_INPUT_PER_TOKEN
-        output_per_tok = _FALLBACK_OUTPUT_PER_TOKEN
-        info = {}  # cache fields fall through to default multipliers
-
+    rates = _rates_for(model)
     prompt_tokens = max(0, prompt_tokens)
-    completion_tokens = max(0, completion_tokens)
     cache_read_tokens = max(0, cache_read_tokens)
     cache_creation_tokens = max(0, cache_creation_tokens)
     fresh_input_tokens = max(
         0, prompt_tokens - cache_read_tokens - cache_creation_tokens
     )
-
-    raw_cache_read = info.get("cache_read_input_token_cost")
-    cache_read_per_tok = (
-        float(raw_cache_read)
-        if isinstance(raw_cache_read, (int, float))
-        else input_per_tok * _DEFAULT_CACHE_READ_MULTIPLIER
-    )
-
-    if cache_ttl == "5m":
-        raw_cache_write = info.get("cache_creation_input_token_cost")
-        cache_write_per_tok = (
-            float(raw_cache_write)
-            if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_5M_MULTIPLIER
-        )
-    else:
-        # 1h is the documented default TTL for our deployments. Unknown
-        # TTLs land here too — over-billing on cache writes is preferable
-        # to mis-billing.
-        raw_cache_write = info.get("cache_creation_input_token_cost_above_1hr")
-        cache_write_per_tok = (
-            float(raw_cache_write)
-            if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_1H_MULTIPLIER
-        )
-
+    # 1h is the documented default TTL for our deployments. Unknown TTLs land
+    # on it too: over-billing cache writes is preferable to mis-billing them.
+    write_rate = rates.cache_write_5m if cache_ttl == "5m" else rates.cache_write_1h
     return (
-        fresh_input_tokens * input_per_tok
-        + completion_tokens * output_per_tok
-        + cache_read_tokens * cache_read_per_tok
-        + cache_creation_tokens * cache_write_per_tok
+        fresh_input_tokens * rates.input
+        + max(0, completion_tokens) * rates.output
+        + cache_read_tokens * rates.cache_read
+        + cache_creation_tokens * write_rate
     )

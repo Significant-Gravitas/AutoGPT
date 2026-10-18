@@ -11,7 +11,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,6 +21,7 @@ from apscheduler.triggers.date import DateTrigger
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor.utils import ScheduledTurnOrigin
+from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -289,7 +290,7 @@ async def test_expert_scope_status_unavailable_on_lookup_failure():
 
 
 def _args(**overrides) -> CopilotTurnJobArgs:
-    base = dict(
+    base: dict[str, Any] = dict(
         schedule_id="sched-1",
         user_id="user-1",
         session_id="session-1",
@@ -371,7 +372,9 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
     # Marks the turn as scheduled so the executor alerts if it fails later.
-    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+    assert call_kwargs["scheduled"].model_copy(
+        update={"fired_at": None}
+    ) == ScheduledTurnOrigin(schedule_id="sched-1")
 
 
 @pytest.mark.asyncio
@@ -459,6 +462,148 @@ async def test_reschedule_after_cap_keeps_the_pinned_accounts():
         await _reschedule_one_shot_after_cap(args)
     kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
     assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+# The fire's taint: the turn that set it up, the routine's row, and schedules
+# from before either recorded it.
+
+
+def _chat(source_platform: str | None = None) -> MagicMock:
+    return MagicMock(
+        session_id="session-1",
+        expert_id=None,
+        metadata=ChatSessionMetadata(
+            llm_auth_provider="platform", source_platform=source_platform
+        ),
+    )
+
+
+def _routine_row(*, tainted: bool) -> ExpertRoutine:
+    return ExpertRoutine(
+        id="routine-1",
+        title="Inbox sweep",
+        prompt="Sweep the inbox",
+        crons=["0 9 * * *"],
+        enabled=True,
+        source="OWNER",
+        grants_credentials=True,
+        tainted=tainted,
+    )
+
+
+async def _fired_tainted(
+    args: CopilotTurnJobArgs,
+    *,
+    chat: MagicMock | None = None,
+    routine: ExpertRoutine | None = None,
+) -> bool:
+    mock_schedule_turn = AsyncMock()
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    chat = chat or _chat()
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=AsyncMock(return_value=chat)),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session", new=AsyncMock(return_value=chat)
+        ),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    mock_schedule_turn.assert_awaited_once()
+    return mock_schedule_turn.call_args.kwargs["tainted"]
+
+
+def _from_before_the_field(**fields) -> CopilotTurnJobArgs:
+    legacy = CopilotTurnJobArgs.model_validate(
+        {"user_id": "user-1", "session_id": "session-1", "message": "check CI"} | fields
+    )
+    assert legacy.tainted is None
+    return legacy
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tainted", [True, False])
+async def test_a_followup_fires_with_the_taint_of_the_turn_that_made_it(
+    tainted: bool,
+):
+    assert await _fired_tainted(_args(tainted=tainted)) is tainted
+
+
+@pytest.mark.asyncio
+async def test_a_followup_made_in_a_tainted_turn_fires_tainted_in_a_fresh_chat():
+    assert await _fired_tainted(_args(session_id=None, tainted=True)) is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform, tainted",
+    [("slack", True), (None, False)],
+    ids=["chat-platform-chat", "web-chat"],
+)
+async def test_a_followup_from_before_the_field_is_tainted_in_a_chat_platform_chat(
+    platform: str | None, tainted: bool
+):
+    legacy = _from_before_the_field()
+    assert await _fired_tainted(legacy, chat=_chat(platform)) is tainted
+
+
+@pytest.mark.asyncio
+async def test_a_followup_from_before_the_field_into_a_fresh_chat_is_untainted():
+    legacy = _from_before_the_field(session_id=None)
+    assert await _fired_tainted(legacy) is False
+
+
+@pytest.mark.asyncio
+async def test_a_routine_whose_row_is_tainted_fires_tainted_whatever_its_job_says():
+    """Switched off and on by its owner, its jobs are new, but its row keeps
+    the mark."""
+    args = _args(routine_id="routine-1", run_at=None, cron="0 9 * * *", tainted=False)
+    assert await _fired_tainted(args, routine=_routine_row(tainted=True)) is True
+
+
+@pytest.mark.asyncio
+async def test_an_owners_routine_fires_untainted():
+    args = _args(routine_id="routine-1", run_at=None, cron="0 9 * * *", tainted=False)
+    assert await _fired_tainted(args, routine=_routine_row(tainted=False)) is False
+
+
+@pytest.mark.asyncio
+async def test_a_routine_row_from_before_the_column_fires_tainted_in_a_chat_platform_chat():
+    args = _args(routine_id="routine-1", run_at=None, cron="0 9 * * *", tainted=False)
+    fired = await _fired_tainted(
+        args, chat=_chat("slack"), routine=_routine_row(tainted=False)
+    )
+    assert fired is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tainted", [True, False, None])
+async def test_a_one_shot_retry_keeps_the_taint(tainted: bool | None):
+    args = _args(cap_retry_count=0, tainted=tainted)
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    assert mock_client.add_copilot_turn_schedule.call_args.kwargs["tainted"] is tainted
+
+
+def test_the_taint_is_kept_in_the_job_but_not_in_what_the_api_returns():
+    scheduler = Scheduler(register_system_tasks=False)
+    with patch.object(
+        scheduler, "_persist_schedule", return_value=_mock_job({})
+    ) as persist:
+        info = scheduler.add_copilot_turn_schedule(
+            user_id="user-1",
+            session_id="session-1",
+            message="check CI",
+            cron="0 9 * * *",
+            user_timezone="UTC",
+            tainted=True,
+        )
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.model_dump(mode="json")["tainted"] is True
+    assert "tainted" not in info.model_dump(mode="json")
+    schema = CopilotTurnJobInfo.model_json_schema(mode="serialization")
+    assert "tainted" not in schema["properties"]
 
 
 @pytest.mark.asyncio
@@ -762,6 +907,27 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     assert mock_schedule_turn.call_args.kwargs["is_user_message"] is False
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_records_when_the_schedule_fired():
+    """The prompt lands as an assistant row, so the fire time and job id on
+    the turn's origin are what later mark that row as a scheduled prompt."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    before = datetime.now(timezone.utc)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    origin = mock_schedule_turn.call_args.kwargs["scheduled"]
+    assert origin.schedule_id == "sched-1"
+    assert before <= origin.fired_at <= datetime.now(timezone.utc)
+    assert origin.prompt_origin().kind == "scheduled_followup"
 
 
 @pytest.mark.asyncio

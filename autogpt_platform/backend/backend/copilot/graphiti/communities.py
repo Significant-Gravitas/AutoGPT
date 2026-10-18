@@ -323,7 +323,9 @@ async def rebuild_communities_for_user(
     from backend.copilot.sdk.env import config as chat_cfg
 
     flex_requested = graphiti_config.community_rebuild_use_flex_tier
-    use_flex = flex_requested and chat_cfg.transport.supports_flex_tier
+    use_flex = bool(
+        flex_requested and chat_cfg.route_row and chat_cfg.route_row.supports_flex_tier
+    )
     flex_client = None
 
     # Per-user mutual exclusion — acquired BEFORE the activity gate so a

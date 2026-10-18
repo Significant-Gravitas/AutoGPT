@@ -23,9 +23,9 @@ Failure-mode policy:
 
 Storing microdollars rather than tokens means the counter already reflects
 real model pricing (including cache discounts and provider surcharges), so
-this module carries no pricing table — the cost comes from OpenRouter's
-``usage.cost`` field (baseline), the Claude Agent SDK's reported total
-cost (SDK path), web_search tool calls, and the prompt-simulation harness.
+this module carries no pricing table — the cost comes from the Claude
+Agent SDK turn's reported or reconciled cost, web_search tool calls, and
+the prompt-simulation harness.
 
 Boundary with the credit wallet
 ===============================
@@ -41,9 +41,8 @@ are intentionally separate budgets:
   calls go through this path too: block execution bills the user's
   credit wallet, not this counter.
 * **Microdollars** meter AutoGPT's **operator-side infrastructure cost**
-  for the copilot **LLM turn itself** — the real USD we spend on the
-  baseline model, Claude Agent SDK runs, the web_search tool, and the
-  prompt simulator. They gate the chat loop so a single user can't burn
+  for the copilot **LLM turn itself** — the real USD we spend on
+  Claude Agent SDK runs, the web_search tool, and the prompt simulator. They gate the chat loop so a single user can't burn
   the daily / weekly infra budget driving the chat regardless of their
   credit balance. BYOK runs (user supplied their own API key) do **not**
   decrement this counter — the user is paying the provider, not us.
@@ -673,8 +672,7 @@ async def get_remaining_usd_budget(
     The result is the smaller of ``daily_remaining`` and ``weekly_remaining``
     expressed in USD.  Used to size the SDK's per-query ``max_budget_usd``
     so the in-CLI "wrap up gracefully" reminder fires earlier when the
-    user is close to their actual cap, and to feed the baseline path's
-    per-turn budget hint via :func:`build_budget_ctx`.
+    user is close to their actual cap.
 
     Trials whose daily and weekly caps are at least their total cap use
     the durable lifetime remainder directly, independent of Redis windows.
@@ -756,53 +754,6 @@ async def get_remaining_usd_budget(
             max(0, trial.offer.total_cost_limit - trial.cost_microdollars) / 1_000_000,
         )
     return max(floor_usd, remaining_usd)
-
-
-async def build_budget_ctx(
-    user_id: str | None,
-    default_daily_cost_limit: int,
-    default_weekly_cost_limit: int,
-) -> str:
-    """Build the inner content for an ``<budget_context>`` block.
-
-    Returns the *inner* text — the caller (``inject_user_context``)
-    wraps it in the ``<budget_context>`` tag.  Combines the tier-limit
-    lookup (``get_global_rate_limits``) and the remaining-USD lookup
-    (``get_remaining_usd_budget``) so callers don't have to compose
-    them by hand on every turn.
-
-    Returns ``""`` when:
-        * no ``user_id`` is available,
-        * the user has 0 remaining budget (they shouldn't be here — the
-          paywall dep raises 402 first — but defend against drift),
-        * Redis is unavailable (we'd rather emit nothing than a
-          misleading ``$0.00`` hint — the pre-turn gate already fails
-          closed at 503 in that case).
-    """
-    if not user_id:
-        return ""
-    daily_limit, weekly_limit, _tier = await get_global_rate_limits(
-        user_id,
-        default_daily_cost_limit,
-        default_weekly_cost_limit,
-    )
-    remaining = await get_remaining_usd_budget(
-        user_id=user_id,
-        daily_cost_limit=daily_limit,
-        weekly_cost_limit=weekly_limit,
-        # 0.0 here is a sentinel meaning "Redis brown-out / no value" —
-        # we map it back to "" below so the model doesn't see a
-        # misleading $0.00 hint when our metrics are degraded.
-        floor_usd=0.0,
-        expected_tier=_tier,
-    )
-    if remaining == float("inf") or remaining <= 0.0:
-        return ""
-    return (
-        f"Approximate remaining USD budget for this user: ${remaining:.2f}.\n"
-        "Pace your tool use and reasoning depth so the response stays "
-        "within this envelope."
-    )
 
 
 async def check_rate_limit(

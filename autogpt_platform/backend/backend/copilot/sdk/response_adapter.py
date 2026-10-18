@@ -56,8 +56,7 @@ logger = logging.getLogger(__name__)
 
 
 # Coalescing thresholds for ``thinking_delta`` events on the SDK partial
-# stream — matches the baseline window (see
-# ``baseline/reasoning.py::_COALESCE_MIN_CHARS``).  Anthropic's extended-
+# stream.  Anthropic's extended-
 # thinking channel emits ~1 event per token (~4,700 per Kimi K2.6 turn);
 # a 64-char / 50 ms window halves the event rate vs 32/40 while staying
 # well under the ~100 ms perceptual threshold.

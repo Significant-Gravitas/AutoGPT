@@ -96,6 +96,22 @@ def loads(data: str | bytes, *args, fallback: Any = None, **kwargs) -> Any:
     pass
 
 
+def strip_code_fence(text: str) -> str:
+    """*text* without the Markdown code fence a model may wrap JSON in
+    (```` ```json ... ``` ````), even when asked for a bare JSON object.
+    Unfenced text comes back unchanged."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    first_newline = stripped.find("\n")
+    if first_newline == -1:
+        return text
+    body = stripped[first_newline + 1 :]
+    if body.endswith("```"):
+        body = body[:-3]
+    return body.strip()
+
+
 def loads(
     data: str | bytes,
     *args,

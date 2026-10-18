@@ -13,7 +13,11 @@ from backend.blocks.autopilot import (
     _inherited_permissions,
     _merge_inherited_permissions,
 )
-from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.copilot.permissions import (
+    CopilotPermissions,
+    all_known_tool_names,
+    apply_tool_permissions,
+)
 from backend.data.execution import ExecutionContext
 
 # ---------------------------------------------------------------------------
@@ -196,6 +200,30 @@ class TestMergeInheritedPermissions:
                 effective = merged.effective_allowed_tools(all_known_tool_names())
                 assert "bash_exec" not in effective
                 assert "run_block" in effective
+            finally:
+                if inner_token is not None:
+                    _inherited_permissions.reset(inner_token)
+        finally:
+            _inherited_permissions.reset(outer_token)
+
+    def test_a_child_with_no_tool_in_common_with_its_parent_gets_none(self):
+        parent = CopilotPermissions(tools=["Agent"], tools_exclude=True)
+        outer_token = _inherited_permissions.set(parent)
+        try:
+            child = CopilotPermissions(tools=["Task"], tools_exclude=False)
+            merged, inner_token = _merge_inherited_permissions(child)
+            try:
+                assert merged is not None
+                allowed, _ = apply_tool_permissions(merged, use_e2b=True)
+                assert allowed == ["mcp__copilot__read_tool_result"]
+                # A block nested under it inherits the same empty ceiling.
+                nested, nested_token = _merge_inherited_permissions(None)
+                if nested_token is not None:
+                    _inherited_permissions.reset(nested_token)
+                assert nested is not None
+                assert nested.effective_allowed_tools(all_known_tool_names()) == (
+                    frozenset()
+                )
             finally:
                 if inner_token is not None:
                     _inherited_permissions.reset(inner_token)

@@ -468,7 +468,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -533,7 +533,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -565,10 +565,7 @@ class TestGenerateActivityStatusForExecution:
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
             assert entry.block_name == "activity_status_generator"
-            # Routes through ``get_openai_client(prefer_openrouter=True)``, which
-            # only hits OpenRouter (or None) under non-local transport — so the
-            # cost row is always ``open_router`` here, never the chat transport's
-            # identity. See ``clients_test.TestOpenrouterHelperCostProvider``.
+            # The platform route's label: these tests run on OpenRouter.
             assert entry.provider == "open_router"
             assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"
@@ -613,7 +610,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -667,7 +664,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -728,7 +725,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -780,7 +777,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -850,7 +847,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -905,7 +902,7 @@ class TestGenerateActivityStatusForExecution:
 
         with (
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=None,
             ),
             patch(
@@ -936,7 +933,7 @@ class TestGenerateActivityStatusForExecution:
 
         with (
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -981,7 +978,7 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -1044,7 +1041,7 @@ class TestIntegration:
                 "backend.executor.activity_status_generator.get_block"
             ) as mock_get_block,
             patch(
-                "backend.executor.activity_status_generator.get_openai_client",
+                "backend.executor.activity_status_generator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -1159,9 +1156,9 @@ class TestDeterministicFailureResponse:
         mock_db_client = AsyncMock()
 
         with patch(
-            "backend.executor.activity_status_generator.get_openai_client",
+            "backend.executor.activity_status_generator._platform_client",
             return_value=None,
-        ) as mock_get_openai_client:
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1174,7 +1171,7 @@ class TestDeterministicFailureResponse:
             )
 
         assert result is None
-        mock_get_openai_client.assert_called_once_with(prefer_openrouter=True)
+        mock_platform_client.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_generate_skips_llm_for_structured_credit_failure(self):
@@ -1186,8 +1183,8 @@ class TestDeterministicFailureResponse:
         mock_db_client = AsyncMock()
 
         with patch(
-            "backend.executor.activity_status_generator.get_openai_client"
-        ) as mock_get_openai_client:
+            "backend.executor.activity_status_generator._platform_client"
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1205,7 +1202,7 @@ class TestDeterministicFailureResponse:
         mock_db_client.get_node_executions.assert_not_called()
         mock_db_client.get_graph_metadata.assert_not_called()
         mock_db_client.get_graph.assert_not_called()
-        mock_get_openai_client.assert_not_called()
+        mock_platform_client.assert_not_called()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1225,9 +1222,9 @@ class TestDeterministicFailureResponse:
         mock_db_client = AsyncMock()
 
         with patch(
-            "backend.executor.activity_status_generator.get_openai_client",
+            "backend.executor.activity_status_generator._platform_client",
             return_value=None,
-        ) as mock_get_openai_client:
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1244,10 +1241,10 @@ class TestDeterministicFailureResponse:
                 "activity_status": "Existing summary",
                 "correctness_score": correctness_score,
             }
-            mock_get_openai_client.assert_not_called()
+            mock_platform_client.assert_not_called()
         else:
             assert result is None
-            mock_get_openai_client.assert_called_once()
+            mock_platform_client.assert_called_once()
 
 
 def test_paywall_is_a_known_graph_execution_error():
@@ -1260,3 +1257,100 @@ def test_paywall_is_a_known_graph_execution_error():
 
     assert issubclass(UserPaywalledError, Exception)
     assert UserPaywalledError in KNOWN_GRAPH_EXECUTION_ERRORS
+
+
+@pytest.fixture(autouse=True)
+def _openrouter_route(monkeypatch):
+    """The platform route these tests run on: OpenRouter."""
+    from backend.copilot.config import ChatConfig
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.config",
+        ChatConfig(platform_route="openrouter", openrouter_api_key="sk-or-route"),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route, model, extra_body, provider",
+    [
+        (
+            "openrouter",
+            "openai/gpt-4o-mini",
+            {"usage": {"include": True}},
+            "open_router",
+        ),
+        ("direct_anthropic", "claude-haiku-5-5", {}, "anthropic"),
+    ],
+)
+async def test_the_status_runs_on_the_platform_routes_model(
+    monkeypatch, mock_execution_stats, route, model, extra_body, provider
+):
+    """OpenRouter keeps its default model and cost field; direct Anthropic
+    gets the route's Claude model in native spelling and no extra body; the
+    cost row carries the route's label."""
+    from backend.copilot.config import ChatConfig
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.config",
+        ChatConfig(
+            platform_route=route,
+            openrouter_api_key="sk-or-route",
+            anthropic_api_key="sk-ant-route",
+        ),
+    )
+    db_client = AsyncMock()
+    db_client.get_node_executions.return_value = []
+    db_client.get_graph_metadata.return_value = None
+    db_client.get_graph.return_value = None
+    fake_resp = _make_completion(
+        content='```json\n{"activity_status": "Done.", "correctness_score": 1}\n```',
+        usage=_make_usage(),
+    )
+    client, create_mock = _make_client(fake_resp)
+
+    with (
+        patch(
+            "backend.executor.activity_status_generator._platform_client",
+            return_value=client,
+        ),
+        patch(
+            "backend.executor.activity_status_generator.schedule_platform_cost_log"
+        ) as schedule_log,
+    ):
+        result = await generate_activity_status_for_execution(
+            graph_exec_id="e",
+            graph_id="g",
+            graph_version=1,
+            execution_stats=mock_execution_stats,
+            db_client=db_client,
+            user_id="u",
+            skip_feature_flag=True,
+        )
+
+    assert result == {"activity_status": "Done.", "correctness_score": 1.0}
+    assert create_mock.await_args is not None
+    kwargs = create_mock.await_args.kwargs
+    assert kwargs["model"] == model
+    assert kwargs["extra_body"] == extra_body
+    _, entry = schedule_log.call_args.args
+    assert entry.provider == provider
+    assert entry.model == model
+
+
+@pytest.mark.asyncio
+async def test_no_status_on_a_route_without_an_api(mock_execution_stats):
+    with patch(
+        "backend.executor.activity_status_generator._platform_client",
+        return_value=None,
+    ):
+        result = await generate_activity_status_for_execution(
+            graph_exec_id="e",
+            graph_id="g",
+            graph_version=1,
+            execution_stats=mock_execution_stats,
+            db_client=AsyncMock(),
+            user_id="u",
+            skip_feature_flag=True,
+        )
+    assert result is None

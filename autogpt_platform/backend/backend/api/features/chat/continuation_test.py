@@ -8,6 +8,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import continuation as continuation_routes
 from backend.api.features.chat import routes as chat_routes
@@ -19,10 +20,15 @@ from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor import utils as executor_utils
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.copilot.trial_cost_context import TrialCostContext
+from backend.copilot.turn_pause import PAUSE_KEY, TurnPause, append_pause_marker
 
 app = fastapi.FastAPI()
 app.include_router(continuation_routes.router)
 client = fastapi.testclient.TestClient(app)
+
+# The real dispatch, kept before any test patches it.
+DISPATCH_TURN = executor_utils.dispatch_turn
 
 SESSION_ID = "8d2f5c1e-2b7a-4c55-9d0e-3f6a1b2c4d5e"
 URL = f"/sessions/{SESSION_ID}/continue"
@@ -88,6 +94,9 @@ def chat(mocker: pytest_mock.MockerFixture):
     )
     mocks.cancel_resume = mocker.patch.object(
         continuation_routes, "cancel_resume_at_reset_in_background"
+    )
+    mocks.rows = mocker.patch.object(
+        continuation_routes, "get_chat_session", new=AsyncMock(return_value=None)
     )
     return mocks
 
@@ -253,6 +262,7 @@ def stored(mocker: pytest_mock.MockerFixture, chat: MagicMock) -> MagicMock:
     mocker.patch.object(
         chat_model, "get_chat_session", new=AsyncMock(return_value=io.session)
     )
+    chat.rows.return_value = io.session
     io.save = mocker.patch.object(chat_model, "_save_session_to_db", new=AsyncMock())
     mocker.patch.object(
         chat_model,
@@ -310,3 +320,94 @@ def test_keep_going_again_after_a_continuation_left_no_user_row(
     assert stored.session.messages[-1].content == KEEP_GOING_NOTE
     assert _notes(stored.session) == 2
     stored.dispatch.assert_awaited_once()
+
+
+def test_keep_going_is_not_marked_impersonated_by_default(chat):
+    assert client.post(URL).status_code == 202
+    assert chat.schedule.await_args.kwargs["impersonated"] is False
+
+
+def test_an_impersonating_admins_keep_going_is_marked(
+    chat, mock_jwt_admin, target_user_id: str
+):
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+
+    response = client.post(URL, headers={"X-Act-As-User-Id": target_user_id})
+
+    assert response.status_code == 202
+    kwargs = chat.schedule.await_args.kwargs
+    assert kwargs["user_id"] == target_user_id
+    assert kwargs["impersonated"] is True
+
+
+@pytest.fixture
+def queued(mocker: pytest_mock.MockerFixture, stored: MagicMock) -> MagicMock:
+    """``stored`` with the real dispatch too, down to the queue: what the
+    executor would pick up is ``queued.entry()``."""
+    mocker.patch.object(executor_utils, "dispatch_turn", new=DISPATCH_TURN)
+    mocker.patch.object(executor_utils, "admit_turn", new=AsyncMock())
+    mocker.patch.object(
+        executor_utils,
+        "capture_cost_context",
+        new=AsyncMock(return_value=TrialCostContext(user_id="u1", trial_id=None)),
+    )
+    mocker.patch("backend.copilot.stream_registry.create_session", new=AsyncMock())
+    queue = MagicMock(publish_message=AsyncMock())
+    mocker.patch(
+        "backend.util.clients.get_async_copilot_queue",
+        new=AsyncMock(return_value=queue),
+    )
+
+    def entry() -> executor_utils.CoPilotExecutionEntry:
+        call = queue.publish_message.await_args
+        assert call is not None
+        return executor_utils.CoPilotExecutionEntry.model_validate_json(
+            call.kwargs["message"]
+        )
+
+    stored.entry = entry
+    return stored
+
+
+def _paused_rows(*, tainted: bool) -> list[ChatMessage]:
+    session = ChatSession.new("test-user-id", dry_run=False)
+    session.messages = [ChatMessage(role="user", content="Build the report")]
+    append_pause_marker(session, TurnPause(reason="steps", steps=450), tainted=tainted)
+    return session.messages
+
+
+@pytest.mark.parametrize(
+    "tainted",
+    [True, False],
+    ids=["paused-turn-from-a-bot", "paused-turn-from-the-owner"],
+)
+def test_keep_going_starts_with_the_paused_turns_taint(queued, tainted: bool):
+    """A web chat, so only the paused turn's own record can say a bot's
+    message started the work Keep going carries on."""
+    queued.session.messages = _paused_rows(tainted=tainted)
+
+    assert client.post(URL).status_code == 202
+
+    entry = queued.entry()
+    assert entry.message == KEEP_GOING_NOTE
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is tainted
+
+
+def test_keep_going_on_a_marker_from_before_the_field_continues_tainted(queued):
+    """An executor from before the field wrote it, so how the paused turn ran
+    is unknown: Keep going runs as if it was tainted."""
+    queued.session.messages = [
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(
+            role="assistant",
+            content=_PAUSE,
+            metadata={PAUSE_KEY: TurnPause(reason="steps", steps=450).as_part()},
+        ),
+    ]
+
+    assert client.post(URL).status_code == 202
+
+    entry = queued.entry()
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is True

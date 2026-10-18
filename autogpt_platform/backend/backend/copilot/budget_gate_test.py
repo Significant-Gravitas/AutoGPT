@@ -15,7 +15,7 @@ from backend.copilot.rate_limit import (
     RateLimitUnavailable,
     SubscriptionTier,
 )
-from backend.copilot.turn_pause import TurnPause, pause_of
+from backend.copilot.turn_pause import TurnPause, continues_tainted, pause_of
 
 _MOD = "backend.copilot.budget_gate"
 WEEKLY_RESET = datetime(2026, 10, 19, tzinfo=UTC)
@@ -141,6 +141,17 @@ async def test_a_refusal_is_saved_as_a_marker_row():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tainted", [True, False])
+async def test_a_refusal_keeps_the_refused_turns_taint(tainted: bool):
+    """For the resume at the budget reset, which picks this pause up."""
+    session = _session()
+    pause = TurnPause(reason="daily", started=False, checkpoint_saved=False)
+    with patch(f"{_MOD}.upsert_chat_session", AsyncMock()):
+        await record_refusal(session, pause, tainted=tainted)
+    assert continues_tainted(session.messages) is tainted
+
+
+@pytest.mark.asyncio
 async def test_a_failed_save_does_not_fail_the_refusal():
     session = _session()
     pause = TurnPause(reason="daily", started=False, checkpoint_saved=False)
@@ -215,3 +226,16 @@ async def test_queued_messages_wait_when_the_allowance_is_unreadable(allowance, 
     gate = await gate_auto_continue(session, "u-1", platform_billed=True)
     assert gate == AutoContinueGate(proceed=False)
     assert pause_of(session.messages[-1]) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tainted", [True, False])
+async def test_a_refused_continuation_keeps_the_turns_taint(
+    allowance, queued, tainted: bool
+):
+    _, check = allowance
+    check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
+    session = _session()
+    with patch(f"{_MOD}.upsert_chat_session", AsyncMock()):
+        await gate_auto_continue(session, "u-1", platform_billed=True, tainted=tainted)
+    assert continues_tainted(session.messages) is tainted

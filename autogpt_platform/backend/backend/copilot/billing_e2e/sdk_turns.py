@@ -27,6 +27,7 @@ from backend.copilot.sdk import env as sdk_env
 from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.governor import TurnGovernor
+from backend.copilot.sdk.model_gateway.adapters import codex_responses
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
 from backend.copilot.turn_budget import TurnBudget
@@ -61,21 +62,20 @@ class SdkTurns:
         self._config = config
         self._transcripts: dict[str, TranscriptDownload] = {}
         self._lease = _codex_lease(provider) if codex else None
+        if codex:
+            # The model gateway's Codex endpoint is fixed; the suite moves it
+            # to the fake provider so no request leaves the machine.
+            monkeypatch.setattr(codex_responses, "API_BASE", f"{provider.url}/codex")
         # The turn of each launch, and the CLI session it resumed (None for a
         # fresh one).
         self.resumed: list[tuple[int, str | None]] = []
         self._governors: list[tuple[int, TurnGovernor]] = []
         self._turn = -1
-        # The CLI inherits these, and the platform reads the CLI's session
-        # files from the same place.
+        self._cli_max_retries = cli_max_retries
+        # The CLI keeps these from the parent (``sdk/launch_env.py``), and the
+        # platform reads the CLI's session files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
-        # Where a direct-Anthropic CLI sends its requests; the key is never
-        # checked. OpenRouter and Codex turns override both.
-        monkeypatch.setenv("ANTHROPIC_BASE_URL", f"{provider.url}/anthropic")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-billing-e2e")
-        if cli_max_retries is not None:
-            monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -129,12 +129,12 @@ class SdkTurns:
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
             "_build_system_prompt": AsyncMock(
-                return_value=("You are a test assistant. Reply briefly.", None)
+                return_value="You are a test assistant. Reply briefly."
             ),
-            "build_skills_context": AsyncMock(return_value=""),
+            "fetch_business_understanding": AsyncMock(return_value=None),
+            "_first_turn_context_blocks": AsyncMock(return_value=[]),
             "build_skills_update_notice": AsyncMock(return_value=None),
-            "build_session_context": AsyncMock(return_value=""),
-            "inject_user_context": AsyncMock(return_value=None),
+            "inject_context_blocks": AsyncMock(return_value=None),
             "create_copilot_mcp_server": MagicMock(),
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),
@@ -161,6 +161,13 @@ class SdkTurns:
         options.hooks = None
         options.allowed_tools = []
         options.disallowed_tools = []
+        if self._cli_max_retries is not None:
+            # A launch keeps no CLI setting of the parent's, so the retry
+            # setting rides on the launch itself.
+            options.env = {
+                **options.env,
+                "CLAUDE_CODE_MAX_RETRIES": str(self._cli_max_retries),
+            }
         return ClaudeSDKClient(*args, options=options, **kwargs)
 
     def _governor(self, **kwargs: Any) -> TurnGovernor:

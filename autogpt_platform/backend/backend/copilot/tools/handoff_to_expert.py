@@ -62,10 +62,10 @@ from .run_sub_session import _sub_session_link, apply_delegated_expert
 logger = logging.getLogger(__name__)
 
 # Outcomes meaning the task now sits in the target's own session — dispatched,
-# already picked up, or appended to a turn in flight there. Anything else (the
-# concurrent-turn cap, a failed dispatch) means nothing moved.
+# waiting for a slot there, or already picked up. Anything else (the
+# concurrent-turn cap, a refusal, a failed dispatch) means nothing moved.
 _OWNERSHIP_TAKEN: frozenset[SessionOutcome] = frozenset(
-    {"running", "queued", "queued_for_slot", "completed"}
+    {"running", "queued_for_slot", "completed"}
 )
 
 
@@ -250,7 +250,6 @@ class HandoffToExpertTool(BaseTool):
             ),
             tool_name="handoff_to_expert",
             spawn=SpawnRequest(may_spawn=True),
-            allow_queue=False,
             message_metadata=sent_from_metadata(session, caller),
         )
 

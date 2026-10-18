@@ -1,4 +1,7 @@
-"""Cost and learning capture across a building-mode interruption and relaunch."""
+"""Cost accounting and learning capture across the building-mode CLI
+interruption and relaunch: both processes are charged their own tokens once,
+process 1's from its session file when the restart cut it off before its
+result, and the turn is captured for learning once, whole."""
 
 import asyncio
 import contextlib
@@ -14,9 +17,17 @@ from backend.copilot.response_model import StreamError
 from backend.copilot.sdk.service import stream_chat_completion_sdk
 from backend.copilot.transcript import cli_session_path
 
-from .conftest import build_cli_cost_row, build_test_transcript
+from .conftest import build_test_transcript
 from .retry_scenarios_test import _make_sdk_patches
-from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
+from .turn_cost_incomplete_test import _native_cost_row
+from .turn_cost_test import (
+    _CALL_COST,
+    _CLI_CALL_COST,
+    _SDK_CWD,
+    _SESSION_ID,
+    _SVC,
+    _result,
+)
 
 
 @pytest.mark.asyncio
@@ -30,7 +41,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
     session_file.parent.mkdir(parents=True)
     transcript = build_test_transcript(
         [("user", "prior question"), ("assistant", "prior answer")]
-    ) + build_cli_cost_row(_SESSION_ID, _CALL_COST)
+    ) + _native_cost_row("claude-sonnet-4-6", 1)
     session = ChatSession(
         session_id=_SESSION_ID,
         user_id="test-user",
@@ -52,7 +63,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
         async def receive():
             if first_process:
                 with session_file.open("a") as handle:
-                    handle.write(build_cli_cost_row(_SESSION_ID, 2 * _CALL_COST))
+                    handle.write(_native_cost_row("claude-sonnet-4-6", 2))
                 session.building_mode_requested = not result_before_restart
             yield AssistantMessage(
                 content=[
@@ -64,7 +75,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
             )
             if first_process:
                 session.building_mode_requested = True
-            yield _result((2 if first_process else 3) * _CALL_COST)
+            yield _result((2 if first_process else 3) * _CLI_CALL_COST)
 
         client = MagicMock()
         client.query = AsyncMock()

@@ -18,6 +18,7 @@ from .retry_scenarios_test import _make_sdk_patches
 from .turn_cost_test import (
     _CALL_COST,
     _CALL_USAGE,
+    _CLI_CALL_COST,
     _KIMI,
     _SDK_CWD,
     _SESSION_ID,
@@ -32,7 +33,7 @@ def _native_cost_row(model: str, calls: int) -> str:
             {
                 "type": "cost-state",
                 "sessionId": _SESSION_ID,
-                "totalCostUSD": calls * _CALL_COST,
+                "totalCostUSD": calls * _CLI_CALL_COST,
                 "modelUsage": {
                     model: {
                         "inputTokens": calls * _CALL_USAGE["input_tokens"],
@@ -41,7 +42,7 @@ def _native_cost_row(model: str, calls: int) -> str:
                         * _CALL_USAGE["cache_read_input_tokens"],
                         "cacheCreationInputTokens": calls
                         * _CALL_USAGE["cache_creation_input_tokens"],
-                        "costUSD": calls * _CALL_COST,
+                        "costUSD": calls * _CLI_CALL_COST,
                     }
                 },
             }

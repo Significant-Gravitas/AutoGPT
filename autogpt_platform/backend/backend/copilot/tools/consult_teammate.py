@@ -205,7 +205,7 @@ async def _audit_via_provider(
             # ("what does this promise that the authority list does not cover"),
             # and the expensive model here is the one that wrote the draft — its
             # judgement is what is under test, so re-asking it buys nothing.
-            model=normalize_model_for_transport(config.title_model, config),
+            model=normalize_model_for_transport(config.aux_model or "", config),
             messages=[
                 {"role": "system", "content": audit_frame(reviewer)},
                 {"role": "user", "content": audit_material(work, authority, question)},
