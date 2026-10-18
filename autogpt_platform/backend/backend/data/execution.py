@@ -45,7 +45,12 @@ from prisma.types import (
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
 
-from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
+from backend.blocks import (
+    get_block,
+    get_io_block_ids,
+    get_output_block_ids,
+    get_webhook_block_ids,
+)
 from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.sharing.execution_shares import (
@@ -1893,59 +1898,24 @@ async def update_graph_execution_share_status(
 async def get_graph_execution_by_share_token(
     share_token: str,
 ) -> SharedExecutionResponse | None:
-    """Get a shared execution with limited public-safe data."""
+    """Get a shared execution with limited public-safe data.
+
+    Outputs are built exactly as the owner sees them (``GraphExecution.from_db``):
+    moderation-cleared values, no INCOMPLETE node executions, queue-time order,
+    and Output blocks whose value only lives in their ``Input`` rows.
+    """
     execution = await AgentGraphExecution.prisma().find_first(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            "NodeExecutions": {
-                "include": {
-                    "Output": True,
-                    "Node": {
-                        "include": {
-                            "AgentBlock": True,
-                        }
-                    },
-                },
-            },
+            **graph_execution_include(get_output_block_ids()),
         },
     )
 
     if not execution:
         return None
 
-    # Extract outputs from OUTPUT blocks only (consistent with GraphExecution.from_db)
-    outputs: CompletedBlockOutput = defaultdict(list)
-    if execution.NodeExecutions:
-        for node_exec in execution.NodeExecutions:
-            if node_exec.Node and node_exec.Node.agentBlockId:
-                # Get the block definition to check its type
-                block = get_block(node_exec.Node.agentBlockId)
-
-                if block and block.block_type == BlockType.OUTPUT:
-                    # For OUTPUT blocks, the data is stored in executionData or Input
-                    # The executionData contains the structured input with 'name' and 'value' fields
-                    if hasattr(node_exec, "executionData") and node_exec.executionData:
-                        exec_data = type_utils.convert(
-                            node_exec.executionData, BlockInput
-                        )
-                        if "name" in exec_data:
-                            name = exec_data["name"]
-                            value = exec_data.get("value")
-                            outputs[name].append(value)
-                    elif node_exec.Input:
-                        # Build input_data from Input relation
-                        input_data = {}
-                        for data in node_exec.Input:
-                            if data.name and data.data is not None:
-                                input_data[data.name] = type_utils.convert(
-                                    data.data, JsonValue
-                                )
-
-                        if "name" in input_data:
-                            name = input_data["name"]
-                            value = input_data.get("value")
-                            outputs[name].append(value)
+    outputs = GraphExecution.from_db(execution).outputs
 
     return SharedExecutionResponse(
         id=execution.id,
