@@ -4,8 +4,10 @@ import {
   type QuestionAnswer,
   extractClarifyingQuestions,
   formatAnswer,
+  isAnswered,
   normalizeClarifyingQuestions,
 } from "../../tools/clarifying-questions";
+import type { ChainActionEntry } from "../ToolChain/chainActions";
 
 export interface PendingQuestions {
   dockId: string;
@@ -72,4 +74,48 @@ export function buildAnswersMessage(
     .map((q) => `> ${q.question}\n\n${formatAnswer(answers[q.keyword])}`)
     .join("\n\n");
   return `**Here are my answers:**\n\n${body}\n\nPlease proceed.`;
+}
+
+type Answers = Record<string, QuestionAnswer>;
+
+interface QuestionsEntryArgs {
+  dockId: string;
+  questions: ClarifyingQuestion[];
+  answers: Answers;
+  register: (entry: ChainActionEntry) => void;
+  setAnswers: (answers: Answers) => void;
+  dismiss: () => void;
+}
+
+/** The questions card's entry in the tool chain. An answer re-registers the
+ *  entry in the same event as the keystroke: left to the asking component's
+ *  effect, the field would get its value one render late, and React writing
+ *  the old value back in between moves the caret to the end and cancels an
+ *  IME composition (Japanese "nihongo" came out as "nいhおnngお"). */
+export function buildQuestionsEntry(
+  args: QuestionsEntryArgs,
+): ChainActionEntry {
+  const { dockId, questions, answers, register, setAnswers, dismiss } = args;
+  const ready = questions.every((q) => isAnswered(answers[q.keyword]));
+  return {
+    id: dockId,
+    ready,
+    // Answers are ready on the first character of the last one; the user
+    // reviews them through the dock's own action, not an automatic send.
+    manualProceed: true,
+    buildMessage: () =>
+      ready ? buildAnswersMessage(questions, answers) : null,
+    onSent: dismiss,
+    questions: {
+      id: dockId,
+      questions,
+      answers,
+      onAnswer: (keyword, value) => {
+        const next = { ...answers, [keyword]: value };
+        setAnswers(next);
+        register(buildQuestionsEntry({ ...args, answers: next }));
+      },
+      onSkip: dismiss,
+    },
+  };
 }
