@@ -28,6 +28,8 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
+    execution_timeout_seconds: int | None = None
+
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",

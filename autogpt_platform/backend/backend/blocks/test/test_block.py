@@ -5,6 +5,7 @@ import pytest
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockEffect, BlockSchemaInput, BlockType
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.blocks.rss import ReadRSSFeedBlock
 from backend.copilot.gate.effects import STRUCTURAL_TYPES, UNREADABLE_BLOCKS
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
@@ -16,6 +17,10 @@ from backend.util.test import execute_block_test
 SKIP_BLOCK_TESTS = {
     "HumanInTheLoopBlock",
 }
+
+
+def test_rss_feed_block_does_not_inherit_wall_clock_timeout():
+    assert ReadRSSFeedBlock().execution_timeout_seconds is None
 
 
 async def test_execute_preserves_insufficient_balance_error_type():
