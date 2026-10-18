@@ -1,6 +1,6 @@
 """Graphiti LLM client that runs on OpenAI's flex tier.
 
-Subclasses graphiti-core's ``OpenAIClient`` to inject
+Extends AutoGPT's ``GraphitiOpenAIClient`` compatibility adapter to inject
 ``service_tier="flex"`` on every underlying LLM call. Used by the
 nightly community-rebuild path: ~50% discount, best-effort latency
 (worst-case ~15min queue) — acceptable for scheduled non-interactive
@@ -32,10 +32,10 @@ from .models import is_luna_model
 
 
 class FlexOpenAIClient(GraphitiOpenAIClient):
-    """Same as graphiti's ``OpenAIClient`` with ``service_tier`` injected.
+    """Add flex-tier routing to ``GraphitiOpenAIClient``.
 
-    Constructor mirrors ``OpenAIClient`` exactly so it slots into
-    graphiti's ``Graphiti(llm_client=...)`` without surprises.
+    Luna requests delegate to the parent adapter; other models retain the
+    upstream request shape with ``service_tier`` injected here.
     """
 
     SERVICE_TIER = "flex"

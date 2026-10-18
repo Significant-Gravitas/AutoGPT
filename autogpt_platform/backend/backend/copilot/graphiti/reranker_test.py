@@ -91,7 +91,7 @@ async def test_rank_requests_at_least_sixteen_max_tokens():
 
 
 @pytest.mark.asyncio
-async def test_rank_scores_true_above_false_and_sorts():
+async def test_rank_scores_true_above_false_and_sorts(caplog):
     """Scoring parity with upstream: 'True' top-token scores exp(lp),
     'False' scores 1-exp(lp); results sorted descending."""
     client, _ = _client_with(
@@ -105,6 +105,9 @@ async def test_rank_scores_true_above_false_and_sorts():
 
     assert [passage for passage, _ in ranked] == ["relevant", "irrelevant"]
     assert ranked[0][1] > ranked[1][1]
+    assert not any(
+        record.name == "backend.copilot.graphiti.reranker" for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio
@@ -166,6 +169,36 @@ async def test_rank_handles_empty_token_content():
 
     assert [passage for passage, _ in ranked] == ["relevant", "unscorable"]
     assert dict(ranked)["unscorable"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_rank_aggregates_warnings_without_logging_token_content(caplog):
+    tokens = ["private-output-one", "private-output-two"]
+    client, _ = _client_with(
+        [_logprob_response(token, -0.1) for token in tokens]
+        + [_logprob_response("True", -0.05)]
+    )
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-6-luna"), client=client
+    )
+
+    ranked = await reranker.rank("query", ["unscorable1", "unscorable2", "relevant"])
+
+    warnings = [
+        record
+        for record in caplog.records
+        if record.name == "backend.copilot.graphiti.reranker"
+    ]
+    assert len(warnings) == 1
+    assert "2 non-boolean" in warnings[0].message
+    assert "gpt-6-luna" in warnings[0].message
+    assert all(token not in warnings[0].message for token in tokens)
+    assert [passage for passage, _ in ranked] == [
+        "relevant",
+        "unscorable1",
+        "unscorable2",
+    ]
+    assert dict(ranked)["unscorable1"] == dict(ranked)["unscorable2"] == 0.0
 
 
 @pytest.mark.asyncio

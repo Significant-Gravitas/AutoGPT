@@ -91,6 +91,7 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                 for response in responses
             ]
             scores: list[float] = []
+            non_boolean_count = 0
             for top_logprobs in responses_top_logprobs:
                 if len(top_logprobs) == 0:
                     # Keep scores aligned 1:1 with passages — a skipped
@@ -107,10 +108,14 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                 elif token == "false":
                     scores.append(1 - norm_logprobs)
                 else:
-                    logger.warning(
-                        "Reranker returned a non-boolean token; scoring zero"
-                    )
+                    non_boolean_count += 1
                     scores.append(0.0)
+
+            if non_boolean_count:
+                logger.warning(
+                    f"Reranker model {model} returned {non_boolean_count} "
+                    "non-boolean responses; scoring zero"
+                )
 
             results = [
                 (passage, score)

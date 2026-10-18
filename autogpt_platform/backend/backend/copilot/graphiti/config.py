@@ -291,7 +291,7 @@ class GraphitiConfig(BaseSettings):
 
         Operator overrides (custom slugs like ``qwen3:8b`` or
         ``hf.co/...``) pass through untouched — only the literal cloud
-        defaults and the previous ``gpt-4.1-mini`` default trigger rewriting.
+        defaults and the legacy ``gpt-4.1-mini`` default trigger rewriting.
         Lazy-imports ``chat_cfg`` to avoid
         the ``copilot.sdk.env`` ↔ ``util/clients`` cycle dev's PR
         established.
