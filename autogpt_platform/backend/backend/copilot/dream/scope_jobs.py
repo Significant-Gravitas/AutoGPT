@@ -70,6 +70,10 @@ async def register_scope_jobs(
         if row.state != MemoryScopeScheduleState.ACTIVE:
             return skip_all(enabled, state_reason(row))
     stale = force_refresh or row.timezone != user_timezone
+    if row.timezone != user_timezone:
+        failure = await _record_timezone(scope, row, user_timezone)
+        if failure is not None:
+            return skip_all(enabled, failure)
     outcomes: dict[str, Any] = {}
     for job in enabled:
         if not stale and recorded_job_id(row, job) is not None:
@@ -77,6 +81,30 @@ async def register_scope_jobs(
             continue
         outcomes[job.job_id_prefix] = await _register_job(scope, job, user_timezone)
     return await _record(scope, row, user_timezone, outcomes, stale)
+
+
+async def _record_timezone(
+    scope: MemoryScope, row: MemoryScopeSchedule, user_timezone: str
+) -> str | None:
+    """Persist the new timezone before replacing crons, so reconciliation
+    retains it even if the final job-id write fails."""
+    try:
+        recorded = await within_deadline(
+            memory_schedule_db().record_scope_jobs(
+                scope.owner_user_id,
+                scope.scope_key,
+                user_timezone=user_timezone,
+                community_job_id=row.community_job_id,
+                nightly_job_id=row.nightly_job_id,
+                learning_job_id=row.learning_job_id,
+            )
+        )
+    except Exception:
+        logger.warning(
+            f"Could not record timezone of {scope_label(scope)}", exc_info=True
+        )
+        return "record_failed"
+    return None if recorded else "scope_changed"
 
 
 async def remove_scope_jobs(scope: MemoryScope) -> bool:

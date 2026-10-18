@@ -211,3 +211,14 @@ def test_catalog_entry_without_every_usd_price_is_unpriced(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR, logger=price_card.__name__):
         assert price_for("claude-partial-1") is None
     assert "claude-partial-1" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "slug,read,write",
+    [("claude-haiku-5-5", 0.01, 0.125), ("claude-fable-5-1", 0.25, 12.5)],
+)
+def test_new_anthropic_cache_prices(slug, read, write):
+    card = price_for(slug)
+    assert card is not None
+    assert card.cache_read_usd_per_mtok == read
+    assert card.cache_creation_usd_per_mtok == write

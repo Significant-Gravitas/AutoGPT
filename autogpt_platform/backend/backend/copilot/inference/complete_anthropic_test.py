@@ -231,3 +231,19 @@ class TestAnthropicToolPath:
         assert sent["model"] == "claude-opus-5-5"
         assert sent["tool_choice"] == auto_tool_choice()
         assert output_tool_name(SampleOutput) in sent["messages"][-1]["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", ["{}", '{"facts": []}'])
+async def test_truncated_tool_output_fails_with_usage(arguments):
+    fake = tool_response(arguments, prompt_tokens=12, completion_tokens=4096)
+    fake.stop_reason = "max_tokens"
+    with patch(ROUTING, return_value=ANTHROPIC), patch(
+        CALL_PROVIDER, AsyncMock(return_value=fake)
+    ):
+        with pytest.raises(InferenceError, match="max_tokens") as caught:
+            await structured_complete(
+                sync_ctx("anthropic", "claude-sonnet-5"), MESSAGES, SampleOutput
+            )
+    assert caught.value.usage.input_tokens == 12
+    assert caught.value.usage.output_tokens == 4096

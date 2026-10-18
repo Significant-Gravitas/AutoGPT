@@ -407,6 +407,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=1875.0,
                     provider_input_usd_per_1m=10.00,
                     provider_output_usd_per_1m=50.00,
+                    provider_cache_read_usd_per_1m=0.25,
+                    provider_cache_creation_usd_per_1m=12.50,
                 ),
             ),
             # ----- Groq -----
