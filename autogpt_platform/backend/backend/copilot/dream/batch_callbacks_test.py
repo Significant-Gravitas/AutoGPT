@@ -842,7 +842,8 @@ class TestErrorPaths:
         assert "unknown batch phase" in (final.error or "")
 
     @pytest.mark.asyncio
-    async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
+    @pytest.mark.parametrize("error", ["content moderation", "max_tokens"])
+    async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis, error):
         await _persist_autopilot_bundle()
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
@@ -856,14 +857,19 @@ class TestErrorPaths:
                     _row(
                         custom_id="p1:consolidate",
                         content="",
-                        error="content moderation",
+                        error=error,
                     )
                 ],
             )
         mark_errored.assert_awaited_once()
-        assert "content moderation" in mark_errored.call_args.kwargs["error"]
-        # The errored phase itself is not billed.
-        record_cost.assert_not_awaited()
+        assert error in mark_errored.call_args.kwargs["error"]
+        if error == "max_tokens":
+            record_cost.assert_awaited_once()
+            usage = record_cost.await_args.args[1]
+            assert usage.input_tokens == 10
+            assert usage.output_tokens == 20
+        else:
+            record_cost.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis):
