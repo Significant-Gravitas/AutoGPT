@@ -58,6 +58,15 @@ def _get_loop_state() -> _LoopIngestState:
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
 
+# An episode that found its graph's write lock held for a whole
+# ``INGEST_LOCK_WAIT_SECONDS`` goes to the back of the queue after a pause,
+# doubling from this with each wait up to the cap, and is tried again as often
+# as it takes (``_write_or_requeue``).
+INGEST_RETRY_PAUSE_SECONDS = 1.0
+INGEST_RETRY_PAUSE_MAX_SECONDS = 30.0
+# Every this many waits, a warning names the episode still unwritten.
+INGEST_LOCK_WARN_EVERY = 3
+
 
 class MemoryScopeViolationError(ValueError):
     """An ingestion payload targeted a different memory group than its worker.
@@ -83,22 +92,46 @@ class IngestionCompletion:
     the counters need no locking. Counts are monotonic (registered /
     completed) rather than a single decrementing balance, so a transient
     interleave can never drive the outstanding count negative.
+
+    It also counts what became of each episode, apart from the drain: so a
+    caller reports as written only what graphiti saved, and the rest as
+    pending or failed.
     """
 
-    __slots__ = ("_registered", "_completed", "_event", "dropped_forgotten")
+    __slots__ = (
+        "_registered",
+        "_completed",
+        "_event",
+        "written",
+        "dropped_forgotten",
+        "failed",
+    )
 
     def __init__(self) -> None:
         self._registered = 0
         self._completed = 0
         self._event = asyncio.Event()
         self._event.set()  # nothing outstanding yet
+        # Episodes graphiti saved (``add_episode`` returned).
+        self.written = 0
         # Episodes the worker dropped, unwritten, for resting on a forget
         # made since they were queued (``recall_citations.py``).
         self.dropped_forgotten = 0
+        # Episodes whose write raised: dropped, logged, not retried.
+        self.failed = 0
 
     @property
     def registered(self) -> int:
         return self._registered
+
+    @property
+    def pending(self) -> int:
+        """Episodes neither written, dropped nor failed yet: still queued,
+        waiting for their graph's write lock, or being written. The queue
+        lives in the process, so these are lost if it stops."""
+        return max(
+            0, self._registered - self.written - self.dropped_forgotten - self.failed
+        )
 
     def register(self) -> None:
         """Record one more episode this tracker is waiting on."""
@@ -297,16 +330,18 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
             # up front so it is signalled in the finally below even if the
             # graph write raises. See ``IngestionCompletion``.
             completion: IngestionCompletion | None = payload.pop("_completion", None)
-            retried = bool(payload.pop("_lock_retried", False))
+            waits = int(payload.pop("_lock_waits", 0))
             requeued = False
             try:
                 if payload.get("group_id") != group_id:
                     raise MemoryScopeViolationError(
                         "Ingestion payload memory group mismatch"
                     )
-                if not await _write_locked(user_id, group_id, payload, completion):
-                    requeued = _requeue_once(queue, payload, completion, retried)
+                requeued = await _write_or_requeue(
+                    user_id, group_id, queue, payload, completion, waits
+                )
             except MemoryScopeViolationError:
+                _count_failed(completion)
                 logger.error(
                     "MEMORY ISOLATION VIOLATION: ingestion payload for user %s "
                     "targeted group %r but the worker owns group %r — "
@@ -316,6 +351,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     group_id,
                 )
             except Exception:
+                _count_failed(completion)
                 logger.warning(
                     "Graphiti ingestion failed for user %s",
                     user_id[:12],
@@ -376,13 +412,49 @@ async def _write_locked(
         # before the **payload spread. Present only for dream writes.
         edge_metadata = payload.pop("_edge_metadata", None)
         result = await _add_episode(client, group_id, payload)
+        await _undo_extracted_retractions(client, result)
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
         # stamp it onto the edges THIS episode newly created (see
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+        if completion is not None:
+            completion.written += 1
     return True
+
+
+async def _undo_extracted_retractions(
+    client: Graphiti, result: AddEpisodeResults
+) -> None:
+    """Put back to ``active`` an edge this episode wrote whose status
+    graphiti's attribute extraction set to ``retracted``. Its schema
+    (``types.MemoryFact``) leaves the value out, but graphiti does not hold
+    the model to it, and only a forget retracts: it also stamps
+    ``forgotten_at``, and an edge carrying that is never touched. Run under
+    the graph's write lock, like the write itself. Best-effort: the episode
+    is written either way."""
+    try:
+        uuids = [edge.uuid for edge in result.edges]
+        if uuids:
+            await client.driver.execute_query(
+                _UNDO_EXTRACTED_RETRACTIONS_QUERY,
+                uuids=uuids,
+                retracted=MemoryStatus.retracted.value,
+                active=MemoryStatus.active.value,
+            )
+    except Exception:
+        logger.warning(
+            "Could not check the statuses an episode's edges were given",
+            exc_info=True,
+        )
+
+
+_UNDO_EXTRACTED_RETRACTIONS_QUERY = """
+MATCH ()-[e:RELATES_TO]->()
+WHERE e.uuid IN $uuids AND e.forgotten_at IS NULL AND e.status = $retracted
+SET e.status = $active
+"""
 
 
 async def _dropped_as_forgotten(
@@ -401,25 +473,61 @@ async def _dropped_as_forgotten(
     return True
 
 
-def _requeue_once(
+async def _write_or_requeue(
+    user_id: str,
+    group_id: str,
     queue: asyncio.Queue,
     payload: dict[str, Any],
     completion: IngestionCompletion | None,
-    retried: bool,
+    waits: int,
 ) -> bool:
-    """Put an episode that found the graph locked at the back of the queue,
-    once; True when it was put back."""
+    """Write the episode holding its graph's lock (``_write_locked``); True
+    when, the lock held by another writer for a whole wait, the episode went
+    to the back of the queue instead, after a pause (``_pause_before_retry``).
+    Waiters take turns at the lock (``scope_lock.py``), so contention delays
+    an episode but never drops it while the process runs. With no room in
+    the queue behind the others, it is tried again here, holding no slot."""
+    while not await _write_locked(user_id, group_id, payload, completion):
+        waits += 1
+        _note_lock_wait(payload, waits)
+        await _pause_before_retry(waits)
+        try:
+            queue.put_nowait(
+                {**payload, "_lock_waits": waits, "_completion": completion}
+            )
+        except asyncio.QueueFull:
+            continue
+        return True
+    return False
+
+
+async def _pause_before_retry(waits: int) -> None:
+    await asyncio.sleep(_retry_pause(waits))
+
+
+def _retry_pause(waits: int) -> float:
+    """The pause before the *waits*-th retry: ``INGEST_RETRY_PAUSE_SECONDS``,
+    doubling with each wait up to ``INGEST_RETRY_PAUSE_MAX_SECONDS``."""
+    doubled = INGEST_RETRY_PAUSE_SECONDS * 2.0 ** min(waits - 1, 16)
+    return min(INGEST_RETRY_PAUSE_MAX_SECONDS, doubled)
+
+
+def _note_lock_wait(payload: dict[str, Any], waits: int) -> None:
+    """Log a lock wait; every ``INGEST_LOCK_WARN_EVERY`` waits a warning that
+    names the episode still unwritten."""
     group = str(payload.get("group_id"))[:20]
-    if retried:
-        logger.warning(f"Graph {group} still locked; dropping the episode")
-        return False
-    try:
-        queue.put_nowait({**payload, "_lock_retried": True, "_completion": completion})
-    except asyncio.QueueFull:
-        logger.warning(f"Graph {group} locked and its queue full; episode dropped")
-        return False
-    logger.warning(f"Graph {group} locked by another writer; requeued once")
-    return True
+    if waits % INGEST_LOCK_WARN_EVERY:
+        logger.info(f"Graph {group} locked by another writer; episode requeued")
+        return
+    logger.warning(
+        f"Graph {group} locked by another writer for {waits} waits; the episode "
+        f"{payload.get('name')!r} is still queued, unwritten"
+    )
+
+
+def _count_failed(completion: IngestionCompletion | None) -> None:
+    if completion is not None:
+        completion.failed += 1
 
 
 async def _add_episode(

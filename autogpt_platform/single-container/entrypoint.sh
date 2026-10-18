@@ -165,6 +165,7 @@ configure_environment() {
   export PLATFORM_LINKING_SERVICE_PORT="${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}"
   export COPILOT_CHAT_BRIDGE_PORT="${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}"
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
+  export SWAP_CREDENTIAL_SERVICE_PORT="${AUTOGPT_SWAP_CREDENTIAL_SERVICE_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
   # BEHAVE_AS defaults to local (self-hosted product behavior) but stays

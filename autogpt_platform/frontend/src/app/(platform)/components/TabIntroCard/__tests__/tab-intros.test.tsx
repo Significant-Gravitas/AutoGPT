@@ -68,7 +68,7 @@ describe("AgentsTabIntro", () => {
     ).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "See my agents" }),
+      screen.getByRole("button", { name: "See my workflows" }),
     );
 
     await waitFor(() =>
@@ -91,10 +91,10 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(featured);
 
     render(<MarketplaceTabIntro />);
-    expect(await screen.findByText("Agents ready to work.")).toBeDefined();
+    expect(await screen.findByText("Workflows ready to work.")).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
@@ -114,29 +114,29 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(listing);
 
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
     listing.remove();
   });
 
   it("still closes when there is nothing to scroll to at all", async () => {
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
   });
 });
@@ -150,7 +150,7 @@ describe("BuildTabIntro", () => {
       screen.getByRole("button", { name: "Ask Otto to build it" }),
     );
 
-    expect(push).toHaveBeenCalledWith("/copilot");
+    expect(push).toHaveBeenCalledWith("/copilot?new=1");
     expect(startTutorial).not.toHaveBeenCalled();
     expect(completeStep).toHaveBeenCalledWith("BUILD_TAB_INTRO");
     expect(capture).toHaveBeenCalledWith("tab_intro_cta_clicked", {

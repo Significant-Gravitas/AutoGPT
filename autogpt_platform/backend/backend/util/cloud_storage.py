@@ -13,7 +13,11 @@ import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
-from backend.util.gcs_utils import download_with_fresh_session, generate_signed_url
+from backend.util.gcs_utils import (
+    download_with_fresh_session,
+    generate_signed_url,
+    is_not_found_error,
+)
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -26,7 +30,7 @@ class CloudStorageConfig:
         config = Config()
 
         # GCS configuration from settings - uses Application Default Credentials
-        self.gcs_bucket_name = config.media_gcs_bucket_name
+        self.gcs_bucket_name = config.resolved_private_user_data_bucket
 
         # Future providers can be added here
         # self.aws_bucket_name = config.aws_bucket_name
@@ -203,6 +207,9 @@ class CloudStorageHandler:
             self.config.gcs_bucket_name,
             blob_name,
             content,
+            # Top-level keys are not stored as custom metadata, so the expiry
+            # cleanup never fires. Nesting them under "metadata" would switch it
+            # on and delete files that saved schedules and presets still use.
             metadata={
                 "uploaded_at": upload_time.isoformat(),
                 "expires_at": expiration_time.isoformat(),
@@ -252,12 +259,7 @@ class CloudStorageHandler:
             f"in_task: {current_task is not None}"
         )
 
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
@@ -411,12 +413,7 @@ class CloudStorageHandler:
         graph_exec_id: str | None = None,
     ) -> str:
         """Generate signed URL for GCS with authorization."""
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
@@ -425,6 +422,18 @@ class CloudStorageHandler:
         return await generate_signed_url(
             sync_client, bucket_name, blob_name, expiration_hours * 3600
         )
+
+    def _parse_configured_gcs_path(self, path: str) -> tuple[str, str]:
+        parts = path.split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid GCS path: {path}")
+        bucket_name, blob_name = parts
+        configured_bucket = self.config.gcs_bucket_name
+        if not configured_bucket:
+            raise ValueError("GCS_BUCKET_NAME not configured")
+        if bucket_name != configured_bucket:
+            raise PermissionError("Access denied: not the configured private bucket")
+        return bucket_name, blob_name
 
     async def delete_expired_files(self, provider: str = "gcs") -> int:
         """
@@ -525,11 +534,7 @@ class CloudStorageHandler:
 
     async def _check_file_expired_gcs(self, path: str) -> bool:
         """Check if a GCS file has expired."""
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         async_client = await self._get_async_gcs_client()
 
@@ -544,7 +549,7 @@ class CloudStorageHandler:
 
         except Exception as e:
             # If file doesn't exist or we can't read metadata
-            if "404" in str(e) or "Not Found" in str(e):
+            if is_not_found_error(e):
                 logger.warning(
                     f"[CloudStorage] File not found during expiration check: {blob_name}"
                 )

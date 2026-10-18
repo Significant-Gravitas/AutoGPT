@@ -6,6 +6,8 @@ import fastapi.testclient
 import prisma.enums
 import pytest
 import pytest_mock
+from autogpt_libs.auth import get_optional_user_id
+from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
@@ -506,6 +508,8 @@ def test_get_creators_pagination(
 
 
 def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
+
     # Test with invalid page number
     response = client.get("/creators?page=-1")
     assert response.status_code == 422
@@ -513,13 +517,13 @@ def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
     # Test with invalid page size
     response = client.get("/creators?page_size=0")
     assert response.status_code == 422
+    response = client.get("/creators?page_size=101")
+    assert response.status_code == 422
 
     # Test with non-numeric values
     response = client.get("/creators?page=abc&page_size=def")
     assert response.status_code == 422
 
-    # Verify no DB calls were made
-    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
     mock_db_call.assert_not_called()
 
 
@@ -851,3 +855,39 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
     # Verify no DB calls were made
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
     mock_db_call.assert_not_called()
+
+
+class _DownloadedGraph(BaseModel):
+    id: str
+    version: int
+
+
+def test_download_agent_file_sends_listing_downloaded(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.store.db.get_agent",
+        mocker.AsyncMock(return_value=_DownloadedGraph(id="graph-1", version=3)),
+    )
+    track = mocker.patch("backend.api.features.store.routes.track_listing_downloaded")
+    app.dependency_overrides[get_optional_user_id] = lambda: "test-user-id"
+
+    response = client.get("/listings/versions/slv-1/graph/download")
+
+    assert response.status_code == 200
+    track.assert_called_once_with(
+        user_id="test-user-id", store_listing_version_id="slv-1", graph_id="graph-1"
+    )
+
+
+def test_signed_out_download_passes_no_user(mocker: pytest_mock.MockFixture) -> None:
+    mocker.patch(
+        "backend.api.features.store.db.get_agent",
+        mocker.AsyncMock(return_value=_DownloadedGraph(id="graph-1", version=3)),
+    )
+    track = mocker.patch("backend.api.features.store.routes.track_listing_downloaded")
+
+    response = client.get("/listings/versions/slv-1/graph/download")
+
+    assert response.status_code == 200
+    assert track.call_args.kwargs["user_id"] is None

@@ -198,6 +198,7 @@ function row(overrides: Partial<Row> = {}): Row {
     schema: { credentials_provider: ["github"], credentials_types: ["oauth2"] },
     selected: undefined,
     hasUnansweredTarget: false,
+    rejectedCredentialIds: [],
     select: vi.fn(),
     onConnected: vi.fn(),
     ...overrides,

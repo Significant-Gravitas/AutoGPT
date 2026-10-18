@@ -103,9 +103,18 @@ def _gate_attention(
             )
         )
         or None,
-        review=review,
+        review=_without_held_bytes(review),
         primary_action=HomeAction(label="Open chat", href=_review_link(review)),
     )
+
+
+def _without_held_bytes(review: PendingHumanReviewModel) -> PendingHumanReviewModel:
+    # A held read's `content` is up to 70k chars the card never shows (it renders
+    # `passage`), shipped per row on every Home poll.
+    if not isinstance(review.payload, dict) or "content" not in review.payload:
+        return review
+    payload = {k: v for k, v in review.payload.items() if k != "content"}
+    return review.model_copy(update={"payload": payload})
 
 
 def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:
@@ -172,7 +181,7 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
             priority="high",
             title=f"Review {expert.name}'s paused work",
             description=description,
-            why_it_matters="Upcoming tasks will not run while this agent is paused.",
+            why_it_matters="Upcoming tasks will not run while this expert is paused.",
             expert=summary,
             created_at=as_utc(expert.schedules_paused_at),
             primary_action=HomeAction(
@@ -264,7 +273,7 @@ def _credits_attention(schedule_count: int) -> HomeAttentionItem:
         description=(
             f"{schedule_count} upcoming task{'s' if schedule_count != 1 else ''} may not run."
         ),
-        why_it_matters="Agents need a positive balance before paid blocks can start.",
+        why_it_matters="Experts and workflows need a positive balance before paid blocks can start.",
         primary_action=HomeAction(label="Add credits", href="/profile/credits"),
     )
 
@@ -275,7 +284,7 @@ def _review_expert(review: PendingHumanReviewModel) -> HomeExpert | None:
     return HomeExpert(
         id=review.expert_id,
         name=review.expert_name,
-        role="Agent",
+        role="Expert",
         avatar_url=review.expert_avatar_url,
     )
 

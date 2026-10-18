@@ -5,8 +5,10 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 
 Both steps go through the recall policy (``graphiti/recall.py`` and
 ``graphiti/recall_forget.py``): the candidates are the facts recall would
-return, and a confirmed forget is ``recall_forget.retract``, with the
-guarantees and limits ``graphiti/AGENTS.md`` lists.
+return, and, when asked (``include_forgotten``), the forgotten ones
+(``recall.search_forgotten_facts``), so a soft forget can be made permanent;
+a confirmed forget is ``recall_forget.retract``, with the guarantees and
+limits ``graphiti/AGENTS.md`` lists.
 
 The demotion helpers below are the dream's writers. They write only over
 live facts, so a demotion can never overwrite a user's forget.
@@ -25,7 +27,12 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
+from backend.copilot.graphiti.recall import (
+    FORGOTTEN_FACT,
+    live_fact_predicate,
+    search_facts,
+    search_forgotten_facts,
+)
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
@@ -89,6 +96,10 @@ class MemoryForgetSearchTool(BaseTool):
                     "type": "string",
                     "description": "Natural language description of what to forget (e.g. 'the Q2 marketing budget')",
                 },
+                "include_forgotten": {
+                    "type": "boolean",
+                    "description": "Also find already-forgotten memories, to delete them permanently.",
+                },
             },
             "required": ["query"],
         }
@@ -103,6 +114,7 @@ class MemoryForgetSearchTool(BaseTool):
         session: ChatSession,
         *,
         query: str = "",
+        include_forgotten: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -133,8 +145,14 @@ class MemoryForgetSearchTool(BaseTool):
 
         try:
             # Only facts recall would still return: a forgotten one is not
-            # offered for forgetting again.
+            # offered for forgetting again, unless asked for, so a soft
+            # forget can be made permanent.
             edges = await search_facts(memory_scope, query, limit=10)
+            forgotten = (
+                await search_forgotten_facts(memory_scope, query, limit=10)
+                if include_forgotten
+                else []
+            )
         except Exception:
             logger.warning(
                 "Memory forget search failed for user %s", user_id[:12], exc_info=True
@@ -144,7 +162,7 @@ class MemoryForgetSearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not edges:
+        if not edges and not forgotten:
             return MemoryForgetCandidatesResponse(
                 message="No matching memories found.",
                 session_id=session.session_id,
@@ -152,9 +170,10 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         candidates = [_candidate(edge) for edge in edges]
+        candidates += [_forgotten_candidate(edge) for edge in forgotten]
 
         return MemoryForgetCandidatesResponse(
-            message=f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs.",
+            message=_candidates_message(len(edges), len(forgotten)),
             session_id=session.session_id,
             candidates=candidates,
         )
@@ -190,11 +209,14 @@ class MemoryForgetConfirmTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "List of edge UUIDs to delete (from memory_forget_search results)",
+                    "title": "Memories",
+                    "entity": None,
                 },
                 "hard_delete": {
                     "type": "boolean",
                     "description": "If true, permanently removes edges from the graph (GDPR). Default false (soft delete — marks as expired).",
                     "default": False,
+                    "title": "Deletes permanently",
                 },
             },
             "required": ["uuids"],
@@ -308,6 +330,56 @@ def _candidate(edge: EntityEdge) -> dict[str, str]:
         "valid_from": valid_from,
         "valid_to": valid_to,
     }
+
+
+def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:
+    """A forgotten fact as a candidate for a permanent delete: that it
+    exists and when, never what it said. Its sentence, the audit copy its
+    forget kept (``fact_redacted``), its scope and the dates it held true are
+    all left out, the forget keeping them from the model; the delete needs
+    only the uuid. The two dates are read as timestamps and written out
+    anew (``_timestamp``), so no text an edge property holds goes with them."""
+    forgotten_at = edge.attributes.get("forgotten_at") or edge.expired_at
+    return {
+        "uuid": edge.uuid,
+        "fact": FORGOTTEN_FACT,
+        "stored_at": _timestamp(edge.created_at),
+        "forgotten_at": _timestamp(forgotten_at),
+        "forgotten": "true",
+    }
+
+
+def _timestamp(value: Any) -> str:
+    """``value`` as an ISO 8601 UTC timestamp to the second, or ``"unknown"``
+    when it does not read as one (a missing value included)."""
+    try:
+        moment = datetime.fromisoformat(str(value))
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+    except (ValueError, OverflowError):
+        return "unknown"
+
+
+def _candidates_message(live: int, forgotten: int) -> str:
+    """What ``memory_forget_search`` tells the model to do with its
+    candidates: the live ones shown for the user to choose from, the
+    forgotten ones offered for a permanent delete by count and date alone."""
+    parts = []
+    if live:
+        parts.append(
+            f"Found {live} candidate(s). Show these to the user and ask which to "
+            "delete, then call tool:memory_forget_confirm with the UUIDs."
+        )
+    if forgotten:
+        parts.append(
+            f"{forgotten} memory(ies) matched that are already forgotten; what "
+            "they said stays hidden, so do not guess at it. Tell the user how "
+            "many and when they were stored and forgotten, and offer to delete "
+            "them permanently: tool:memory_forget_confirm with their UUIDs and "
+            "hard_delete=true."
+        )
+    return " ".join(parts)
 
 
 async def mark_edges_superseded(

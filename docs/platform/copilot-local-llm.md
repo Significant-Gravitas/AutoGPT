@@ -46,19 +46,20 @@ four chat transports. When `CHAT_USE_LOCAL=true`:
 
 The downgrade is logged at WARNING when an `extended_thinking` request
 arrives — there is no 500. The frontend toggle should already be hidden
-because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
+because the `CHAT_MODE_OPTION` feature flag defaults off in
 self-hosted deployments.
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
-vars are the *bottom* layer of model resolution: LaunchDarkly per-user
-override → the LLM catalog's routing cell
+vars are the *bottom* layer of model resolution: the `copilot-model-routing`
+flag's per-user override → the LLM catalog's routing cell
 (`backend/data/llm_registry/catalog.py`) → env default, with slugs
 unknown to the catalog or disabled in it refused at serve time.
 
 **On self-hosted installs — any transport — the catalog's routing cells
 are skipped entirely**: they are the cloud deployment's config traveling
 in the shipped file, and they never override your `CHAT_*_MODEL`
-configuration. Resolution here is LaunchDarkly → `CHAT_*_MODEL`, exactly
+configuration. Resolution here is the `copilot-model-routing` flag →
+`CHAT_*_MODEL`, exactly
 the pre-catalog behavior; your env vars stay authoritative. See
 [Managing LLM Models](contributing/managing-llm-models.md).
 
@@ -390,7 +391,7 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 | Setting | Cloud default | Local default |
 |---|---|---|
 | `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
 The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`

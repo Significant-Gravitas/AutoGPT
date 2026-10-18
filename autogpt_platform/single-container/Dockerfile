@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS frontend
+FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -23,6 +23,7 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
     NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
+    NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY=true \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -33,7 +34,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
+FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -41,19 +42,26 @@ RUN npm install --global "npm@${NPM_VERSION}" \
 
 # RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
-FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS rabbitmq
+FROM rabbitmq:4.3.6@sha256:42b190dffdd0cdb656f989f5404c30e1049d6b7d9c987089669b1905e5e3a1a6 AS rabbitmq
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend
-# Dockerfile's server target. This keeps the backend image contract independent
-# from the opt-in single-container distribution.
-FROM autogpt-backend AS single-container
+# Dockerfile's server target. The appliance takes only AutoGPT's code from it
+# (what the server target adds on top of server-base), so drop the dependency
+# venv that server-base already provides.
+FROM autogpt-backend AS backend-code
 
-ARG IMAGE_VERSION=dev
-ARG VCS_REF=unknown
+RUN rm -rf /app/autogpt_platform/backend/.venv
+
+# autogpt-backend-base is supplied by Docker Bake from the backend Dockerfile's
+# server-base target: the backend image before AutoGPT's code is added. The
+# appliance stacks its own dependencies on it and adds the code last, so a new
+# commit only rebuilds and re-stores the code layers. This keeps the backend
+# image contract independent from the opt-in single-container distribution.
+FROM autogpt-backend-base AS single-container
 
 # The normal backend image stores generated Prisma engines under root's cache.
 # Appliance services run unprivileged, so relocate those inherited engines to a
@@ -73,14 +81,13 @@ RUN install -d -m 0755 /opt/prisma-python \
     && ln -s "${prisma_node_modules}" /opt/prisma-python/binaries/node_modules \
     && ln -s "${query_engine}" /opt/prisma-python/query-engine
 
-LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
-      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
-      org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
-      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
-      org.opencontainers.image.version="${IMAGE_VERSION}" \
-      org.opencontainers.image.revision="${VCS_REF}"
-
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package install below and security fixes reach the image instead
+# of staying behind a cached layer. CI passes the UTC date, which refreshes it
+# once a day.
+ARG APT_REFRESH
 
 # Block service auto-start during package installation; Supervisor owns every
 # daemon at runtime. PostgreSQL comes from PGDG to retain PG15 parity on Debian
@@ -133,7 +140,7 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
     && rm -rf /var/lib/apt/lists/* /var/lib/postgresql/15/main
 
 # Node 24 is required by the frontend. Backend Prisma and agent-browser also
-# use this binary through PATH; their npm packages remain from the server stage.
+# use this binary through PATH; their npm packages remain from server-base.
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend /usr/local/LICENSE /usr/share/licenses/nodejs/LICENSE
 RUN rm -rf /usr/lib/node_modules/npm
@@ -147,19 +154,6 @@ COPY --from=rabbitmq /opt/rabbitmq /opt/rabbitmq
 # FalkorDB server only (no bundled Browser UI).
 COPY --from=falkordb /usr/local/bin/redis-server /opt/falkordb/redis-server
 COPY --from=falkordb /var/lib/falkordb/bin/falkordb.so /opt/falkordb/falkordb.so
-
-# Next standalone server and immutable assets.
-COPY --from=frontend /app/.next/standalone /app/frontend
-COPY --from=frontend /app/.next/static /app/frontend/.next/static
-COPY --from=frontend /app/public /app/frontend/public
-
-# Next's standalone trace over-includes Orval's build-only esbuild dependency.
-# It is never used by the production server and must not ship as runtime code.
-RUN rm -rf \
-        /app/frontend/node_modules/.pnpm/esbuild@* \
-        /app/frontend/node_modules/.pnpm/@esbuild+linux-*@* \
-    && find /app/frontend/node_modules -type l \
-        \( -name esbuild -o -path '*/node_modules/@esbuild/linux-*' \) -delete
 
 # Runtime orchestration, proxy, health tooling, and database compatibility shim.
 COPY autogpt_platform/single-container/bootstrap.sh \
@@ -207,10 +201,6 @@ RUN groupadd --system --gid 10001 autogpt \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \
     && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin \
-    && rm -f /app/autogpt_platform/backend/config.json \
-    && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json \
-    && rm -rf /app/frontend/.next/cache \
-    && ln -s /data/cache/next /app/frontend/.next/cache \
     && site_packages="$(/app/autogpt_platform/backend/.venv/bin/python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
     && rm -f \
@@ -219,6 +209,38 @@ RUN groupadd --system --gid 10001 autogpt \
     && test ! -e "${site_packages}/ldclient/testing/selfsigned.key" \
     && test ! -e "${site_packages}/ldclient/testing/selfsigned.pem"
 
+# Everything above changes only when dependencies do. Everything below changes
+# with AutoGPT's code, so it goes last and a new commit reuses the layers above.
+
+# Next standalone server and immutable assets.
+COPY --from=frontend /app/.next/standalone /app/frontend
+COPY --from=frontend /app/.next/static /app/frontend/.next/static
+COPY --from=frontend /app/public /app/frontend/public
+
+# Next's standalone trace over-includes Orval's build-only esbuild dependency.
+# It is never used by the production server and must not ship as runtime code.
+RUN rm -rf \
+        /app/frontend/node_modules/.pnpm/esbuild@* \
+        /app/frontend/node_modules/.pnpm/@esbuild+linux-*@* \
+    && find /app/frontend/node_modules -type l \
+        \( -name esbuild -o -path '*/node_modules/@esbuild/linux-*' \) -delete \
+    && rm -rf /app/frontend/.next/cache \
+    && ln -s /data/cache/next /app/frontend/.next/cache
+
+# AutoGPT's backend code and docs, then its entry points (rest, executor, ...),
+# installed the same way the backend server target does on top of server-base.
+WORKDIR /app/autogpt_platform/backend
+COPY --from=backend-code /app/autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+COPY --from=backend-code /app/autogpt_platform/backend /app/autogpt_platform/backend
+COPY --from=backend-code /app/docs /app/docs
+RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
+    poetry install --no-ansi --only-root \
+    && rm -f /app/autogpt_platform/backend/config.json \
+    && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json
+
+# FORCE_FLAG_GRAPHITI_MEMORY keeps memory on; the frontend stage's
+# NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY must match it, or users can't open
+# /settings/memory to see or erase what was remembered.
 ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
     ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
     OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl \
@@ -239,6 +261,18 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PYTHONUNBUFFERED=1 \
     FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
+
+# These build arguments change on every build, so they are declared only after
+# the last layer-producing step to keep them out of the layer cache keys.
+ARG IMAGE_VERSION=dev
+ARG VCS_REF=unknown
+
+LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
+      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
+      org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 WORKDIR /app/autogpt_platform/backend
 

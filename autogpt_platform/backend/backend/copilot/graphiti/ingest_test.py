@@ -215,6 +215,16 @@ class TestIngestionCompletion:
         c.complete_one()
         assert await c.wait(0.01) is True
 
+    def test_pending_is_what_was_neither_written_dropped_nor_failed(self) -> None:
+        """Apart from the drain: an episode finished by the worker is not
+        written unless graphiti saved it."""
+        c = ingest.IngestionCompletion()
+        for _ in range(4):
+            c.register()
+        c.written, c.dropped_forgotten, c.failed = 1, 1, 1
+
+        assert c.pending == 1
+
 
 class TestWaitForIngestion:
     """``wait_for_ingestion`` — the drain barrier dream-pass apply uses so

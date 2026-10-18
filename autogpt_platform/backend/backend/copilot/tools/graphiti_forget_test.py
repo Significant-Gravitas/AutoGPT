@@ -18,7 +18,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT, live_fact_predicate
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -27,6 +27,7 @@ from backend.copilot.tools.graphiti_forget import (
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
+    _timestamp,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
@@ -127,6 +128,159 @@ class TestForgetSearchCandidates:
                 "valid_to": "present",
             }
         ]
+
+
+class TestForgetSearchForgottenCandidates:
+    @staticmethod
+    def _edge(
+        uuid: str,
+        fact: str,
+        expired_at: datetime | None = None,
+        valid_at: datetime | None = None,
+        **attributes: str,
+    ) -> EntityEdge:
+        return EntityEdge(
+            uuid=uuid,
+            group_id="user_user-abc",
+            source_node_uuid="a",
+            target_node_uuid="b",
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            name="works_on",
+            fact=fact,
+            expired_at=expired_at,
+            valid_at=valid_at,
+            attributes=attributes,
+        )
+
+    async def _search(self, include_forgotten: bool, live, forgotten):
+        session = ChatSession.new("user-abc", dry_run=False)
+        search_forgotten = AsyncMock(return_value=forgotten)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
+            patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
+        ):
+            response = await MemoryForgetSearchTool()._execute(
+                "user-abc",
+                session,
+                query="atlas",
+                include_forgotten=include_forgotten,
+            )
+        assert isinstance(response, MemoryForgetCandidatesResponse)
+        return response, search_forgotten
+
+    @pytest.mark.asyncio
+    async def test_are_left_out_unless_asked_for(self) -> None:
+        live = [self._edge("e1", "Bob leads Atlas")]
+
+        response, search_forgotten = await self._search(False, live, [])
+
+        search_forgotten.assert_not_awaited()
+        assert [c["uuid"] for c in response.candidates] == ["e1"]
+        assert "forgotten" not in response.candidates[0]
+
+    @pytest.mark.asyncio
+    async def test_when_asked_come_after_the_live_ones_saying_nothing_they_said(
+        self,
+    ) -> None:
+        """A soft forget can be made permanent, but nothing a forgotten fact
+        said goes back to the model: not the audit copy its forget kept
+        (``fact_redacted``), not the text a fact forgotten before the policy
+        still has, not its scope nor the dates it held true. Only that it
+        exists, when it was stored and when forgotten, searched for in the
+        whole response the model reads."""
+        live = [self._edge("e1", "Bob leads Atlas")]
+        gone = [
+            self._edge(
+                "e2",
+                FORGOTTEN_FACT,
+                valid_at=datetime(2024, 3, 9, tzinfo=timezone.utc),
+                fact_redacted="Alice works on the secret Atlas plan",
+                name_redacted="works_on_secret_plan",
+                scope="project:Orion",
+                forgotten_at="2026-01-01T00:00:00+00:00",
+            ),
+            # Forgotten before the policy: its own text was never scrubbed.
+            self._edge(
+                "e3",
+                "Carol owns the Atlas budget",
+                expired_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            ),
+        ]
+
+        response, search_forgotten = await self._search(True, live, gone)
+
+        search_forgotten.assert_awaited_once_with(
+            MemoryScope.for_user("user-abc"), "atlas", limit=10
+        )
+        assert response.candidates[1:] == [
+            {
+                "uuid": "e2",
+                "fact": FORGOTTEN_FACT,
+                "stored_at": "2025-01-01T00:00:00+00:00",
+                "forgotten_at": "2026-01-01T00:00:00+00:00",
+                "forgotten": "true",
+            },
+            {
+                "uuid": "e3",
+                "fact": FORGOTTEN_FACT,
+                "stored_at": "2025-01-01T00:00:00+00:00",
+                "forgotten_at": "2025-06-01T00:00:00+00:00",
+                "forgotten": "true",
+            },
+        ]
+        assert response.candidates[0]["fact"] == "Bob leads Atlas"
+        seen = response.model_dump_json()
+        for said in ("secret", "Carol", "budget", "Orion", "2024-03-09"):
+            assert said not in seen, said
+        assert "hard_delete=true" in response.message
+
+    @pytest.mark.asyncio
+    async def test_their_dates_are_only_ever_timestamps(self) -> None:
+        """Codex's probe: a ``forgotten_at`` that is not a timestamp (one an
+        extraction invented before attribute answers were filtered) reads
+        "unknown", and what it held reaches no part of the response. A real
+        one is written out anew, in UTC to the second."""
+        secret = "Alice works on the secret Atlas plan"
+        gone = [
+            self._edge("e2", FORGOTTEN_FACT, forgotten_at=secret),
+            self._edge(
+                "e3", FORGOTTEN_FACT, forgotten_at="2026-01-01T07:30:15.25+02:00"
+            ),
+            self._edge("e4", FORGOTTEN_FACT, forgotten_at="0001-01-01T00:00:00+05:00"),
+        ]
+
+        response, _ = await self._search(True, [], gone)
+
+        assert [c["forgotten_at"] for c in response.candidates] == [
+            "unknown",
+            "2026-01-01T05:30:15+00:00",
+            "unknown",
+        ]
+        assert secret not in response.model_dump_json()
+
+    def test_a_date_that_is_not_one_reads_unknown(self) -> None:
+        naive = datetime(2025, 3, 4, 5, 6, 7)
+
+        assert [
+            _timestamp(value)
+            for value in (None, "", "yesterday", 12, naive, "2025-03-04")
+        ] == [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "2025-03-04T05:06:07+00:00",
+            "2025-03-04T00:00:00+00:00",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_are_offered_when_nothing_live_matches(self) -> None:
+        gone = [self._edge("e2", FORGOTTEN_FACT, fact_redacted="Alice works on Atlas")]
+
+        response, _ = await self._search(True, [], gone)
+
+        assert [c["uuid"] for c in response.candidates] == ["e2"]
 
 
 class TestForgetConfirmModes:

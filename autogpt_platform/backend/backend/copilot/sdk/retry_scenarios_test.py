@@ -39,18 +39,23 @@ from claude_agent_sdk import (
 )
 from graphiti_core.edges import EntityEdge
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
+    StreamTextEnd,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
+from backend.copilot.stream_checkpoint import turn_checkpoint
+from backend.copilot.stream_drift.recording import saving_into
 from backend.copilot.transcript import (
     TranscriptDownload,
     _flatten_assistant_content,
@@ -58,6 +63,7 @@ from backend.copilot.transcript import (
     _messages_to_transcript,
     _transcript_to_messages,
 )
+from backend.copilot.turn_budget import TurnBudget
 from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
@@ -1088,6 +1094,7 @@ def _make_sdk_patches(
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_autocompact_pct_override=0,
@@ -1101,13 +1108,21 @@ def _make_sdk_patches(
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
-        # Bypass dynamic budget resolution — the helper hits Redis via
-        # get_global_rate_limits / get_remaining_usd_budget, which the
-        # retry_scenarios mocks don't stand up.  Static cap is fine for
-        # retry-flow assertions (covered directly in service_test).
+        # Bypass budget resolution — it hits Redis via the rate-limit
+        # helpers, which the retry_scenarios mocks don't stand up. The task
+        # cap is fine for retry-flow assertions (covered in turn_budget_test).
         (
-            f"{_SVC}._resolve_dynamic_max_budget_usd",
-            dict(new_callable=AsyncMock, return_value=100.0),
+            f"{_SVC}.resolve_turn_budget",
+            dict(
+                new_callable=AsyncMock,
+                return_value=TurnBudget(usd=100.0, limiting="task"),
+            ),
+        ),
+        # The auto-continue allowance check peeks the pending queue in Redis
+        # (covered in budget_gate_test).
+        (
+            f"{_SVC}.gate_auto_continue",
+            dict(new_callable=AsyncMock, return_value=AutoContinueGate(proceed=True)),
         ),
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.
@@ -2322,7 +2337,23 @@ class TestStreamChatCompletionRetryIntegration:
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
-    async def test_handled_stream_error_transient_retries_then_succeeds(self):
+    @pytest.mark.parametrize(
+        "error, text",
+        [
+            ("rate_limit", "rate limit exceeded (status code 429)"),
+            # How the bundled CLI (2.1.284) words a 529: no status-code
+            # phrase for the text patterns to find, only the category.
+            (
+                "server_error",
+                "API Error: 529 Overloaded. This is a server-side issue, "
+                "usually temporary — try again in a moment.",
+            ),
+        ],
+        ids=["rate_limit", "server_error"],
+    )
+    async def test_handled_stream_error_transient_retries_then_succeeds(
+        self, error: str, text: str
+    ):
         """_HandledStreamError(code="transient_api_error") triggers backoff retry.
 
         When ``_run_stream_attempt`` raises ``_HandledStreamError`` with
@@ -2339,7 +2370,7 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         from backend.copilot.response_model import (
             StreamError,
@@ -2359,16 +2390,16 @@ class TestStreamChatCompletionRetryIntegration:
             async def _receive():
                 if attempt == 1:
                     # First call: emit AssistantMessage with a transient error field
-                    # so _run_stream_attempt detects is_transient_api_error and
+                    # so _run_stream_attempt detects is_transient_assistant_error and
                     # raises _HandledStreamError(code="transient_api_error").
                     yield AssistantMessage(
-                        content=[],
+                        content=[TextBlock(text=text)],
                         model="claude-sonnet-4-6",
-                        error="rate_limit",
+                        error=error,
                     )
                     yield ResultMessage(
                         subtype="error",
-                        result="rate limit exceeded (status code 429)",
+                        result=text,
                         duration_ms=50,
                         duration_api_ms=0,
                         is_error=True,
@@ -2680,6 +2711,56 @@ class TestStreamChatCompletionRetryIntegration:
             f"{captured_options}"
         )
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_queued_messages_wait_when_the_allowance_is_used_up(self):
+        """Auto-continue asks the allowance first. Refused, it drains nothing
+        and starts no second query: the turn ends on a not-started pause and
+        the queued messages stay queued for the next turn."""
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.turn_pause import TurnPause
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        queries: list[int] = []
+
+        def _client_factory(*args, **kwargs):
+            queries.append(1)
+            return self._make_client_mock(result_message=result_msg)
+
+        pause = TurnPause(reason="daily", checkpoint_saved=False, started=False)
+        refused = AsyncMock(return_value=AutoContinueGate(proceed=False, pause=pause))
+        drain = AsyncMock(return_value=[])
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.gate_auto_continue", new=refused))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=drain))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        refused.assert_awaited_once_with(session, "test-user", platform_billed=True)
+        assert [e.pause for e in events if isinstance(e, StreamTurnPaused)] == [
+            pause.as_part()
+        ]
+        assert len(queries) == 1, "a refused auto-continue must not query again"
+        drain.assert_awaited_once()  # the turn-start drain only
 
 
 # ---------------------------------------------------------------------------
@@ -3100,3 +3181,95 @@ class TestPreQueryCompactionRowTiming:
 
         opened, _closed = self._compaction_marks(timeline)
         assert opened == []
+
+
+class TestTurnEndCheckpoint:
+    """The turn-end persist in the engine's ``finally`` is followed by a
+    checkpoint only when it landed."""
+
+    async def test_the_turn_end_persist_is_followed_by_its_checkpoint(self):
+        saves: list[ChatSession] = []
+
+        events = await self._run(AsyncMock(side_effect=saving_into(saves)))
+
+        checkpoints = [e for e in events if isinstance(e, StreamCheckpoint)]
+        assert checkpoints == [turn_checkpoint(saves[-1].messages, self._TURN_START)]
+        assert checkpoints[0].rows == 1
+        last_text_end = max(
+            i for i, e in enumerate(events) if isinstance(e, StreamTextEnd)
+        )
+        assert events.index(checkpoints[0]) > last_text_end
+
+    async def test_a_failed_turn_end_persist_publishes_no_checkpoint(self):
+        events = await self._run(AsyncMock(side_effect=ConnectionError("db down")))
+
+        assert not any(isinstance(e, StreamCheckpoint) for e in events)
+
+    # A later turn: a first one runs setup that calls other services.
+    _HISTORY = [
+        ChatMessage(role="user", content="earlier"),
+        ChatMessage(role="assistant", content="earlier answer"),
+        ChatMessage(role="user", content="hello"),
+    ]
+    _TURN_START = len(_HISTORY)
+
+    async def _run(self, upsert: AsyncMock) -> list:
+        from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
+
+        session = ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            title="Greeting",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[m.model_copy() for m in self._HISTORY],
+        )
+
+        async def _receive():
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(content=[TextBlock(text="Hi there.")], model="t")
+            yield ResultMessage(
+                subtype="success",
+                result="Hi there.",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session-id",
+            )
+
+        client = MagicMock(receive_response=_receive, query=AsyncMock())
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = client
+        patches = [
+            (target, kwargs)
+            for target, kwargs in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript([("user", "hi")]),
+                compacted_transcript=None,
+                client_side_effect=lambda *a, **kw: client_cm,
+            )
+            if target != f"{_SVC}.upsert_chat_session"
+        ]
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.upsert_chat_session", new=upsert))
+            # The skill-drift notice reads the workspace over RPC.
+            stack.enter_context(
+                patch(
+                    f"{_SVC}._maybe_prepend_skills_update",
+                    new=AsyncMock(side_effect=lambda *args: args[-1]),
+                )
+            )
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+        return events

@@ -11,7 +11,7 @@ from fastapi.routing import APIRoute
 from backend.api.features.schedules.routes import router
 from backend.api.rest_api import app as real_app
 from backend.executor import scheduler
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -54,6 +54,7 @@ EXPECTED_OPERATIONS = {
     ("get", "/api/schedules"): "getV1List execution schedules for a user",
     ("get", "/api/schedules/followups"): "listCopilotFollowupSchedules",
     ("delete", "/api/schedules/{schedule_id}"): "deleteV1Delete execution schedule",
+    ("patch", "/api/schedules/{schedule_id}"): "patchV1Update execution schedule",
 }
 
 
@@ -240,6 +241,71 @@ def test_delete_schedule_maps_not_found_to_404(
     )
 
     response = client.delete("/schedules/missing")
+
+    assert response.status_code == 404
+
+
+def test_update_schedule_rejects_an_empty_timezone(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An empty timezone is a bad value, not an omitted one: it must not be
+    silently ignored while the rest of the edit is saved."""
+    sched = _patch_scheduler(mocker, update_execution_schedule=AsyncMock())
+
+    response = client.patch("/schedules/sched-1", json={"timezone": ""})
+
+    assert response.status_code == 422
+    sched.update_execution_schedule.assert_not_awaited()
+
+
+def test_update_schedule_forwards_only_the_sent_fields(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Omitted fields go through as None so the scheduler keeps them, and the
+    next run comes back in the schedule's own timezone, as on create."""
+    updated = scheduler.GraphExecutionJobInfo(
+        id="sched-1",
+        name="Evening report",
+        next_run_time="2026-10-12T22:30:00+00:00",
+        timezone="America/New_York",
+        user_id="test-user-id",
+        graph_id="graph-1",
+        graph_version=1,
+        cron="30 18 * * 1,2,3,4,5",
+        input_data={},
+    )
+    sched = _patch_scheduler(
+        mocker, update_execution_schedule=AsyncMock(return_value=updated)
+    )
+
+    response = client.patch(
+        "/schedules/sched-1",
+        json={"name": "Evening report", "cron": "30 18 * * 1,2,3,4,5"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["next_run_time"] == "2026-10-12T18:30:00-04:00"
+    kwargs = sched.update_execution_schedule.await_args.kwargs
+    assert kwargs["schedule_id"] == "sched-1"
+    assert (kwargs["name"], kwargs["cron"]) == ("Evening report", "30 18 * * 1,2,3,4,5")
+    assert (
+        kwargs["user_timezone"],
+        kwargs["input_data"],
+        kwargs["input_credentials"],
+    ) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "error", [NotFoundError("gone"), NotAuthorizedError("not yours")]
+)
+def test_update_schedule_hides_other_users_schedules_behind_404(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """A schedule someone else owns must look exactly like a missing one, so
+    ids can't be probed by editing them."""
+    _patch_scheduler(mocker, update_execution_schedule=AsyncMock(side_effect=error))
+
+    response = client.patch("/schedules/sched-1", json={"cron": "0 9 * * 1-5"})
 
     assert response.status_code == 404
 

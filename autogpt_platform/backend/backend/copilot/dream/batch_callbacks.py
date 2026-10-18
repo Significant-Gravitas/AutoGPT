@@ -37,11 +37,14 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
@@ -199,12 +202,14 @@ async def _finalize_stuck_duplicate(
             existing.state,
         )
         # The first delivery's per-edge outcomes (and dream session id)
-        # died with it, so the counts here are the clamped *attempted*
-        # ops — annotate the summary so the admin UI doesn't present
-        # them as confirmed apply results.
+        # died with it: the writes and proposals it queued are counted
+        # pending, none written, and the demotion counts are the clamped
+        # *attempted* ops — annotate the summary so the admin UI doesn't
+        # present them as confirmed apply results.
         note = (
-            "[finalized after duplicate delivery — counts reflect attempted "
-            "operations; writes landed with the original delivery] "
+            "[finalized after duplicate delivery — writes and proposals were "
+            "queued by the original delivery, counted pending; demotion counts "
+            "reflect attempted operations] "
         )
         await mark_complete(
             kind="dream_pass",
@@ -213,8 +218,7 @@ async def _finalize_stuck_duplicate(
                 user_id=user_id,
                 pass_id=pass_id,
                 execution_path="anthropic_batch",
-                consolidated_count=len(ops.writes),
-                proposal_count=len(ops.proposals),
+                pending_writes=len(ops.writes) + len(ops.proposals),
                 demotion_count=len(ops.demotions),
                 entity_invalidation_count=len(ops.entity_invalidations),
                 # Batch apply never drains in-line by design; the first
@@ -283,6 +287,48 @@ async def _release_lock(user_id: str, pass_id: str, expert_id: str | None) -> No
 
 
 async def handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    with ExitStack() as attribution:
+        try:
+            raw_context = payload.get("cost_context")
+            if raw_context is None:
+                raise UsageActivationUnavailable("Dream batch has no usage attribution")
+            context = TrialCostContext.model_validate(raw_context)
+            attribution.enter_context(restore_cost_context(user_id, context))
+        except (UsageActivationUnavailable, ValueError):
+            await _fail_unattributed_pass(payload)
+            raise
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _fail_unattributed_pass(payload: dict[str, Any]) -> None:
+    """Close a dead-end batch without charging against a new usage context."""
+    pass_id = str(payload["pass_id"])
+    await _mark_job_errored_best_effort(
+        str(payload.get("job_id") or ""), "batch usage attribution unavailable"
+    )
+    try:
+        input_bundle = await read_input_bundle(pass_id)
+        if input_bundle is not None:
+            await _release_lock(input_bundle.user_id, pass_id, input_bundle.expert_id)
+    except Exception:
+        logger.exception(
+            "Unattributed dream batch lock cleanup failed for pass=%s", pass_id
+        )
+    await _best_effort_cleanup(pass_id)
+
+
+async def _handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
     """BatchExecutor entry — called once per finished phase batch.
@@ -831,6 +877,8 @@ async def _finalize_complete(
                 demotion_count=_count("demotion_count"),
                 entity_invalidation_count=_count("entity_invalidation_count"),
                 dropped_forgotten=_count("dropped_forgotten"),
+                pending_writes=_count("pending_writes"),
+                failed_writes=_count("failed_writes"),
                 dream_session_id=session_id,
                 ingestion_drain_status=ingestion_drain_status,
                 operations=snapshot,

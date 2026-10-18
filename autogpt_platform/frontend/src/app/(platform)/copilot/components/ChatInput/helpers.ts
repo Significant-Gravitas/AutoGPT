@@ -1,7 +1,10 @@
 import { serializeCredentialMention } from "../CredentialMention/helpers";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import {
+  serviceName,
+  stripProviderPrefix,
+} from "@/components/contextual/IntegrationsPanel/helpers";
 
 // Browsers name clipboard screenshots "image.png"; rename so multiple
 // pasted images stay distinguishable in the composer and workspace.
@@ -11,10 +14,18 @@ export function getFilesFromClipboard(
   clipboardData: DataTransfer | null,
 ): File[] {
   if (!clipboardData) return [];
-  return Array.from(clipboardData.files).map(renameGenericImage);
+  return Array.from(clipboardData.files).map((file, index) =>
+    renameGenericImage(file, index, "pasted-image"),
+  );
 }
 
-function renameGenericImage(file: File, index: number): File {
+/** Mobile browsers hand every camera capture over as "image.jpg"; rename so
+ *  photos taken in a row stay distinguishable in the composer and workspace. */
+export function nameCapturedPhotos(files: File[]): File[] {
+  return files.map((file, index) => renameGenericImage(file, index, "photo"));
+}
+
+function renameGenericImage(file: File, index: number, prefix: string): File {
   if (
     !file.type.startsWith("image/") ||
     !GENERIC_CLIPBOARD_IMAGE_NAME.test(file.name)
@@ -24,7 +35,7 @@ function renameGenericImage(file: File, index: number): File {
   const extension = file.name.split(".").pop();
   const stamp = new Date().toISOString().slice(0, 23).replace(/[T:.]/g, "-");
   const suffix = index > 0 ? `-${index + 1}` : "";
-  return new File([file], `pasted-image-${stamp}${suffix}.${extension}`, {
+  return new File([file], `${prefix}-${stamp}${suffix}.${extension}`, {
     type: file.type,
     lastModified: file.lastModified,
   });
@@ -76,16 +87,19 @@ export interface MentionRange {
 export function connectedIntegrationsFromCredentials<
   T extends Pick<
     CredentialsMetaResponse,
-    "id" | "provider" | "title" | "username"
+    "id" | "provider" | "title" | "username" | "service" | "service_name"
   >,
 >(credentials: T[]): IntegrationMention[] {
   const accounts = filterSystemCredentials(credentials)
     .filter((credential) => credential.provider)
     .map((credential) => {
       const provider = credential.provider;
-      const providerName = formatProviderName(provider);
-      const name =
-        credential.title?.trim() || credential.username?.trim() || providerName;
+      const providerName = serviceName(credential);
+      const title = stripProviderPrefix(
+        credential.title?.trim() ?? "",
+        provider,
+      ).trim();
+      const name = title || credential.username?.trim() || providerName;
       const account = {
         credentialId: credential.id,
         provider,
@@ -136,3 +150,6 @@ export function insertIntegrationMention(
     caret: range.start + integration.token.length + 1,
   };
 }
+
+/** Phone-sized send button: the default 32px target is too small for a thumb. */
+export const MOBILE_SEND_BUTTON_CLASS = "max-md:size-10";

@@ -34,6 +34,18 @@ Usage:
         backend.copilot.graphiti.migrations.backfill_legacy_forgets [--apply]
 
 Pass ``--graph <name>`` to handle one graph (useful for a canary).
+
+``--scan-markers`` instead reads, and writes nothing: per graph, the uuids of
+the facts carrying a forget's marker (``forgotten_at``), never their text, and
+among them those whose sentence no forget scrubbed (it still reads otherwise
+than ``recall.FORGOTTEN_FACT``). The backfill scrubs before it stamps; a
+forget stamps first, and scrubs after, so only a forget whose clean-up failed
+leaves its marker on an unscrubbed sentence (forgetting again finishes it).
+Every other unscrubbed marker was invented by graphiti's attribute extraction
+before it was held to its declared fields (``recall_ingest.py``), and would
+hide a fact nobody forgot. Before the recall policy is deployed no forget has
+written a marker, so every marker found then was invented. It exits 1 when
+any marker is unscrubbed.
 """
 
 import argparse
@@ -47,7 +59,11 @@ from pydantic import BaseModel
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.memory_model import MemoryStatus
-from backend.copilot.graphiti.recall import USER_FORGET_REASON, legacy_forget_predicate
+from backend.copilot.graphiti.recall import (
+    FORGOTTEN_FACT,
+    USER_FORGET_REASON,
+    legacy_forget_predicate,
+)
 from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, scrub
 from backend.copilot.graphiti.scope_lock import LockState, graph_write_lock
 
@@ -74,6 +90,15 @@ class LegacyForgets(BaseModel):
 
 class _GraphForgets(LegacyForgets):
     uuids: list[str] = []
+
+
+class ForgetMarkers(BaseModel):
+    """One graph's facts carrying a forget's marker, and those among them
+    whose sentence no forget scrubbed (``--scan-markers``)."""
+
+    graph: str
+    marked: list[str] = []
+    unscrubbed: list[str] = []
 
 
 async def backfill_graph(driver: AutoGPTFalkorDriver, *, apply: bool) -> LegacyForgets:
@@ -143,6 +168,30 @@ async def backfill_all_graphs(
     return totals
 
 
+async def scan_markers(graph: str | None = None) -> list[ForgetMarkers]:
+    """Every memory graph's facts carrying a forget's marker, or just
+    ``graph``'s; reads only."""
+    names = [graph] if graph else await _memory_graph_names()
+    found: list[ForgetMarkers] = []
+    for name in names:
+        driver = _graph_driver(name)
+        try:
+            result = await driver.execute_query(
+                MARKERS_QUERY, placeholder=FORGOTTEN_FACT
+            )
+        finally:
+            await driver.close()
+        rows = result[0] if result else []
+        found.append(
+            ForgetMarkers(
+                graph=name,
+                marked=[row["uuid"] for row in rows],
+                unscrubbed=[row["uuid"] for row in rows if not row["scrubbed"]],
+            )
+        )
+    return found
+
+
 async def _memory_graph_names() -> list[str]:
     driver = _graph_driver("default_db")
     try:
@@ -178,6 +227,15 @@ WHERE ep.redacted_at IS NULL
 RETURN legacy AS uuids, size(legacy) AS edges, count(ep) AS episodes
 """
 
+# The facts carrying a forget's marker, and whether their sentence was
+# scrubbed. Reads only.
+MARKERS_QUERY = """
+MATCH ()-[e:RELATES_TO]->()
+WHERE e.forgotten_at IS NOT NULL
+RETURN e.uuid AS uuid, coalesce(e.fact = $placeholder, false) AS scrubbed
+ORDER BY uuid
+"""
+
 # A legacy forget set ``expired_at`` when the user forgot, so that is when
 # the restamped edge was forgotten.
 RETRACT_EDGES_QUERY = f"""
@@ -193,6 +251,8 @@ async def main(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+    if args.scan_markers:
+        return _report(await scan_markers(args.graph))
     totals = await backfill_all_graphs(apply=args.apply, graph=args.graph)
     verb = "restamped" if args.apply else "would restamp (dry run)"
     print(f"{verb} {totals.edges} edges and {totals.episodes} episodes")
@@ -202,12 +262,33 @@ async def main(args: argparse.Namespace) -> int:
     return 1
 
 
+def _report(found: list[ForgetMarkers]) -> int:
+    """Print each graph's marked and unscrubbed facts by uuid; 1 when any
+    marker is unscrubbed."""
+    for graph in found:
+        if graph.marked:
+            print(
+                f"{graph.graph}: {len(graph.marked)} marked, "
+                f"{len(graph.unscrubbed)} unscrubbed {graph.unscrubbed}"
+            )
+    unscrubbed = sum(len(graph.unscrubbed) for graph in found)
+    marked = sum(len(graph.marked) for graph in found)
+    print(f"{marked} facts marked forgotten, {unscrubbed} of them unscrubbed")
+    return 1 if unscrubbed else 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--apply",
         action="store_true",
         help="Write the changes, each graph holding its write lock.",
+    )
+    mode.add_argument(
+        "--scan-markers",
+        action="store_true",
+        help="Only report the facts carrying a forget's marker, by uuid.",
     )
     parser.add_argument("--graph", help="Backfill one graph instead of all of them.")
     sys.exit(asyncio.run(main(parser.parse_args())))

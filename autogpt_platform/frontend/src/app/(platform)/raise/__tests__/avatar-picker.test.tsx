@@ -1,4 +1,6 @@
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { MANAGED_IDENTITIES } from "@/components/molecules/ExpertAvatar/helpers";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import {
@@ -8,8 +10,14 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { loadDraft, saveDraft, VOICE_SKIPPED_LABEL } from "../helpers";
+import {
+  EMPTY_DRAFT,
+  loadDraft,
+  saveDraft,
+  VOICE_SKIPPED_LABEL,
+} from "../helpers";
 import RaisePage from "../page";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
@@ -60,36 +68,44 @@ function mockReducedMotion() {
   );
 }
 
-function seedAtAvatar(name = "Maria", color: string | null = "violet-300") {
+function generationHandlers(requests: unknown[] = []) {
+  return [
+    http.post("*/api/experts/avatars/generations", async ({ request }) => {
+      requests.push(await request.json());
+      return HttpResponse.json(
+        { id: "job-1", status: "pending" },
+        { status: 202 },
+      );
+    }),
+    http.get("*/api/experts/avatars/generations/job-1", () =>
+      HttpResponse.json({
+        id: "job-1",
+        status: "complete",
+        avatar_url: "https://cdn.test/generated.png",
+      }),
+    ),
+  ];
+}
+
+function seedAtAvatar(category: ExpertAvatarRequestCategory) {
   saveDraft({
+    ...EMPTY_DRAFT,
     step: "avatar",
     hasStarted: true,
-    role: "marketer",
-    jobTitle: "Marketing Manager",
-    name,
-    color,
-    avatarUrl: null,
-    about: null,
-    voicePreferences: "",
+    category,
+    color: "green-300",
+    jobTitle: "Financial Analyst",
+    name: "Maria",
     voiceLabel: VOICE_SKIPPED_LABEL,
-    budget: null,
-    marketplace: null,
-    skills: null,
   });
 }
 
-async function openPicker() {
-  seedAtAvatar();
+function renderRaise() {
   render(
     <>
       <RaisePage />
       <Toaster />
     </>,
-  );
-  await screen.findByRole(
-    "group",
-    { name: "Managed looks" },
-    { timeout: 5000 },
   );
 }
 
@@ -104,34 +120,144 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("starts on the General fallback and saves it only after confirmation", async () => {
-  await openPicker();
-  const general = "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp";
-  await userEvent.click(screen.getByRole("button", { name: "General" }));
+test("the area beat answers the color first and asks for a job title", async () => {
+  const requests: unknown[] = [];
+  server.use(...generationHandlers(requests));
+  saveDraft({ ...EMPTY_DRAFT, hasStarted: true });
+  renderRaise();
+
+  const categories = await screen.findByRole(
+    "group",
+    {
+      name: "What the expert works on",
+    },
+    { timeout: 5000 },
+  );
+  await userEvent.click(
+    await within(categories).findByRole("button", { name: "Finance" }),
+  );
+
+  const titles = await screen.findByRole(
+    "group",
+    { name: "Suggested job titles" },
+    { timeout: 5000 },
+  );
+  expect(
+    within(titles).getByRole("button", { name: "Financial Analyst" }),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({
+    category: "finance",
+    color: "green-300",
+    step: "jobTitle",
+  });
+  expect(requests).toHaveLength(0);
+});
+
+test.each([
+  "marketing",
+  "sales",
+  "finance",
+  "support",
+  "operations",
+  "research",
+  "content",
+  "development",
+  "general",
+] as const)(
+  "%s starts with a ready-made avatar without generating",
+  async (category) => {
+    const requests: unknown[] = [];
+    server.use(...generationHandlers(requests));
+    seedAtAvatar(category);
+    renderRaise();
+    const confirm = await screen.findByRole("button", {
+      name: "Use this avatar",
+    });
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("status")).toBeNull();
+    const candidates = MANAGED_IDENTITIES.filter(
+      (identity) =>
+        identity.visual_category === category ||
+        identity.categories.includes(category),
+    );
+    const preview = screen
+      .getByRole("img", { name: "Maria, AI Expert" })
+      .getAttribute("src");
+    expect(candidates.some((identity) => preview?.includes(identity.id))).toBe(
+      true,
+    );
+    await userEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        candidates.some((identity) => identity.url === loadDraft().avatarUrl),
+      ).toBe(true),
+    );
+    expect(requests).toHaveLength(0);
+  },
+);
+
+test("regeneration uses the area picked at the start", async () => {
+  const requests: unknown[] = [];
+  server.use(...generationHandlers(requests));
+  seedAtAvatar("finance");
+  renderRaise();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]).toMatchObject({ category: "finance" });
+});
+
+test("the generated avatar is saved only after confirmation", async () => {
+  server.use(...generationHandlers());
+  seedAtAvatar("finance");
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole("img", { name: "Maria" }).getAttribute("src"),
+    ).toContain("generated.png"),
+  );
   expect(loadDraft().avatarUrl).toBeNull();
+
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
-  await waitFor(() => expect(loadDraft().avatarUrl).toBe(general));
-  expect(loadDraft().color).toBe("violet-300");
-  expect(screen.queryByRole("group", { name: "Managed looks" })).toBeNull();
+  await waitFor(() =>
+    expect(loadDraft().avatarUrl).toBe("https://cdn.test/generated.png"),
+  );
+  expect(loadDraft().color).toBe("green-300");
 });
 
-test("offers generation and uploads, never another Expert's face or a shade or accent choice", async () => {
-  await openPicker();
+test("regenerating asks for another avatar in the same category", async () => {
+  const requests: unknown[] = [];
+  server.use(...generationHandlers(requests));
+  seedAtAvatar("finance");
+  renderRaise();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
+  await waitFor(() => expect(requests).toHaveLength(1));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]).toMatchObject({ category: "finance" });
+});
+
+test("the picker offers upload and no face-part controls", async () => {
+  server.use(...generationHandlers());
+  seedAtAvatar("finance");
+  renderRaise();
+
   expect(
-    screen.getByRole("button", { name: "Generate with AI" }),
+    await screen.findByRole("button", { name: "Upload a picture" }),
   ).toBeDefined();
-  expect(
-    screen.getByRole("button", { name: "Upload a picture" }),
-  ).toBeDefined();
-  const looks = screen.getByRole("group", { name: "Managed looks" });
-  expect(looks.querySelectorAll("button")).toHaveLength(1);
-  expect(within(looks).queryByRole("button", { name: "Maria" })).toBeNull();
-  expect(screen.queryByRole("combobox", { name: "Shade" })).toBeNull();
-  expect(
-    screen.queryByRole("combobox", { name: "Accent placement" }),
-  ).toBeNull();
-  expect(screen.queryByRole("button", { name: "Next hair" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Lavender" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Avatar catalog" })).toBeNull();
+  expect(screen.queryByRole("combobox")).toBeNull();
 });
