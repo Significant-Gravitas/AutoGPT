@@ -6,6 +6,7 @@ import {
   PaywallToastAction,
   PaywallToastDescription,
 } from "../components/PaywallToast/PaywallToast";
+import { SentNowError } from "../components/SendAtReset/helpers";
 import { ReportedSendError } from "./reportedSendError";
 
 const PAYWALL_TOAST_DURATION_MS = 15_000;
@@ -35,8 +36,10 @@ export function toastSendFailure({
   recovery,
   paywallRecovery = recovery,
 }: Args) {
-  if (error instanceof ReportedSendError) return;
-  if (isPaywallError(error)) {
+  // A send Send at reset made at once fails the way that send did.
+  const failure = error instanceof SentNowError ? error.cause : error;
+  if (failure instanceof ReportedSendError) return;
+  if (isPaywallError(failure)) {
     toast({
       title: "Sending needs an active plan",
       description: <PaywallToastDescription recovery={paywallRecovery} />,
@@ -49,7 +52,7 @@ export function toastSendFailure({
   }
   toast({
     title,
-    description: describeSendFailure(error, recovery),
+    description: describeSendFailure(failure, recovery),
     variant: "destructive",
   });
 }

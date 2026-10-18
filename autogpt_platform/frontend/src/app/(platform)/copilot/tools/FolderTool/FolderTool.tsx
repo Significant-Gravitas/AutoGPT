@@ -88,7 +88,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         </div>
       </ContentCardHeader>
       <ContentHint>
-        {folder.agent_count} agent{folder.agent_count !== 1 ? "s" : ""}
+        {folder.agent_count} workflow{folder.agent_count !== 1 ? "s" : ""}
         {folder.subfolder_count > 0 &&
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
@@ -128,7 +128,7 @@ function folderTreeToElements(nodes: FolderTreeInfo[]): TreeNode[] {
     ];
     return {
       id: node.id,
-      name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
+      name: `${node.name} (${node.agent_count} workflow${node.agent_count !== 1 ? "s" : ""})`,
       children: children.length > 0 ? children : undefined,
     };
   });
@@ -248,7 +248,7 @@ function getAccordionTitle(output: FolderToolOutput): string {
   if (isFolderMoved(output)) return `Moved "${output.folder.name}"`;
   if (isFolderDeleted(output)) return "Folder deleted";
   if (isAgentsMoved(output))
-    return `Moved ${output.count} agent${output.count !== 1 ? "s" : ""}`;
+    return `Moved ${output.count} workflow${output.count !== 1 ? "s" : ""}`;
   return "Folder operation";
 }
 

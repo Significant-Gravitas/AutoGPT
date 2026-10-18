@@ -7,11 +7,13 @@ import pytest
 import pytest_mock
 import stripe
 from prisma.enums import SubscriptionTier
+from prisma.models import PaidUsageActivation
 
 from backend.data import stripe_client
 from backend.data.stripe_reconciliation import (
     ReconciliationSummary,
     _collect_status_page,
+    _reconcile_one,
     _record_subscription,
     reconcile_all_stripe_tiers,
 )
@@ -51,7 +53,7 @@ def _candidate(
 
 def _patch_stripe_pages(
     mocker: pytest_mock.MockFixture, by_status: dict[str, list[dict]]
-) -> None:
+) -> AsyncMock:
     """Make stripe.Subscription.list return one page per status."""
 
     def _list(*, status: str, limit: int, starting_after: str | None = None):
@@ -63,6 +65,56 @@ def _patch_stripe_pages(
     mocker.patch(
         "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
+    )
+    return mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+
+
+@pytest.fixture(autouse=True)
+def activation_rows(mocker):
+    rows = MagicMock(find_unique=AsyncMock(return_value=None))
+    mocker.patch.object(PaidUsageActivation, "prisma", return_value=rows)
+    return rows
+
+
+@pytest.mark.parametrize(
+    "subscription_id,ready",
+    [
+        ("sub_cus_pro", True),
+        ("sub_cus_pro", False),
+        ("sub_previous", True),
+        (None, True),
+    ],
+)
+async def test_sweep_skips_only_completed_activation_for_current_subscription(
+    mocker, activation_rows, subscription_id, ready
+):
+    user = _candidate("user", "cus_pro", SubscriptionTier.PRO)
+    if subscription_id:
+        activation_rows.find_unique.return_value = MagicMock(
+            stripeSubscriptionId=subscription_id, readyAt=object() if ready else None
+        )
+    reconcile = mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+    summary = ReconciliationSummary()
+
+    await _reconcile_one(
+        user,
+        {"cus_pro": SubscriptionTier.PRO},
+        summary,
+        True,
+        {"cus_pro": _sub("cus_pro", "price_pro")},
+    )
+
+    assert summary.unchanged == 1 and summary.errors == 0
+    assert reconcile.await_count == (
+        0 if subscription_id == "sub_cus_pro" and ready else 1
     )
 
 
@@ -85,7 +137,7 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
         new_callable=AsyncMock,
         return_value={"price_pro": SubscriptionTier.PRO},
     )
-    _patch_stripe_pages(
+    reconcile_pro = _patch_stripe_pages(
         mocker,
         {"active": [_sub("cus_keep", "price_pro"), _sub("cus_up", "price_pro")]},
     )
@@ -112,8 +164,10 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert summary.downgrades == 1
     assert summary.unchanged == 1
     assert summary.errors == 0
-    set_tier.assert_any_await("u_up", SubscriptionTier.PRO)
-    set_tier.assert_any_await("u_down", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with("u_down", SubscriptionTier.NO_TIER)
+    assert reconcile_pro.await_count == 2
+    reconcile_pro.assert_any_await(candidates[0], _sub("cus_keep", "price_pro"))
+    reconcile_pro.assert_any_await(candidates[1], _sub("cus_up", "price_pro"))
     # Each correction is recorded, and the sweep alerts ops exactly once (not
     # per-user) with the discrepancy counts.
     assert {d.direction for d in summary.discrepancies} == {"upgrade", "downgrade"}

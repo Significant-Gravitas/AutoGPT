@@ -144,12 +144,12 @@ export function createAgent(id = "agent") {
     subject: {
       kind: "tool",
       key: "create_agent",
-      name: "Create an agent",
+      name: "Create a workflow",
       effect: "platform",
       irreversible: false,
     },
     chatRules: ["allow", "judge"],
-    headline: { ask: "Create an agent" },
+    headline: { ask: "Create a workflow" },
   });
 }
 
@@ -207,7 +207,7 @@ export function workflow(id = "wf") {
     },
     args: { library_agent_id: "lib-1", inputs: { topic: "Q3 invoices" } },
     fields: [
-      { key: "library_agent_id", label: "Library agent" },
+      { key: "library_agent_id", label: "Library workflow" },
       { key: "inputs", label: "Inputs" },
     ],
     headline: { ask: "Run", object: "Morning digest" },
