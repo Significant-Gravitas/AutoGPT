@@ -954,10 +954,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -975,9 +975,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
@@ -1451,20 +1451,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_flags_api_key: str = Field(
-        default="",
-        description="Project API key of the PostHog project feature flags are read "
-        "from, when that is not the analytics project. Dev sets prod's, so both "
-        "share one set of flag definitions while dev's events stay in its own "
-        "project. Blank reads flags from the POSTHOG_API_KEY project.",
-    )
     posthog_secret_key: str = Field(
         default="",
         description="PostHog Feature Flags Secure API Key (project settings > "
-        "Feature Flags) of the project flags are read from, for local flag "
-        "evaluation; without it flag reads fall back to a remote /flags call, or "
-        "serve their defaults when POSTHOG_FLAGS_API_KEY names another project. "
-        "A personal API key also works, but PostHog is deprecating that use.",
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

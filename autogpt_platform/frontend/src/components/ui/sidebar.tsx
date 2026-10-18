@@ -25,18 +25,23 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebar-cookie";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "20rem";
 const SIDEBAR_WIDTH_MOBILE = "20rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
+interface SetOpenOptions {
+  // False for the app's own collapses and restores: only the user's choice is remembered.
+  persist?: boolean;
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
-  setOpen: (open: boolean) => void;
+  setOpen: (open: boolean, options?: SetOpenOptions) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
@@ -64,6 +69,8 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    // Remember the open state in a cookie; `getPersistedSidebarOpen` reads it back.
+    persistState?: boolean;
   }
 >(
   (
@@ -71,6 +78,7 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = true,
       open: openProp,
       onOpenChange: setOpenProp,
+      persistState = false,
       className,
       style,
       children,
@@ -86,7 +94,10 @@ const SidebarProvider = React.forwardRef<
     const [_open, _setOpen] = React.useState(defaultOpen);
     const open = openProp ?? _open;
     const setOpen = React.useCallback(
-      (value: boolean | ((value: boolean) => boolean)) => {
+      (
+        value: boolean | ((value: boolean) => boolean),
+        { persist = true }: SetOpenOptions = {},
+      ) => {
         const openState = typeof value === "function" ? value(open) : value;
         if (setOpenProp) {
           setOpenProp(openState);
@@ -94,10 +105,11 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState);
         }
 
-        // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        if (persistState && persist) {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        }
       },
-      [setOpenProp, open],
+      [setOpenProp, open, persistState],
     );
 
     // Helper to toggle the sidebar.
@@ -174,6 +186,17 @@ const SidebarProvider = React.forwardRef<
   },
 );
 SidebarProvider.displayName = "SidebarProvider";
+
+// The browser's copy of the cookie; undefined on the server.
+function getPersistedSidebarOpen(): boolean | undefined {
+  if (typeof document === "undefined") return undefined;
+  return parseSidebarCookie(
+    document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+      ?.slice(SIDEBAR_COOKIE_NAME.length + 1),
+  );
+}
 
 const Sidebar = React.forwardRef<
   HTMLDivElement,
@@ -770,6 +793,7 @@ const SidebarMenuSubButton = React.forwardRef<
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton";
 
 export {
+  getPersistedSidebarOpen,
   Sidebar,
   SidebarContent,
   SidebarFooter,

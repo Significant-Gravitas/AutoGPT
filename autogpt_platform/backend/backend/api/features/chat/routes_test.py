@@ -19,8 +19,10 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.model import ChatSession
+from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
@@ -367,12 +369,18 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # A sent message cancels the chat's pending resume at the budget reset;
+    # keep that off the scheduler.
+    mock_cancel_resume = mocker.patch(
+        "backend.api.features.chat.routes.cancel_resume_at_reset_in_background"
+    )
     claims = _mock_client_message_claims(mocker)
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
         session=mock_session,
         owns_active_expert=mock_owns_active_expert,
+        cancel_resume=mock_cancel_resume,
         claims=claims,
     )
 
@@ -570,6 +578,62 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
 
     assert response.status_code == 200
     mocks.owns_active_expert.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+
+
+# ─── A sent message cancels the pending resume at the budget reset ────
+
+
+def test_a_user_message_cancels_the_pending_resume(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_called_once_with("sess-1", test_user_id)
+
+
+@pytest.mark.parametrize(
+    "payload, turn_id",
+    [
+        ({"message": KEEP_GOING_NOTE, "is_user_message": False}, "turn-id-mock"),
+        ({"message": "carry on"}, None),
+    ],
+    ids=["not-a-user-message", "duplicate-not-scheduled"],
+)
+def test_the_resume_stays_unless_a_user_turn_was_scheduled(
+    mocker: pytest_mock.MockerFixture, payload: dict, turn_id: str | None
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.return_value = turn_id
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_not_called()
+
+
+def test_a_failing_resume_cancel_never_fails_the_send(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(
+        chat_routes,
+        "cancel_resume_at_reset_in_background",
+        cancel_resume_at_reset_in_background,
+    )
+    scheduler_down = MagicMock(
+        cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("scheduler down"))
+    )
+    mocker.patch(
+        "backend.copilot.at_reset.get_scheduler_client", return_value=scheduler_down
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
     mocks.enqueue.assert_awaited_once()
 
 
@@ -1580,6 +1644,34 @@ def test_usage_uses_config_limits(
     )
 
 
+def test_usage_reports_the_limit_that_blocks_the_next_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Both windows used up: the client is told which one it waits for and
+    when that refills, computed server-side from the meters' own status."""
+    _mock_usage(mocker, daily_used=10000, weekly_used=50000)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "exhausted"
+    assert data["limiting_window"] == "weekly"
+    assert data["resets_at"] == data["weekly"]["resets_at"]
+
+
+def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> None:
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+
+    data = client.get("/usage").json()
+
+    assert (data["state"], data["limiting_window"], data["resets_at"]) == (
+        "ok",
+        None,
+        None,
+    )
+
+
 def test_usage_rejects_unauthenticated_request() -> None:
     """GET /usage should return 401 when no valid JWT is provided."""
     unauthenticated_app = fastapi.FastAPI()
@@ -1675,6 +1767,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ):
         return ChatSession.new(
             user_id,
@@ -1682,6 +1775,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
 
     return mocker.patch(
@@ -3474,9 +3568,63 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
         return_value=False,
     )
 
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
     response = client.delete("/sessions/sess-missing")
 
     assert response.status_code == 404
+    spawn.assert_not_called()
+
+
+def test_delete_session_without_e2b_spawns_no_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """With E2B inactive the delete starts no sandbox-kill task."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=False, e2b_api_key=None),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_not_called()
+    spawn.assert_not_called()
+
+
+def test_delete_session_kills_sandbox_in_background(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The E2B sandbox kill is handed to a background task, not awaited inline."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=True, e2b_api_key="test-e2b-key"),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_called_once_with("sess-1", "test-e2b-key")
+    kill.assert_not_awaited()
+    spawn.assert_called_once()
+    assert spawn.call_args.kwargs["name"] == "e2b-session-kill-sess-1"
+    spawn.call_args.args[0].close()
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
@@ -4459,11 +4607,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -5050,3 +5200,89 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+def test_create_session_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_without_a_pick_leaves_the_mode_to_the_server(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] is None
+
+
+def test_create_session_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_expert_kickoff_receives_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000002"
+    _mock_get_expert(mocker, _make_expert(expert_id))
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": expert_id,
+            "expert_kickoff": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"

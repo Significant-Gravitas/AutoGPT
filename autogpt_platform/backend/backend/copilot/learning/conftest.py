@@ -45,6 +45,10 @@ def fake_store(monkeypatch):
         "backend.copilot.learning.nightly.load_reviewed_packages",
         AsyncMock(return_value={}),
     )
+    monkeypatch.setattr(
+        "backend.copilot.learning.publish.saved_skill_limit_reached",
+        AsyncMock(return_value=False),
+    )
     modules = (
         "retrieval",
         "history",

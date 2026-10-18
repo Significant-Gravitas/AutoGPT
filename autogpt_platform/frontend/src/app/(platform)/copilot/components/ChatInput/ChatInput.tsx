@@ -28,7 +28,9 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
+import { AtResetFilesNotice } from "./components/AtResetFilesNotice";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
+import { ComposerOverflowMenu } from "./components/ComposerOverflowMenu";
 import {
   ComposerPlusMenu,
   type ComposerMenuItem,
@@ -47,10 +49,15 @@ import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import {
+  sendAtResetFailureTitle,
+  SEND_AT_RESET_LABEL,
+} from "../SendAtReset/helpers";
+import {
   CARD_ICON_BUTTON_CLASS,
   CARD_SEND_BUTTON_CLASS,
   COMPACT_ICON_BUTTON_CLASS,
   COMPACT_SEND_BUTTON_CLASS,
+  MOBILE_SEND_BUTTON_CLASS,
   getFilesFromClipboard,
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
@@ -118,6 +125,12 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Attachments stay open during a reply, and a message with attachments
+   *  goes to `onSend`, which must hold it until the reply ends. */
+  canAttachWhileStreaming?: boolean;
+  /** Out of AutoPilot budget with a reset ahead: the text stays editable and
+   *  submitting sets it to send at the reset. Text only. */
+  atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
 export function ChatInput({
@@ -146,6 +159,8 @@ export function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  canAttachWhileStreaming = false,
+  atReset,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -184,40 +199,45 @@ export function ChatInput({
   const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
-  const isBusy = disabled || isStreaming || isUploadingFiles;
+  const isBusy =
+    disabled || isUploadingFiles || (isStreaming && !canAttachWhileStreaming);
   // The textarea is only truly disabled when the session is unavailable, not
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
+  async function sendWithAttachments(message: string) {
+    const { localFiles, workspaceAttachments } =
+      partitionAttachments(attachments);
+    // Chips clear eagerly for the same reason the text does (see
+    // useChatInput.handleSend); a failed send restores them unless the
+    // user already attached new ones in the meantime.
+    const sent = attachments;
+    setAttachments([]);
+    setRefusedCount(0);
+    try {
+      await onSend(
+        message,
+        localFiles.length > 0 ? localFiles : undefined,
+        workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
+      );
+    } catch (error) {
+      setAttachments((prev) => (prev.length > 0 ? prev : sent));
+      throw error;
+    }
+  }
+
   const { value, setValue, handleSubmit, handleEnqueue, isEnqueueing } =
     useChatInput({
-      onSend: async (message: string) => {
-        const { localFiles, workspaceAttachments } =
-          partitionAttachments(attachments);
-        // Chips clear eagerly for the same reason the text does (see
-        // useChatInput.handleSend); a failed send restores them unless the
-        // user already attached new ones in the meantime.
-        const sent = attachments;
-        setAttachments([]);
-        setRefusedCount(0);
-        try {
-          await onSend(
-            message,
-            localFiles.length > 0 ? localFiles : undefined,
-            workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-          );
-        } catch (error) {
-          setAttachments((prev) => (prev.length > 0 ? prev : sent));
-          throw error;
-        }
-      },
+      onSend: atReset?.onSchedule ?? sendWithAttachments,
       onEnqueue,
       isStreaming,
       hasAttachments,
-      disabled: isTextareaDisabled || sendDisabled,
-      canSendEmpty: hasAttachments,
+      // A scheduled send carries text only, so attachments hold it back.
+      disabled: isTextareaDisabled || (atReset ? hasAttachments : sendDisabled),
+      canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 
   const integrations = useConnectedIntegrations(expertId);
@@ -274,7 +294,7 @@ export function ChatInput({
   }
 
   function handlePaste(e: ClipboardEvent<HTMLElement>) {
-    if (isBusy) return;
+    if (isBusy || atReset) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
@@ -291,10 +311,14 @@ export function ChatInput({
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const canSend =
     !disabled &&
-    !sendDisabled &&
-    (!!value.trim() || hasAttachments) &&
+    (atReset
+      ? !!value.trim() && !hasAttachments
+      : !sendDisabled && (!!value.trim() || hasAttachments)) &&
     !isRecording &&
     !isTranscribing;
+  // The pending endpoint takes text only, so attachments are queued through
+  // `onSend`, and only by a host that holds them until the reply ends.
+  const canQueue = hasAttachments ? canAttachWhileStreaming : !!onEnqueue;
 
   function handleClearGuidedPrompt() {
     // Only discard untouched guided prompts — never a draft the user typed
@@ -385,7 +409,13 @@ export function ChatInput({
     ? CARD_SEND_BUTTON_CLASS
     : isCompact
       ? COMPACT_SEND_BUTTON_CLASS
-      : undefined;
+      : MOBILE_SEND_BUTTON_CLASS;
+
+  // Per-message settings and voice mode sit behind the "..." button, so the
+  // row stays usable at phone width. Model and token usage live in the + menu.
+  const showDryRunToggle = showAdvancedComposerControls && !hasSession;
+  const hasOverflowControls =
+    !!modeSelector || showDryRunToggle || !!voiceToggle;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
@@ -437,6 +467,9 @@ export function ChatInput({
             className={stacked ? undefined : "mt-1.5"}
           />
         )}
+        {atReset && hasAttachments && (
+          <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -464,7 +497,7 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
-              disabled={isBusy}
+              disabled={isBusy || !!atReset}
               isAtCap={isAtCap}
               extraItems={plusMenuItems}
               className={
@@ -499,7 +532,9 @@ export function ChatInput({
           <div
             className={cn(
               "relative",
-              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+              stacked || isMultiline
+                ? "order-first w-full"
+                : "min-w-0 flex-1 max-md:order-first max-md:w-full max-md:basis-full",
             )}
           >
             <CredentialMentionEditor
@@ -514,6 +549,7 @@ export function ChatInput({
               placeholder={resolvedPlaceholder}
               onMultilineChange={setIsMultiline}
               className={cn(
+                "max-md:max-h-32",
                 stacked && "px-0.5 py-1",
                 isCompact && "text-sm leading-5 md:text-sm",
               )}
@@ -535,17 +571,21 @@ export function ChatInput({
               isCompact && "gap-0.5 py-1 pr-1",
             )}
           >
-            {/* Connection and tier are per-message settings, so they remain
-                changeable between turns in an existing session. The card
-                composer leaves this to the page's top-right control. */}
-            {modeSelector}
-            {showAdvancedComposerControls && !hasSession && (
-              <DryRunToggleButton
-                isDryRun={isDryRun}
-                onToggle={handleToggleDryRun}
-              />
+            {hasOverflowControls && (
+              <ComposerOverflowMenu
+                forceClosed={!!voiceBar}
+                className={iconButtonClass}
+              >
+                {modeSelector}
+                {showDryRunToggle && (
+                  <DryRunToggleButton
+                    isDryRun={isDryRun}
+                    onToggle={handleToggleDryRun}
+                  />
+                )}
+                {voiceToggle}
+              </ComposerOverflowMenu>
             )}
-            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -560,13 +600,16 @@ export function ChatInput({
                 }}
               />
             )}
-            {isStreaming && canSend && onEnqueue && !hasAttachments && (
+            {isStreaming && canSend && canQueue && (
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={() => void handleEnqueue()}
+                type={hasAttachments ? "submit" : "button"}
+                onClick={
+                  hasAttachments ? undefined : () => void handleEnqueue()
+                }
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,
@@ -583,6 +626,14 @@ export function ChatInput({
               />
             ) : isStreaming ? (
               <StopButton onStop={onStop} className={sendButtonClass} />
+            ) : atReset ? (
+              <PromptInputSubmit
+                disabled={!canSend}
+                aria-label={SEND_AT_RESET_LABEL}
+                className={cn(sendButtonClass, "!w-auto px-4 font-medium")}
+              >
+                {SEND_AT_RESET_LABEL}
+              </PromptInputSubmit>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit
                 disabled={!canSend}
