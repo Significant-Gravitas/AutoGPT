@@ -4,7 +4,7 @@ from pathlib import Path
 import aiofiles.threadpool.binary
 import pytest
 
-from backend.util import workspace_storage
+from backend.util import workspace_storage_local
 from backend.util.workspace_storage import LocalWorkspaceStorage
 
 
@@ -13,7 +13,7 @@ async def test_failed_open_preserves_existing_transcript(tmp_path, mocker):
     storage = LocalWorkspaceStorage(str(tmp_path))
     path = await storage.store("sessions", "owner", "session.jsonl", b"previous turn")
     mocker.patch.object(
-        workspace_storage.aiofiles, "open", side_effect=OSError(28, "disk full")
+        workspace_storage_local.aiofiles, "open", side_effect=OSError(28, "disk full")
     )
 
     with pytest.raises(OSError, match="disk full"):
@@ -62,7 +62,7 @@ async def test_failed_store_stops_cleanup_at_relative_root(
     (tmp_path / "guard.txt").write_text("keep test parent")
     storage = LocalWorkspaceStorage("outer/storage")
     mocker.patch.object(
-        workspace_storage.aiofiles, "open", side_effect=OSError("failed")
+        workspace_storage_local.aiofiles, "open", side_effect=OSError("failed")
     )
 
     with pytest.raises(OSError, match="failed"):

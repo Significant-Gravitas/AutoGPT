@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from backend.util import workspace_storage
+from backend.util import workspace_storage, workspace_storage_local
 from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 from backend.util.workspace_storage import GCSWorkspaceStorage, LocalWorkspaceStorage
 
@@ -141,7 +141,7 @@ async def test_local_store_accepts_name_over_255_utf8_bytes(tmp_path):
 async def test_local_store_failure_leaves_no_empty_directory(tmp_path, mocker):
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
     mocker.patch.object(
-        workspace_storage.aiofiles,
+        workspace_storage_local.aiofiles,
         "open",
         side_effect=OSError(28, "No space left on device"),
     )
@@ -158,7 +158,9 @@ async def test_local_store_failure_leaves_no_empty_directory(tmp_path, mocker):
 async def test_local_store_failure_keeps_sibling_files(tmp_path, mocker):
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
     kept = await storage.store("ws", "other", "keep.txt", b"keep")
-    mocker.patch.object(workspace_storage.aiofiles, "open", side_effect=OSError("boom"))
+    mocker.patch.object(
+        workspace_storage_local.aiofiles, "open", side_effect=OSError("boom")
+    )
 
     with pytest.raises(OSError):
         await storage.store("ws", "file", "data.txt", b"hello")

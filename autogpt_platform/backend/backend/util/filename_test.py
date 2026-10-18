@@ -1,6 +1,6 @@
 import pytest
 
-from backend.util.file import MAX_FILENAME_BYTES, sanitize_filename
+from backend.util.filename import MAX_FILENAME_BYTES, sanitize_filename
 
 
 class TestSanitizeFilenameByteLimit:
