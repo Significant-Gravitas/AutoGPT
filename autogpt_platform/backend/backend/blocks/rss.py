@@ -7,13 +7,13 @@ import feedparser
 import pydantic
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
-    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests

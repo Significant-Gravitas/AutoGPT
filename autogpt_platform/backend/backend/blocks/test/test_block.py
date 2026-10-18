@@ -69,6 +69,39 @@ async def test_rss_feed_block_times_out_one_shot_fetch(monkeypatch):
             pass
 
 
+async def test_rss_feed_block_keeps_polling_for_continuous_reads(monkeypatch):
+    sleep_calls = []
+    outputs = []
+
+    class StopPolling(Exception):
+        pass
+
+    async def parse_feed(url):
+        return {"entries": []}
+
+    async def sleep(delay):
+        sleep_calls.append(delay)
+        raise StopPolling
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=True,
+    )
+
+    with pytest.raises(StopPolling):
+        async for output in block.run(input_data):
+            outputs.append(output)
+
+    assert outputs == [("entries", [])]
+    assert sleep_calls == [300]
+
+
 async def test_execute_preserves_insufficient_balance_error_type():
     error = InsufficientBalanceError(
         message="Producer wording is irrelevant to classification",
