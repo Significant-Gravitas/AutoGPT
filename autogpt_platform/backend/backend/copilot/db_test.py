@@ -20,6 +20,7 @@ from backend.copilot.db import (
     update_chat_message_tool_calls,
     update_chat_session_llm_route,
     update_chat_session_pinned,
+    update_chat_session_status,
     update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
@@ -945,8 +946,6 @@ async def test_update_chat_session_status_owner_gated_returns_true_on_match() ->
 @pytest.mark.asyncio
 async def test_update_chat_session_status_unarchive_clears_archived_at() -> None:
     """A queued turn brings an archived chat back in the same write."""
-    from backend.copilot.db import update_chat_session_status
-
     update_many = AsyncMock(return_value=1)
     with patch.object(
         PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
