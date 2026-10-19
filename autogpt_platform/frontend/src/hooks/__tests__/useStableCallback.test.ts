@@ -1,4 +1,5 @@
-import { renderHook } from "@testing-library/react";
+import { render, renderHook } from "@testing-library/react";
+import { createElement, useLayoutEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { useStableCallback } from "../useStableCallback";
@@ -40,5 +41,24 @@ describe("useStableCallback", () => {
     );
 
     await expect(result.current()).rejects.toThrow("send failed");
+  });
+
+  it("is already the latest in a child's layout effect of the same commit", () => {
+    const seen: string[] = [];
+    function Child({ run }: { run: () => string }) {
+      useLayoutEffect(() => {
+        seen.push(run());
+      });
+      return null;
+    }
+    function Parent({ label }: { label: string }) {
+      const run = useStableCallback(() => label);
+      return createElement(Child, { run });
+    }
+
+    const view = render(createElement(Parent, { label: "first" }));
+    view.rerender(createElement(Parent, { label: "second" }));
+
+    expect(seen).toEqual(["first", "second"]);
   });
 });
