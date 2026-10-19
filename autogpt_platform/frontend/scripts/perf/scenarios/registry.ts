@@ -2,6 +2,7 @@ import type { Scenario } from "../lib/scenario";
 import { builderDragRunning } from "./builder-drag-running";
 import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
+import { copilotStreamCode } from "./copilot-stream-code";
 import { copilotStreamReply } from "./copilot-stream-reply";
 import { copilotSwitchThreads } from "./copilot-switch-threads";
 import { copilotType } from "./copilot-type";
@@ -15,6 +16,7 @@ export const SCENARIOS: Scenario[] = [
   copilotSwitchThreads,
   builderDragRunning,
   libraryRunning,
+  copilotStreamCode,
 ];
 
 export function findScenario(name: string) {
