@@ -27,7 +27,7 @@ export function useBalanceCard() {
   const { mutateAsync: requestTopUp, isPending: isRequestingTopUp } =
     usePostV1RequestCreditTopUp();
   const checkoutRedirect = useCheckoutRedirect();
-  const isAdding = isRequestingTopUp || checkoutRedirect.isRedirecting;
+  const isAdding = isRequestingTopUp || checkoutRedirect.isRedirectingHere;
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -41,7 +41,7 @@ export function useBalanceCard() {
     numericAmount >= 5;
 
   async function handleSubmit() {
-    if (!isValid || isAdding) return;
+    if (!isValid || isAdding || checkoutRedirect.isRedirecting) return;
     try {
       const result = await requestTopUp({
         data: {
@@ -100,6 +100,8 @@ export function useBalanceCard() {
     setAmount,
     isValid,
     isAdding,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
     handleSubmit: () => void handleSubmit(),
   };
 }

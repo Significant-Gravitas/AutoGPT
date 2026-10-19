@@ -19,14 +19,14 @@ export function useTopUpForm() {
 
   const [isRequesting, setIsRequesting] = useState(false);
   const checkoutRedirect = useCheckoutRedirect();
-  const isLoading = isRequesting || checkoutRedirect.isRedirecting;
+  const isLoading = isRequesting || checkoutRedirect.isRedirectingHere;
 
   const form = useForm<z.infer<typeof topUpSchema>>({
     resolver: zodResolver(topUpSchema),
   });
 
   async function submitTopUp(data: z.infer<typeof topUpSchema>) {
-    if (isLoading) return;
+    if (isLoading || checkoutRedirect.isRedirecting) return;
     setIsRequesting(true);
     await requestTopUp(Math.round(data.amount * 100))
       .then(() => checkoutRedirect.markRedirecting())
@@ -37,6 +37,8 @@ export function useTopUpForm() {
   return {
     form,
     isLoading,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
     submitTopUp,
   };
 }

@@ -1,40 +1,78 @@
-import { useEffect, useState } from "react";
-import { useMountEffect } from "./useMountEffect";
+import { useState, useSyncExternalStore } from "react";
 
-// Long enough for Stripe to load on a slow connection, short enough that a
-// navigation that never happens (blocked, or the user pressed Stop) doesn't
-// leave the button busy for good.
-const CHECKOUT_REDIRECT_TIMEOUT_MS = 15_000;
+// No browser event says a navigation has committed, so a click after this
+// long on a page that still hasn't left is the residual window we accept.
+const CHECKOUT_REDIRECT_TIMEOUT_MS = 20_000;
 
-// Keeps a checkout button busy from the moment it hands off to Stripe until
-// the page actually leaves, so a second click can't start a second checkout.
-// Back from Stripe restores this page from the back/forward cache with that
-// busy state intact, so it is released again on `pageshow`.
+// One redirect per page, shared by every checkout button on it: a plan, trial
+// or top-up button that hands off to Stripe makes all of them busy until the
+// page leaves. The id tells the button that started it from the others.
+let redirectID: number | null = null;
+let lastRedirectID = 0;
+let timeout: ReturnType<typeof setTimeout> | undefined;
+const subscribers = new Set<() => void>();
+
+function notify() {
+  subscribers.forEach((subscriber) => subscriber());
+}
+
+function subscribe(subscriber: () => void) {
+  subscribers.add(subscriber);
+  return () => {
+    subscribers.delete(subscriber);
+  };
+}
+
+function getRedirectID() {
+  return redirectID;
+}
+
+function getServerRedirectID() {
+  return null;
+}
+
+// Back from Stripe restores this page from the back/forward cache with the
+// busy state intact, so a restore releases it.
+function onPageShow(event: PageTransitionEvent) {
+  if (event.persisted) resetCheckoutRedirect();
+}
+
+function startRedirect() {
+  if (redirectID === null) window.addEventListener("pageshow", onPageShow);
+  clearTimeout(timeout);
+  timeout = setTimeout(resetCheckoutRedirect, CHECKOUT_REDIRECT_TIMEOUT_MS);
+  lastRedirectID += 1;
+  redirectID = lastRedirectID;
+  notify();
+  return redirectID;
+}
+
+export function resetCheckoutRedirect() {
+  if (redirectID === null) return;
+  window.removeEventListener("pageshow", onPageShow);
+  clearTimeout(timeout);
+  timeout = undefined;
+  redirectID = null;
+  notify();
+}
+
 export function useCheckoutRedirect() {
-  const [isRedirecting, setIsRedirecting] = useState(false);
-
-  useMountEffect(() => {
-    function onPageShow(event: PageTransitionEvent) {
-      if (event.persisted) setIsRedirecting(false);
-    }
-    window.addEventListener("pageshow", onPageShow);
-    return () => window.removeEventListener("pageshow", onPageShow);
-  });
-
-  useEffect(() => {
-    if (!isRedirecting) return;
-    const timeout = setTimeout(
-      () => setIsRedirecting(false),
-      CHECKOUT_REDIRECT_TIMEOUT_MS,
-    );
-    return () => clearTimeout(timeout);
-  }, [isRedirecting]);
+  const currentID = useSyncExternalStore(
+    subscribe,
+    getRedirectID,
+    getServerRedirectID,
+  );
+  const [ownID, setOwnID] = useState<number | null>(null);
 
   // Call right after starting the navigation, so a navigation that throws
-  // never marks the button busy.
+  // never marks the page busy.
   function markRedirecting() {
-    setIsRedirecting(true);
+    setOwnID(startRedirect());
   }
 
-  return { isRedirecting, markRedirecting };
+  return {
+    isRedirecting: currentID !== null,
+    isRedirectingHere: currentID !== null && currentID === ownID,
+    markRedirecting,
+  };
 }

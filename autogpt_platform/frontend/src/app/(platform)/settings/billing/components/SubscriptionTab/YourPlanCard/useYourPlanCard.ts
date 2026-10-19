@@ -103,7 +103,7 @@ export function useYourPlanCard() {
   const [isChangingTier, setIsChangingTier] = useState(false);
   const checkoutRedirect = useCheckoutRedirect();
   const isUpdatingTier =
-    isUpdatePending || isChangingTier || checkoutRedirect.isRedirecting;
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
@@ -243,7 +243,7 @@ export function useYourPlanCard() {
     billingCycle?: SubscriptionTierRequestBillingCycle,
     preview?: SubscriptionUpgradePreview,
   ) {
-    if (isUpdatingTier) return false;
+    if (isUpdatingTier || checkoutRedirect.isRedirecting) return false;
     setIsChangingTier(true);
     try {
       return await requestTierChange(tier, billingCycle, preview);
@@ -633,6 +633,8 @@ export function useYourPlanCard() {
         : tierCosts[nextTierKey]
       : undefined,
     isUpdatingTier,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
     upgradeReview,
     upgradeUsageMultiplier:
       subscription.data?.tier_multipliers?.MAX &&

@@ -24,12 +24,13 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutRedirect = useCheckoutRedirect();
   const isStarting =
-    isCheckoutPending || isCheckingOut || checkoutRedirect.isRedirecting;
+    isCheckoutPending || isCheckingOut || checkoutRedirect.isRedirectingHere;
   const offer = query.data?.eligible ? query.data.offer : null;
   useTrialOfferViewed({ offer, userID, surface: returnTo });
 
   async function startTrial() {
-    if (!offer || !userID || isStarting) return;
+    if (!offer || !userID || isStarting || checkoutRedirect.isRedirecting)
+      return;
     failure.clearFailure();
     setIsCheckingOut(true);
     try {
@@ -62,6 +63,8 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     queryError: query.isError && !query.data,
     retry: () => query.refetch(),
     isStarting,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isBlocked: checkoutRedirect.isRedirecting,
     startTrial,
     ...cancellation,
   };

@@ -1,4 +1,13 @@
-import { setTrialUser } from "@/tests/integrations/trial-fixtures";
+import {
+  getGetTrialsGetTrialStatusMockHandler200,
+  getPostTrialsStartTrialCheckoutMockHandler200,
+} from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import { TopUpForm } from "@/components/layout/TopUpPrompt/TopUpForm/TopUpForm";
+import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
+import {
+  setTrialUser,
+  trialResponse,
+} from "@/tests/integrations/trial-fixtures";
 /**
  * Card-by-card integration tests for the Settings v2 billing page.
  *
@@ -12,7 +21,7 @@ import { setTrialUser } from "@/tests/integrations/trial-fixtures";
  * them a fresh `QueryClient`.
  */
 
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1432,6 +1441,54 @@ describe("YourPlanCard begin_checkout", () => {
     expect(upgrade.hasAttribute("disabled")).toBe(false);
     fireEvent.click(upgrade);
     await waitFor(() => expect(hits.post).toBe(2));
+  });
+
+  it("keeps the trial and top-up buttons disabled while a plan checkout leaves the page", async () => {
+    const location = stubLocation();
+    freeAccount("https://checkout.stripe.com/pay/cs_test");
+    const trialCheckout = vi.fn(() => ({
+      url: "https://checkout.stripe.com/c/pay/test_trial",
+    }));
+    let topUps = 0;
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ eligible: true, active: false, status: null }),
+      ),
+      getPostTrialsStartTrialCheckoutMockHandler200(trialCheckout),
+      http.post("*/api/credits", () => {
+        topUps += 1;
+        return HttpResponse.json({
+          checkout_url: "https://checkout.stripe.com/pay/cs_top_up",
+        });
+      }),
+    );
+
+    render(
+      <>
+        <TrialCard />
+        <YourPlanCard />
+        <TopUpForm />
+      </>,
+    );
+    const trial = await screen.findByRole("button", {
+      name: /start 7-day trial/i,
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "15" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /start pro/i }));
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+
+    const topUp = screen.getByRole("button", { name: "Top up" });
+    expect(trial.hasAttribute("disabled")).toBe(true);
+    expect(topUp.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(trial);
+    fireEvent.click(topUp);
+    await act(async () => {});
+    expect(trialCheckout).not.toHaveBeenCalled();
+    expect(topUps).toBe(0);
   });
 
   it("reports no begin_checkout when the tier changes in place", async () => {

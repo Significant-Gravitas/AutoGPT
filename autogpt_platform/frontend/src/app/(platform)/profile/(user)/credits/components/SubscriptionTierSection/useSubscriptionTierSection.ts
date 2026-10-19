@@ -188,8 +188,10 @@ export function useSubscriptionTierSection() {
     }
   }
 
+  const isPendingHere =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
   const pendingTier =
-    isPending && variables?.data?.tier ? variables.data.tier : null;
+    isPendingHere && variables?.data?.tier ? variables.data.tier : null;
 
   return {
     subscription: subscription ?? null,

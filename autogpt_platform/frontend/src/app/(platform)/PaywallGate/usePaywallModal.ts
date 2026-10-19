@@ -136,8 +136,12 @@ export function usePaywallModal() {
   // selectedTier spans the whole click: the request, the wait for the Ads
   // conversion and the start of the redirect. isPending alone ends before the
   // redirect, which left the plan buttons clickable for a second checkout.
+  // A trial checkout, or any other checkout leaving the page, holds them too.
   const isCheckingOut =
-    isPending || selectedTier !== null || checkoutRedirect.isRedirecting;
+    isPending ||
+    selectedTier !== null ||
+    trial.isStarting ||
+    checkoutRedirect.isRedirecting;
 
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
@@ -263,7 +267,8 @@ export function usePaywallModal() {
     handleSelectPlan,
     isPending: isCheckingOut,
     selectedTier:
-      selectedTier ?? (checkoutRedirect.isRedirecting ? redirectingTier : null),
+      selectedTier ??
+      (checkoutRedirect.isRedirectingHere ? redirectingTier : null),
     pendingTier,
     pendingTierLabel,
     confirmPendingTier,
