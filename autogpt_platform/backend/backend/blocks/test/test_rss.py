@@ -23,6 +23,14 @@ ATOM_UPDATED_ONLY = """<?xml version="1.0"?>
 <updated>2023-06-23T12:30:00Z</updated></entry>
 </feed>"""
 
+ATOM_CATEGORY_WITHOUT_TERM = """<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Feed</title>
+<entry><title>Categories</title>
+<link href="https://example.com/categories"/>
+<updated>2023-06-23T12:30:00Z</updated>
+<category label="label only"/><category term="news"/></entry>
+</feed>"""
+
 
 async def run_block(feed_xml: str) -> dict:
     block = ReadRSSFeedBlock()
@@ -55,6 +63,13 @@ async def test_entries_missing_fields_do_not_abort_block():
     assert outputs["entries"] == outputs["entry"]
 
 
+async def test_skipped_undated_entries_are_logged(caplog):
+    with caplog.at_level("WARNING"):
+        await run_block(RSS_WITH_MISSING_FIELDS)
+
+    assert "Skipped 1 entries without a date" in caplog.text
+
+
 async def test_atom_entry_with_only_updated_uses_updated_date():
     outputs = await run_block(ATOM_UPDATED_ONLY)
 
@@ -63,3 +78,9 @@ async def test_atom_entry_with_only_updated_uses_updated_date():
     assert outputs["entries"][0].pub_date == datetime(
         2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc
     )
+
+
+async def test_category_without_term_is_ignored():
+    outputs = await run_block(ATOM_CATEGORY_WITHOUT_TERM)
+
+    assert outputs["entries"][0].categories == ["news"]
