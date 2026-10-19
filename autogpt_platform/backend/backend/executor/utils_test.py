@@ -377,6 +377,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -484,6 +485,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec_2.is_dry_run = False
     mock_graph_exec_2.user_id = "test-user-id"
     mock_graph_exec_2.graph_id = "test-graph-id"
     mock_graph_exec_2.credential_inputs = None
@@ -547,6 +549,8 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -641,6 +645,8 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -871,6 +877,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -967,6 +974,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
 
     # Existing row carries org/team; the resume caller's context does not.
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -2156,6 +2164,8 @@ def _mock_add_graph_execution_create_path(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.user_id = "test-user-id"
     mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.credential_inputs = None
@@ -2250,6 +2260,8 @@ def _mock_add_graph_execution_requeue_path(
     from backend.data.execution import GraphExecutionWithNodes
 
     graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    graph_exec.is_dry_run = False
     graph_exec.user_id = "test-user-id"
     graph_exec.graph_id = "test-graph-id"
     graph_exec.credential_inputs = None
@@ -3461,3 +3473,137 @@ async def test_a_subgraph_run_gets_its_own_identity_and_keeps_its_tree(
         "root-exec",
         "parent-exec",
     )
+
+
+# ============================================================================
+# A run carries the chat that started it, whose approval gate answers its
+# steps' review pauses (OPEN-3592).
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, dry_run, stamped",
+    [
+        (ExecutionTrigger.COPILOT, False, "chat-1"),
+        (ExecutionTrigger.COPILOT, True, None),
+        (ExecutionTrigger.MANUAL, False, None),
+    ],
+)
+async def test_a_new_run_is_stamped_with_the_chat_that_started_it(
+    mocker: MockerFixture, trigger, dry_run: bool, stamped
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+    graph_exec.is_dry_run = dry_run
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        trigger=trigger,
+        trigger_ref="chat-1",
+        dry_run=dry_run,
+        pause_irreversible_actions=True,
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.approval_chat_id == stamped
+    # The workflow's own setting is kept apart from the pause the chat forced.
+    assert context.sensitive_action_safe_mode is True
+    assert context.graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, stamped",
+    [(ExecutionTrigger.SUBGRAPH, "chat-1"), (ExecutionTrigger.MANUAL, None)],
+)
+async def test_only_a_sub_graph_inherits_its_parents_chat(
+    mocker: MockerFixture, trigger, stamped
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+    graph_exec.is_dry_run = False
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        trigger=trigger,
+        trigger_ref="parent-exec",
+        execution_context=ExecutionContext(
+            approval_chat_id="chat-1",
+            parent_execution_id="parent-exec",
+            sensitive_action_safe_mode=True,
+            graph_sensitive_action_safe_mode=False,
+        ),
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.approval_chat_id == stamped
+    assert context.graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nested", [False, True])
+async def test_a_resumed_run_is_stamped_with_the_chat_at_the_end_of_its_chain(
+    mocker: MockerFixture, nested: bool
+):
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.is_dry_run = False
+    if nested:
+        graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+        graph_exec.trigger_ref = "parent-exec"
+        execution_store.get_graph_execution_meta = mocker.AsyncMock(
+            return_value=mocker.MagicMock(
+                trigger_source=ExecutionTrigger.COPILOT.value, trigger_ref="session-1"
+            )
+        )
+    else:
+        graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+        graph_exec.trigger_ref = "session-1"
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            metadata=ChatSessionMetadata(origin="interactive")
+        )
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    # As the review route resumes it: a context rebuilt from the graph settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    assert captured["execution_context"].approval_chat_id == "session-1"
+    assert captured["execution_context"].graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
+    mocker: MockerFixture,
+):
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.is_dry_run = False
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "deleted-parent"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert context.approval_chat_id is None
+    assert context.sensitive_action_safe_mode is True

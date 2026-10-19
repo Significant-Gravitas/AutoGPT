@@ -73,6 +73,10 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # The gate answers the review pauses of workflows AutoPilot started, and
+    # its yes satisfies a direct block call's own review. A rollout control
+    # that defaults ON by decision; off restores the two approval layers.
+    COPILOT_UNIFIED_APPROVALS = "copilot-unified-approvals"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable
