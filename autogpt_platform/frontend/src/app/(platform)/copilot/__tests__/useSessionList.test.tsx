@@ -116,4 +116,68 @@ describe("useSessionList — older pages", () => {
     );
     expect(listRequests).toEqual(["0", "50"]);
   });
+
+  it("keeps a first-page update that lands while an older page is loading", async () => {
+    listed = Array.from({ length: 120 }, (_, i) => ({
+      id: `s${i}`,
+      title: `Chat ${i}`,
+    }));
+    let releaseThirdPage: () => void = () => {};
+    const thirdPageHeld = new Promise<void>((resolve) => {
+      releaseThirdPage = resolve;
+    });
+    server.use(
+      http.get("*/api/chat/sessions", async ({ request }) => {
+        const url = new URL(request.url);
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        const limit = Number(url.searchParams.get("limit") ?? "50");
+        listRequests.push(String(offset));
+        const page = listed.slice(offset, offset + limit);
+        if (offset === 100) await thirdPageHeld;
+        return HttpResponse.json({
+          sessions: page.map((s) => ({
+            ...s,
+            is_processing: false,
+            created_at: "2026-01-05T09:00:00Z",
+            updated_at: "2026-01-05T09:00:00Z",
+          })),
+          total: listed.length,
+        });
+      }),
+    );
+    const client = makeClient();
+    const { result } = renderSessionList(client);
+    await waitFor(() => expect(result.current.sessions).toHaveLength(50));
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(100));
+    await settle();
+
+    // "Load older chats" is in flight when the first-page poll comes back
+    // with a renamed chat.
+    let loadingThirdPage: Promise<unknown> = Promise.resolve();
+    act(() => {
+      loadingThirdPage = result.current.loadMore();
+    });
+    await waitFor(() => expect(listRequests).toContain("100"));
+    listed[3] = { ...listed[3], title: "Renamed on page one" };
+    listRequests = [];
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
+    });
+    await waitFor(() => expect(listRequests).toContain("0"));
+    await settle();
+
+    await act(async () => {
+      releaseThirdPage();
+      await loadingThirdPage;
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(120));
+    await settle();
+
+    expect(result.current.sessions.find((s) => s.id === "s3")?.title).toBe(
+      "Renamed on page one",
+    );
+  });
 });

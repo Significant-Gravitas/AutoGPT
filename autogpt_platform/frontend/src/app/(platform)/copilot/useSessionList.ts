@@ -251,6 +251,10 @@ async function refreshFirstPage(queryClient: QueryClient) {
     limit: SESSION_LIST_PAGE_SIZE,
     offset: 0,
   });
+  // A list fetch still in flight (say "Load older chats") started from the
+  // old pages and would put the old page 0 back when it lands, so patch after
+  // it instead.
+  await settleListFetch(queryClient);
   const next = replaceFirstPage(
     queryClient.getQueryData<SessionListInfiniteData>(SESSION_LIST_QUERY_KEY),
     firstPage,
@@ -266,6 +270,14 @@ async function refreshFirstPage(queryClient: QueryClient) {
     await queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
   }
   return firstPage;
+}
+
+async function settleListFetch(queryClient: QueryClient) {
+  const listQuery = queryClient
+    .getQueryCache()
+    .find({ queryKey: SESSION_LIST_QUERY_KEY, exact: true });
+  if (listQuery?.state.fetchStatus !== "fetching") return;
+  await listQuery.promise?.catch(() => undefined);
 }
 
 function countLoadedSessions(pages: SessionListPage[]) {
