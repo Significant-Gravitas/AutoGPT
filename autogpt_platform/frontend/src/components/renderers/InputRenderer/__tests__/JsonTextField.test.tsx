@@ -83,4 +83,10 @@ describe("JsonTextField", () => {
 
     await expectTypingKept(field, ', "a": 1', field.value.indexOf("\n}"));
   });
+
+  it("keeps a negative decimal while it is typed", async () => {
+    render(<RowsForm rows={[{}]} />);
+
+    await expectTypingKept(getJsonField(), '"a":-0.5', 1);
+  });
 });

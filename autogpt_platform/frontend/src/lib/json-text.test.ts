@@ -55,4 +55,9 @@ describe("isJsonTextFor", () => {
     ).toBe(true);
     expect(isJsonTextFor("[9007199254740992]", [9007199254740992])).toBe(true);
   });
+
+  // "-0" is on the way to "-0.5" and is stored exactly; it reads back as "0".
+  it("matches negative zero", () => {
+    expect(isJsonTextFor("[-0]", [-0])).toBe(true);
+  });
 });

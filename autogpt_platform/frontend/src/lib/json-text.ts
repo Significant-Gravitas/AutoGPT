@@ -30,6 +30,8 @@ function hasInexactNumber(text: string): boolean {
   return (numbers ?? []).some((literal) => {
     const parsed = Number(literal);
     if (!Number.isFinite(parsed)) return true;
-    return /^-?\d+$/.test(literal) && String(parsed) !== literal;
+    // -0 is exact too (it is on the way to "-0.5"), but reads back as "0".
+    if (!/^-?\d+$/.test(literal) || Object.is(parsed, -0)) return false;
+    return String(parsed) !== literal;
   });
 }
