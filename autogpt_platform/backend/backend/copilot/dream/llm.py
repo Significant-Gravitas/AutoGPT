@@ -148,7 +148,7 @@ async def structured_completion(
         max_output_tokens=max_output_tokens,
         timeout_seconds=timeout_seconds,
     )
-    usage = _usage_from_provider_response(response, request.model)
+    usage = _usage_from_provider_response(response, request.model, routing.provider)
 
     if response.stop_reason == "max_tokens":
         raise DreamLLMError("LLM output truncated at max_tokens", usage)
@@ -250,12 +250,18 @@ async def _call_provider_sync(
 
 
 def _usage_from_provider_response(
-    response: ProviderResponse, model: str
+    response: ProviderResponse, model: str, provider: ProviderLiteral
 ) -> CompletionUsage:
-    """Convert a ``ProviderResponse`` into the dream's ``CompletionUsage``."""
+    """Normalize input to disjoint buckets; native Anthropic already excludes caches."""
+    input_tokens = response.prompt_tokens
+    if provider != "anthropic":
+        input_tokens = max(
+            0,
+            input_tokens - response.cache_read_tokens - response.cache_creation_tokens,
+        )
     return CompletionUsage(
         model=model,
-        input_tokens=response.prompt_tokens,
+        input_tokens=input_tokens,
         output_tokens=response.completion_tokens,
         cache_read_tokens=response.cache_read_tokens,
         cache_creation_tokens=response.cache_creation_tokens,
