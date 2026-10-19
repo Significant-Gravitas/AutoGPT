@@ -5,9 +5,8 @@ another plan is bought or the trial converts early."""
 from datetime import timedelta
 
 import pytest
-from prisma.enums import SubscriptionTier
 
-from backend.data.posthog_lifecycle import LifecycleSnapshot, StripeSubscriptionFacts
+from backend.data.posthog_lifecycle import LifecycleSnapshot
 from backend.data.posthog_lifecycle_test import (
     NOW,
     SIGNUP,
@@ -15,8 +14,8 @@ from backend.data.posthog_lifecycle_test import (
     snapshot,
     sub,
     trial,
-    user,
 )
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 
 TRIAL_END = NOW + timedelta(days=5)
 
@@ -82,7 +81,7 @@ def test_buying_another_plan_while_cancel_pending_is_subscribed():
         _trial_sub("canceled", canceled_at=NOW, ended_at=NOW),
     )
     for t, trial_sub in (before, after):
-        result = snapshot(u=user(SubscriptionTier.MAX), t=t, subs=[trial_sub, max_sub])
+        result = snapshot(t=t, subs=[trial_sub, max_sub])
         assert result == LifecycleSnapshot(
             subscription_status="subscribed",
             signup_at=SIGNUP,
@@ -99,6 +98,6 @@ def test_converting_early_while_cancel_pending_is_subscribed_from_conversion():
     charging = trial(status="active", ends_at=early_end)
     assert snapshot(t=charging, subs=[live]).subscription_status == "in_trial"
     converted = trial(status="active", ends_at=early_end, converted_at=NOW)
-    result = snapshot(u=user(SubscriptionTier.PRO), t=converted, subs=[live])
+    result = snapshot(t=converted, subs=[live])
     assert result.subscription_status == "subscribed"
     assert result.subscription_started_at == NOW

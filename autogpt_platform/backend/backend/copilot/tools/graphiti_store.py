@@ -18,6 +18,7 @@ from backend.copilot.graphiti.memory_model import (
     RuleMemory,
     SourceKind,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -190,6 +191,14 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        try:
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
+        except ValueError:
+            return ErrorResponse(
+                message="Invalid user ID for memory operations.",
+                session_id=session.session_id,
+            )
+
         rule_model = None
         if rule and memory_kind == "rule":
             try:
@@ -261,13 +270,12 @@ class MemoryStoreTool(BaseTool):
             )
 
         queued = await enqueue_episode(
-            user_id,
+            memory_scope,
             session.session_id,
             name=name,
             episode_body=episode_body,
             source_description=source_description,
             is_json=True,
-            expert_id=session.expert_id,
         )
 
         if not queued:

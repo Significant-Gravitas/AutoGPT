@@ -26,16 +26,16 @@ function getHeroContent(
   switch (status) {
     case SubmissionStatus.APPROVED:
       return {
-        title: "Agent approved",
+        title: "Workflow approved",
         description:
-          "Your agent has been approved and is now live on the AutoGPT marketplace.",
+          "Your workflow has been approved and is now live on the AutoGPT marketplace.",
         Icon: Tick02Icon,
         pulse: "bg-emerald-400/40",
         gradient: "from-emerald-400 to-emerald-600",
       };
     case SubmissionStatus.REJECTED:
       return {
-        title: "Agent needs changes",
+        title: "Workflow needs changes",
         description:
           "Your submission was not approved. Review the feedback and resubmit.",
         Icon: Cancel01Icon,
@@ -46,7 +46,7 @@ function getHeroContent(
       return {
         title: "Draft saved",
         description:
-          "This agent isn't submitted yet. Finish the details and submit it for review.",
+          "This workflow isn't submitted yet. Finish the details and submit it for review.",
         Icon: NoteEditIcon,
         pulse: "bg-zinc-400/40",
         gradient: "from-zinc-400 to-zinc-600",
@@ -55,7 +55,7 @@ function getHeroContent(
       return {
         title: "Submission received",
         description: isDashboardPage
-          ? "We'll notify you once review is complete. Approved agents go live on the marketplace."
+          ? "We'll notify you once review is complete. Approved workflows go live on the marketplace."
           : "We'll notify you once review is complete. Track progress from the Creator Dashboard.",
         Icon: Tick02Icon,
         pulse: "bg-purple-400/40",

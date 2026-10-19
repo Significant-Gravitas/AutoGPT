@@ -19,13 +19,16 @@ const VISIBLE_LOGOS = 2;
 interface Props {
   expert: ContextPanelExpert;
   className?: string;
+  /** `lg` matches the mobile thread chip's buttons. */
+  size?: "md" | "lg";
 }
 
 /** The services the chat's expert can reach, as a stack of logos: the first
  *  two name themselves on hover and "+N" names the rest. With none yet, a
  *  plug icon stands in so the panel's add actions stay one click away.
  *  Clicking opens the integrations tab of the side panel. */
-export function IntegrationsToggle({ expert, className }: Props) {
+export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
+  const isLarge = size === "lg";
   const { integrations } = useExpertIntegrations(expert.id);
   const toggleIntegrationsPanel = useCopilotUIStore(
     (s) => s.toggleIntegrationsPanel,
@@ -42,25 +45,36 @@ export function IntegrationsToggle({ expert, className }: Props) {
 
   if (services.length === 0) {
     return (
-      <button
-        type="button"
-        onClick={() => toggleIntegrationsPanel(expert)}
-        aria-label={
-          isActive ? "Hide integrations" : `${expert.name}'s integrations`
-        }
-        aria-pressed={isActive}
-        data-testid="expert-integrations-empty"
-        className={cn(
-          className,
-          "flex size-8 items-center justify-center",
-          isActive && "bg-zinc-100",
-        )}
-      >
-        <Icon
-          icon={PlugSocketIcon}
-          className="!size-4 text-sidebar-foreground/90"
-        />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => toggleIntegrationsPanel(expert)}
+            aria-label={
+              isActive ? "Hide integrations" : `${expert.name}'s integrations`
+            }
+            aria-pressed={isActive}
+            data-testid="expert-integrations-empty"
+            className={cn(
+              className,
+              "flex items-center justify-center",
+              isLarge ? "size-9" : "size-8",
+              isActive && "bg-zinc-100",
+            )}
+          >
+            <Icon
+              icon={PlugSocketIcon}
+              className={cn(
+                "text-sidebar-foreground/90",
+                isLarge ? "!size-5" : "!size-4",
+              )}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isActive ? "Hide integrations" : "Integrations"}
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -83,7 +97,8 @@ export function IntegrationsToggle({ expert, className }: Props) {
         data-testid="expert-integrations"
         className={cn(
           className,
-          "flex h-8 items-center gap-1.5 px-1.5",
+          "flex items-center gap-1.5 px-1.5",
+          isLarge ? "h-9 w-auto" : "h-8",
           isActive && "bg-zinc-100",
         )}
       >
@@ -91,11 +106,16 @@ export function IntegrationsToggle({ expert, className }: Props) {
           {shown.map((service) => (
             <Tooltip key={service.id}>
               <TooltipTrigger asChild>
-                <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 ring-white smooth-shadow-ring-sm">
+                <span
+                  className={cn(
+                    "flex items-center justify-center rounded-full bg-white ring-2 ring-white smooth-shadow-ring-sm",
+                    isLarge ? "size-7" : "size-6",
+                  )}
+                >
                   <IntegrationLogo
                     provider={service.icon}
                     alt={service.name}
-                    size={14}
+                    size={isLarge ? 18 : 14}
                   />
                 </span>
               </TooltipTrigger>

@@ -39,7 +39,7 @@ export function PanelHeader({
                 ? `Revert to version ${revertTargetVersion}`
                 : "Revert to previous version"
             }
-            title="Revert to the graph version that was active before the last edit"
+            title="Revert to the workflow version that was active before the last edit"
           >
             Revert
           </Button>
