@@ -31,7 +31,7 @@ from backend.blocks.code_executor_helpers import (
     UnsupportedLanguageError,
     build_variable_injection,
 )
-from backend.executor.utils import ExecutionContext
+from backend.data.execution import ExecutionContext
 
 
 def _b64_json(variables: dict) -> str:
@@ -291,11 +291,15 @@ class TestExecuteCodeWritesFiles:
         async def write(*_):
             calls.append("write")
 
+        async def command(*_):
+            calls.append("setup")
+
         async def run_code(*_, **__):
             calls.append("run_code")
             return execution
 
         sandbox = MagicMock(sandbox_id="sb")
+        sandbox.commands.run = AsyncMock(side_effect=command)
         sandbox.files.write = AsyncMock(side_effect=write)
         sandbox.run_code = AsyncMock(side_effect=run_code)
         with patch(
@@ -306,11 +310,12 @@ class TestExecuteCodeWritesFiles:
                 api_key="k",
                 code="print(1)",
                 language=ProgrammingLanguage.PYTHON,
+                setup_commands=["echo setup"],
                 envs={VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH},
                 input_files={VARIABLES_FILE_PATH: b"{}"},
             )
 
-        assert calls == ["write", "run_code"]
+        assert calls == ["setup", "write", "run_code"]
         sandbox.files.write.assert_awaited_once_with(VARIABLES_FILE_PATH, b"{}")
         assert sandbox.run_code.await_args.kwargs["envs"] == {
             VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH

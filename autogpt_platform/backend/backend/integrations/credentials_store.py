@@ -333,7 +333,9 @@ class IntegrationCredentialsStore:
         blob→table migration; the UserIntegrations blob is retained only
         as a rollback artifact).
 
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        Reads may call this without the lock. A writer must call it under
+        ``locked_user_integrations(user_id)``, so the list it writes back
+        can't drop a concurrent write.
         """
         return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
@@ -354,14 +356,12 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        """Public entry point — acquires lock, then delegates."""
-        async with await self.locked_user_integrations(user_id):
-            return await self._get_all_creds_unlocked(user_id)
+        """Return all credentials for *user_id*, without taking the lock.
 
-    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
-        """Return all credentials for *user_id*.
-
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        A full-list replace commits in one transaction, so a read sees the
+        list from before it or after it, never a mix of the two. Taking
+        the lock here would queue a page load's concurrent reads behind each
+        other and behind every write or token refresh for the user.
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 

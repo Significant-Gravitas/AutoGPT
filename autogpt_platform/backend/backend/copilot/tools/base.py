@@ -10,8 +10,10 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util import tracing
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -24,6 +26,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.gate import Decision
     from backend.copilot.gate.headline import Headline
     from backend.copilot.gate.subject import Subject
 
@@ -312,6 +315,9 @@ async def _record_activity(
 # Passed to ``_execute`` of a tool with a gate subject when the user approved
 # this exact call; stripped from the model's own arguments so it cannot be forged.
 GATE_APPROVED = "_gate_approved"
+# Passed beside it when an active gate reached any verdict on the call: a card,
+# a rule, the mode or the supervisor. Stripped the same way.
+GATE_DECIDED = "_gate_decided"
 
 
 class BaseTool:
@@ -338,6 +344,11 @@ class BaseTool:
     def parameters(self) -> dict[str, Any]:
         """Tool parameters schema for OpenAI."""
         raise NotImplementedError
+
+    @property
+    def model_parameters(self) -> dict[str, Any]:
+        """``parameters`` as the model is sent them: without the card's hints."""
+        return without_card_hints(self.parameters)
 
     @property
     def requires_auth(self) -> bool:
@@ -380,6 +391,11 @@ class BaseTool:
         """
         return None
 
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """The content of files this call runs, by path, for the supervisor; None
+        for one that could not be read, which holds the call."""
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -387,7 +403,7 @@ class BaseTool:
             function={
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.model_parameters,
             },
         )
 
@@ -400,6 +416,9 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
+        Each call is its own Sentry ``copilot.tool`` transaction, named after
+        the tool, in the trace of the turn that made it.
+
         Args:
             user_id: User ID (None for anonymous users)
             session_id: Chat session ID
@@ -409,7 +428,22 @@ class BaseTool:
             Pydantic response object
 
         """
+        with tool_transaction(self.name, tool_call_id, session.session_id) as span:
+            output = await self._execute_checked(
+                user_id, session, tool_call_id, **kwargs
+            )
+            span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            return output
+
+    async def _execute_checked(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        **kwargs,
+    ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
+        kwargs.pop(GATE_DECIDED, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -472,12 +506,15 @@ class BaseTool:
         # ``_execute_tool_sync`` — so there is one place to add, not two.
         # Must stay AFTER the envelope and name gates: a call the envelope refuses can
         # never run, so approving it would spend a user's decision on nothing.
-        gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
+        gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
         if gated is not None:
             return gated
         run_kwargs = kwargs
-        if approved and self.has_gate_subject:
-            run_kwargs = {**kwargs, GATE_APPROVED: True}
+        if decision is not None and self.has_gate_subject:
+            if decision.approved:
+                run_kwargs = {**run_kwargs, GATE_APPROVED: True}
+            if decision.decided:
+                run_kwargs = {**run_kwargs, GATE_DECIDED: True}
 
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
@@ -488,7 +525,7 @@ class BaseTool:
             result = await self._execute(user_id, session, **run_kwargs)
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
-            raw_output = result.model_dump_json(exclude_none=True)
+            raw_output = full = result.model_dump_json(exclude_none=True)
 
             digest = (
                 self.digest_large_output
@@ -508,6 +545,7 @@ class BaseTool:
             )
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            tracing.set_status("internal_error")
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
@@ -518,7 +556,9 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
-        return await self._screen_read(user_id, session, tool_call_id, kwargs, output)
+        return await self._screen_read(
+            user_id, session, tool_call_id, kwargs, output, result.outside, full
+        )
 
     async def _gate(
         self,
@@ -526,9 +566,9 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
-    ) -> tuple[StreamToolOutputAvailable | None, bool]:
+    ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
-        whether the user approved this exact call.
+        the gate's decision on a call that proceeds.
 
         A gate that crashes must not become a gate that passes, so an
         unexpected failure here refuses the call rather than falling through.
@@ -546,6 +586,7 @@ class BaseTool:
                 session,
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
+                context_of=lambda: self.gate_context(kwargs),
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)
@@ -557,11 +598,11 @@ class BaseTool:
                     "settings, so nothing ran. Tell the user and stop.",
                     args=kwargs,
                 ),
-                False,
+                None,
             )
 
         if decision.allowed:
-            return None, decision.approved
+            return None, decision
         return (
             self._refusal(
                 tool_call_id,
@@ -571,7 +612,7 @@ class BaseTool:
                 args=kwargs,
                 headline=decision.headline,
             ),
-            False,
+            None,
         )
 
     async def _released_read(
@@ -609,8 +650,11 @@ class BaseTool:
         tool_call_id: str,
         kwargs: dict[str, Any],
         result: StreamToolOutputAvailable,
+        outside: tuple[Any, ...] | None,
+        full: str,
     ) -> StreamToolOutputAvailable:
-        """Judge the output as the model will receive it, after every cap."""
+        """Judge the output as the model will receive it, after every cap: the
+        parts ``outside`` declares, or all of it when nothing was declared."""
         from backend.copilot.gate.reads import model_view, readable_parts, screen_read
 
         seen = (
@@ -632,6 +676,8 @@ class BaseTool:
             text=text,
             images=images,
             tool_call_id=tool_call_id,
+            outside=outside,
+            full=full,
         )
         if stub is None:
             return result
@@ -685,3 +731,21 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+# Read by the approval card (gate/review.py, gate/references.py), never by the
+# model: a label, how to show the value, and what platform thing an id names.
+CARD_HINTS = frozenset({"title", "format", "entity"})
+
+
+def without_card_hints(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not properties:
+        return schema
+    return {
+        **schema,
+        "properties": {
+            key: {k: v for k, v in spec.items() if k not in CARD_HINTS}
+            for key, spec in properties.items()
+        },
+    }

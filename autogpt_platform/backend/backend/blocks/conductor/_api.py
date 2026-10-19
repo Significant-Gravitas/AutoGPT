@@ -77,6 +77,14 @@ class SectionAction(str, Enum):
     DELETE = "delete"
 
 
+class ConductorAPIError(ValueError):
+    """A non-2xx response from the Conductor API, with its HTTP status."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
 def clean(payload: dict[str, Any]) -> dict[str, Any]:
     """Drop None and empty-string values.
 
@@ -125,7 +133,7 @@ class ConductorClient:
             method, url, json=json_body, params=query or None
         )
         if not response.ok:
-            raise ValueError(_error_message(response))
+            raise ConductorAPIError(_error_message(response), response.status)
         try:
             body = response.json()
         except Exception:
@@ -295,7 +303,9 @@ class ConductorClient:
         """One page of a session's transcript, oldest first.
 
         `after` is an exclusive row-id cursor and cannot be combined with
-        `offset`. Pages are clamped to PAGE_SIZE rows server-side.
+        `offset`; the API answers 404 for an id that is not a row of this
+        session, which includes the receipt ids returned when a prompt is
+        sent. Pages are clamped to PAGE_SIZE rows server-side.
         """
         return await self._call(
             "GET",

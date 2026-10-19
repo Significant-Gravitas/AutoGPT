@@ -6,9 +6,14 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials
+from backend.integrations.ayrshare import JWTResponse
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
     _migrate_legacy_or_create_profile_key,
+    get_sso_link,
+    provision_profile,
     settings_available,
 )
 
@@ -290,3 +295,102 @@ class TestMigrationOrderingSafety:
         # The legacy key MUST still be populated — otherwise a retry would
         # create a fresh Ayrshare profile and orphan the user's socials.
         assert user_integrations.managed_credentials.ayrshare_profile_key is legacy
+
+
+class TestGetSSOLink:
+    """The builder route's path, and AutoPilot's provisioning without a link."""
+
+    _MODULE = "backend.integrations.managed_providers.ayrshare"
+
+    @staticmethod
+    def _store(creds: list) -> MagicMock:
+        store = MagicMock()
+        store.get_creds_by_provider = AsyncMock(return_value=creds)
+        return store
+
+    @staticmethod
+    def _managed() -> APIKeyCredentials:
+        return APIKeyCredentials(
+            provider="ayrshare",
+            title="Ayrshare (managed by AutoGPT)",
+            api_key=SecretStr("profile-key"),
+            expires_at=None,
+            is_managed=True,
+        )
+
+    def _patches(self, *, configured=True, provisioned=True, jwt=None):
+        client = MagicMock()
+        client.generate_jwt = jwt or AsyncMock(
+            return_value=JWTResponse(
+                status="success", title="t", token="tok", url="https://sso"
+            )
+        )
+        ensure = AsyncMock(return_value=provisioned)
+        return (
+            patch(f"{self._MODULE}.settings_available", return_value=configured),
+            patch(f"{self._MODULE}.AyrshareClient", return_value=client),
+            patch(f"{self._MODULE}.ensure_managed_credential", ensure),
+            client,
+            ensure,
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provisions_then_signs_the_link(self):
+        available, client_cls, ensure_patch, client, ensure = self._patches()
+        with available, client_cls, ensure_patch:
+            link = await get_sso_link(_USER_ID, self._store([self._managed()]))
+
+        assert link.url == "https://sso"
+        ensure.assert_awaited_once()
+        kwargs = client.generate_jwt.await_args.kwargs
+        assert kwargs["profile_key"] == "profile-key"
+        assert kwargs["expires_in"] == 2880
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_not_configured_provisions_nothing(self):
+        available, client_cls, ensure_patch, _, ensure = self._patches(configured=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareNotConfiguredError):
+                await get_sso_link(_USER_ID, self._store([]))
+        ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_failed_provisioning(self):
+        available, client_cls, ensure_patch, _, _ = self._patches(provisioned=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareProvisioningError):
+                await get_sso_link(_USER_ID, self._store([]))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_failed_jwt(self):
+        available, client_cls, ensure_patch, _, _ = self._patches(
+            jwt=AsyncMock(side_effect=RuntimeError("upstream"))
+        )
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareProvisioningError, match="JWT"):
+                await get_sso_link(_USER_ID, self._store([self._managed()]))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_signs_no_link(self):
+        available, client_cls, ensure_patch, client, ensure = self._patches()
+        with available, client_cls, ensure_patch:
+            profile = await provision_profile(_USER_ID, self._store([self._managed()]))
+
+        assert profile.api_key.get_secret_value() == "profile-key"
+        ensure.assert_awaited_once()
+        client.generate_jwt.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_not_configured_provisions_nothing(self):
+        available, client_cls, ensure_patch, _, ensure = self._patches(configured=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareNotConfiguredError):
+                await provision_profile(_USER_ID, self._store([]))
+        ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_failed(self):
+        available, client_cls, ensure_patch, _, _ = self._patches(provisioned=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareProvisioningError):
+                await provision_profile(_USER_ID, self._store([]))

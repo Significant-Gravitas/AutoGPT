@@ -12,7 +12,7 @@ backs every other copilot turn, so the delegated work:
 - speaks and acts as the target expert (``<expert_identity>`` is rebuilt from
   the target's Soul by the normal per-turn path),
 - reads and writes the *target's* memory namespace
-  (:func:`derive_memory_group_id` keys on the session's ``expert_id``),
+  (the session's ``expert_id`` selects its ``MemoryScope``),
 - attributes the agent runs it starts to the *target's* weekly budget (only
   graph executions accrue weekly spend; the delegated conversation's own LLM
   cost does not), which is why a paused/archived teammate is refused here,
@@ -33,8 +33,10 @@ import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     child_session_origin,
@@ -101,6 +103,7 @@ class DelegateToExpertTool(BaseTool):
                         "<team_context>, or their exact name if you don't "
                         "have the id. Must not be you."
                     ),
+                    "entity": "expert_or_name",
                 },
                 "prompt": {
                     "type": "string",
@@ -109,11 +112,13 @@ class DelegateToExpertTool(BaseTool):
                         "context they need — they cannot see this "
                         "conversation."
                     ),
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "delegated_session_id": {
                     "type": "string",
@@ -121,6 +126,8 @@ class DelegateToExpertTool(BaseTool):
                         "Continue a prior delegation to this teammate; empty = new."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -129,6 +136,8 @@ class DelegateToExpertTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["expert_id", "prompt"],
@@ -211,7 +220,11 @@ class DelegateToExpertTool(BaseTool):
             # The thread is gone; handing back its id would send the model to
             # poll a delegation that no longer exists.
             return self._error(
-                result.refusal or f"{target.name} could not start this task.",
+                (
+                    spawn_limit_message()
+                    if outcome == "rejected_concurrent_turn_cap"
+                    else result.refusal or f"{target.name} could not start this task."
+                ),
                 session,
             )
         workspace_files = (
@@ -241,7 +254,9 @@ class DelegateToExpertTool(BaseTool):
         )
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
-        return ErrorResponse(message=message, session_id=session.session_id)
+        return ErrorResponse(
+            message=message, session_id=session.session_id
+        ).from_outside()
 
     async def _load_delegate_target(
         self, user_id: str, target_id: str, session: ChatSession
@@ -291,6 +306,11 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
+                # Decided here, from the expert row already in hand, so the
+                # thread cannot pick up a looser default written in between.
+                inherited_autopilot_mode=child_autopilot_mode(
+                    session, target.autopilot_mode
+                ),
             )
             return new_session.session_id
 

@@ -17,6 +17,7 @@ from redis.asyncio.lock import Lock as AsyncRedisLock
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
+from sentry_sdk.tracing import Span
 
 from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
@@ -56,7 +57,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json, product_analytics
+from backend.util import json, product_analytics, tracing
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -78,10 +79,8 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
-from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.posthog_events import PostHogEvent
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
     continuous_retry,
@@ -98,6 +97,12 @@ from .activity_status_generator import (
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .node_tracing import (
+    node_transaction,
+    output_trace_headers,
+    output_transaction,
+    record_node_result,
+)
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
@@ -115,6 +120,7 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
         DatabaseManagerClient,
@@ -582,6 +588,8 @@ async def _enqueue_next_nodes(
             block_id=block_id,
             inputs=data,
             execution_context=execution_context,
+            queued_at=datetime.now(timezone.utc),
+            queued_by="node_output",
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -713,27 +721,6 @@ async def _enqueue_next_nodes(
     ]
 
 
-def _expert_run_completed_event(
-    graph_exec: GraphExecutionEntry, status: ExecutionStatus
-) -> Optional[dict]:
-    """Funnel payload for a finished top-level expert run, else None.
-
-    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
-    counts exactly the runs that can post: an expert-attributed, non-dry-run,
-    top-level execution that reached a terminal status. Execution origin
-    (schedule vs manual vs webhook) is not persisted anywhere, so the event
-    covers every such run rather than pretending to know the trigger.
-    """
-    expert_id = expert_posts.completed_expert_id(graph_exec, status)
-    if expert_id is None:
-        return None
-    return {
-        "expert_id": expert_id,
-        "status": status.value,
-        "graph_exec_id": graph_exec.graph_exec_id,
-    }
-
-
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -769,6 +756,30 @@ class ExecutionProcessor:
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
         nodes_to_skip: Optional[set[str]] = None,
     ) -> NodeExecutionStats:
+        """Run one node and account for it, as one Sentry ``executor.node``
+        transaction named after its block."""
+        block = get_block(node_exec.block_id)
+        with node_transaction(node_exec, block) as span:
+            return await self._run_node(
+                node_exec,
+                block,
+                node_exec_progress,
+                nodes_input_masks,
+                graph_stats_pair,
+                nodes_to_skip,
+                span,
+            )
+
+    async def _run_node(
+        self,
+        node_exec: NodeExecutionEntry,
+        block: "AnyBlockSchema | None",
+        node_exec_progress: NodeExecutionProgress,
+        nodes_input_masks: Optional[NodesInputMasks],
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        nodes_to_skip: Optional[set[str]],
+        span: Span,
+    ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
             user_id=node_exec.user_id,
@@ -776,7 +787,7 @@ class ExecutionProcessor:
             graph_id=node_exec.graph_id,
             node_eid=node_exec.node_exec_id,
             node_id=node_exec.node_id,
-            block_name=b.name if (b := get_block(node_exec.block_id)) else "-",
+            block_name=block.name if block else "-",
         )
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
@@ -797,6 +808,7 @@ class ExecutionProcessor:
 
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
+        record_node_result(span, status, execution_stats)
 
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
@@ -890,8 +902,11 @@ class ExecutionProcessor:
         nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
+        outputs = 0
 
         async def persist_output(output_name: str, output_data: Any) -> None:
+            nonlocal outputs
+            outputs += 1
             await db_client.upsert_execution_output(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
@@ -907,6 +922,7 @@ class ExecutionProcessor:
                     node=node,
                     node_exec_id=node_exec.node_exec_id,
                     data=(output_name, output_data),
+                    trace_headers=output_trace_headers(outputs),
                 )
             )
 
@@ -981,6 +997,7 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
+            tracing.set_data("executor.node.output_count", outputs)
         return status
 
     @func_retry
@@ -1130,15 +1147,6 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
-            # Only once the terminal state is persisted.
-            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
-            if run_event is not None:
-                emit_funnel_event(
-                    graph_exec.user_id,
-                    PostHogEvent.EXPERT_RUN_COMPLETED,
-                    run_event,
-                    f"expert_run_completed:{graph_exec.graph_exec_id}",
-                )
 
     async def charge_node_usage(
         self,
@@ -1191,7 +1199,7 @@ class ExecutionProcessor:
                         user_id=graph_exec.user_id,
                         message=(
                             f"At least {required_balance} credit must be available to run "
-                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                            f"this workflow. {INSUFFICIENT_BALANCE_GUIDANCE}"
                         ),
                         balance=credit_balance,
                         amount=required_balance,
@@ -1228,6 +1236,8 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                node_entry.queued_at = node_exec.queue_time
+                node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
@@ -1540,7 +1550,8 @@ class ExecutionProcessor:
         nodes_input_masks: Optional[NodesInputMasks],
         execution_queue: ExecutionQueue[NodeExecutionEntry],
     ) -> None:
-        """Process a node's output, update its status, and enqueue next nodes.
+        """Process a node's output, update its status, and enqueue next nodes,
+        as one Sentry ``executor.node.output`` transaction.
 
         Args:
             output: The execution output entry to process
@@ -1550,23 +1561,28 @@ class ExecutionProcessor:
             nodes_input_masks: Optional map of node input overrides
             execution_queue: Queue to add next executions to
         """
-        db_client = get_db_async_client()
+        with output_transaction(output, graph_exec) as span:
+            db_client = get_db_async_client()
 
-        log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
 
-        for next_execution in await _enqueue_next_nodes(
-            db_client=db_client,
-            node=output.node,
-            output=output.data,
-            user_id=graph_exec.user_id,
-            graph_exec_id=graph_exec.graph_exec_id,
-            graph_id=graph_exec.graph_id,
-            graph_version=graph_exec.graph_version,
-            log_metadata=log_metadata,
-            nodes_input_masks=nodes_input_masks,
-            execution_context=graph_exec.execution_context,
-        ):
-            execution_queue.add(next_execution)
+            next_executions = await _enqueue_next_nodes(
+                db_client=db_client,
+                node=output.node,
+                output=output.data,
+                user_id=graph_exec.user_id,
+                graph_exec_id=graph_exec.graph_exec_id,
+                graph_id=graph_exec.graph_id,
+                graph_version=graph_exec.graph_version,
+                log_metadata=log_metadata,
+                nodes_input_masks=nodes_input_masks,
+                execution_context=graph_exec.execution_context,
+            )
+            tracing.set_data(
+                "executor.node.output.enqueued_count", len(next_executions), span=span
+            )
+            for next_execution in next_executions:
+                execution_queue.add(next_execution)
 
 
 class ExecutionManager(AppProcess):

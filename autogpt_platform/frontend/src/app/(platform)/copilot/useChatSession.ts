@@ -11,6 +11,7 @@ import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -20,14 +21,23 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
-import { useAutopilotModeStore } from "./autopilotModeStore";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import {
+  compareShadowWithSession,
+  setStreamShadowRate,
+} from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -45,6 +55,17 @@ export function useChatSession({
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
 
   const transportQuery = useGetV2ListChatTransports({
     query: {
@@ -171,6 +192,17 @@ export function useChatSession({
       ? sessionQuery.data.data
       : null;
 
+  const streamShadowRate = useGetFlag(Flag.COPILOT_STREAM_SHADOW);
+  useEffect(() => {
+    setStreamShadowRate(streamShadowRate);
+  }, [streamShadowRate]);
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
+
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
@@ -242,16 +274,18 @@ export function useChatSession({
         title: "Could not check AI connections",
         description: "Refresh the page and try again.",
       });
-      throw new Error("Could not load AI connections");
+      throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
       toast({
         variant: "destructive",
-        title: "Your expert needs an AI connection",
+        title: "No AI connection is set up",
         description:
-          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
       });
-      throw new Error("chat_transport_not_configured");
+      throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
@@ -264,7 +298,7 @@ export function useChatSession({
           ? "Wait a moment and try again."
           : "Select the connection your expert should use before starting a new task.",
       });
-      throw new Error(
+      throw new ReportedSendError(
         connectionsAreLoading
           ? "AI connections are still loading"
           : "AI connection selection required",
@@ -299,6 +333,10 @@ export function useChatSession({
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
+      // Same rule as the route: only a mode the user picked travels, so a new
+      // expert thread starts on the expert's own default rather than "auto".
+      const pickedMode = getAutopilotModeChoice(null);
+      if (pickedMode) sessionData.autopilot_mode = pickedMode;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }
@@ -308,11 +346,6 @@ export function useChatSession({
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
           extra: { status: response.status },
-        });
-        toast({
-          variant: "destructive",
-          title: "Could not start a new chat session",
-          description: "Please try again.",
         });
         throw error;
       }
@@ -329,18 +362,17 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      // The caller owns the one toast for this failure (see
+      // toastSendFailure); toasting here as well stacked two contradictory
+      // messages. A paywall is an account state, not a fault.
       if (
-        error instanceof Error &&
-        error.message === "Failed to create session"
+        !isPaywallError(error) &&
+        !(
+          error instanceof Error && error.message === "Failed to create session"
+        )
       ) {
-        throw error; // already handled above
+        Sentry.captureException(error);
       }
-      Sentry.captureException(error);
-      toast({
-        variant: "destructive",
-        title: "Could not start a new chat session",
-        description: "Please try again.",
-      });
       throw error;
     }
   }
@@ -386,6 +418,12 @@ export function useChatSession({
     sessionId && sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
       : null;
+  // What the AutoPilot budget follows: the session's own connection, or for a
+  // new chat the one it will start on (null until that is known).
+  const chatLlmAuthProvider = sessionId
+    ? sessionLlmAuthProvider
+    : (resolveCopilotLLMAuthSelection(chatTransports, copilotLlmAuth)
+        ?.authProvider ?? null);
 
   // The expert this session actually belongs to, straight off the session
   // response rather than the URL — the ?expertId= param only describes what
@@ -410,8 +448,11 @@ export function useChatSession({
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,

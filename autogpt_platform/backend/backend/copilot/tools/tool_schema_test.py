@@ -258,7 +258,16 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+_CHAR_BUDGET = 77_176
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +457,12 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+_SESSION_WIRE_BUDGET = 69_788
 
 
 def test_largest_declared_session_wire_budget() -> None:

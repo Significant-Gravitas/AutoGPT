@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { StoppedTaskCard } from "./StoppedTaskCard";
@@ -26,6 +27,8 @@ import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -35,7 +38,6 @@ import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
-  parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
 import { ReasoningCollapse } from "./ReasoningCollapse";
@@ -220,6 +222,19 @@ export function MessagePartRenderer({
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
           readOnly={readOnly}
+        />
+      );
+    }
+    case TURN_PAUSED_PART_TYPE: {
+      // A pause built from its stored row is keyed by that row; one still
+      // streaming in has no row yet, so its key is this render's only.
+      const rowKey = "id" in part ? part.id : undefined;
+      return (
+        <TurnPausedCard
+          key={key}
+          data={"data" in part ? part.data : undefined}
+          pauseKey={rowKey || key}
+          isStoredRow={Boolean(rowKey)}
         />
       );
     }
