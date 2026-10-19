@@ -55,7 +55,13 @@ export async function startStreamServer(): Promise<StreamServer> {
     const params = new URL(request.url ?? "/", "http://localhost").searchParams;
     const tag = params.get("tag") ?? "";
     const paceMs = Number(params.get("pace") ?? 30);
-    const frames = splitFrames(readFixture(params.get("fixture") ?? ""));
+    let frames: string[];
+    try {
+      frames = splitFrames(readFixture(params.get("fixture") ?? ""));
+    } catch (error) {
+      response.writeHead(500, corsHeaders(request)).end(String(error));
+      return;
+    }
     response.writeHead(200, {
       ...corsHeaders(request),
       "Content-Type": "text/event-stream",

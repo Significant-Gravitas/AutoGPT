@@ -126,12 +126,12 @@ async function measureOnce({
     await assertCounterLoaded(page);
 
     await counter(page, "reset");
-    const window = await startWindow(cdp, options.profile && !warmup);
+    const traceWindow = await startWindow(cdp, options.profile && !warmup);
     await counter(page, "start");
     await interaction.run();
     await page.waitForTimeout(scenario.windowMs);
     await counter(page, "stop");
-    const timings = await stopWindow(cdp, window);
+    const timings = await stopWindow(cdp, traceWindow);
     const heapUsedMB = await heapAfterGC(cdp, page);
     const report = await counterReport(page);
     if (warmup) return null;
