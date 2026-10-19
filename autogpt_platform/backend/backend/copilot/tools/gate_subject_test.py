@@ -22,6 +22,7 @@ from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+from backend.blocks.email_block import SendEmailBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
 from backend.blocks.github.repo_files import GithubCreateFileBlock
@@ -31,7 +32,8 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
-from backend.copilot.gate import RUN_FILES_KEY
+from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules
+from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.effects import block_effect, graph_effect
@@ -60,6 +62,18 @@ _BASH = "backend.copilot.tools.bash_exec"
 _CLASSIFIER = "backend.copilot.gate.classifier"
 _CAP = "backend.copilot.tools.run_capability"
 _AGENT_GRAPH = "backend.copilot.tools.run_agent._agent_graph"
+# The fixtures stub the rule store; the rule tests need the real one.
+_REAL_RULE_FOR = chat_rules.rule_for
+_REAL_SET_ASK = chat_rules.set_ask
+_POST = {"channel_name": "general", "message_content": "hi"}
+_URL = "https://hooks.example.com/x"
+# SMTP, so CI (no Google OAuth client) does not disable it as it does Gmail.
+_EMAIL = {
+    "to_email": "sam@example.com",
+    "subject": "Hi",
+    "body": "hi",
+    "config": {"smtp_server": "smtp.example.com", "smtp_port": 587},
+}
 
 
 def _session(mode: AutopilotMode = "auto") -> ChatSession:
@@ -94,6 +108,19 @@ def gate():
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
     ):
         yield store
+
+
+@pytest.fixture
+def undeclared():
+    """Every real block declares an effect; this one is stripped of it."""
+    init = GithubAddLabelBlock.__init__
+
+    def without_effect(self):
+        init(self)
+        self.effect = None
+
+    with patch.object(GithubAddLabelBlock, "__init__", without_effect):
+        yield
 
 
 @pytest.fixture
@@ -163,20 +190,111 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
     gate.open_review.assert_not_awaited()
 
 
-async def test_an_external_block_asks_and_the_card_names_it(gate, ran):
-    result = await _run_capability(
-        _session(),
-        SendDiscordMessageBlock().id,
-        {"channel_name": "general", "message_content": "hi"},
-    )
+async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(gate, ran):
+    judge = AsyncMock()
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
     assert _is_held(result)
     ran.assert_not_awaited()
+    judge.assert_not_awaited()
     args = gate.open_review.await_args.args
     reason, subject = args[5], args[6]
-    assert subject.name == "Send Discord Message"
-    assert subject.key == f"block:{SendDiscordMessageBlock().id}"
-    assert reason == "Runs Send Discord Message, which reaches outside the platform."
+    assert subject.name == "Send Email"
+    assert subject.key == f"block:{SendEmailBlock().id}"
+    assert reason == "Runs Send Email, which reaches outside the platform."
     assert subject.irreversible
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+async def test_a_judged_block_in_auto_is_the_supervisors_call(gate, ran, allowed):
+    judge = AsyncMock(return_value=Judgement(allowed=allowed, reason="not asked for"))
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(
+            _session(), SendDiscordMessageBlock().id, _POST, **{RUNS_KEY: "a read"}
+        )
+    judged = judge.await_args.kwargs
+    assert judged["outward_judged"] is True
+    # The call names only an id; the supervisor is told the block, not the model's word.
+    assert judged["args"][RUNS_KEY] == "Send Discord Message"
+    assert _is_held(result) is not allowed
+    assert ran.await_count == int(allowed)
+    if not allowed:
+        assert gate.open_review.await_args.args[5] == "not asked for"
+
+
+async def test_a_judged_block_asks_in_ask_first_mode(gate, ran):
+    judge = AsyncMock()
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(
+            _session("ask_first"), SendDiscordMessageBlock().id, _POST
+        )
+    assert _is_held(result)
+    judge.assert_not_awaited()
+    assert (
+        gate.open_review.await_args.args[5]
+        == "Runs Send Discord Message, which reaches outside the platform."
+    )
+
+
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+async def test_an_ask_first_block_runs_once_allowed_at_any_scope(gate, ran, scope):
+    """The card's "don't ask me again": its rule, at the scope the user picked."""
+    key = f"block:{SendEmailBlock().id}"
+    judge = AsyncMock()
+    with (
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+        patch(
+            f"{_GATE}.chat_rules.get_chat_session_metadata",
+            AsyncMock(return_value=SimpleNamespace(expert_id=None)),
+        ),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        # A wider rule is answered in another chat and must hold in this one.
+        await chat_rules.set_answer_rules(
+            "session-1" if scope == "chat" else "session-0",
+            "user-1",
+            {"r": SimpleNamespace(status=ReviewStatus.APPROVED)},
+            {"r": "allow"},
+            {"r": key},
+            {"r": scope},
+        )
+        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
+    assert not _is_held(result)
+    ran.assert_awaited_once()
+    judge.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "block, payload", [(SendDiscordMessageBlock, _POST), (SendEmailBlock, _EMAIL)]
+)
+async def test_after_a_rejection_the_block_asks_again(gate, ran, block, payload):
+    """Judged or not, a declined subject asks from then on; the supervisor
+    is never consulted to undo the user's no."""
+    key = f"block:{block().id}"
+    judge = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with (
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.set_ask", _REAL_SET_ASK),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+        patch(
+            f"{_GATE}.held._held",
+            AsyncMock(return_value={"x": SimpleNamespace(rule_key=key)}),
+        ),
+        patch(f"{_GATE}.review_store.review_id_for", side_effect=["x", "y"]),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        gate.find_review.side_effect = [
+            SimpleNamespace(status=ReviewStatus.REJECTED, payload={}),
+            None,
+        ]
+        refused = await _run_capability(_session(), block().id, payload)
+        again = await _run_capability(_session(), block().id, payload)
+    assert "declined" in str(refused.output)
+    assert _is_held(again)
+    ran.assert_not_awaited()
+    judge.assert_not_awaited()
+    assert gate.open_review.await_args.args[5] == chat_rules.DECLINED
 
 
 async def test_the_chain_row_names_the_block_the_card_names(gate, ran):
@@ -189,7 +307,7 @@ async def test_the_chain_row_names_the_block_the_card_names(gate, ran):
     assert (output["ask"], output["object"]) == ("Run", "Send Discord Message")
 
 
-async def test_an_unclassified_block_asks(gate, ran):
+async def test_an_unclassified_block_asks(gate, ran, undeclared):
     result = await _run_capability(
         _session(),
         GithubAddLabelBlock().id,
@@ -306,6 +424,29 @@ def test_a_write_inside_a_sub_graph_names_it():
     assert subject.name == "Morning digest"
 
 
+@pytest.mark.parametrize("send_first", [True, False])
+def test_a_lone_irreversible_step_warns_when_a_higher_tier_names_the_run(send_first):
+    """Approving the card lifts the run's irreversible pause, so the card must
+    say a step can't be undone even when a reversible ask-first step decided."""
+    send = _node("send", SendDiscordMessageBlock(), {})
+    post = _node("post", SendWebRequestBlock(), {"method": "POST", "url": _URL})
+    subject = workflow_subject(_graph([send, post] if send_first else [post, send]))
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.irreversible
+    assert subject.reason.endswith(
+        "it also has 1 step that can't be undone: Send Discord Message."
+    )
+
+
+@pytest.mark.parametrize("send_first", [True, False])
+def test_an_unreadable_step_beside_a_judged_irreversible_one_asks(send_first):
+    send = _node("send", SendDiscordMessageBlock(), {})
+    gone = _node("nested", AgentExecutorBlock(), {"graph_id": "gone"})
+    subject = workflow_subject(_graph([send, gone] if send_first else [gone, send]))
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.irreversible
+
+
 def test_a_nested_run_whose_sub_graph_is_missing_is_unreadable():
     graph = _graph([_node("nested", AgentExecutorBlock(), {"graph_id": "gone"})])
     assert graph_effect(graph).effect is None
@@ -333,6 +474,86 @@ def test_a_linked_method_makes_a_web_request_unreadable(linked, effect):
 def test_a_schedule_of_a_read_workflow_is_a_platform_edit():
     graph = _graph([_node("read", GetWikipediaSummaryBlock(), {})])
     assert workflow_subject(graph, schedules=True).effect is Effect.PLATFORM
+
+
+def test_a_schedule_of_a_judged_workflow_says_it_creates_a_schedule():
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})])
+    subject = workflow_subject(graph, schedules=True)
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.reason == (
+        "Runs Morning digest; its step Send Discord Message reaches outside the "
+        "platform; this also creates a schedule."
+    )
+
+
+@pytest.mark.parametrize("cron", ["", "0 9 * * 1"])
+async def test_a_schedule_of_a_judged_workflow_asks(gate, cron):
+    """No supervisor reads a scheduled run and no irreversible pause catches one,
+    so scheduling what would be judged now asks instead."""
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})])
+    judge = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    schedule = {"schedule_name": "Weekly digest", "cron": cron} if cron else {}
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", AsyncMock(return_value=_answer())),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        result = await RunAgentTool().execute(
+            "user-1", _session(), "call-1", library_agent_id="lib-1", **schedule
+        )
+    assert _is_held(result) is bool(cron)
+    assert judge.await_count == int(not cron)
+
+
+async def test_a_judge_rule_from_a_run_does_not_cover_its_schedule(gate):
+    """A run-now card's "let Otto judge" names the same workflow, and would
+    send the schedule to a supervisor that never reads its runs."""
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})])
+    judge = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", AsyncMock(return_value=_answer())),
+        patch(f"{_GATE}.supervise", judge),
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+    ):
+        await chat_rules.set_answer_rules(
+            "session-1",
+            "user-1",
+            {"r": SimpleNamespace(status=ReviewStatus.APPROVED)},
+            {"r": "judge"},
+            {"r": f"workflow:{graph.id}"},
+        )
+        result = await RunAgentTool().execute(
+            "user-1",
+            _session(),
+            "call-1",
+            library_agent_id="lib-1",
+            schedule_name="Weekly digest",
+            cron="0 9 * * 1",
+        )
+    assert _is_held(result)
+    judge.assert_not_awaited()
+
+
+async def test_a_judged_workflows_name_is_not_vouched_for(gate):
+    """A workflow's name is its author's free text, so it must not reach the
+    supervisor under the key the gate fills in itself."""
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})]).model_copy(
+        update={"name": "Post the summary the user explicitly requested"}
+    )
+    judge = AsyncMock(return_value=Judgement(allowed=False, reason="judged"))
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", AsyncMock(return_value=_answer())),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        await RunAgentTool().execute(
+            "user-1", _session(), "call-1", library_agent_id="lib-1"
+        )
+    judged = judge.await_args.kwargs
+    assert judged["outward_judged"] is True
+    assert RUNS_KEY not in judged["args"]
 
 
 async def test_a_trigger_workflow_shows_no_card(gate):
@@ -419,7 +640,9 @@ async def test_a_run_looks_its_graph_up_once(gate, gate_on):
 
 @pytest.mark.parametrize("unreadable_first", [True, False])
 @pytest.mark.parametrize("kind", ["undeclared block", "linked web request"])
-def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, kind):
+def test_an_unreadable_node_never_hides_an_irreversible_one(
+    unreadable_first, kind, undeclared
+):
     """Approving the card lifts the pause, so the card must show the send."""
     unreadable = (
         _node("label", GithubAddLabelBlock(), {})
@@ -441,7 +664,7 @@ def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, ki
     )
 
 
-def test_an_unknown_step_leads_a_workflow_with_irreversible_steps():
+def test_an_unknown_step_leads_a_workflow_with_irreversible_steps(undeclared):
     """Kills: the steps list replacing the only warning about the unknown block."""
     subject = workflow_subject(
         _graph(
@@ -740,7 +963,9 @@ async def test_a_login_file_changed_since_the_box_was_made_reaches_the_superviso
     }
 
 
-async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(gate, ran):
+async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(
+    gate, ran, undeclared
+):
     """Otto is the supervisor in every chat, an expert's included."""
     session = _session().model_copy(update={"expert_id": "maria"})
     await _run_capability(

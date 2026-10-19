@@ -179,8 +179,10 @@ def test_deepseek_chat_display_rate_tracks_openrouter():
 
 
 def test_claude_sonnet_5_bills_at_authored_rates():
-    """Sonnet 5 (sticker $3/$15; intro pricing ends 2026-08-31) — flat tier
-    and per-1M projections must match the authored catalog entry."""
+    """Sonnet 5 bills credits set against a $3/$15 sticker (Anthropic's
+    list price stayed $2/$10 when the rise was cancelled; credits are the
+    platform's rate) — flat tier and per-1M projections must match the
+    authored catalog entry."""
     s5 = LLMModel("claude-sonnet-5")
     assert MODEL_COST[s5] == 9
     assert TOKEN_COST[s5].model_dump() == {
@@ -199,10 +201,11 @@ def test_claude_sonnet_5_5_bills_at_authored_rates():
     model, so a silent repricing here moves every standard chat."""
     s55 = LLMModel("claude-sonnet-5-5")
     assert MODEL_COST[s55] == 9
+    # Cache reads at 1.5x Anthropic's $0.10/1M (5% of input on Sonnet 5.5).
     assert TOKEN_COST[s55].model_dump() == {
         "input": 300.0,
         "output": 1500.0,
-        "cache_read": 30.0,
+        "cache_read": 15.0,
         "cache_creation": 375.0,
     }
     assert MODEL_METADATA[s55].max_output_tokens == 128000

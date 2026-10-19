@@ -40,6 +40,8 @@ class Effect(str, Enum):
     # Work handed to a chat of one of the user's Experts, which the gate covers itself.
     TEAM = "team"
     PLATFORM = "platform"
+    # Outward, but cheap to get wrong: Auto lets the supervisor judge it.
+    EXTERNAL_JUDGED = "external_judged"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
     # review that is already open, or runs nothing.
@@ -47,7 +49,15 @@ class Effect(str, Enum):
 
 
 # What the gate can hold for an answer, and so what a rule can be set on.
-PARKABLE = frozenset({Effect.SHELL, Effect.TEAM, Effect.PLATFORM, Effect.EXTERNAL})
+PARKABLE = frozenset(
+    {
+        Effect.SHELL,
+        Effect.TEAM,
+        Effect.PLATFORM,
+        Effect.EXTERNAL_JUDGED,
+        Effect.EXTERNAL,
+    }
+)
 
 
 class Verdict(str, Enum):
@@ -155,9 +165,10 @@ _PLATFORM = frozenset(
 # there; Ask First still asks, as that chat runs in Auto.
 _TEAM = frozenset({"delegate_to_expert", "handoff_to_expert"})
 
-_EXTERNAL = frozenset(
-    {"browser_act", "edit_chat_platform_message", "post_to_chat_platform"}
-)
+_EXTERNAL = frozenset({"browser_act"})
+
+# A bot post in a chat platform the user linked: the supervisor judges it.
+_EXTERNAL_JUDGED = frozenset({"edit_chat_platform_message", "post_to_chat_platform"})
 
 _UNGATED = frozenset(
     {
@@ -184,6 +195,7 @@ _EFFECTS: dict[str, Effect] = {
     "bash_exec": Effect.SHELL,
     **{name: Effect.TEAM for name in _TEAM},
     **{name: Effect.PLATFORM for name in _PLATFORM},
+    **{name: Effect.EXTERNAL_JUDGED for name in _EXTERNAL_JUDGED},
     **{name: Effect.EXTERNAL for name in _EXTERNAL | _BY_SUBJECT},
     **{name: Effect.UNGATED for name in _UNGATED},
 }
@@ -197,14 +209,18 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
         Effect.SHELL: Verdict.JUDGE,
         Effect.TEAM: Verdict.ASK,
         Effect.PLATFORM: Verdict.ASK,
+        Effect.EXTERNAL_JUDGED: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },
+    # An outward act asks until the user's rule on it says otherwise; one cheap
+    # to get wrong goes to the supervisor instead.
     "auto": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
         Effect.SHELL: Verdict.JUDGE,
         Effect.TEAM: Verdict.RUN,
         Effect.PLATFORM: Verdict.JUDGE,
+        Effect.EXTERNAL_JUDGED: Verdict.JUDGE,
         Effect.EXTERNAL: Verdict.ASK,
     },
     "unsupervised": {effect: Verdict.RUN for effect in Effect},

@@ -21,7 +21,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
-from backend.copilot import budget_gate
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
@@ -78,9 +78,6 @@ class SdkTurns:
         if cli_max_retries is not None:
             monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
         monkeypatch.setattr(sdk_env, "config", config)
-        monkeypatch.setattr(
-            budget_gate, "peek_pending_count", AsyncMock(return_value=0)
-        )
         monkeypatch.setattr(
             openrouter_cost,
             "_GENERATION_URL",
@@ -151,6 +148,10 @@ class SdkTurns:
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
+            # Nothing is queued mid-turn, so a finished turn simply ends.
+            "gate_auto_continue": AsyncMock(
+                return_value=AutoContinueGate(proceed=True)
+            ),
             "resolve_answered": AsyncMock(return_value=[]),
             "clear_pending_question": AsyncMock(),
         }

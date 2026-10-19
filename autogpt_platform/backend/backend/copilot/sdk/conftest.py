@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -64,14 +63,6 @@ def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
 async def _server_noop() -> None:
     """No-op server stub — SDK tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(
-    scope="session", loop_scope="session", autouse=True, name="graph_cleanup"
-)
-async def _graph_cleanup_noop() -> AsyncIterator[None]:
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture()

@@ -241,11 +241,23 @@ async def test_outward_actions_ask_without_the_supervisor(
     supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
     with patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
-            "post_to_chat_platform", {"text": "hi"}, "u", _session(mode)
+            "browser_act", {"action": "click"}, "u", _session(mode)
         )
     assert not decision.allowed
     assert decision.review_id
     supervisor.assert_not_awaited()
+
+
+async def test_a_chat_platform_post_in_auto_is_judged_as_outward(
+    gate_on, clean_session_state
+):
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+    with patch(f"{_GATE}.supervise", supervisor):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("auto")
+        )
+    assert decision.allowed
+    assert supervisor.await_args.kwargs["outward_judged"] is True
 
 
 async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):

@@ -65,8 +65,9 @@ interface Props {
   variant?: "tour" | "marketplace";
 }
 
-// Matches the sheet's closing animation (`data-[state=closed]:duration-300`).
-const SHEET_CLOSE_MS = 300;
+// Matches the mobile sidebar sheet's closing animation
+// (`data-[state=closed]:duration-200` in `@/components/ui/sidebar`).
+const SHEET_CLOSE_MS = 200;
 
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
