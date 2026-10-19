@@ -59,7 +59,10 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
+  const clearCompletedSession = useCopilotUIStore(
+    (s) => s.clearCompletedSession,
+  );
   const openSearch = useGlobalSearchStore((state) => state.openSearch);
   const closeSearch = useGlobalSearchStore((state) => state.closeSearch);
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
