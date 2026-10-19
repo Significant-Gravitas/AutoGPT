@@ -1103,8 +1103,11 @@ class UserCredit(UserCreditBase):
         # With the grant on, a paid subscription invoice buys credits too.
         if settings.config.enable_subscription_credit_grant:
             return False
+        # Pinned: 2025-03-31.basil dropped PaymentIntent.invoice for InvoicePayment.
         payment_intent = await stripe_call(
-            stripe.PaymentIntent.retrieve_async, payment_intent_id
+            stripe.PaymentIntent.retrieve_async,
+            payment_intent_id,
+            stripe_version="2025-02-24.acacia",
         )
         return bool(payment_intent.invoice)
 

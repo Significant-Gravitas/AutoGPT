@@ -145,13 +145,11 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
 async def test_deduct_credits_ignores_refund_of_subscription_invoice(
-    mock_retrieve, server: SpinTestServer
+    subscription_payment_intent, server: SpinTestServer
 ):
     """A refund of a subscription invoice, which bought no credits, returns
     without touching the ledger or the user's refund requests."""
-    mock_retrieve.return_value = _payment_intent(invoice="in_test_subscription")
     topup_tx = await setup_test_user_with_topup()
 
     try:
@@ -172,7 +170,9 @@ async def test_deduct_credits_ignores_refund_of_subscription_invoice(
 
         await credit_system.deduct_credits(refund)
 
-        mock_retrieve.assert_awaited_once_with("pi_test_subscription_invoice")
+        assert subscription_payment_intent.await_args.args == (
+            "pi_test_subscription_invoice",
+        )
         assert (
             await CreditTransaction.prisma().count(where={"transactionKey": refund.id})
             == 0
@@ -300,14 +300,12 @@ async def test_handle_dispute_with_insufficient_balance(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
 @patch("stripe.Dispute.modify_async")
 async def test_handle_dispute_ignores_dispute_of_subscription_invoice(
-    mock_stripe_modify, mock_retrieve, server: SpinTestServer
+    mock_stripe_modify, subscription_payment_intent, server: SpinTestServer
 ):
     """A dispute of a subscription invoice is neither accepted nor contested,
     and the user's unrelated top-up is left as it was."""
-    mock_retrieve.return_value = _payment_intent(invoice="in_test_subscription")
     topup_tx = await setup_test_user_with_topup()
 
     try:
@@ -383,8 +381,7 @@ async def test_refund_or_lost_dispute_before_checkout_fulfillment_deducts_on_ret
         with (
             patch(
                 "stripe.PaymentIntent.retrieve_async",
-                new_callable=AsyncMock,
-                return_value=_payment_intent(invoice=None),
+                new=_stripe_payment_intents(invoice=None),
             ),
             patch(
                 "stripe.checkout.Session.retrieve_async",
@@ -442,13 +439,12 @@ async def test_refund_without_a_top_up_raises_unless_shown_creditless(
     refund.amount = 6000
     refund.status = "succeeded"
 
+    retrieve = _stripe_payment_intents(invoice="in_test_subscription")
+    if lookup_error:
+        retrieve.side_effect = lookup_error
+
     with (
-        patch(
-            "stripe.PaymentIntent.retrieve_async",
-            new_callable=AsyncMock,
-            return_value=_payment_intent(invoice="in_test_subscription"),
-            side_effect=lookup_error,
-        ),
+        patch("stripe.PaymentIntent.retrieve_async", new=retrieve),
         pytest.raises(error),
     ):
         await credit_system.deduct_credits(refund)
@@ -456,13 +452,6 @@ async def test_refund_without_a_top_up_raises_unless_shown_creditless(
     assert (
         await CreditTransaction.prisma().count(where={"transactionKey": refund.id}) == 0
     )
-
-
-def test_payment_intent_still_carries_its_invoice():
-    """Acknowledging a subscription refund reads ``PaymentIntent.invoice``,
-    which Stripe API 2025-03-31.basil removed; an SDK bump past it must swap
-    that evidence for the InvoicePayment lookup."""
-    assert "invoice" in stripe.PaymentIntent.__annotations__
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -563,7 +552,25 @@ async def test_concurrent_refunds(server: SpinTestServer):
         await cleanup_test_user()
 
 
-def _payment_intent(invoice: str | None) -> stripe.PaymentIntent:
-    return stripe.PaymentIntent.construct_from(
-        {"id": "pi_test", "object": "payment_intent", "invoice": invoice}, "sk_test"
-    )
+@pytest.fixture
+def subscription_payment_intent(monkeypatch):
+    """A PaymentIntent that paid a subscription invoice, with the SDK's default
+    API version moved past 2025-03-31.basil: only a request pinned before it
+    sees the invoice."""
+    monkeypatch.setattr(stripe, "api_version", "2026-09-30.endive")
+    retrieve = _stripe_payment_intents(invoice="in_test_subscription")
+    with patch("stripe.PaymentIntent.retrieve_async", new=retrieve):
+        yield retrieve
+
+
+def _stripe_payment_intents(invoice: str | None) -> AsyncMock:
+    """Answers as Stripe does: only API versions before 2025-03-31.basil name
+    the invoice a PaymentIntent paid."""
+
+    async def retrieve(payment_intent_id: str, stripe_version: str | None = None):
+        fields: dict = {"id": payment_intent_id, "object": "payment_intent"}
+        if (stripe_version or stripe.api_version) < "2025-03-31":
+            fields["invoice"] = invoice
+        return stripe.PaymentIntent.construct_from(fields, "sk_test")
+
+    return AsyncMock(side_effect=retrieve)
