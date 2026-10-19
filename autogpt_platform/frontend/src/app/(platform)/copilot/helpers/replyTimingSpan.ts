@@ -28,6 +28,9 @@ function replySpanAttributes(record: ReplyRecord) {
     "copilot.reply.new_chat": record.start.isNewChat,
     "copilot.reply.expert": record.start.isExpert,
     "copilot.reply.stream_client": record.streamClient,
+    // Waited behind the user's other running turns: the reply's time
+    // includes that wait.
+    "copilot.reply.queued": record.wasQueued,
   };
   if (record.firstOutput) {
     attributes["copilot.reply.first_output_ms"] = Math.round(

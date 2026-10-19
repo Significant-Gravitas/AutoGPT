@@ -354,6 +354,7 @@ export function useCopilotPage({
     messages: displayMessages,
     status,
     isSettled: isLocalStreamSettled,
+    isQueued: sessionChatStatus === "queued",
     isUserStopping,
     streamClient: isStreamRuntime ? "stream-runtime" : "ai-sdk",
     sendMessage,
