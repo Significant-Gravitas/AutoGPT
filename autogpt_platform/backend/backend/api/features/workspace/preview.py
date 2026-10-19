@@ -43,6 +43,10 @@ MAX_RENDER_PIXELS = 50_000_000
 # large previews can't hold many full-resolution bitmaps in memory together and
 # slow every other request on the process.
 MAX_CONCURRENT_RENDERS = 4
+# Upper bound on the render scale. A PDF page with a sub-pixel side has that
+# side rounded up to a whole pixel, so without a scale ceiling the other side
+# could still rasterise well past the pixel budget.
+MAX_RENDER_SCALE = 3
 _MIN_RENDER_SCALE = 0.01
 CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
 
@@ -298,13 +302,15 @@ def _render_scale(page_width: float, page_height: float, target_width: int) -> f
 
     Rendering a large page at a fixed scale produces a proportionally large
     bitmap; scaling from the page's own size keeps the output near thumbnail
-    size whatever the page dimensions.
+    size whatever the page dimensions. A fixed upper bound also caps the scale,
+    so a page with a sub-pixel side (which the renderer rounds up to one pixel)
+    cannot rasterise past the budget on its other side.
     """
     if page_width <= 0 or page_height <= 0:
         return 1.0
     to_target_width = target_width / page_width
     within_budget = (MAX_RENDER_PIXELS / (page_width * page_height)) ** 0.5
-    return max(min(to_target_width, within_budget), _MIN_RENDER_SCALE)
+    return max(min(to_target_width, within_budget, MAX_RENDER_SCALE), _MIN_RENDER_SCALE)
 
 
 def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import math
 import threading
 import time
 import zipfile
@@ -331,6 +332,18 @@ def test_render_scale_keeps_a_large_page_within_budget():
     # blows past it — this is what the budget exists to prevent.
     fixed_scale = max(1, min(3, round(400 / page_pt)))
     assert (page_pt * fixed_scale) ** 2 > preview_module.MAX_RENDER_PIXELS
+
+
+def test_render_scale_caps_a_sliver_page():
+    # A page with a sub-pixel side: the renderer rounds each rendered side up, so
+    # the continuous-area budget alone underestimates the bitmap. The scale
+    # ceiling keeps the rounded bitmap within the budget.
+    page_width, page_height = 0.000025, 10_000.0
+    scale = preview_module._render_scale(page_width, page_height, 400)
+
+    assert scale <= preview_module.MAX_RENDER_SCALE
+    rounded_pixels = math.ceil(page_width * scale) * math.ceil(page_height * scale)
+    assert rounded_pixels <= preview_module.MAX_RENDER_PIXELS
 
 
 def test_pdf_preview_renders_a_large_page_as_a_thumbnail(mocker):
