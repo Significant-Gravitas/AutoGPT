@@ -120,6 +120,19 @@ describe("nodeStore lookups by id", () => {
     expect(useNodeStore.getState().getNodeExecutionResults("1")).toEqual([]);
   });
 
+  it("reads a node the caller replaced in an array it sets again", () => {
+    const nodes = [createNode("1")];
+    useNodeStore.getState().setNodes(nodes);
+    expect(useNodeStore.getState().getNodeStatus("1")).toBeUndefined();
+
+    const replaced = createNode("1");
+    replaced.data.status = "COMPLETED";
+    nodes[0] = replaced;
+    useNodeStore.getState().setNodes(nodes);
+
+    expect(useNodeStore.getState().getNodeStatus("1")).toBe("COMPLETED");
+  });
+
   it("returns the first node when two share an id, as find did", () => {
     const first = createNode("1", "First");
     const second = createNode("1", "Second");

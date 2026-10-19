@@ -128,7 +128,11 @@ type NodeStore = {
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
   nodes: [],
-  setNodes: (nodes) => set({ nodes }),
+  setNodes: (nodes) => {
+    // The caller may have changed the array it passes in since it was indexed.
+    nodeIndexes.delete(nodes);
+    set({ nodes });
+  },
   nodeCounter: 0,
   setNodeCounter: (nodeCounter) => set({ nodeCounter }),
   nodeAdvancedStates: {},
@@ -586,7 +590,8 @@ const nodeIndexes = new WeakMap<CustomNode[], Map<string, CustomNode>>();
  * O(1) lookup by id. Every node subscribes with a by-id selector, so a `find`
  * per selector costs O(nodes²) per store update; the index is built once per
  * `nodes` array instead. Store writes always replace the array, never mutate
- * it, so an index can never go stale. The first match wins, as with `find`.
+ * it, and `setNodes` drops the index of the array it is given, so an index
+ * can never go stale. The first match wins, as with `find`.
  */
 function findNodeById(nodes: CustomNode[], nodeId: string) {
   let index = nodeIndexes.get(nodes);
