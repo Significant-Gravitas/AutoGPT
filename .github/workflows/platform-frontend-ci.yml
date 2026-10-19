@@ -41,6 +41,32 @@ defaults:
     working-directory: autogpt_platform/frontend
 
 jobs:
+  tooltip-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Test tooltip browser interactions
+        run: pnpm test:tooltip
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tooltip-browser-failures
+          path: autogpt_platform/frontend/test-results/
+
   lint:
     runs-on: ubuntu-latest
 

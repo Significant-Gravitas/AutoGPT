@@ -77,7 +77,7 @@ export const useRunInputDialog = ({
             }
 
             toast({
-              title: errorData?.message || "Graph validation failed",
+              title: errorData?.message || "Workflow validation failed",
               description:
                 "Please fix the validation errors on the highlighted nodes and try again.",
               variant: "destructive",
@@ -113,7 +113,7 @@ export const useRunInputDialog = ({
             }
           } else {
             toast({
-              title: "Error running graph",
+              title: "Error running workflow",
               description:
                 (error as Error).message || "An unexpected error occurred.",
               variant: "destructive",

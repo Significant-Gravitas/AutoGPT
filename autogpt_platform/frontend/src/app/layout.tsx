@@ -17,7 +17,6 @@ import {
   COOKIEBOT_SCRIPT_URL,
 } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
-import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 import Script from "next/script";
@@ -26,9 +25,6 @@ import { getSiteUrl } from "@/lib/metadata";
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
 const isCloud = environment.isCloud();
-// Agentation annotates the UI for whoever is building AutoGPT itself, so it
-// stays out of production builds; self-hosted installs are production builds.
-const showAgentation = environment.isDevelopmentBuild() || isDev;
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -78,6 +74,12 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen">
+        {process.env.NEXT_PUBLIC_RENDER_COUNTER === "1" ? (
+          <Script
+            src="/devtools/render-counter.js"
+            strategy="beforeInteractive"
+          />
+        ) : null}
         {/* Without a Cookiebot domain group there is no banner and every
             optional category stays denied. With one, the Consent Mode
             defaults are queued before anything else can reach the Google
@@ -134,7 +136,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ConsentWithdrawalReload />
-            {showAgentation && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

@@ -37,6 +37,8 @@ class MCPOAuthHandler(BaseOAuthHandler):
 
     PROVIDER_NAME: ClassVar[ProviderName | str] = ProviderName.MCP
     DEFAULT_SCOPES: ClassVar[list[str]] = []
+    # MCP requires authorization servers to rotate public clients' refresh tokens.
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
 
     def __init__(
         self,
