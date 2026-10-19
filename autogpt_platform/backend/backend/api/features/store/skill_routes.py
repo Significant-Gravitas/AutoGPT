@@ -5,6 +5,7 @@ import fastapi
 from fastapi import Depends, Path, Query, Security
 
 from backend.api.features.experts import experts_db
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import SkillLimitError, SkillOwnedError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -64,7 +65,10 @@ async def list_marketplace_skills(
         404: {"description": "Skill not in the caller's library"},
         428: {"description": "Marketplace profile required, or slug taken"},
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def submit_skill(
     request: skill_model.SkillSubmissionRequest,
@@ -95,7 +99,10 @@ async def list_my_skill_submissions(
         404: {"description": "Submission not found"},
         428: {"description": "Only a pending submission can be edited"},
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_skill_submission(
     request: skill_model.SkillSubmissionRequest,
@@ -236,7 +243,10 @@ _TEXT_APPLICATION_TYPES = frozenset(
             )
         },
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def install_marketplace_skill(
     slug: str = Path(..., description="Slug of the skill listing"),

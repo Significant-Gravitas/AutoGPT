@@ -21,6 +21,13 @@ export function PaywallToastDescription({ recovery }: DescriptionProps) {
     : `Ask whoever runs this server to set one up — ${recovery}.`;
 }
 
+export function PlanRequiredDescription() {
+  const isBillingEnabled = useIsBillingEnabled();
+  return isBillingEnabled
+    ? "Choose one to continue."
+    : "Ask whoever runs this server to set one up.";
+}
+
 export function PaywallToastAction() {
   const isBillingEnabled = useIsBillingEnabled();
   if (!isBillingEnabled) return null;
