@@ -1,0 +1,26 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "tool-input-start", "toolCallId": "task-1", "toolName": "TaskOutput"}}
+{"id": "6-0", "data": {"type": "tool-input-available", "toolCallId": "task-1", "toolName": "TaskOutput", "input": {}}}
+{"id": "7-0", "data": {"type": "tool-output-available", "toolCallId": "task-1", "output": "", "toolName": "TaskOutput", "success": true}}
+{"id": "8-0", "data": {"type": "finish-step"}}
+{"id": "9-0", "data": {"type": "start-step"}}
+{"id": "10-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "11-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "The task finished."}}
+{"id": "12-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "13-0", "data": {"type": "finish-step"}}
+{"id": "14-0", "data": {"type": "start-step"}}
+{"id": "15-0", "data": {"type": "tool-input-start", "toolCallId": "bash-1", "toolName": "bash_exec"}}
+{"id": "16-0", "data": {"type": "tool-input-available", "toolCallId": "bash-1", "toolName": "bash_exec", "input": {"command": "ls"}}}
+{"id": "17-0", "data": {"type": "tool-output-available", "toolCallId": "bash-1", "output": "report.md", "toolName": "bash_exec", "success": true}}
+{"id": "18-0", "data": {"type": "finish-step"}}
+{"id": "19-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "20-0", "data": {"type": "start-step"}}
+{"id": "21-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "22-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "All done: report.md is ready."}}
+{"id": "23-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "24-0", "data": {"type": "finish-step"}}
+{"id": "25-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "cc045d23143efbfa3f8a417f0fc6a97c18d55ce2792b263eb7067d9974daeead"}}
+{"id": "26-0", "data": {"type": "finish"}}

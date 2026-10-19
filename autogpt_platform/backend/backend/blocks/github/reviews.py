@@ -110,7 +110,7 @@ class GithubCreatePRReviewBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -431,7 +431,7 @@ class GithubSubmitPendingReviewBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -517,6 +517,7 @@ class GithubResolveReviewDiscussionBlock(Block):
                 ("success", True),
             ],
             test_mock={"resolve_discussion": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

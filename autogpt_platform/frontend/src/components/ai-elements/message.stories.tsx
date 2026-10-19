@@ -92,6 +92,31 @@ export const LinkSafetyModal: Story = {
   ),
 };
 
+export const WithTable: Story = {
+  render: () => (
+    <div className="flex max-w-3xl flex-col gap-4">
+      <AssistantMessage>
+        {[
+          "Here are the **10 most recent unresolved issues** in `significant-gravitas`, ranked by impact:\n\n",
+          "| # | Issue | Events | Users | Last seen |\n",
+          "|---|---|---|---|---|\n",
+          "| 1 | **[BUILDER-62F]** LaunchDarkly `waitForInitialization` timeout warning | 186,914 | 19,785 | 2 min ago |\n",
+          "| 2 | **[AUTOGPT-SERVER-96T]** UserPaywalledError: subscription required (Scheduler) | 137,759 | 0 | now |\n",
+          "| 3 | **[BUILDER-9]** ApplicationNotResponding ≥5000 ms | 15,867 | 0 | now |\n",
+          "| 4 | **[BUILDER-8KQ]** Local storage is not available | 1,914 | 0 | 2 min ago |\n",
+          "| 5 | **[BUILDER-3S3]** WebSocket error `[object Event]` (`/onboarding`) | 1,555 | 989 | now |\n",
+          "| 6 | **[AUTOGPT-SERVER-9QY]** model_router: `claude-opus-4-8` default refused by catalog | 218 | 0 | now |\n",
+          "| 7 | **[BUILDER-Q]** NetworkError fetching resource | 69 | 21 | 2 min ago |\n",
+          "| 8 | **[AUTOGPT-SERVER-9R1]** copilot routing refused `claude-opus-4-8` slug | 67 | 0 | now |\n",
+          "| 9 | **[BUILDER-26P]** NetworkError (dev-builder.agpt.co) | 48 | 19 | 2 min ago |\n",
+          "| 10 | **[BUILDER-8TA]** Synchronous XMLHttpRequest deprecation | 20 | 1 | 2 min ago |\n\n",
+          "Two stand out: **BUILDER-3S3** (WebSocket error hitting 989 real users on onboarding) and the **model_router** pair refusing `claude-opus-4-8`.",
+        ].join("")}
+      </AssistantMessage>
+    </div>
+  ),
+};
+
 export const Conversation: Story = {
   render: () => (
     <div className="flex flex-col gap-4">

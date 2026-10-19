@@ -177,7 +177,7 @@ export function EditAgentForm({
                         label="Title"
                         labelTooltip="Public name shown on the marketplace listing."
                         type="text"
-                        placeholder="Agent name"
+                        placeholder="Workflow name"
                         error={form.formState.errors.title?.message}
                         {...field}
                       />
@@ -196,7 +196,7 @@ export function EditAgentForm({
                           id={field.name}
                           labelVariant="body"
                           label="Tagline"
-                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                          labelTooltip="The one-line subtitle shown under the workflow name and on preview cards. Start with a verb and name the outcome for the user."
                           type="text"
                           placeholder="Find decision-makers at any company in seconds"
                           error={form.formState.errors.subheader?.message}
@@ -216,7 +216,7 @@ export function EditAgentForm({
                       id={field.name}
                       labelVariant="body"
                       label="Category"
-                      labelTooltip="Primary category that helps users discover the agent."
+                      labelTooltip="Primary category that helps users discover the workflow."
                       placeholder={categoryPlaceholder}
                       disabled={categoriesUnavailable}
                       value={field.value}
@@ -303,10 +303,10 @@ export function EditAgentForm({
                         id={field.name}
                         labelVariant="body"
                         label="Description"
-                        labelTooltip="What the agent does and the outcome users get."
+                        labelTooltip="What the workflow does and the outcome users get."
                         type="textarea"
                         rows={2}
-                        placeholder="Describe the outcome this agent creates"
+                        placeholder="Describe the outcome this workflow creates"
                         error={form.formState.errors.description?.message}
                         {...field}
                       />
@@ -340,7 +340,7 @@ export function EditAgentForm({
                         id={field.name}
                         labelVariant="body"
                         label="Output demo"
-                        labelTooltip="Link showing example output the agent produces."
+                        labelTooltip="Link showing example output the workflow produces."
                         type="url"
                         placeholder="https://youtube.com/watch?v=..."
                         error={form.formState.errors.agentOutputDemo?.message}

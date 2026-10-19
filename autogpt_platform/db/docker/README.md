@@ -1,3 +1,8 @@
-# Backend test database
+# Retired Supabase stack
 
-The backend test stack (`autogpt_platform/backend/docker-compose.test.yaml`) extends the `db` and `vector` services in this folder's `docker-compose.yml`. Nothing else uses it.
+The platform uses PostgreSQL with pgvector and Better Auth. The bundled
+Supabase Compose stack has been removed.
+
+Existing database and storage directories remain ignored by Git. Follow the
+[upgrade instructions](../../../docs/platform/getting-started.md#upgrading-an-existing-supabase-based-installation)
+before moving or deleting historical data.

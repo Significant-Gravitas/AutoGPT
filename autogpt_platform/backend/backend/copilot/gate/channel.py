@@ -78,8 +78,8 @@ def card_for(row: PendingHumanReviewModel) -> CardView:
 async def answer(
     user_id: str, session_id: str, review_id: str, choice: Choice
 ) -> Outcome:
-    """Answer the row as the web card's approve endpoint does, minus the wake:
-    the channel's own next turn carries the result, so its reply lands there."""
+    """Answer the row as the web card's approve endpoint does, waking the turn
+    that runs it."""
     approved, rule = _ANSWERS[choice]
     # Up to the commit a failure leaves the card answerable; after it, the
     # answer stands and only its rule can be lost.
@@ -114,6 +114,7 @@ async def answer(
             )
         except Exception:
             logger.warning(f"Rule from {review_id} not saved", exc_info=True)
+    await held.wake(user_id, session_id, answered.values())
     return "answered"
 
 

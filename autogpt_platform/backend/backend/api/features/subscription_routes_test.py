@@ -10,7 +10,10 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from backend.data.pro_activation import UsageActivationState
+
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
+from .billing.subscriptions import routes as subscription_routes
 from .billing.subscriptions.routes import _validate_checkout_redirect_url, router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -88,6 +91,17 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
+    """No trial scheduled to end, so TRIAL and NO_TIER requests here don't
+    read the trial from the DB. The trial guard tests cover that lookup."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_cancel_pending_trial",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
 def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(
@@ -124,6 +138,20 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
+    async def activation_state(user_id: str) -> UsageActivationState:
+        user = await subscription_routes.get_user_by_id(user_id)
+        return UsageActivationState(
+            user_id=user_id,
+            generation=None,
+            trial_id=None,
+            tier=user.subscription_tier or SubscriptionTier.NO_TIER,
+            ready=True,
+        )
+
+    mocker.patch.object(
+        subscription_routes, "get_usage_activation_state", side_effect=activation_state
+    )
+
     async def default_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
@@ -134,6 +162,12 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=default_price_id,
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=0,
     )
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
@@ -219,6 +253,61 @@ def test_validate_checkout_redirect_url(
         subscriptions_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
     )
     assert _validate_checkout_redirect_url(url) is expected
+
+
+def test_subscription_status_reads_ready_tier_over_stale_user_cache(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation="activation",
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=True,
+        ),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 200
+    assert response.json()["tier"] == "PRO"
+
+
+def test_subscription_status_does_not_report_ready_during_activation(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(subscription_routes, "get_user_by_id", new_callable=AsyncMock)
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation=None,
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=False,
+        ),
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3"
 
 
 def test_get_subscription_status_pro(
@@ -1653,6 +1742,58 @@ def test_update_subscription_tier_pro_to_max_subscription_payment_intent_require
             " before it can be completed successfully.",
             param=None,
             code="subscription_payment_intent_requires_action",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "authentication" in detail
+    assert "card was declined" not in detail
+
+
+@pytest.mark.parametrize(
+    "code,decline_code",
+    [
+        ("invoice_payment_intent_requires_action", None),
+        ("card_declined", "authentication_required"),
+    ],
+)
+def test_update_subscription_tier_pro_to_max_documented_authentication_codes_return_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    code: str,
+    decline_code: str | None,
+) -> None:
+    """Stripe documents invoice_payment_intent_requires_action, and
+    authentication_required as a card_declined decline code, for a payment the
+    bank wants authenticated: both get the authentication copy, not a decline."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "This payment requires additional user action before it can be"
+            " completed successfully.",
+            param=None,
+            code=code,
+            json_body={"error": {"code": code, "decline_code": decline_code}},
         ),
     )
 

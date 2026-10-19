@@ -1,18 +1,20 @@
 import logging
 import urllib.parse
+from collections.abc import Mapping
 from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_downloaded
@@ -24,6 +26,7 @@ from . import image_gen as store_image_gen
 from . import local_media
 from . import media as store_media
 from . import model as store_model
+from . import submission_media
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +50,9 @@ SubmissionSortDir = Literal["asc", "desc"]
 async def get_profile(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
-    """Get the profile details for the authenticated user."""
-    profile = await store_db.get_user_profile(user_id)
+    """Get the profile details for the authenticated user, creating their
+    default profile if account setup hasn't yet."""
+    profile = await store_db.get_or_create_user_profile(user_id)
     if profile is None:
         raise NotFoundError("User does not have a profile yet")
     return profile
@@ -228,7 +232,10 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def post_user_review_for_agent(
     username: str,
@@ -323,7 +330,7 @@ async def get_creators(
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
     creators = await store_cache._get_cached_store_creators(
@@ -459,7 +466,10 @@ def _parse_status_filter(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
@@ -498,7 +508,10 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_submission(
     store_listing_version_id: str,
@@ -564,7 +577,10 @@ def get_store_media(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
@@ -578,6 +594,140 @@ async def upload_submission_media(
     )
 
 
+@router.get(
+    "/submissions/media/{owner_user_id}/{media_type}/{filename}",
+    summary="Read private submission media",
+    response_class=fastapi.responses.StreamingResponse,
+    responses={
+        200: {
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            }
+        },
+        206: {
+            "description": "Requested byte range",
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            },
+        },
+        307: {"description": "Short-lived signed download URL"},
+        404: {"description": "Media not found"},
+        416: {"description": "Requested range is not satisfiable"},
+        503: {"description": "Private media is temporarily unavailable"},
+    },
+    tags=["store", "private"],
+)
+async def get_private_submission_media(
+    owner_user_id: str,
+    media_type: str,
+    filename: str,
+    request: fastapi.Request,
+    user: autogpt_libs.auth.User = Security(autogpt_libs.auth.requires_user),
+) -> fastapi.Response:
+    """
+    Serve a user's private media to them, to members of an organization they
+    share, and to admins. Anyone else gets a 404, as if it did not exist.
+    """
+    content_type = local_media.content_type_for_filename(filename)
+    if content_type is None:
+        raise NotFoundError("Media not found")
+    if not await submission_media.can_read(user, owner_user_id):
+        raise NotFoundError("Media not found")
+    try:
+        metadata = await submission_media.metadata(owner_user_id, media_type, filename)
+    except (FileNotFoundError, ValueError):
+        raise NotFoundError("Media not found")
+
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Accept-Ranges": "bytes",
+    }
+    total_size = _private_media_size(metadata)
+    range_header = request.headers.get("range")
+    if (
+        range_header is None
+        and total_size > submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
+    ):
+        try:
+            redirect_url = await submission_media.signed_url(
+                owner_user_id, media_type, filename
+            )
+        except Exception as error:
+            logger.error("Failed to sign oversized private media", exc_info=True)
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail="Private media is temporarily unavailable",
+                headers=headers,
+            ) from error
+        if redirect_url:
+            return fastapi.responses.RedirectResponse(
+                redirect_url,
+                status_code=307,
+                headers=headers,
+            )
+
+    byte_range: tuple[int, int] | None = None
+    status_code = 200
+    if range_header:
+        try:
+            byte_range = _parse_private_media_range(range_header, total_size)
+        except ValueError:
+            headers["Content-Range"] = f"bytes */{total_size}"
+            raise fastapi.HTTPException(
+                status_code=416,
+                detail="Requested range is not satisfiable",
+                headers=headers,
+            )
+        start, end = byte_range
+        headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
+        headers["Content-Length"] = str(end - start + 1)
+        status_code = 206
+    else:
+        headers["Content-Length"] = str(total_size)
+    return fastapi.responses.StreamingResponse(
+        submission_media.stream(owner_user_id, media_type, filename, byte_range),
+        status_code=status_code,
+        media_type=content_type,
+        headers=headers,
+    )
+
+
+def _private_media_size(metadata: Mapping[str, object]) -> int:
+    try:
+        size = int(str(metadata["size"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise NotFoundError("Media not found") from error
+    if size < 0:
+        raise NotFoundError("Media not found")
+    return size
+
+
+def _parse_private_media_range(value: str, total_size: int) -> tuple[int, int]:
+    if total_size <= 0 or len(value) > 64 or not value.startswith("bytes="):
+        raise ValueError("Invalid range")
+    specification = value.removeprefix("bytes=").strip()
+    if "," in specification or specification.count("-") != 1:
+        raise ValueError("Invalid range")
+    start_text, end_text = specification.split("-", 1)
+    if start_text:
+        if not start_text.isdigit() or (end_text and not end_text.isdigit()):
+            raise ValueError("Invalid range")
+        start = int(start_text)
+        end = int(end_text) if end_text else total_size - 1
+        if start >= total_size or end < start:
+            raise ValueError("Invalid range")
+        return start, min(end, total_size - 1)
+    if not end_text.isdigit():
+        raise ValueError("Invalid range")
+    suffix_length = int(end_text)
+    if suffix_length <= 0:
+        raise ValueError("Invalid range")
+    return max(0, total_size - suffix_length), total_size - 1
+
+
 class ImageURLResponse(BaseModel):
     image_url: str
 
@@ -586,7 +736,10 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def generate_image(
     graph_id: str,
@@ -605,7 +758,11 @@ async def generate_image(
     # Use .jpeg here since we are generating JPEG images
     filename = f"agent_{graph_id}.jpeg"
 
-    existing_url = await store_media.check_media_exists(user_id, filename)
+    try:
+        existing_url = await store_media.check_media_exists(user_id, filename)
+    except Exception:
+        logger.exception(f"Could not check for an existing image of graph {graph_id}")
+        existing_url = None
     if existing_url:
         logger.info(f"Using existing image for agent graph {graph_id}")
         return ImageURLResponse(image_url=existing_url)

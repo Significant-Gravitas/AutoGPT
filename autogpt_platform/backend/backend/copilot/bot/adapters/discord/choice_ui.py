@@ -128,7 +128,7 @@ class _ChoiceButton(
             str(interaction.user.id),
             _server_id(interaction),
         )
-        if answer.reply is None:
+        if not answer.answered:
             await interaction.followup.send(answer.text, ephemeral=True)
             return
         # The token is already consumed, so the answer exists only in this
@@ -138,8 +138,9 @@ class _ChoiceButton(
             await interaction.edit_original_response(content=answer.text, view=None)
         except discord.HTTPException:
             logger.exception("Failed to acknowledge choice click; continuing the turn")
-        ctx = _context_from_interaction(interaction, answer.reply)
+        ctx = _context_from_interaction(interaction, answer.reply or "")
         if ctx is not None:
+            ctx.follow = answer.follow
             await _on_message(ctx, _adapter)
 
 
