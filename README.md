@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=header_get_started"><strong>Get started</strong></a>
+  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=header_get_started"><strong>Sign up for a trial</strong></a>
   ·
   <a href="#see-the-team-at-work">Watch the demo</a>
   ·
@@ -23,6 +23,12 @@
   <a href="#self-host-autogpt">Self-host</a>
   ·
   <a href="#build-with-us">Contribute</a>
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/autogpt">
+    <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2Fautogpt%3Fwith_counts%3Dtrue&amp;query=%24.approximate_member_count&amp;label=Discord&amp;suffix=%20members&amp;logo=discord&amp;logoColor=white&amp;color=5865F2" alt="Join the AutoGPT Discord community — member count" />
+  </a>
 </p>
 
 ## One conversation. The right expertise.
@@ -46,7 +52,7 @@ One launch brief to Otto. Maria prepares the article, Max researches prospects, 
 
 https://github.com/user-attachments/assets/83cddd83-00f8-46e7-be9e-e0a7237c7eea
 
-**[Watch the full 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [Try the interactive demo](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
+**[Watch the full 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [Sign up for a trial](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=demo_get_started)
 
 A 15-second highlight of a real run, edited and sped up. In this example, the team prepares the work for review without sending or publishing it.
 
@@ -66,7 +72,7 @@ You choose which accounts each Expert can access, set spending approval threshol
 
 Use the hosted Platform to get your team running without managing the infrastructure or supplying model API keys.
 
-**[Get started on AutoGPT Platform →](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=platform_get_started)**
+**[Sign up for a trial →](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=platform_get_started)**
 
 The hosted Platform is a paid service. See [current plans, trial terms, and usage pricing](https://agpt.co/pricing/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=platform_pricing).
 
@@ -109,12 +115,12 @@ Explore the code, report a problem, or help improve AutoGPT.
 
 ## License
 
-AutoGPT's code is available in this repository under two licenses:
+| Component | License | What it means |
+|---|---|---|
+| `autogpt_platform/` | [Polyform Shield](https://polyformproject.org/licenses/shield/1.0.0) | Free for personal and internal business use; cannot be sold as a competing hosted service |
+| `classic/` and everything else | [MIT](LICENSE) | Permissive open-source use |
 
-| Component | License |
-| --- | --- |
-| `autogpt_platform/` | [PolyForm Shield 1.0.0](autogpt_platform/LICENSE.md), including its restrictions on competing products and services |
-| Everything outside `autogpt_platform/`, including Classic | [MIT](LICENSE) |
+---
 
 ## AutoGPT Classic
 
@@ -127,7 +133,7 @@ Looking for the original standalone AutoGPT? Explore [Classic](classic/README.md
 </a>
 
 <p align="center">
-  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=footer_get_started"><strong>Meet your AI team →</strong></a>
+  <a href="https://platform.agpt.co/signup?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=autogpt_readme&amp;utm_content=footer_get_started"><strong>Sign up for a trial →</strong></a>
 </p>
 
 ---
