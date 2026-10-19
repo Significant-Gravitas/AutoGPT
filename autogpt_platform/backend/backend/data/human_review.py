@@ -16,8 +16,8 @@ from prisma.models import (
     LibraryAgent,
     PendingHumanReview,
 )
-from prisma.types import PendingHumanReviewUpdateInput
-from pydantic import BaseModel
+from prisma.types import PendingHumanReviewUpdateInput, PendingHumanReviewWhereInput
+from pydantic import BaseModel, ValidationError
 
 from backend.api.features.graph_executions.review.model import (
     PendingHumanReviewModel,
@@ -25,6 +25,7 @@ from backend.api.features.graph_executions.review.model import (
 )
 from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
+    COPILOT_STEP_CARD_PREFIX,
     is_copilot_synthetic_id,
     legacy_chat_session_id,
     parse_node_id_from_exec_id,
@@ -525,39 +526,54 @@ async def get_pending_reviews_for_user(
     """
     offset = (page - 1) * page_size
 
+    where: PendingHumanReviewWhereInput = {
+        "userId": user_id,
+        "status": ReviewStatus.WAITING,
+    }
+    # Left out before paging, so a page is never short of its size.
+    if in_chat := await _steps_waiting_in_chat(user_id):
+        where["nodeExecId"] = {"not_in": in_chat}
     reviews = await PendingHumanReview.prisma().find_many(
-        where={"userId": user_id, "status": ReviewStatus.WAITING},
+        where=where,
         order={"createdAt": "desc"},
         skip=offset,
         take=page_size,
     )
 
-    reviews = await _without_answered_in_chat(user_id, reviews)
     models = [PendingHumanReviewModel.from_db(review, node_id="") for review in reviews]
     return await _enrich_pending_reviews(user_id, models)
 
 
-async def _without_answered_in_chat(
-    user_id: str, reviews: list[PendingHumanReview]
-) -> list[PendingHumanReview]:
+async def _steps_waiting_in_chat(user_id: str) -> list[str]:
     """A workflow step whose card waits in the chat is one decision: Home shows
     the card, not the step's row as well."""
-    card_of = {
-        step_card_id(user_id, review.nodeExecId): review.nodeExecId
-        for review in reviews
-        if not review.chatSessionId and not is_copilot_synthetic_id(review.nodeExecId)
-    }
-    if not card_of:
-        return reviews
     cards = await PendingHumanReview.prisma().find_many(
         where={
-            "nodeExecId": {"in": list(card_of)},
             "userId": user_id,
             "status": ReviewStatus.WAITING,
+            "nodeExecId": {"startswith": COPILOT_STEP_CARD_PREFIX},
         }
     )
-    in_chat = {card_of[card.nodeExecId] for card in cards}
-    return [review for review in reviews if review.nodeExecId not in in_chat]
+    return [step for card in cards if (step := _step_of(user_id, card))]
+
+
+def _step_of(user_id: str, card: PendingHumanReview) -> str | None:
+    try:
+        step = _StepCard.model_validate(card.payload).workflow.node_exec_id
+    except ValidationError:
+        return None
+    # The id is derived from the step, so a payload naming another step is ignored.
+    return step if step_card_id(user_id, step) == card.nodeExecId else None
+
+
+class _Step(BaseModel):
+    node_exec_id: str
+
+
+class _StepCard(BaseModel):
+    """The part of a step card's payload that names its step."""
+
+    workflow: _Step
 
 
 async def _enrich_pending_reviews(

@@ -13,7 +13,13 @@ import httpx
 import pytest
 import pytest_asyncio
 from prisma.enums import AgentExecutionStatus, ReviewStatus
-from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeExecution
+from prisma.models import (
+    AgentGraph,
+    AgentGraphExecution,
+    AgentNode,
+    AgentNodeExecution,
+    User,
+)
 
 from backend.api.rest_api import app
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
@@ -243,6 +249,30 @@ async def test_a_card_declined_in_chat_rejects_the_step_and_asks_from_now_on(
     assert rule is not None and rule.rule == "ask"
     with pytest.raises(BlockExecutionError):
         await run.step()
+
+
+async def test_a_page_of_home_stays_full_while_steps_wait_on_their_cards(server, flags):
+    """A client that stops at a short page would never see the later cards."""
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
+    chat = await _chat(user_id)
+    run = await _Run(user_id, chat.session_id).create()
+    cards = []
+    for _ in range(3):
+        assert (await run.step())[0]
+        cards.append(run.card_id)
+        await run.next_step()
+
+    pages = [
+        [
+            review.node_exec_id
+            for review in await get_pending_reviews_for_user(user_id, page, 2)
+        ]
+        for page in (1, 2, 3)
+    ]
+
+    assert [len(page) for page in pages] == [2, 1, 0]
+    assert sorted(sum(pages, [])) == sorted(cards)
 
 
 async def test_a_step_answered_on_the_run_page_closes_its_card(

@@ -268,6 +268,7 @@ class RunBlockTool(BaseTool):
             if spend_gate is not None:
                 return spend_gate
 
+        # Named args from run_capability._run_block, never gate markers in kwargs.
         if gate_approved or (gate_decided and await unified_approvals(user_id)):
             synthetic_node_exec_id = (
                 f"{prep.synthetic_node_id}"
