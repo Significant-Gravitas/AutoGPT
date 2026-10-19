@@ -436,6 +436,8 @@ def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
             ],
             False,
         ),
+        # Whitespace on its own shows nothing.
+        ([StreamTextDelta(id="t", delta="\n\n")], False),
     ],
 )
 def test_stream_chat_records_when_the_answer_text_reached_the_client(

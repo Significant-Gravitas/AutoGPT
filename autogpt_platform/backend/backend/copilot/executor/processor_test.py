@@ -519,6 +519,19 @@ class TestExecuteAsyncAclose:
                 "tool_first",
                 False,
             ),
+            # Whitespace on its own shows nothing: the tool call came first,
+            # and the answer starts with the text after it.
+            (
+                [
+                    StreamTextDelta(id="t", delta="\n\n"),
+                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
+                    StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
+                    StreamTextDelta(id="t", delta="done"),
+                ],
+                "tool_first",
+                True,
+            ),
+            ([StreamTextDelta(id="t", delta=" \n")], "none", False),
             ([StreamReasoningDelta(id="r", delta="thinking")], "none", False),
             ([StreamStatus(message="Thinking…")], "none", False),
             # A turn that ends without an answer streams a notice in its place.

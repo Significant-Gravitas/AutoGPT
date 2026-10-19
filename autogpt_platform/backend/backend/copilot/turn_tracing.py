@@ -51,8 +51,13 @@ def is_model_output(chunk: StreamBaseResponse) -> bool:
 
 
 def is_answer_text(chunk: StreamBaseResponse) -> bool:
-    """Whether the chunk is text of the model's answer."""
-    return isinstance(chunk, StreamTextDelta) and not is_platform_text(chunk.delta)
+    """Whether the chunk is text of the model's answer. Whitespace on its own
+    shows nothing, so it doesn't start the answer."""
+    return (
+        isinstance(chunk, StreamTextDelta)
+        and bool(chunk.delta.strip())
+        and not is_platform_text(chunk.delta)
+    )
 
 
 def _is_platform_delta(chunk: StreamBaseResponse) -> bool:
