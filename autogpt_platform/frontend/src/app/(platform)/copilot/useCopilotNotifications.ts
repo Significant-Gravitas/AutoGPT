@@ -61,18 +61,25 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
   // Seeing a finished chat takes it off the list. The handler below skips
   // chats already on it, so a chat left there never notifies again. Only a
-  // visible tab counts: the list is shared across tabs, so a background tab
-  // that happens to have the chat open must not mark it seen for the others.
+  // tab the user is in counts (visible and focused, the same test the
+  // handler uses for "away"): the list is shared across tabs, so a tab that
+  // merely has the chat open must not mark it seen for the others.
   useEffect(() => {
     function clearIfSeen() {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || !document.hasFocus()) {
+        return;
+      }
       if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
       useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
     }
 
     clearIfSeen();
     document.addEventListener("visibilitychange", clearIfSeen);
-    return () => document.removeEventListener("visibilitychange", clearIfSeen);
+    window.addEventListener("focus", clearIfSeen);
+    return () => {
+      document.removeEventListener("visibilitychange", clearIfSeen);
+      window.removeEventListener("focus", clearIfSeen);
+    };
   }, [activeSessionID, completedSessionIDs]);
 
   useEffect(() => {

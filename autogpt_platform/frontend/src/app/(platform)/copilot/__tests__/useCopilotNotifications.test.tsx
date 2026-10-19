@@ -48,6 +48,10 @@ function setVisibility(state: DocumentVisibilityState) {
   });
 }
 
+function setFocused(focused: boolean) {
+  vi.spyOn(document, "hasFocus").mockReturnValue(focused);
+}
+
 beforeEach(() => {
   capturedHandler = null;
   NotificationCtor.mockClear();
@@ -72,6 +76,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("useCopilotNotifications — OS notification dispatch", () => {
@@ -120,6 +125,7 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
 describe("useCopilotNotifications — opening a finished chat", () => {
   it("takes the open chat off the finished list", async () => {
     setVisibility("visible");
+    setFocused(true);
     useCopilotUIStore.setState({
       completedSessionIDs: new Set(["sess-1", "sess-2"]),
     });
@@ -154,6 +160,7 @@ describe("useCopilotNotifications — opening a finished chat", () => {
     await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
 
     setVisibility("visible");
+    setFocused(true);
     rerender({ active: "sess-1" });
     await waitFor(() => {
       expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
@@ -180,8 +187,35 @@ describe("useCopilotNotifications — background tabs", () => {
     );
 
     setVisibility("visible");
+    setFocused(true);
     act(() => {
       document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    });
+  });
+});
+
+describe("useCopilotNotifications — unfocused windows", () => {
+  it("keeps the open chat on the finished list until its window has focus", async () => {
+    setVisibility("visible");
+    setFocused(false);
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
+
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {});
+
+    expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
+      "sess-1",
+    );
+
+    setFocused(true);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
     });
 
     await waitFor(() => {
