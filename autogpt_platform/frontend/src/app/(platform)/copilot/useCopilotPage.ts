@@ -1,4 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -32,6 +33,7 @@ import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
+import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -133,6 +135,7 @@ export function useCopilotPage({
     sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -186,6 +189,7 @@ export function useCopilotPage({
     sessionAuthProvider: sessionLlmAuthProvider,
     sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
@@ -260,29 +264,11 @@ export function useCopilotPage({
   // turn — see onSend.
   const isLocalStreamSettled =
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
-  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
-  isLocalStreamSettledRef.current = isLocalStreamSettled;
-  // Each waiter learns whether the stream settled (send now) or the hook
-  // went away first (the chat host unmounts on a chat switch and on reload;
-  // the follow-up then stays in sessionStorage, see below).
-  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
-  useEffect(() => {
-    if (!isLocalStreamSettled) return;
-    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
-  }, [isLocalStreamSettled]);
-  useEffect(
-    () => () => {
-      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
-    },
-    [],
-  );
-
-  function waitForLocalSettle() {
-    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      settleWaitersRef.current.push(resolve);
-    });
-  }
+  // A held follow-up learns whether the stream settled (send now) or the
+  // hook went away first (the chat host unmounts on a chat switch and on
+  // reload; the follow-up then stays in sessionStorage, see below).
+  const { waitUntilSettled: waitForLocalSettle, markUnsettled } =
+    useSettleGate(isLocalStreamSettled);
 
   // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
   // the backend-buffered ones, since from the user's side they are the same
@@ -376,7 +362,7 @@ export function useCopilotPage({
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(
+  async function sendOrQueue(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
@@ -454,7 +440,7 @@ export function useCopilotPage({
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
-      isLocalStreamSettledRef.current = false;
+      markUnsettled();
     }
     if (heldForLocalSettle && sessionId) {
       releaseFollowUp(sessionId, trimmed);
@@ -468,9 +454,14 @@ export function useCopilotPage({
     }
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }
+  // One function for the host's lifetime that runs the latest `sendOrQueue`,
+  // so the chat actions and the composer keep their props across flushes.
+  const onSend = useStableCallback(sendOrQueue);
 
   useWorkflowImportAutoSubmit({
-    onSend,
+    // This render's function on purpose: its effect lists `onSend` as a
+    // dependency and re-checks the URL for a prompt every time it changes.
+    onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
   });
@@ -549,6 +540,7 @@ export function useCopilotPage({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

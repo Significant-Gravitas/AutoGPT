@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -37,6 +38,7 @@ from .policy import (
     Verdict,
     effect_for,
     estimate_for,
+    strictest_mode,
     verdict_for_effect,
 )
 from .subject import Subject
@@ -61,6 +63,8 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 # Where the supervisor reads the content of the files a command runs.
 RUN_FILES_KEY = "files_this_command_runs"
+# Where it reads what a judged outward block is: the call names only its id.
+RUNS_KEY = "capability_this_call_runs"
 # A chat driven from these runs in Auto, and its cards are answered in the channel.
 LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
 # Any other linked platform has no buttons to answer a card with, so it runs
@@ -119,6 +123,16 @@ async def active_mode(
 ) -> AutopilotMode | None:
     """The mode the gate enforces on this turn, or None when it is inert."""
     return resolve_mode(session) if await gate_active(user_id, session) else None
+
+
+def child_autopilot_mode(
+    parent: ChatSession, expert_default: AutopilotMode | None
+) -> AutopilotMode:
+    """The mode a delegated or handed-off thread starts on: what the parent's
+    gate enforces, not what the parent stored, tightened by the expert's own
+    default where that is stricter."""
+    mode = resolve_mode(parent)
+    return mode if expert_default is None else strictest_mode(mode, expert_default)
 
 
 async def check_action(
@@ -181,6 +195,9 @@ async def check_action(
         else None
     )
     rule = hit.rule if hit else None
+    # No supervisor reads a scheduled run, so a judge rule falls back to the mode.
+    if rule == "judge" and subject is not None and subject.schedules:
+        rule = None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
@@ -214,10 +231,20 @@ async def check_action(
                 f"Could not read {', '.join(unread)}, so this could not be checked."
             )
         else:
+            outward_judged = effect is Effect.EXTERNAL_JUDGED
+            # A workflow's name is its author's free text; only a block's is vouched for.
+            runs = (
+                subject.name
+                if outward_judged
+                and subject is not None
+                and subject.key.startswith("block:")
+                else None
+            )
             judgement = await supervise(
                 tool_name=tool_name,
-                args=_judged_args(args, files),
-                user_message=_last_user_message(session),
+                args=_judged_args(args, files, runs),
+                user_messages=_typed_messages(session),
+                outward_judged=outward_judged,
             )
             if judgement.allowed:
                 return ALLOW
@@ -229,6 +256,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
         envelope=get_current_envelope(),
+        cost_context=await capture_cost_context(user_id),
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
@@ -299,34 +327,45 @@ def _dollars(microdollars: int) -> str:
 
 
 def _judged_args(
-    args: dict[str, Any], files: dict[str, str | None] | None
+    args: dict[str, Any], files: dict[str, str | None] | None, runs: str | None
 ) -> dict[str, Any]:
     # Dropped first, so a model cannot hand the supervisor a harmless copy.
-    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    judged = {
+        key: value
+        for key, value in args.items()
+        if key not in (RUN_FILES_KEY, RUNS_KEY)
+    }
     if files:
         judged[RUN_FILES_KEY] = files
+    if runs:
+        judged[RUNS_KEY] = runs
     return judged
 
 
-def _last_user_message(session: ChatSession) -> str:
+def _typed_messages(session: ChatSession) -> list[str]:
+    """What the user typed, oldest first; an answered card's rows and a row of
+    nothing but the server's context are not the user's words."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
-    for message in reversed(session.messages):
-        if message.role == "user" and message.content:
-            if held.is_answer_row(message):
-                continue
-            # A first turn's row starts with the server's context blocks.
-            return strip_injected_context_for_display(message.content)
-    return ""
+    typed = [
+        strip_injected_context_for_display(message.content)
+        for message in session.messages
+        if message.role == "user"
+        and message.content
+        and not held.is_answer_row(message)
+    ]
+    return [message for message in typed if message.strip()]
 
 
 __all__ = [
+    "RUNS_KEY",
     "RUN_FILES_KEY",
     "Decision",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
+    "child_autopilot_mode",
     "gate_active",
     "refusal_message",
     "resolve_mode",

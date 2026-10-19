@@ -5,6 +5,18 @@
 AUTOPILOT_NAME = "Otto"
 AUTOPILOT_ROLE = "Head of AI"
 
+# The AutoPilot block, and the tool name its turns carry from dispatch to the
+# executor -- which bills them to the credit balance once the plan's AutoPilot
+# allowance is used up (see ``backend.copilot.credit_billing``).
+AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+AUTOPILOT_BLOCK_TOOL_NAME = "autopilot_block"
+
+# The per-turn spend floor, the one the old per-query budget was topped up to.
+# A turn's budget has none, but a paid plan's CLI backstop never sits below
+# it, and a credit balance has to cover it before a turn may bill to credits.
+# The per-turn ceiling is ``ChatConfig.claude_agent_max_budget_usd``.
+PER_TURN_SPEND_FLOOR_USD = 0.5
+
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
 # impossible, avoiding false-positive marker detection in normal conversation.

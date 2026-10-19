@@ -52,20 +52,28 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
-from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.sdk.codex_compat_gateway import (
+    CodexAnthropicGateway,
+    gateway_for_lease,
+)
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
     read_cli_session_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider
+from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
+from backend.copilot.turn_budget import resolve_turn_budget
+from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -145,11 +153,7 @@ from ..prompting import (
     get_graphiti_supplement,
     get_sdk_supplement,
 )
-from ..rate_limit import (
-    get_global_rate_limits,
-    get_remaining_usd_budget,
-    get_user_tier,
-)
+from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamCheckpoint,
@@ -172,6 +176,7 @@ from ..response_model import (
     StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
     StreamUsage,
 )
 from ..builder_context import (
@@ -227,6 +232,7 @@ from .compaction import (
     transcript_stats,
 )
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
+from .governor import TurnGovernor
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
@@ -288,52 +294,6 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = HUNG_TOOL_CAP_SECONDS
-
-# Floor on the per-query SDK budget — too small and the CLI refuses to
-# start a turn at all.  Caller (``_resolve_dynamic_max_budget_usd``) clamps
-# to this so a user near (but not yet at) their cap still gets a chance to
-# wrap up gracefully instead of hitting an immediate hard stop.
-_MAX_BUDGET_USD_FLOOR = 0.5
-
-
-async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
-    """Pick the per-query ``max_budget_usd`` for this user *now*.
-
-    Returns the smaller of:
-      * ``config.claude_agent_max_budget_usd`` (the static per-query cap)
-      * the user's remaining daily/weekly USD cap (from Redis)
-
-    Falls back to the static cap when no ``user_id`` is available (e.g. an
-    internal turn run without auth).  Floored at ``_MAX_BUDGET_USD_FLOOR``
-    so a near-capped user still gets enough headroom to surface the
-    "wrap up" reminder rather than failing to dispatch.
-    """
-    static_cap = config.claude_agent_max_budget_usd
-    if not user_id:
-        return static_cap
-    daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id,
-        config.daily_cost_limit_microdollars,
-        config.weekly_cost_limit_microdollars,
-    )
-    # Sentinel ``-1.0`` from ``get_remaining_usd_budget`` means Redis was
-    # unavailable.  In that case fall back to the static per-query cap —
-    # we don't actually know the user is near their limit, and clamping
-    # to the floor would shrink every turn to $0.50 while Redis is in a
-    # brown-out.  The pre-turn gate already failed closed at 503 in this
-    # branch, so this defensive fallback only matters in edge paths that
-    # bypass the gate.
-    remaining = await get_remaining_usd_budget(
-        user_id=user_id,
-        daily_cost_limit=daily_limit,
-        weekly_cost_limit=weekly_limit,
-        floor_usd=-1.0,
-    )
-    if tier == "TRIAL":
-        return resolve_trial_sdk_budget(static_cap, remaining)
-    if remaining < 0 or remaining == float("inf"):
-        return static_cap
-    return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
 
 
 @dataclass
@@ -527,6 +487,21 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
+
+        # Live spend and step count: the governor lands the turn when either
+        # nears its limit (see ``security_hooks`` PreToolUse). It reads the
+        # assistant messages and the raw stream, where each response's real
+        # output count arrives. Metering must never fail the turn it meters;
+        # the CLI's own budget and turn limits still back it up.
+        if state.governor is not None:
+            try:
+                state.governor.observe(sdk_msg)
+            except Exception:
+                logger.warning(
+                    "%s Turn governor could not meter a message",
+                    ctx.log_prefix,
+                    exc_info=True,
+                )
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
@@ -1410,6 +1385,16 @@ class _RetryState:
     # Moonshot cost override gates on this so a Moonshot-→-Anthropic
     # fallback doesn't get mis-billed at Moonshot rates, and vice versa.
     observed_model: str | None = None
+    # The turn's spend and step governor. On ``_RetryState`` so its meter
+    # keeps what earlier attempts spent, and so every rebuilt adapter can be
+    # handed the same one (see ``_fresh_adapter``).
+    governor: TurnGovernor | None = None
+
+
+def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
+    """Replace the adapter for a new attempt, keeping the turn's governor."""
+    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter.governor = state.governor
 
 
 @dataclass
@@ -1830,10 +1815,7 @@ async def _apply_building_mode_restart(
     # the original message once more, which only surfaces in the
     # rare CLI-file-loss fallback path (cosmetic duplicate).
     prior_adapter = state.adapter
-    state.adapter = SDKResponseAdapter(
-        message_id=message_id,
-        session_id=session_id,
-    )
+    _fresh_adapter(state, message_id, session_id)
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
         state.adapter.prior_attempt_emitted_visible_content = True
@@ -2506,10 +2488,7 @@ async def _do_transient_backoff(
         delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
-    state.adapter = SDKResponseAdapter(
-        message_id=ctx.message_id,
-        session_id=ctx.session_id,
-    )
+    _fresh_adapter(state, ctx.message_id, ctx.session_id)
 
 
 def _is_fallback_stderr(line: str) -> bool:
@@ -3856,6 +3835,17 @@ def _dispatch_response(
             failure=failure.as_part() if failure else None,
         )
 
+    # Persist the pause so the Paused card survives the end of the stream.
+    if isinstance(response, StreamTurnPaused):
+        pause = TurnPause.model_validate(response.pause)
+        logger.info(
+            "%s Turn paused (%s, checkpoint_saved=%s)",
+            log_prefix,
+            pause.reason,
+            pause.checkpoint_saved,
+        )
+        append_pause_marker(ctx.session, pause)
+
     if isinstance(response, StreamReasoningStart):
         acc.reasoning_response = ChatMessage(role="reasoning", content="")
         messages = ctx.session.messages
@@ -4384,6 +4374,7 @@ async def _run_stream_attempt(
                 )
             yield response
 
+    hangup_pause: TurnPause | None = None
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
         snapshot = await asyncio.to_thread(
             read_cli_session_usage,
@@ -4408,18 +4399,27 @@ async def _run_stream_attempt(
         state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
-        notice_block_id = str(uuid.uuid4())
-        yield StreamTextStart(id=notice_block_id)
-        yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
-        yield StreamTextEnd(id=notice_block_id)
-        ctx.session.messages.append(
-            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+        # While landing, the hangup ended the landing: still a pause.
+        hangup_pause = (
+            state.governor.hangup_pause() if state.governor is not None else None
         )
+        if hangup_pause is not None:
+            yield StreamTurnPaused(pause=hangup_pause.as_part())
+        else:
+            notice_block_id = str(uuid.uuid4())
+            yield StreamTextStart(id=notice_block_id)
+            yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
+            yield StreamTextEnd(id=notice_block_id)
+            ctx.session.messages.append(
+                ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+            )
 
     if (
         acc.assistant_response.content or acc.assistant_response.tool_calls
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
+    if hangup_pause is not None:
+        append_pause_marker(ctx.session, hangup_pause)
 
     # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
     # with ``ended_with_stream_error=True`` and no prior marker is on the
@@ -4682,6 +4682,7 @@ async def _maybe_prepend_skills_update(
     try:
         notice = await build_skills_update_notice(
             user_id,
+            session_id=session.session_id,
             expert_id=session.expert_id,
             prior_contents=[
                 m.content or "" for m in session.messages if m.role == "user"
@@ -4952,6 +4953,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     turn_cost_usd: float | None = None
     graphiti_enabled = False
     pre_attempt_msg_count = 0
+    # Checkpoint turn_start can span auto-continues; capture only this call.
+    learning_turn_start = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
     # State of the latest failed attempt: rolled-back messages + any
     # _HandledStreamError info to emit on final-failure exit. The retry loop
     # mutates this via capture()/clear(); the post-loop block calls
@@ -4983,6 +4988,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # bound name even when the loop never enters its happy path.
     ended_with_stream_error = False
     final_checkpoint: StreamCheckpoint | None = None
+    # Built with the CLI options below; read after the loop to keep a paused
+    # turn from auto-continuing.
+    governor: TurnGovernor | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5247,18 +5255,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, CodexCredentialLease):
-                codex_gateway = CodexAnthropicGateway(
-                    agent_session=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
-            else:
-                codex_gateway = CodexAnthropicGateway(
-                    credential_lease=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
+            codex_gateway = gateway_for_lease(
+                credential_lease, model=sdk_model, effort=codex_effort
+            )
             await codex_gateway.start()
             fallback_model = None
         else:
@@ -5281,12 +5280,30 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
 
+        # Lands the turn with a checkpoint near its budget or step check-in.
+        # A ChatGPT subscription pays for its own turns, so it gets the
+        # check-in only. A turn billed to credits gets what its balance covers.
+        credit_turn = credit_billed_turn(user_id)
+        governor = TurnGovernor(
+            budget=(
+                None
+                if is_codex_transport
+                else (
+                    credit_turn.budget
+                    if credit_turn is not None
+                    else await resolve_turn_budget(user_id)
+                )
+            ),
+            step_checkin=config.sdk_step_checkin,
+        )
+
         security_hooks = create_security_hooks(
             user_id,
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
             tool_display_bridge=tool_display_bridge,
+            governor=governor,
         )
 
         if permissions is not None:
@@ -5353,9 +5370,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,
             stderr=_on_stderr,
-            # max_turns: hard cap on agentic tool-use loops per query to
-            # prevent runaway execution from burning budget.
-            max_turns=config.agent_max_turns,
+            # max_turns: a backstop a little past the governor's step
+            # check-in, which normally lands the turn first.
+            max_turns=governor.cli_max_turns,
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
@@ -5367,7 +5384,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # presenting a fabricated USD ceiling or provider fallback to the
             # CLI would produce incorrect policy and accounting behavior.
             sdk_options.fallback_model = fallback_model
-            sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
+            # A backstop above the turn's budget, in the CLI's price units:
+            # the governor lands the turn before it fires.
+            sdk_options.max_budget_usd = governor.cli_budget_usd(sdk_model)
             sdk_options.thinking = {"type": "adaptive"}
             if config.claude_agent_max_thinking_tokens > 0:
                 sdk_options.max_thinking_tokens = (
@@ -5419,6 +5438,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             message_id=message_id,
             session_id=session_id,
         )
+        adapter.governor = governor
 
         # Propagate user_id/session_id as OTEL context attributes so the
         # langsmith tracing integration attaches them to every span.  This
@@ -5518,6 +5538,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # On --resume, current_message may come from session history which was
         # already sanitized on the original turn; strip again as defence-in-depth.
         current_message = strip_user_context_tags(current_message)
+        if not is_user_message:
+            # A continuation note is stored as a system row; the model gets
+            # its instruction without the rendering marker.
+            current_message = as_model_prompt(current_message)
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.
@@ -5757,6 +5781,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             adapter=adapter,
             transcript_builder=transcript_builder,
             usage=_TokenUsage(),
+            governor=governor,
             # Subagent files are read only on a turn the reconcile bills.
             generations=TurnGenerations(
                 (
@@ -5908,10 +5933,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session, is_user_message, state.query_message
                 )
                 prior_adapter = state.adapter
-                state.adapter = SDKResponseAdapter(
-                    message_id=message_id,
-                    session_id=session_id,
-                )
+                _fresh_adapter(state, message_id, session_id)
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
                 state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
@@ -6449,6 +6471,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(cost_reconcile_task)
             cost_reconcile_task.add_done_callback(_background_tasks.discard)
+            # A turn billed to credits is charged once this cost is in.
+            wait_for_cost(cost_reconcile_task)
         else:
             # Reconcile disabled, OpenRouter inactive, or subscription
             # path (no gen-IDs).  Record the SDK CLI's
@@ -6569,6 +6593,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti: a memory-service failure must not change
+        # what the nightly learner can consider. Fire-and-forget; the
+        # helper is flag-gated and never raises.
+        if expert_identity_validated and user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[learning_turn_start:]) if session else [],
+                    message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload CLI native session file for cross-pod --resume ---
         # The CLI writes its native session JSONL after each turn completes.
@@ -6693,9 +6735,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # BaseException both re-raise inside their except blocks, so the generator
     # closes before reaching here — messages queued during a cancelled turn are
     # preserved in Redis for the next manual turn.
+    #
+    # A paused turn doesn't continue either: it stopped because it ran out of
+    # budget or reached its check-in, and the user picks it back up from the
+    # Paused card. Anything queued meanwhile stays queued for that turn.
+    #
+    # Nor does a platform turn the allowance can no longer cover: nobody
+    # pressed send for the continuation, so nothing else would check it. The
+    # queued messages stay queued and a not-started pause takes their place.
     # -------------------------------------------------------------------------
-    if not ended_with_stream_error:
-        _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
+    if not ended_with_stream_error and not (governor is not None and governor.landed):
+        auto_continue = await gate_auto_continue(
+            session, user_id, platform_billed=not is_codex_transport
+        )
+        if auto_continue.pause is not None:
+            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+        _auto_pending_messages = (
+            await drain_pending_safe(session_id, log_prefix)
+            if auto_continue.proceed
+            else []
+        )
         if _auto_pending_messages:
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",

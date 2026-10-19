@@ -12,6 +12,7 @@ import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import type { PendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { ToolChain } from "../ToolChain";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -397,6 +398,45 @@ describe("ToolChain", () => {
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
     );
     expect(screen.queryByText("Answer a few questions")).toBeNull();
+  });
+
+  it("keeps the caret where the user is editing an answer", async () => {
+    // The answer used to reach the field one render late, and React writing
+    // the old value back in between threw the caret to the end and broke
+    // IME input (Japanese "nihongo" came out as "nいhおnngお").
+    const user = userEvent.setup();
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolChain
+            parts={[
+              toolPart("ask_question", "output-available", {
+                output: {
+                  type: "agent_builder_clarification_needed",
+                  questions: pending.questions,
+                },
+              }),
+            ]}
+            isStreaming={false}
+          />
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    const field = screen.getByPlaceholderText(
+      "e.g. Europe",
+    ) as HTMLTextAreaElement;
+    await user.type(field, "Wstern");
+    await expectTypingKept(field, "e", 1);
+    await expectTypingKept(field, " 日本語");
   });
 
   it("reports a rejected send without bringing the card back", async () => {
