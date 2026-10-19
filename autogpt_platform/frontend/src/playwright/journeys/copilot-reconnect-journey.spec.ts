@@ -25,6 +25,17 @@ const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
 
 test.describe("copilot reconnect journey", () => {
+  // A resume after the turn finished finds its cursor trimmed, and the chat
+  // seeds from the checkpoint this 409 carries.
+  test.use({
+    expectedResponses: [
+      {
+        status: 409,
+        method: "GET",
+        url: /\/api\/chat\/sessions\/[^/]+\/stream\?turn=/,
+      },
+    ],
+  });
   test.beforeAll(requireScriptedModel);
 
   test("an answer cut off by a dropped connection arrives whole, once and as saved", async ({
