@@ -976,19 +976,39 @@ async def test_each_completed_phase_charges_once(mocker):
 
 
 @pytest.mark.asyncio
-async def test_partial_failure_still_charges_completed_phases(mocker):
-    """If recombine errors after consolidate succeeded, we must still
-    bill for the consolidate tokens — we already paid the provider."""
+@pytest.mark.parametrize("failed_phase", ["consolidate", "recombine", "sanitize"])
+@pytest.mark.parametrize(
+    "error", ["max_tokens", "invalid output shape", "provider error"]
+)
+async def test_partial_failure_still_charges_completed_phases(
+    mocker, failed_phase, error
+):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
-    consolidated = ConsolidationOutput(facts=[])
+    phases = ["consolidate", "recombine", "sanitize"]
+    completed = phases.index(failed_phase)
+    failure_usage = CompletionUsage(
+        model="claude-sonnet-5-5",
+        input_tokens=1001,
+        output_tokens=203,
+        cache_read_tokens=3007,
+        cache_creation_tokens=509,
+        cost_usd=0.0056052,
+    )
+    failure = DreamLLMError(error, usage=failure_usage)
     mocker.patch.object(
         orchestrator_mod,
         "structured_completion",
-        AsyncMock(side_effect=[_wrap(consolidated), DreamLLMError("recombine boom")]),
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+            ][:completed]
+            + [failure]
+        ),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
     charge_spy = AsyncMock()
@@ -997,9 +1017,13 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is not None
-    assert result.error.startswith("recombine:")
-    assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
-    assert charge_spy.await_args.kwargs["phase_usage"].phase == "consolidate"
+    assert result.error.startswith(f"{failed_phase}:")
+    assert error in result.error
+    assert charge_spy.await_count == completed
+    assert [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list] == (
+        phases[:completed]
+    )
+    assert failure.usage == failure_usage
     apply_mock.assert_not_awaited()
 
 

@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
+from backend.copilot.dream.batch_callbacks import (
+    _write_phase_to_state,
+    handle_dream_batch_result,
+)
 from backend.copilot.dream.batch_submit import input_bundle_key, persist_input_bundle
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.job_status import read_status, write_initial_status
@@ -816,22 +819,16 @@ class TestErrorPaths:
             )
         mark_errored.assert_awaited_once()
         assert error in mark_errored.call_args.kwargs["error"]
-        if error == "max_tokens":
-            record_cost.assert_awaited_once()
-            usage = record_cost.await_args.kwargs["phase_usage"]
-            assert usage.input_tokens == 10
-            assert usage.output_tokens == 20
-            assert usage.cost_usd > 0
-        else:
-            record_cost.assert_not_awaited()
+        record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert stored["error"] == error
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis):
-        """A row whose content is not parseable JSON must NOT chain to
-        the next phase — the next phase's prompt would be built on
-        garbage. Pydantic's default ``model_validate`` is permissive
-        about unknown fields (extra="ignore"), so the failure mode the
-        test pins is invalid-JSON not unknown-field."""
+    @pytest.mark.parametrize("content", ["this is not JSON", '{"facts": "invalid"}'])
+    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis, content):
         await _persist_autopilot_bundle()
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
@@ -848,13 +845,53 @@ class TestErrorPaths:
                 [
                     _row(
                         custom_id="p1:consolidate",
-                        content="this is not JSON at all",
+                        content=content,
                     )
                 ],
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert "invalid output shape" in stored["error"]
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content,error",
+        [
+            (_RECOMBINE_CONTENT, "max_tokens"),
+            ('{"proposals": "invalid"}', None),
+            ("", "provider error"),
+        ],
+    )
+    async def test_failed_phase_only_charges_earlier_completed_phase(
+        self, fake_redis, content, error
+    ):
+        await _persist_autopilot_bundle()
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        record_cost = AsyncMock()
+        with (
+            patch("backend.copilot.dream.job_status.mark_errored", AsyncMock()),
+            patch(
+                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="recombine"),
+                [_row(custom_id="p1:recombine", content=content, error=error)],
+            )
+        record_cost.assert_awaited_once()
+        usage = record_cost.await_args.kwargs["phase_usage"]
+        assert usage.phase == "consolidate"
+        assert usage.cost_usd == pytest.approx((10 * 2 + 20 * 10) / 1_000_000 / 2)
 
     @pytest.mark.asyncio
     async def test_text_answer_around_the_json_still_chains(self, fake_redis):
