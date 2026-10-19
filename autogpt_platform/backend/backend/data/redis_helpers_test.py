@@ -17,6 +17,7 @@ from backend.data.redis_helpers import (
     hash_compare_and_set,
     incr_with_ttl,
     incr_with_ttl_sync,
+    string_compare_and_set,
 )
 
 # ── Fake Redis + pipeline ──────────────────────────────────────────────
@@ -86,6 +87,19 @@ class _Fake:
             await self.ltrim(list_key, -int(max_len), -1)
             await self.expire(list_key, int(ttl_seconds))
             return await self.llen(list_key)
+
+        if "'GET'" in script:
+            # ``string_compare_and_set`` shape.
+            key, expected, new, ttl_seconds, or_missing = args[:5]
+            current = self.strings.get(key)
+            if current != expected and not (current is None and or_missing == "1"):
+                return 0
+            if new:
+                self.strings[key] = new
+                self.ttls[key] = int(ttl_seconds)
+            else:
+                self.strings.pop(key, None)
+            return 1
 
         # ``hash_compare_and_set`` shape (numkeys == 1).
         key, field, expected, new = args[0], args[1], args[2], args[3]
@@ -296,6 +310,57 @@ async def test_hash_cas_no_swap_when_expected_differs() -> None:
     )
     assert swapped is False
     assert r.hashes["meta"]["status"] == "completed"
+
+
+# ── string_compare_and_set ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_string_cas_swaps_and_sets_the_ttl_when_expected_matches() -> None:
+    r = _Fake()
+    r.strings["claim"] = "reserved:a"
+    swapped = await string_compare_and_set(
+        r, "claim", expected="reserved:a", new="accepted", ttl_seconds=60  # type: ignore[arg-type]
+    )
+    assert swapped is True
+    assert r.strings["claim"] == "accepted"
+    assert r.ttls["claim"] == 60
+
+
+@pytest.mark.asyncio
+async def test_string_cas_deletes_when_new_is_none() -> None:
+    r = _Fake()
+    r.strings["claim"] = "reserved:a"
+    swapped = await string_compare_and_set(
+        r, "claim", expected="reserved:a", new=None  # type: ignore[arg-type]
+    )
+    assert swapped is True
+    assert "claim" not in r.strings
+
+
+@pytest.mark.asyncio
+async def test_string_cas_leaves_another_holders_value_alone() -> None:
+    r = _Fake()
+    r.strings["claim"] = "reserved:b"
+    assert not await string_compare_and_set(
+        r, "claim", expected="reserved:a", new=None  # type: ignore[arg-type]
+    )
+    assert not await string_compare_and_set(
+        r, "claim", expected="reserved:a", new="accepted", or_missing=True  # type: ignore[arg-type]
+    )
+    assert r.strings["claim"] == "reserved:b"
+
+
+@pytest.mark.asyncio
+async def test_string_cas_or_missing_sets_a_missing_key() -> None:
+    r = _Fake()
+    assert not await string_compare_and_set(
+        r, "claim", expected="reserved:a", new="accepted"  # type: ignore[arg-type]
+    )
+    assert await string_compare_and_set(
+        r, "claim", expected="reserved:a", new="accepted", or_missing=True  # type: ignore[arg-type]
+    )
+    assert r.strings["claim"] == "accepted"
 
 
 # ── claim_batch_dispatch_atomic ───────────────────────────────────────

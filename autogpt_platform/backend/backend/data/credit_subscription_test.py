@@ -11,6 +11,7 @@ from prisma.enums import SubscriptionTier
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
+from backend.data import credit
 from backend.data.credit import (
     UserCredit,
     _get_active_subscription_cached,
@@ -54,6 +55,43 @@ def _clear_cache(fn: _CacheClearable) -> None:
     fn.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def billing_boundaries():
+    """Legacy billing tests isolate the new authoritative reconciliation boundary.
+
+    Real payment evidence, locks, and rollback are tested against PostgreSQL and
+    Redis in subscription_activation_*integration_test.py.
+    """
+    tx = MagicMock(user=MagicMock(update=AsyncMock()))
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=tx)
+    context.__aexit__ = AsyncMock(return_value=False)
+
+    async def locked_user(user_id, client):
+        return await User.prisma().find_first(where={"id": user_id})
+
+    with (
+        patch.object(credit, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(credit, "transaction", return_value=context),
+        patch.object(
+            credit.subscription_activation, "lock_activation_user", locked_user
+        ),
+        patch.object(
+            credit.subscription_activation,
+            "publish_initial_pro_activation",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(credit, "sync_subscription_from_stripe", AsyncMock()),
+        patch.object(
+            stripe.Subscription,
+            "retrieve_async",
+            AsyncMock(return_value={"id": "sub_paid"}),
+        ) as subscription,
+        patch.object(stripe.Invoice, "retrieve_async", AsyncMock()) as invoice,
+    ):
+        yield MagicMock(subscription=subscription, invoice=invoice, tx=tx)
+
+
 # What the shared PostHog client adds to every event (see posthog_client.capture).
 BASE_PROPERTIES = {"environment": "test", "source": "platform"}
 
@@ -91,12 +129,14 @@ def _make_user(
 ):
     mock_user = MagicMock(spec=User)
     mock_user.id = user_id
+    mock_user.stripeCustomerId = "cus_123"
     mock_user.subscriptionTier = tier
     return mock_user
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_active():
+@pytest.mark.parametrize("tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
+async def test_sync_subscription_from_stripe_active(billing_boundaries, tier):
     mock_user = _make_user()
     stripe_sub = {
         "id": "sub_new",
@@ -106,13 +146,13 @@ async def test_sync_subscription_from_stripe_active():
     }
 
     async def mock_price_id(
-        tier: SubscriptionTier, billing_cycle: str = "monthly"
+        requested_tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
         if billing_cycle != "monthly":
             return None
-        if tier == SubscriptionTier.PRO:
+        if requested_tier == tier:
             return "price_pro_monthly"
-        if tier == SubscriptionTier.BUSINESS:
+        if requested_tier == SubscriptionTier.BUSINESS:
             return "price_biz_monthly"
         return None
 
@@ -133,18 +173,52 @@ async def test_sync_subscription_from_stripe_active():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": tier}
         )
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_tracks_upgrade():
+@pytest.mark.parametrize("tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
+async def test_unsettled_paid_subscription_never_grants_tier(billing_boundaries, tier):
+    user = _make_user()
+    subscription = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_paid"}, "quantity": 1}]},
+    }
+    billing_boundaries.subscription.return_value = subscription
+    with (
+        patch.object(
+            credit.User,
+            "prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
+        ),
+        patch.object(
+            credit,
+            "build_price_to_tier_map",
+            AsyncMock(return_value={"price_paid": tier}),
+        ),
+        patch.object(
+            credit.subscription_activation,
+            "publish_initial_pro_activation",
+            AsyncMock(return_value=False),
+        ) as publish,
+        patch.object(credit, "set_subscription_tier", AsyncMock()) as direct,
+    ):
+        await sync_subscription_from_stripe(subscription)
+    publish.assert_awaited_once()
+    billing_boundaries.tx.user.update.assert_not_awaited()
+    direct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_tracks_upgrade(billing_boundaries):
     mock_user = _make_user(tier=SubscriptionTier.BASIC)
     stripe_sub = {
         "id": "sub_new",
@@ -185,6 +259,7 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
             new_callable=AsyncMock,
         ),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
 
     track_mock.assert_called_once()
@@ -201,7 +276,7 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
+async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro(billing_boundaries):
     """A user on a yearly Pro plan still maps to SubscriptionTier.PRO."""
     mock_user = _make_user()
     stripe_sub = {
@@ -237,18 +312,19 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
         )
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged():
+async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged(
+    billing_boundaries,
+):
     """Stripe retries webhooks; re-sending the same event must not re-write the DB."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
@@ -290,12 +366,15 @@ async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_enterprise_not_overwritten():
+async def test_sync_subscription_from_stripe_enterprise_not_overwritten(
+    billing_boundaries,
+):
     """Webhook events must never overwrite an ENTERPRISE tier (admin-managed)."""
     mock_user = _make_user(tier=SubscriptionTier.ENTERPRISE)
     stripe_sub = {
@@ -314,12 +393,13 @@ async def test_sync_subscription_from_stripe_enterprise_not_overwritten():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_cancelled():
+async def test_sync_subscription_from_stripe_cancelled(billing_boundaries):
     """When the only active sub is cancelled, the user is downgraded to NO_TIER."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
@@ -344,14 +424,15 @@ async def test_sync_subscription_from_stripe_cancelled():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
-        )
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
+async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier(
+    billing_boundaries,
+):
     """``past_due`` is NOT active/trialing, so it falls into the non-active else
     branch: with no OTHER active/trialing sub, the user is revoked to NO_TIER.
 
@@ -380,14 +461,15 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
-        )
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_limit():
+async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_limit(
+    billing_boundaries,
+):
     """After unsubscribe takes effect, workspace storage resolves against NO_TIER."""
     from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 
@@ -405,8 +487,6 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
-        *,
-        track_lifecycle: bool = True,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -446,6 +526,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
             new_callable=AsyncMock,
         ) as mock_pending_cache_delete,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         result = await get_workspace_storage_limit_bytes("user-1")
 
@@ -454,7 +535,9 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exists():
+async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exists(
+    billing_boundaries,
+):
     """Cancelling sub_old must NOT downgrade the user if sub_new is still active.
 
     This covers the race condition where `customer.subscription.deleted` for
@@ -495,14 +578,15 @@ async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exis
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         # Must NOT write BASIC — another active sub is still present.
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_trialing():
-    """status='trialing' should map to the paid tier, same as 'active'."""
+async def test_sync_subscription_from_stripe_trialing(billing_boundaries):
+    """A trialing subscription is not paid activation evidence."""
     mock_user = _make_user()
     stripe_sub = {
         "id": "sub_new",
@@ -541,14 +625,14 @@ async def test_sync_subscription_from_stripe_trialing():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
-        )
+        billing_boundaries.tx.user.update.assert_not_awaited()
+        mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_unknown_customer():
+async def test_sync_subscription_from_stripe_unknown_customer(billing_boundaries):
     stripe_sub = {
         "customer": "cus_unknown",
         "status": "active",
@@ -559,6 +643,7 @@ async def test_sync_subscription_from_stripe_unknown_customer():
         return_value=MagicMock(find_first=AsyncMock(return_value=None)),
     ):
         # Should not raise even if user not found
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
 
 
@@ -1084,7 +1169,9 @@ def checkout_guard():
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_missing_customer_key_returns_early():
+async def test_sync_subscription_from_stripe_missing_customer_key_returns_early(
+    billing_boundaries,
+):
     """A webhook payload missing 'customer' must not raise KeyError — returns early with a warning."""
     stripe_sub = {
         # Omit "customer" entirely — simulates a valid HMAC but malformed payload
@@ -1100,16 +1187,20 @@ async def test_sync_subscription_from_stripe_missing_customer_key_returns_early(
         ) as mock_set,
     ):
         # Should return early without querying the DB or writing a tier
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         mock_prisma.assert_not_called()
         mock_set.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_tier():
+async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_tier(
+    billing_boundaries,
+):
     """Unknown price_id should preserve the current tier, not default to BASIC (no DB write)."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
+        "id": "sub_price_check",
         "customer": "cus_123",
         "status": "active",
         "items": {"data": [{"price": {"id": "price_unknown"}}]},
@@ -1133,16 +1224,21 @@ async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
+        billing_boundaries.subscription.assert_awaited_once_with("sub_price_check")
         # Unknown price → preserve current tier (early return, no DB write)
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_current_tier():
+async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_current_tier(
+    billing_boundaries,
+):
     """When LD flags are unconfigured (None price IDs), the current tier should be preserved, not defaulted to BASIC."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
+        "id": "sub_price_check",
         "customer": "cus_123",
         "status": "active",
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
@@ -1162,13 +1258,15 @@ async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_cur
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
+        billing_boundaries.subscription.assert_awaited_once_with("sub_price_check")
         # None from LD → comparison guards prevent match → preserve current tier
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_business_tier():
+async def test_sync_subscription_from_stripe_business_tier(billing_boundaries):
     """BUSINESS price_id should map to BUSINESS tier."""
     mock_user = _make_user()
     stripe_sub = {
@@ -1208,14 +1306,15 @@ async def test_sync_subscription_from_stripe_business_tier():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
-        )
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
+async def test_sync_subscription_from_stripe_basic_tier_via_ld_price(
+    billing_boundaries,
+):
     """BASIC price_id via LD should reconcile the user to BASIC.
 
     Protects the new stripe-price-id-basic reconciliation path — webhooks for a
@@ -1262,14 +1361,13 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
-        )
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_cancels_stale_subs():
+async def test_sync_subscription_from_stripe_cancels_stale_subs(billing_boundaries):
     """When a new subscription becomes active, older active subs are cancelled.
 
     Covers the paid-to-paid upgrade case (e.g. PRO → BUSINESS) where Stripe
@@ -1319,16 +1417,17 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs():
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
-        )
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
+async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed(
+    billing_boundaries,
+):
     """Errors cancelling stale subs must not block DB tier update for new sub."""
     import stripe as stripe_mod
 
@@ -1370,14 +1469,13 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
             "backend.data.credit.stripe.Subscription.cancel_async",
             side_effect=stripe_mod.StripeError("cancel failed"),
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
         # Must not raise — tier update proceeds even if cleanup cancel fails.
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
         )
 
 
@@ -1679,7 +1777,9 @@ async def test_cancel_stripe_subscription_raises_on_cancel_error():
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_metadata_user_id_matches():
+async def test_sync_subscription_from_stripe_metadata_user_id_matches(
+    billing_boundaries,
+):
     """metadata.user_id matching the DB user is accepted and the tier is updated normally."""
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
     stripe_sub = {
@@ -1712,18 +1812,19 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
         )
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_metadata_user_id_mismatch_blocked():
+async def test_sync_subscription_from_stripe_metadata_user_id_mismatch_blocked(
+    billing_boundaries,
+):
     """metadata.user_id mismatching the DB user must block the tier update.
 
     A customer↔user mapping inconsistency (e.g. a customer ID reassigned or
@@ -1747,13 +1848,16 @@ async def test_sync_subscription_from_stripe_metadata_user_id_mismatch_blocked()
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         # Mismatch → must not update any tier
         mock_set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
+async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check(
+    billing_boundaries,
+):
     """Absence of metadata.user_id (e.g. subs created outside Checkout) skips the cross-check."""
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
     stripe_sub = {
@@ -1786,14 +1890,13 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         # No metadata → cross-check skipped → tier updated normally
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
         )
 
 
@@ -3791,10 +3894,13 @@ async def test_sync_subscription_schedule_from_stripe_missing_sub_id_returns():
 
 
 @pytest.mark.asyncio
-async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
+async def test_sync_subscription_from_stripe_phase_transition_updates_tier(
+    billing_boundaries,
+):
     """When a schedule advances phases, Stripe fires customer.subscription.updated with
     the new price — the existing sync handler must update the DB tier accordingly."""
     mock_user = _make_user(tier=SubscriptionTier.BUSINESS)
+    mock_user.stripeCustomerId = "cus_abc"
     stripe_sub = {
         "id": "sub_pro",
         "customer": "cus_abc",
@@ -3829,13 +3935,12 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
     ):
+        billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        billing_boundaries.tx.user.update.assert_awaited_once_with(
+            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
         )
 
 
