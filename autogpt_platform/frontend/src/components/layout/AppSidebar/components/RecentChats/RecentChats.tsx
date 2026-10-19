@@ -11,6 +11,7 @@ import { useLocalDay } from "@/hooks/useLocalDay";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
+import { MarkAllReadRow } from "./components/MarkAllReadRow/MarkAllReadRow";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
 import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
@@ -29,7 +30,10 @@ export function RecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
-    completedSessionIDs,
+    unreadCount,
+    isUnread,
+    markRead,
+    markAllRead,
     togglePin,
     editingSessionId,
     editingTitle,
@@ -76,9 +80,7 @@ export function RecentChats() {
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
-        isFinished={
-          completedSessionIDs.has(session.id) && session.id !== activeSessionId
-        }
+        isFinished={isUnread(session)}
         chatPinningEnabled={chatPinningEnabled}
         onPin={togglePin}
         onRename={startRename}
@@ -100,6 +102,9 @@ export function RecentChats() {
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
+        {!isExpertsEnabled && unreadCount > 0 && (
+          <MarkAllReadRow count={unreadCount} onMarkAllRead={markAllRead} />
+        )}
         {pinnedSessions.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
@@ -130,6 +135,8 @@ export function RecentChats() {
                   newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
                   isAutopilot={!group.expertId}
                   sessions={group.sessions}
+                  isUnread={isUnread}
+                  onMarkAllRead={() => markRead(group.sessions)}
                   renderItem={renderItem}
                 />
               );

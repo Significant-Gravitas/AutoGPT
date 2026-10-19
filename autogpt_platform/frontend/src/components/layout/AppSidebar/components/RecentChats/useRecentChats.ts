@@ -15,6 +15,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { isSessionUnread } from "./helpers";
 
 export function useRecentChats() {
   const queryClient = useQueryClient();
@@ -26,6 +27,20 @@ export function useRecentChats() {
   const activeSessionId =
     pathname === "/home" ? searchParams.get("sessionId") : null;
   const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
+  const clearCompletedSessions = useCopilotUIStore(
+    (s) => s.clearCompletedSessions,
+  );
+  const clearAllCompletedSessions = useCopilotUIStore(
+    (s) => s.clearAllCompletedSessions,
+  );
+
+  function isUnread(session: { id: string; is_processing?: boolean | null }) {
+    return isSessionUnread({ session, activeSessionId, completedSessionIDs });
+  }
+
+  function markRead(sessionsToMark: { id: string }[]) {
+    clearCompletedSessions(sessionsToMark.map((session) => session.id));
+  }
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -133,7 +148,10 @@ export function useRecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
-    completedSessionIDs,
+    unreadCount: sessions.filter(isUnread).length,
+    isUnread,
+    markRead,
+    markAllRead: clearAllCompletedSessions,
     togglePin,
     editingSessionId,
     editingTitle,

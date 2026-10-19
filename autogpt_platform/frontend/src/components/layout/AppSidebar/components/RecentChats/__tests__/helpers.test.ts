@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getDateGroupLabel,
   getNewChatHref,
+  isSessionUnread,
   groupSessionsByDate,
 } from "../helpers";
 
@@ -135,5 +136,49 @@ describe("getNewChatHref", () => {
 
   it("gives fired experts no link at all", () => {
     expect(getNewChatHref("expert-max", active)).toBeNull();
+  });
+});
+
+describe("isSessionUnread", () => {
+  const completedSessionIDs = new Set(["done"]);
+
+  it("is unread when it finished and is not open", () => {
+    expect(
+      isSessionUnread({
+        session: { id: "done" },
+        activeSessionId: null,
+        completedSessionIDs,
+      }),
+    ).toBe(true);
+  });
+
+  it("is read once open", () => {
+    expect(
+      isSessionUnread({
+        session: { id: "done" },
+        activeSessionId: "done",
+        completedSessionIDs,
+      }),
+    ).toBe(false);
+  });
+
+  it("is not unread while it runs again", () => {
+    expect(
+      isSessionUnread({
+        session: { id: "done", is_processing: true },
+        activeSessionId: null,
+        completedSessionIDs,
+      }),
+    ).toBe(false);
+  });
+
+  it("is not unread when it never finished in the background", () => {
+    expect(
+      isSessionUnread({
+        session: { id: "other" },
+        activeSessionId: null,
+        completedSessionIDs,
+      }),
+    ).toBe(false);
   });
 });

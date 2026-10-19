@@ -70,3 +70,23 @@ export function getNewChatHref(
   if (!activeExpertIds.has(expertId)) return null;
   return `/home?expertId=${encodeURIComponent(expertId)}&new=1`;
 }
+
+interface IsSessionUnreadArgs {
+  session: { id: string; is_processing?: boolean | null };
+  activeSessionId: string | null;
+  completedSessionIDs: Set<string>;
+}
+
+// A chat with a reply the user hasn't opened yet. The open chat counts as
+// read, and a chat that is running again shows its spinner instead.
+export function isSessionUnread({
+  session,
+  activeSessionId,
+  completedSessionIDs,
+}: IsSessionUnreadArgs): boolean {
+  return (
+    completedSessionIDs.has(session.id) &&
+    session.id !== activeSessionId &&
+    !session.is_processing
+  );
+}

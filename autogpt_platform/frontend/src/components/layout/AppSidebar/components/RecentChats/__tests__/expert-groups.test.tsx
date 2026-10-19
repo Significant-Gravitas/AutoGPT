@@ -14,6 +14,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { RecentChats } from "../RecentChats";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -392,5 +393,80 @@ describe("RecentChats — expert groups", () => {
     expect(
       ottoChevron?.classList.contains("group-hover/expert-header:opacity-100"),
     ).toBe(true);
+  });
+});
+
+describe("RecentChats — unread chats in expert groups", () => {
+  afterEach(() => {
+    useCopilotUIStore.setState({ completedSessionIDs: new Set() });
+  });
+
+  function seed() {
+    const sessions = [...makeSessions(2), ...makeSessions(3, mariaExpert.id)];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
+    );
+    useCopilotUIStore.setState({
+      completedSessionIDs: new Set(["autopilot-2", "expert-maria-1"]),
+    });
+  }
+
+  it("keeps an unread chat visible while its group is collapsed", async () => {
+    seed();
+    renderRecentChats();
+
+    const unread = (await screen.findByText("expert-maria chat 1")).closest(
+      "li",
+    )!;
+    expect(within(unread).getByLabelText("Finished")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 2")).toBeNull();
+  });
+
+  it("marks only that expert's chats as read", async () => {
+    seed();
+    renderRecentChats();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Mark all Maria chats as read",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs).toEqual(
+        new Set(["autopilot-2"]),
+      );
+    });
+    expect(screen.queryByText("expert-maria chat 1")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Mark all Maria chats as read" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Mark all Otto chats as read" }),
+    ).toBeDefined();
+  });
+
+  it("does not count a chat that is running again as unread", async () => {
+    const sessions = [
+      makeSession({
+        id: "busy",
+        title: "busy chat",
+        expertId: mariaExpert.id,
+        isProcessing: true,
+      }),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
+    );
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["busy"]) });
+    renderRecentChats();
+
+    const row = (await screen.findByText("busy chat")).closest("li")!;
+    expect(within(row).queryByLabelText("Finished")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Mark all Maria chats as read" }),
+    ).toBeNull();
   });
 });
