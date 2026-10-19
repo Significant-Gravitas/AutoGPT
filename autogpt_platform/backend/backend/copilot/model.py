@@ -1417,7 +1417,7 @@ async def create_chat_session(
             is off, like the per-thread override.
         inherited_autopilot_mode: The mode a delegated thread must start on,
             already decided by the caller from the parent chat and the
-            target expert (``gate.policy.child_autopilot_mode``). Stored
+            target expert (``gate.child_autopilot_mode``). Stored
             as-is: it is a constraint rather than a pick, so the flag does
             not drop it and the expert is not read a second time.
 
