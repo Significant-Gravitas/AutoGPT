@@ -524,18 +524,16 @@ export const ChatContainer = ({
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
-                          voiceToggle={
-                            isVoiceModeEnabled ? (
-                              <VoiceModeButton
-                                isActive={voice.isActive}
-                                disabled={
-                                  isInputDisabled ||
-                                  isSendLocked ||
-                                  voice.isStarting
+                          voiceMode={
+                            isVoiceModeEnabled
+                              ? {
+                                  onStart: voice.toggle,
+                                  disabled:
+                                    isInputDisabled ||
+                                    isSendLocked ||
+                                    voice.isStarting,
                                 }
-                                onClick={voice.toggle}
-                              />
-                            ) : undefined
+                              : undefined
                           }
                           voiceBar={
                             voice.isActive ? (
@@ -575,16 +573,14 @@ export const ChatContainer = ({
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
               modeSelector={modeSelector}
-              voiceToggle={
-                isVoiceModeEnabled ? (
-                  <VoiceModeButton
-                    isActive={false}
-                    disabled={
-                      isInputDisabled || isSendLocked || isCreatingSession
+              voiceMode={
+                isVoiceModeEnabled
+                  ? {
+                      onStart: handleStartVoiceInNewChat,
+                      disabled:
+                        isInputDisabled || isSendLocked || isCreatingSession,
                     }
-                    onClick={handleStartVoiceInNewChat}
-                  />
-                ) : undefined
+                  : undefined
               }
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
