@@ -1,6 +1,7 @@
 import type { Scenario } from "../lib/scenario";
 import { builderConnectEdge } from "./builder-connect-edge";
 import { builderDragRunning } from "./builder-drag-running";
+import { builderRunEvents } from "./builder-run-events";
 import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
 import { copilotStreamReply } from "./copilot-stream-reply";
@@ -19,6 +20,7 @@ export const SCENARIOS: Scenario[] = [
   libraryRunning,
   builderConnectEdge,
   libraryRunningEvents,
+  builderRunEvents,
 ];
 
 export function findScenario(name: string) {
