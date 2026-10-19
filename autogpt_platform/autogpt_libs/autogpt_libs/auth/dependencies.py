@@ -12,7 +12,7 @@ from collections import OrderedDict
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .jwt_utils import get_jwt_payload, verify_user
+from .jwt_utils import get_jwt_payload, parse_jwt_token_async, verify_user
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
@@ -133,10 +133,8 @@ async def get_optional_user_id(
         return None
 
     try:
-        # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
+        # Off the event loop: a JWKS cache miss is a blocking fetch.
+        payload = await parse_jwt_token_async(credentials.credentials)
     except Exception as e:
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None

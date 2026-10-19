@@ -1350,3 +1350,30 @@ class TestBannedAccount:
 
         assert response.status_code == 200
         is_user_banned.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_optional_user_id_parses_the_token_off_the_event_loop(
+    mocker: MockerFixture,
+):
+    """A JWKS cache miss is a blocking fetch; on the loop it stalls every request."""
+    import threading
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from autogpt_libs.auth.dependencies import get_optional_user_id
+
+    parsed_on = []
+
+    def parse(token, audience="authenticated"):
+        parsed_on.append(threading.get_ident())
+        return {"sub": "user-1"}
+
+    mocker.patch("autogpt_libs.auth.jwt_utils.parse_jwt_token", side_effect=parse)
+
+    user_id = await get_optional_user_id(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
+    )
+
+    assert user_id == "user-1"
+    assert parsed_on and parsed_on[0] != threading.get_ident()
