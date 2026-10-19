@@ -149,6 +149,23 @@ async def test_a_turn_the_executor_cannot_read_still_ends():
     assert closed is not None and closed.status == "failed"
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_naming_no_turn_closes_nothing():
+    """With no turn id the close has no guard, so it would end the running turn."""
+    session_id, running = str(uuid.uuid4()), str(uuid.uuid4())
+    await stream_registry.create_session(session_id, None, "", "", turn_id=running)
+    body = CoPilotExecutionEntry(
+        session_id=session_id, turn_id="", user_id=None, message="hi"
+    ).model_dump(mode="json") | {"llm_auth_provider": "from-a-newer-pod"}
+
+    async with _Pod.running(_never_runs) as pod:
+        pod.deliver(json.dumps(body).encode())
+
+    assert pod.turns == []
+    still = await stream_registry.get_session(session_id)
+    assert still is not None and (still.turn_id, still.status) == (running, "running")
+
+
 class _Pod:
     """One executor whose queue delivers every turn published back to itself."""
 

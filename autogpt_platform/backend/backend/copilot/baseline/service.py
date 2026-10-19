@@ -81,6 +81,7 @@ from backend.copilot.pending_message_helpers import (
     drained_rows_entry,
     persist_pending_as_user_rows,
     persist_session_safe,
+    persist_unfolded_rows,
 )
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -219,6 +220,16 @@ def _pause_uncounted_box(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+def _pause_counted_box(sandbox: Any, session_id: str, expert_id: str | None) -> None:
+    """Pause the box at a counted turn's end, fire-and-forget; an expert's box
+    stays running while another of its turns is active."""
+    task = asyncio.create_task(
+        pause_sandbox_direct(sandbox, session_id, expert_id=expert_id)
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 # Hint appended on the last tool round so the model wraps up with a summary
@@ -2381,8 +2392,18 @@ async def stream_chat_completion_baseline(
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
     held_results: list[PendingMessage] = []
-    async for held_status in resolve_answered(user_id, session, held_results.append):
-        yield held_status
+    try:
+        async for held_status in resolve_answered(
+            user_id, session, held_results.append
+        ):
+            yield held_status
+    except BaseException:
+        # Closed at a status, before the finally below: save what already ran,
+        # its approval spent, and end the counted turn on the box.
+        await persist_unfolded_rows(session, held_results, log_prefix="[Baseline]")
+        if e2b_sandbox is not None:
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
     if held_results and await persist_pending_as_user_rows(
         session, transcript_builder, held_results, log_prefix="[Baseline]"
     ):
@@ -2807,13 +2828,7 @@ async def stream_chat_completion_baseline(
         # cleanup below. An expert's box is left running while another of
         # its turns is still active.
         if e2b_sandbox is not None:
-            pause_task = asyncio.create_task(
-                pause_sandbox_direct(
-                    e2b_sandbox, session_id, expert_id=session.expert_id
-                )
-            )
-            _background_tasks.add(pause_task)
-            pause_task.add_done_callback(_background_tasks.discard)
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.

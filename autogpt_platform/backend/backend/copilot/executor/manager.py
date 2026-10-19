@@ -767,6 +767,9 @@ class _TurnIds(BaseModel):
 def _close_rejected_turn(session_id: str, turn_id: str) -> None:
     """Close a turn this executor dropped unrun, so the chat stops reading as
     running it; the turn guard leaves a chat a later turn owns alone."""
+    # Without its id there is no guard, and the close would end the running turn.
+    if not turn_id:
+        return
     threading.Thread(
         target=lambda: asyncio.run(_close_turn(session_id, turn_id)),
         name=f"close-rejected-{session_id[:8]}",
