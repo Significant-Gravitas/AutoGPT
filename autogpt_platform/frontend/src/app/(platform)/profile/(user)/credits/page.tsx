@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -87,6 +88,7 @@ export default function CreditsPage() {
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
+  const checkoutRedirect = useCheckoutRedirect();
 
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [topUpTransactions, setTopUpTransactions] = useState<
@@ -132,10 +134,13 @@ export default function CreditsPage() {
 
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (checkoutRedirect.isRedirecting) return;
     const form = e.currentTarget;
     const amount =
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
-    requestTopUp(amount).catch(toastOnFail("request top-up"));
+    requestTopUp(amount)
+      .then(() => checkoutRedirect.markRedirecting())
+      .catch(toastOnFail("request top-up"));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -202,7 +207,11 @@ export default function CreditsPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={checkoutRedirect.isRedirecting}
+            >
               Top-up
             </Button>
           </form>
