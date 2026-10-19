@@ -12,21 +12,34 @@ import { useGraphStore } from "../../../stores/graphStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV1GetExecutionDetailsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { create } from "zustand";
+
+const useSubscribedExecutionStore = create<{ executionID: string | null }>(
+  () => ({ executionID: null }),
+);
+
+function setSubscribedExecutionID(executionID: string | null) {
+  useSubscribedExecutionStore.setState({ executionID });
+}
+
+/**
+ * True once the server has acknowledged the websocket subscription to this
+ * execution, so every later node event arrives over the websocket.
+ */
+export function useIsExecutionSubscribed(executionID: string | null) {
+  return useSubscribedExecutionStore(
+    (state) => executionID !== null && state.executionID === executionID,
+  );
+}
 
 export const useFlowRealtime = () => {
   const api = useBackendAPI();
   const queryClient = useQueryClient();
-  const updateNodeExecutionResult = useNodeStore(
-    useShallow((state) => state.updateNodeExecutionResult),
-  );
-  const updateStatus = useNodeStore(
-    useShallow((state) => state.updateNodeStatus),
+  const applyNodeExecutionEvent = useNodeStore(
+    useShallow((state) => state.applyNodeExecutionEvent),
   );
   const setGraphExecutionStatus = useGraphStore(
     useShallow((state) => state.setGraphExecutionStatus),
-  );
-  const updateEdgeBeads = useEdgeStore(
-    useShallow((state) => state.updateEdgeBeads),
   );
   const resetEdgeBeads = useEdgeStore(
     useShallow((state) => state.resetEdgeBeads),
@@ -44,12 +57,10 @@ export const useFlowRealtime = () => {
         if (data.graph_exec_id != flowExecutionID) {
           return;
         }
-        updateNodeExecutionResult(
+        applyNodeExecutionEvent(
           data.node_id,
           data as unknown as NodeExecutionResult,
         );
-        updateStatus(data.node_id, data.status);
-        updateEdgeBeads(data.node_id, data as unknown as NodeExecutionResult);
       },
     );
 
@@ -64,9 +75,38 @@ export const useFlowRealtime = () => {
       },
     );
 
+    function refetchExecutionDetails() {
+      void queryClient.invalidateQueries({
+        queryKey: getGetV1GetExecutionDetailsQueryKey(
+          flowID!,
+          flowExecutionID!,
+        ),
+      });
+    }
+
+    let hasSentSubscribe = false;
+
+    // The server acknowledges a subscription once it is registered. Refetch
+    // then too: anything published before that point is in the response, and
+    // everything after it arrives over the websocket, so useFlow stops polling.
+    const deregisterSubscribeAck = api.onWebSocketMessage(
+      "subscribe_graph_execution",
+      () => {
+        if (!hasSentSubscribe) return;
+        setSubscribedExecutionID(flowExecutionID);
+        refetchExecutionDetails();
+      },
+    );
+
+    const deregisterDisconnect = api.onWebSocketDisconnect(() => {
+      hasSentSubscribe = false;
+      setSubscribedExecutionID(null);
+    });
+
     const deregisterGraphExecutionSubscription =
       flowID && flowExecutionID
         ? api.onWebSocketConnect(() => {
+            hasSentSubscribe = true;
             // Subscribe to execution updates
             api
               .subscribeToGraphExecution(flowExecutionID as GraphExecutionID) // TODO: We are currently using a manual type, we need to fix it in future
@@ -78,12 +118,7 @@ export const useFlowRealtime = () => {
                 // published before the WebSocket subscription was established.
                 // This closes the race-condition window for fast-completing
                 // executions like dry-runs / simulations.
-                void queryClient.invalidateQueries({
-                  queryKey: getGetV1GetExecutionDetailsQueryKey(
-                    flowID!,
-                    flowExecutionID,
-                  ),
-                });
+                refetchExecutionDetails();
               })
               .catch((error) =>
                 console.error(
@@ -98,9 +133,20 @@ export const useFlowRealtime = () => {
       deregisterNodeExecutionEvent();
       deregisterGraphExecutionSubscription();
       deregisterGraphExecutionStatusEvent();
+      deregisterSubscribeAck();
+      deregisterDisconnect();
+      setSubscribedExecutionID(null);
       resetEdgeBeads();
     };
-  }, [api, flowExecutionID, resetEdgeBeads, queryClient, flowID]);
+  }, [
+    api,
+    flowExecutionID,
+    resetEdgeBeads,
+    queryClient,
+    flowID,
+    applyNodeExecutionEvent,
+    setGraphExecutionStatus,
+  ]);
 
   return {};
 };
