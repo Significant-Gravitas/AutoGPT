@@ -15,20 +15,19 @@ from .scope import MemoryScope
 
 
 @pytest.fixture(autouse=True)
-def _stub_dream_registration(mocker):
-    """_enqueue_payload fires ensure_dream_system_scheduled fire-and-forget for
-    every first-seen user. Unmocked it runs a REAL Prisma timezone lookup on
-    this test's function-scoped event loop whenever an earlier test already
-    connected Prisma, leaving a pool connection bound to a dead loop that
-    later kills a session-loop test with "Event loop is closed"."""
-    mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
-        AsyncMock(return_value=None),
+def stub_dream_registration(mocker) -> AsyncMock:
+    """_enqueue_payload fires ensure_scope_scheduled fire-and-forget for
+    every first-seen memory group. Unmocked it runs a REAL Prisma timezone
+    lookup on this test's function-scoped event loop whenever an earlier test
+    already connected Prisma, leaving a pool connection bound to a dead loop
+    that later kills a session-loop test with "Event loop is closed"."""
+    return mocker.patch.object(
+        ingest, "ensure_scope_scheduled", AsyncMock(return_value={})
     )
 
 
 def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
-    async def enqueue(_user_id: str, _group_id: str, payload: dict) -> bool:
+    async def enqueue(_scope: MemoryScope, payload: dict) -> bool:
         try:
             queue.put_nowait(payload)
         except asyncio.QueueFull:
@@ -341,24 +340,21 @@ class TestEnqueueConversationTurn:
                 expert_id="expert-1",
             )
 
-        expert_group = MemoryScope.for_expert("user-1", "expert-1").group_id
+        expert_scope = MemoryScope.for_expert("user-1", "expert-1")
         enqueue_mock.assert_awaited_once()
-        assert enqueue_mock.await_args.args[:2] == ("user-1", expert_group)
-        assert queue.get_nowait()["group_id"] == expert_group
+        assert enqueue_mock.await_args.args[0] == expert_scope
+        assert queue.get_nowait()["group_id"] == expert_scope.group_id
 
 
 class TestMemoryGroupQueueIsolation:
     @pytest.mark.asyncio
     async def test_same_user_experts_get_distinct_workers(self) -> None:
-        first_group = "expert_first"
-        second_group = "expert_second"
+        first = MemoryScope.for_expert("user-1", "first")
+        second = MemoryScope.for_expert("user-1", "second")
+        first_group, second_group = first.group_id, second.group_id
         with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
-            await ingest._enqueue_payload(
-                "user-1", first_group, {"group_id": first_group}
-            )
-            await ingest._enqueue_payload(
-                "user-1", second_group, {"group_id": second_group}
-            )
+            await ingest._enqueue_payload(first, {"group_id": first_group})
+            await ingest._enqueue_payload(second, {"group_id": second_group})
             state = ingest._get_loop_state()
 
             assert (
@@ -372,21 +368,80 @@ class TestMemoryGroupQueueIsolation:
 
     @pytest.mark.asyncio
     async def test_existing_queue_without_worker_is_restarted(self) -> None:
-        group_id = "expert_stale_worker"
+        scope = MemoryScope.for_expert("user-1", "stale-worker")
+        group_id = scope.group_id
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
         state = ingest._get_loop_state()
         state.group_queues[group_id] = queue
 
         worker_mock = AsyncMock()
         with patch.object(ingest, "_ingestion_worker", new=worker_mock):
-            assert await ingest._enqueue_payload(
-                "user-1", group_id, {"group_id": group_id}
-            )
+            assert await ingest._enqueue_payload(scope, {"group_id": group_id})
             worker = state.group_workers[group_id]
             await worker
 
         worker_mock.assert_awaited_once_with("user-1", group_id, queue)
         assert queue.get_nowait()["group_id"] == group_id
+
+
+class TestDreamScheduleRegistration:
+    @pytest.mark.asyncio
+    async def test_first_write_per_group_registers_that_groups_own_scope(
+        self, stub_dream_registration: AsyncMock
+    ) -> None:
+        """An expert group registers the expert's crons, not the account's,
+        and only on its first write in this process."""
+        expert = MemoryScope.for_expert("user-1", "expert-1")
+        account = MemoryScope.for_user("user-1")
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await ingest._enqueue_payload(expert, {"group_id": expert.group_id})
+            await ingest._enqueue_payload(expert, {"group_id": expert.group_id})
+            await ingest._enqueue_payload(account, {"group_id": account.group_id})
+            state = ingest._get_loop_state()
+            await asyncio.gather(*state.group_workers.values(), return_exceptions=True)
+
+        registered = [c.args[0] for c in stub_dream_registration.call_args_list]
+        assert registered == [expert, account]
+
+    @pytest.mark.asyncio
+    async def test_a_returning_queue_registers_again_but_never_twice_at_once(
+        self, monkeypatch
+    ) -> None:
+        """A group's queue retires after idling and comes back on the next
+        write, which registers the scope again; while a registration is
+        still in flight, the returning queue does not start another."""
+        release = asyncio.Event()
+        calls: list[MemoryScope] = []
+
+        async def ensure(scope: MemoryScope) -> dict:
+            calls.append(scope)
+            await release.wait()
+            return {}
+
+        monkeypatch.setattr(ingest, "ensure_scope_scheduled", ensure)
+        scope = MemoryScope.for_user("user-1")
+        state = ingest._get_loop_state()
+
+        async def write_after_retirement() -> None:
+            state.group_queues.pop(scope.group_id, None)
+            state.group_workers.pop(scope.group_id, None)
+            assert await ingest._enqueue_payload(scope, {"group_id": scope.group_id})
+            await asyncio.sleep(0)
+
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await write_after_retirement()
+            in_flight = state.registrations[scope.group_id]
+            await write_after_retirement()
+            assert calls == [scope]
+
+            release.set()
+            await in_flight
+            await asyncio.sleep(0)
+            assert scope.group_id not in state.registrations
+
+            await write_after_retirement()
+            assert calls == [scope, scope]
+            await state.registrations[scope.group_id]
 
 
 class TestQueueFullScenario:
@@ -495,7 +550,7 @@ class TestEnqueueEpisode:
             assert await ingest.enqueue_episode(
                 scope, "sess1", name="test_ep", episode_body="hello"
             )
-        assert enqueue_mock.await_args.args[:2] == ("abc", scope.group_id)
+        assert enqueue_mock.await_args.args[0] == scope
         assert q.get_nowait()["group_id"] == scope.group_id
 
     @pytest.mark.asyncio
@@ -690,8 +745,7 @@ class TestWorkerIdleTimeout:
         try:
             enqueue_task = asyncio.create_task(
                 ingest._enqueue_payload(
-                    user_id,
-                    group_id,
+                    MemoryScope.for_user(user_id),
                     {
                         "name": "racing-episode",
                         "episode_body": "hello",
@@ -748,8 +802,7 @@ class TestWorkerIdleTimeout:
             await asyncio.sleep(0)
             enqueue_task = asyncio.create_task(
                 ingest._enqueue_payload(
-                    user_id,
-                    group_id,
+                    MemoryScope.for_user(user_id),
                     {
                         "name": "cancellation-race-episode",
                         "episode_body": "hello",

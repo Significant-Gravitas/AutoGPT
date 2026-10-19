@@ -227,8 +227,8 @@ async def persist_and_record_usage(
     cost_microdollars = usd_to_microdollars(cost_float)
 
     if cost_microdollars is not None and cost_microdollars > 0:
-        # A turn billed to credits is charged to the credit balance when it
-        # ends, and spends nothing from the plan's daily and weekly windows.
+        # A turn billed to credits is charged to the credit balance as its cost
+        # lands, and spends nothing from the plan's daily and weekly windows.
         if user_id and not await record_credit_billed_cost(user_id, cost_microdollars):
             # record_cost_usage() owns its fail-open handling for Redis/network
             # errors. Don't wrap with a broad except here — unexpected accounting
