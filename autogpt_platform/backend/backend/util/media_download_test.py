@@ -12,7 +12,7 @@ from backend.util.request import HTTPServerError, Requests, Response
 from backend.util.type import MediaFileType
 
 
-def _mock_response(status: int, reason: str, url: str) -> Response:
+def _mock_response(status: int, reason: str | None, url: str) -> Response:
     """Build a ``Response`` suitable for mocking ``Requests._request``."""
     client_response = MagicMock(
         status=status,
@@ -67,16 +67,13 @@ class TestDownloadMediaUrl:
     async def test_http_400_without_reason(self):
         """HTTP 400 with no reason phrase still raises a clean ValueError."""
         url = "https://example.com/missing.png"
-        response = _mock_response(400, "", url)
-        response.response.reason = None
+        response = _mock_response(400, None, url)
 
         with patch.object(Requests, "_request", AsyncMock(return_value=response)):
             with pytest.raises(ValueError) as exc_info:
                 await download_media_url(url)
 
-        assert str(exc_info.value) == (
-            f"Could not download file from {url}: HTTP 400"
-        )
+        assert str(exc_info.value) == (f"Could not download file from {url}: HTTP 400")
 
     @pytest.mark.asyncio
     async def test_http_401_raises_http_client_error(self):

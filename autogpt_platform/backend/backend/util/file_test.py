@@ -343,7 +343,6 @@ class TestFileCloudIntegration:
 # ---------------------------------------------------------------------------
 
 
-
 class TestIsMediaFileRef:
     def test_data_uri(self):
         assert is_media_file_ref("data:image/png;base64,iVBORw0KGg==") is True
