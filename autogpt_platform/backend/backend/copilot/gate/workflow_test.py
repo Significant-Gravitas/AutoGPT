@@ -88,11 +88,22 @@ def redis():
         yield store
 
 
+@pytest.fixture(autouse=True)
+def paywalled():
+    with patch(
+        f"{_WORKFLOW}.is_user_paywalled", AsyncMock(return_value=False)
+    ) as check:
+        yield check
+
+
 # ---- which pauses go to the gate -----------------------------------------
 
 
-@pytest.mark.parametrize("missing", ["nothing", "stamp", "flag", "chat", "gate"])
-async def test_a_pause_goes_to_the_gate_only_with_every_piece(missing):
+@pytest.mark.parametrize(
+    "missing", ["nothing", "stamp", "flag", "chat", "gate", "plan"]
+)
+async def test_a_pause_goes_to_the_gate_only_with_every_piece(missing, paywalled):
+    paywalled.return_value = missing == "plan"
     session = _session()
     ctx = _ctx(approval_chat_id=None) if missing == "stamp" else _ctx()
     with (
@@ -106,11 +117,13 @@ async def test_a_pause_goes_to_the_gate_only_with_every_piece(missing):
     assert routed is (session if missing == "nothing" else None)
 
 
-async def test_a_chat_that_fails_to_load_leaves_a_human_review():
-    with (
-        _flags(),
-        patch(f"{_WORKFLOW}.get_chat_session", AsyncMock(side_effect=OSError)),
-    ):
+@pytest.mark.parametrize("failing", ["chat", "plan"])
+async def test_a_lookup_that_fails_leaves_a_human_review(failing, paywalled):
+    if failing == "plan":
+        paywalled.side_effect = OSError
+    load = AsyncMock(side_effect=OSError if failing == "chat" else None)
+    load.return_value = _session()
+    with _flags(), patch(f"{_WORKFLOW}.get_chat_session", load):
         assert await workflow.review_route(_ctx(), "user-1") is None
 
 

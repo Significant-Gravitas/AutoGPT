@@ -307,6 +307,37 @@ async def test_a_step_the_gate_cannot_answer_is_an_alerted_human_review(
     assert spy.await_args.kwargs.get("alert", True) is True
 
 
+@pytest.mark.parametrize("runs_it", ["allow rule", "unsupervised", "supervisor allow"])
+async def test_a_paywalled_owners_step_parks_however_the_gate_would_run_it(
+    setup_test_user, test_user_id, flags, paywalled_user, runs_it
+):
+    """Without the gate this step parks and its resume meets the paywall, so the
+    gate must not run it instead."""
+    chat = await _chat(test_user_id)
+    if runs_it == "unsupervised":
+        await update_session_autopilot_mode(
+            chat.session_id, test_user_id, "unsupervised"
+        )
+    else:
+        rule = "allow" if runs_it == "allow rule" else "judge"
+        await chat_rules.set_rule(chat.session_id, _KEY, rule)
+    run = await _Run(test_user_id, chat.session_id).create()
+    supervise = AsyncMock(return_value=Judgement(allowed=True, reason="ok"))
+    spy = AsyncMock(wraps=HITLReviewHelper.get_or_create_human_review)
+    with (
+        patch("backend.copilot.gate.workflow.supervise", supervise),
+        patch.object(HITLReviewHelper, "get_or_create_human_review", spy),
+    ):
+        paused, _ = await run.step()
+
+    assert paused
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert await run.card() is None
+    assert spy.await_args.kwargs.get("alert", True) is True
+    supervise.assert_not_awaited()
+
+
 async def test_a_card_opened_before_the_flag_went_off_still_resumes_its_run(
     setup_test_user, test_user_id, flags, client, resumed
 ):

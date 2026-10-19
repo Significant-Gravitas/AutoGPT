@@ -26,6 +26,7 @@ from backend.copilot.model import (
     get_chat_session,
     get_chat_session_metadata,
 )
+from backend.copilot.rate_limit import is_user_paywalled
 from backend.data.db_accessors import graph_db, review_db
 from backend.data.execution import ExecutionContext
 
@@ -52,6 +53,9 @@ async def review_route(ctx: ExecutionContext, user_id: str) -> ChatSession | Non
         return None
     try:
         if not await unified_approvals(user_id):
+            return None
+        # Without a plan the step must wait for a resume, which the paywall answers.
+        if await is_user_paywalled(user_id):
             return None
         session = await get_chat_session(ctx.approval_chat_id, user_id)
         if session is None or not await gate_active(user_id, session):
