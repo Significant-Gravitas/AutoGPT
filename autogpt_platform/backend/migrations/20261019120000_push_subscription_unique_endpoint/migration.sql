@@ -10,11 +10,7 @@ WHERE older."endpoint" = newer."endpoint"
     OR (older."updatedAt" = newer."updatedAt" AND older."id" < newer."id")
   );
 
--- DropIndex
-DROP INDEX "PushSubscription_userId_endpoint_key";
-
 -- CreateIndex
+-- "PushSubscription_userId_endpoint_key" stays: backend pods still running
+-- the previous release upsert on it during a rolling deploy.
 CREATE UNIQUE INDEX "PushSubscription_endpoint_key" ON "PushSubscription"("endpoint");
-
--- CreateIndex
-CREATE INDEX "PushSubscription_userId_idx" ON "PushSubscription"("userId");

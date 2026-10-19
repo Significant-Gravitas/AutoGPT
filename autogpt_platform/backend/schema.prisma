@@ -1110,7 +1110,10 @@ model PushSubscription {
   failCount    Int       @default(0)
   lastFailedAt DateTime?
 
-  @@index([userId])
+  // Redundant now that endpoint is unique, but backend pods still running
+  // the previous release upsert on it during a rolling deploy. Drop it in a
+  // later release.
+  @@unique([userId, endpoint])
 }
 
 // For the library page
