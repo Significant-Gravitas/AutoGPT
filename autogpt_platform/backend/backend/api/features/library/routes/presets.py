@@ -94,6 +94,7 @@ async def get_preset(
 
 @router.post(
     "/presets",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Create a new preset",
     description="Create a new preset for the current user.",
 )
@@ -127,7 +128,7 @@ async def create_preset(
     return await db.create_preset_from_graph_execution(user_id, preset)
 
 
-@router.post("/presets/setup-trigger")
+@router.post("/presets/setup-trigger", dependencies=[Depends(enforce_payment_paywall)])
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -169,6 +170,7 @@ async def setup_trigger(
 
 @router.patch(
     "/presets/{preset_id}",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )

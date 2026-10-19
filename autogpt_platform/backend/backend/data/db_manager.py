@@ -40,6 +40,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -63,6 +64,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
@@ -153,6 +155,8 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
+    record_gate_approval,
+    reopen_review,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -197,6 +201,7 @@ from backend.data.user import (
     get_user_notification_preference,
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
+    is_auth_user_banned,
     is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
@@ -408,6 +413,8 @@ class DatabaseManager(AppService):
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Background work skips a banned owner in Prisma-less workers too.
+    is_auth_user_banned = _(is_auth_user_banned)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -433,6 +440,8 @@ class DatabaseManager(AppService):
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
+    record_gate_approval = _(record_gate_approval)
+    reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -468,6 +477,9 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    clear_brain_dump_audio_paths = _(
+        onboarding_dump_db.clear_audio_paths, name="clear_brain_dump_audio_paths"
+    )
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -592,6 +604,20 @@ class DatabaseManager(AppService):
     is_install_revoked = _(bot_installs_db.is_install_revoked)
     upsert_bot_install = _(bot_installs_db.upsert_bot_install)
     revoke_bot_install = _(bot_installs_db.revoke_bot_install)
+
+    # ============ Memory Scope Schedules ============ #
+    # Exposed so the Prisma-less scheduler (cron bodies) and copilot-executor
+    # (lazy registration on the first memory write) reach the registry via
+    # db_accessors.memory_schedule_db().
+    get_scope_schedule = _(memory_schedule_db.get_scope_schedule)
+    claim_scope_schedule = _(memory_schedule_db.claim_scope_schedule)
+    record_scope_jobs = _(memory_schedule_db.record_scope_jobs)
+    set_scope_state = _(memory_schedule_db.set_scope_state)
+    forget_scope_job = _(memory_schedule_db.forget_scope_job)
+    record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
+    list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
+    existing_user_ids = _(memory_schedule_db.existing_user_ids)
 
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
@@ -908,6 +934,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    is_auth_user_banned = d.is_auth_user_banned
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -925,6 +952,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
+    record_gate_approval = d.record_gate_approval
+    reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -1002,6 +1031,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    clear_brain_dump_audio_paths = d.clear_brain_dump_audio_paths
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
@@ -1099,6 +1129,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     is_install_revoked = d.is_install_revoked
     upsert_bot_install = d.upsert_bot_install
     revoke_bot_install = d.revoke_bot_install
+
+    # ============ Memory Scope Schedules ============ #
+    get_scope_schedule = d.get_scope_schedule
+    claim_scope_schedule = d.claim_scope_schedule
+    record_scope_jobs = d.record_scope_jobs
+    set_scope_state = d.set_scope_state
+    forget_scope_job = d.forget_scope_job
+    record_scope_run = d.record_scope_run
+    list_user_scope_schedules = d.list_user_scope_schedules
+    list_scope_schedules = d.list_scope_schedules
+    existing_user_ids = d.existing_user_ids
 
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event

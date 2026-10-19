@@ -37,7 +37,7 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
-from backend.copilot.llm_attribution import set_turn_impersonated
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
@@ -1237,6 +1237,7 @@ class TestBaselineCostExtraction:
             ),
         ):
             set_turn_impersonated(True)
+            set_turn_trace_id("turn-1")
             try:
                 await _baseline_llm_caller(
                     messages=[{"role": "user", "content": "hi"}],
@@ -1245,6 +1246,7 @@ class TestBaselineCostExtraction:
                 )
             finally:
                 set_turn_impersonated(False)
+                set_turn_trace_id(None)
 
         assert create_mock.await_args is not None
         extra_body = create_mock.await_args.kwargs["extra_body"]
@@ -1254,6 +1256,7 @@ class TestBaselineCostExtraction:
             "generation_name": "copilot-baseline",
             "environment": attribution_settings.config.app_env.value,
             "impersonated": True,
+            "trace_id": "turn-1",
         }
 
     @pytest.mark.asyncio

@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
+from backend.copilot.dream.batch_callbacks import (
+    _write_phase_to_state,
+    handle_dream_batch_result,
+)
 from backend.copilot.dream.batch_submit import input_bundle_key, persist_input_bundle
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.job_status import read_status, write_initial_status
@@ -101,9 +104,9 @@ def _entry(
         "job_id": job_id,
         "phase": phase,
         "phase_models": {
-            "consolidate": "claude-sonnet-4-6",
-            "recombine": "claude-opus-4-7",
-            "sanitize": "claude-sonnet-4-6",
+            "consolidate": "claude-sonnet-5",
+            "recombine": "claude-opus-5-5",
+            "sanitize": "claude-sonnet-5",
         },
         "custom_ids": [custom_id],
         "phase_for_custom_id": {custom_id: phase},
@@ -402,7 +405,7 @@ class TestPhaseChaining:
         self, fake_redis
     ):
         """Phase 3 is terminal: apply runs, all three phases logged at
-        anthropic_batch path (50% discount in the rate card), JobStatus
+        anthropic_batch path (half the catalog list price), JobStatus
         flips to complete."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
@@ -493,9 +496,20 @@ class TestPhaseChaining:
             call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].model
             for call in record_cost.await_args_list
         }
-        assert models_by_phase["consolidate"] == "claude-sonnet-4-6"
-        assert models_by_phase["recombine"] == "claude-opus-4-7"
-        assert models_by_phase["sanitize"] == "claude-sonnet-4-6"
+        assert models_by_phase["consolidate"] == "claude-sonnet-5"
+        assert models_by_phase["recombine"] == "claude-opus-5-5"
+        assert models_by_phase["sanitize"] == "claude-sonnet-5"
+        # ...and priced from that model's catalog card at half the list
+        # price: each ``_row`` carries 10 input + 20 output tokens.
+        costs_by_phase = {
+            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].cost_usd
+            for call in record_cost.await_args_list
+        }
+        sonnet_5_cost = (10 * 2.0 + 20 * 10.0) / 1_000_000 / 2
+        opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
+        assert costs_by_phase["consolidate"] == pytest.approx(sonnet_5_cost)
+        assert costs_by_phase["recombine"] == pytest.approx(opus_5_5_cost)
+        assert costs_by_phase["sanitize"] == pytest.approx(sonnet_5_cost)
 
     @pytest.mark.asyncio
     async def test_expert_terminal_result_applies_and_releases_in_expert_scope(
@@ -782,7 +796,8 @@ class TestErrorPaths:
         assert "unknown batch phase" in (final.error or "")
 
     @pytest.mark.asyncio
-    async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
+    @pytest.mark.parametrize("error", ["content moderation", "max_tokens"])
+    async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis, error):
         await _persist_autopilot_bundle()
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
@@ -798,22 +813,22 @@ class TestErrorPaths:
                     _row(
                         custom_id="p1:consolidate",
                         content="",
-                        error="content moderation",
+                        error=error,
                     )
                 ],
             )
         mark_errored.assert_awaited_once()
-        assert "content moderation" in mark_errored.call_args.kwargs["error"]
-        # The errored phase itself is not billed.
+        assert error in mark_errored.call_args.kwargs["error"]
         record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert stored["error"] == error
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis):
-        """A row whose content is not parseable JSON must NOT chain to
-        the next phase — the next phase's prompt would be built on
-        garbage. Pydantic's default ``model_validate`` is permissive
-        about unknown fields (extra="ignore"), so the failure mode the
-        test pins is invalid-JSON not unknown-field."""
+    @pytest.mark.parametrize("content", ["this is not JSON", '{"facts": "invalid"}'])
+    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis, content):
         await _persist_autopilot_bundle()
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
@@ -830,13 +845,87 @@ class TestErrorPaths:
                 [
                     _row(
                         custom_id="p1:consolidate",
-                        content="this is not JSON at all",
+                        content=content,
                     )
                 ],
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert "invalid output shape" in stored["error"]
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content,error",
+        [
+            (_RECOMBINE_CONTENT, "max_tokens"),
+            ('{"proposals": "invalid"}', None),
+            ("", "provider error"),
+        ],
+    )
+    async def test_failed_phase_only_charges_earlier_completed_phase(
+        self, fake_redis, content, error
+    ):
+        await _persist_autopilot_bundle()
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        record_cost = AsyncMock()
+        with (
+            patch("backend.copilot.dream.job_status.mark_errored", AsyncMock()),
+            patch(
+                "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="recombine"),
+                [_row(custom_id="p1:recombine", content=content, error=error)],
+            )
+        record_cost.assert_awaited_once()
+        usage = record_cost.await_args.kwargs["phase_usage"]
+        assert usage.phase == "consolidate"
+        assert usage.cost_usd == pytest.approx((10 * 2 + 20 * 10) / 1_000_000 / 2)
+
+    @pytest.mark.asyncio
+    async def test_text_answer_around_the_json_still_chains(self, fake_redis):
+        """A model the output tool can't be forced on (``auto``) may answer
+        in text. The JSON in it, fenced behind a line of prose, is the
+        phase result, and the next phase reads the JSON alone."""
+        await _persist_autopilot_bundle()
+        submit_phase = AsyncMock(
+            return_value=MagicMock(provider_batch_id="msgbatch_recombine")
+        )
+        mark_errored = AsyncMock()
+        with (
+            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
+            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
+            patch("backend.copilot.dream.job_status.update_status_phase", AsyncMock()),
+            patch(
+                "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+                return_value="sk-ant-test",
+            ),
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [
+                    _row(
+                        custom_id="p1:consolidate",
+                        content='Here are the facts:\n```json\n{"facts": []}\n```',
+                    )
+                ],
+            )
+        mark_errored.assert_not_awaited()
+        submit_phase.assert_awaited_once()
+        assert submit_phase.call_args.kwargs["consolidated_json"] == (
+            _CONSOLIDATE_CONTENT
+        )
 
     @pytest.mark.asyncio
     async def test_apply_crash_marks_errored_still_records_usage(self, fake_redis):

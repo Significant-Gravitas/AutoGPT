@@ -20,7 +20,6 @@ from backend.data.user import (
     get_or_create_user_with_status,
     get_user_notification_preference,
     record_signup_consent,
-    update_user_email,
     update_user_notification_preference,
     update_user_timezone,
     verify_preference_token,
@@ -30,7 +29,7 @@ from backend.util.settings import Settings
 settings = Settings()
 logger = logging.getLogger(__name__)
 
-# Nothing is hoisted onto this router, tags included. Seven of the eight routes
+# Nothing is hoisted onto this router, tags included. Six of the seven routes
 # take Security(requires_user); POST /auth/user/preferences/from-email takes
 # none — it is reached from an email link and verifies its own signed token —
 # so a router-level dependency would silently authenticate it.
@@ -80,20 +79,6 @@ async def get_or_create_user_route(
             logger.debug("Failed to start Tally population task", exc_info=True)
 
     return user.model_dump()
-
-
-@router.post(
-    "/auth/user/email",
-    summary="Update user email",
-    tags=["auth"],
-    dependencies=[Security(requires_user)],
-)
-async def update_user_email_route(
-    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
-) -> dict[str, str]:
-    await update_user_email(user_id, email)
-
-    return {"email": email}
 
 
 @router.get(

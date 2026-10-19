@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { ApprovalCard } from "./components/ApprovalCard/ApprovalCard";
 import { CompactApprovalLine } from "./components/CompactApprovalLine";
 import { QueueHeader } from "./components/QueueHeader";
@@ -27,7 +28,7 @@ export const COMPACT_FROM = 4;
 
 export function ApprovalQueue({ items, expertName = null, onAnswered }: Props) {
   const queue = useApprovalQueue({ items, onAnswered });
-  const { pending, receipts } = queue;
+  const { pending, receipts, leaving } = queue;
   if (pending.length === 0 && receipts.length === 0) return null;
 
   const compact = pending.length >= COMPACT_FROM;
@@ -41,7 +42,10 @@ export function ApprovalQueue({ items, expertName = null, onAnswered }: Props) {
   return (
     <section
       aria-label="Waiting for you"
-      className="overflow-hidden rounded-xl border border-zinc-200 bg-white"
+      className={cn(
+        "overflow-hidden rounded-xl border border-zinc-200 bg-white transition-opacity duration-200 motion-reduce:transition-none",
+        leaving && "opacity-0",
+      )}
     >
       <QueueHeader
         count={pending.length}

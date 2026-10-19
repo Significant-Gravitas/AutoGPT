@@ -5,6 +5,10 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
@@ -177,6 +181,9 @@ export const customMutator = async <
       logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
+      if (isAccountBannedResponse(response.status, responseData)) {
+        signOutBannedAccount();
+      }
     }
 
     throw new ApiError(errorMessage, response.status, responseData);
