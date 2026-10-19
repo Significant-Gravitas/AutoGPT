@@ -4,12 +4,30 @@
  * says the same thing as the stored value. Replacing it with a reformatted
  * copy rewrites the field under the user, which throws the caret to the end
  * and cancels an IME composition.
+ *
+ * Key order counts, which is fine for a value parsed from the user's own
+ * text; a value with its keys in another order only costs one reformat.
  */
 export function isJsonTextFor(text: string, value: unknown): boolean {
   if (text.trim() === "") return value === undefined || value === null;
+  if (hasInexactNumber(text)) return false;
   try {
     return JSON.stringify(JSON.parse(text)) === JSON.stringify(value);
   } catch {
     return false;
   }
+}
+
+const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
+const NUMBER_LITERAL = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+// A number JSON.parse can only round (an integer past 2^53, or one too large
+// to hold at all) would be saved as something other than what is on screen.
+function hasInexactNumber(text: string): boolean {
+  const numbers = text.replace(STRING_LITERAL, '""').match(NUMBER_LITERAL);
+  return (numbers ?? []).some((literal) => {
+    const parsed = Number(literal);
+    if (!Number.isFinite(parsed)) return true;
+    return /^-?\d+$/.test(literal) && !Number.isSafeInteger(parsed);
+  });
 }
