@@ -20,6 +20,7 @@ from prisma.models import (
     User,
 )
 
+from backend.api.features.experts import routines
 from backend.copilot import db as copilot_db
 from backend.copilot.scheduled_chats import service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
@@ -215,6 +216,52 @@ async def test_a_routine_pauses_every_fire_time_and_is_named_by_its_title(
         assert notes[0].metadata["title"] == "Morning and noon sweep"
         # Deleted with its expert, so the paused list offers no Delete.
         assert [p.routine for p in await list_paused_scheduled_chats(user_id)] == [True]
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_switching_a_paused_routine_off_forgets_its_streak(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """Its jobs are deleted as it is switched off, and switching it on again
+    makes new ones that fire. Kept, the streak would still list it as
+    paused, with a Resume that says it runs again."""
+    scheduler.delete_schedule = AsyncMock()
+    mocker.patch(
+        "backend.api.features.experts.routine_jobs.get_scheduler_client",
+        return_value=scheduler,
+    )
+    user_id, session_id = await _owner()
+    try:
+        routine = await ExpertRoutine.prisma().create(
+            data={
+                "userId": user_id,
+                "title": "Morning sweep",
+                "prompt": "Check the inbox.",
+                "crons": ["30 8 * * *"],
+                "asks": [],
+                "scheduleIds": ["job-a"],
+            }
+        )
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(
+                _run(
+                    user_id,
+                    session_id,
+                    failed,
+                    schedule_key=routine.id,
+                    schedule_id="job-a",
+                    routine_id=routine.id,
+                )
+            )
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+
+        await routines.disable_routine(user_id, None, routine.id)
+
+        assert await list_paused_scheduled_chats(user_id) == []
+        assert not await resume_scheduled_chat(user_id, routine.id)
     finally:
         await _cleanup(user_id)
 

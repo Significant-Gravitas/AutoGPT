@@ -46,6 +46,7 @@ from backend.api.features.experts.routine_jobs import (
     spread_cron,
 )
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
+from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -428,6 +429,8 @@ async def disable_routine(
     )
     if updated is None:
         raise RoutineNotFoundError(routine_id)
+    # Switched off is no longer paused for failing: its jobs are gone.
+    await forget_routine(user_id, row.id)
     return to_model(updated)
 
 

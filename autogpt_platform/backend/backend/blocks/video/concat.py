@@ -9,6 +9,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -69,6 +70,7 @@ class VideoConcatBlock(Block):
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
                 "_store_output_video": lambda *args, **kwargs: "concat_test.mp4",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def _store_input_video(

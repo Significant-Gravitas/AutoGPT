@@ -278,6 +278,23 @@ def test_a_retried_delete_still_forgets_the_streak(
     forget.assert_awaited_once_with(test_user_id, "sched-1")
 
 
+def test_a_delete_whose_streak_cleanup_fails_still_reports_the_delete(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The job is gone by then. A 500 would tell the owner the delete
+    failed; the paused row it leaves is cleared by deleting it again."""
+    _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(side_effect=RuntimeError("database down")),
+    )
+
+    response = client.delete("/schedules/sched-1")
+
+    assert response.status_code == 200
+    assert response.json() == {"id": "sched-1"}
+
+
 def test_paused_scheduled_chats_are_listed_for_the_caller(
     mocker: pytest_mock.MockFixture, test_user_id: str
 ) -> None:

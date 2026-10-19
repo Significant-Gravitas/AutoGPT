@@ -126,7 +126,7 @@ describe("getAnimationText", () => {
         state: "input-streaming",
         input: { username_agent_slug: "me/agent" },
       }),
-    ).toBe('Running the agent "me/agent"');
+    ).toBe('Running the workflow "me/agent"');
   });
 
   it("uses the library agent id when no slug is present", () => {
@@ -135,7 +135,7 @@ describe("getAnimationText", () => {
         state: "input-available",
         input: { library_agent_id: "lib-9" },
       }),
-    ).toBe('Running the agent "Library agent lib-9"');
+    ).toBe('Running the workflow "Library workflow lib-9"');
   });
 
   it("uses the scheduling phrase when a schedule is requested", () => {
@@ -144,7 +144,7 @@ describe("getAnimationText", () => {
         state: "input-streaming",
         input: { schedule_name: "daily", cron: "0 0 * * *" },
       }),
-    ).toBe("Scheduling the agent to run");
+    ).toBe("Scheduling the workflow to run");
   });
 
   it("describes an execution_started output", () => {
@@ -165,7 +165,7 @@ describe("getAnimationText", () => {
   it("describes a non-webhook agent_details output", () => {
     expect(
       getAnimationText({ state: "output-available", output: agentDetails }),
-    ).toBe('Agent inputs needed for "Summariser"');
+    ).toBe('Workflow inputs needed for "Summariser"');
   });
 
   it("describes a setup_requirements output", () => {
@@ -180,13 +180,13 @@ describe("getAnimationText", () => {
   it("describes a need_login output", () => {
     expect(
       getAnimationText({ state: "output-available", output: needLogin }),
-    ).toBe("Sign in required to run agent");
+    ).toBe("Sign in required to run workflow");
   });
 
   it("falls back to the action phrase when output is unparseable", () => {
     expect(
       getAnimationText({ state: "output-available", output: "{bad" }),
-    ).toBe("Running the agent");
+    ).toBe("Running the workflow");
   });
 
   it("returns the error phrase for an error output and output-error state", () => {
@@ -200,7 +200,7 @@ describe("getAnimationText", () => {
 
   it("returns the action phrase for an unknown state", () => {
     expect(getAnimationText({ state: "unknown" as never })).toBe(
-      "Running the agent",
+      "Running the workflow",
     );
   });
 });

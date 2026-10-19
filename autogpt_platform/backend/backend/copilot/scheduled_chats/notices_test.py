@@ -249,7 +249,7 @@ def _db() -> MagicMock:
     return MagicMock(
         append_session_message=AsyncMock(return_value=True),
         append_expert_run_message=AsyncMock(return_value="expert-thread"),
-        append_plain_session_message=AsyncMock(return_value="main-chat"),
+        append_plain_session_message=AsyncMock(return_value="new-chat"),
     )
 
 
@@ -261,7 +261,7 @@ def _db() -> MagicMock:
         (None, "expert-1", "append_expert_run_message"),
         (None, None, "append_plain_session_message"),
     ],
-    ids=["own-thread", "expert-thread", "main-chat"],
+    ids=["own-thread", "expert-thread", "new-chat"],
 )
 async def test_the_note_goes_to_the_schedules_own_chat_first(
     session_id, expert_id, called
@@ -294,6 +294,9 @@ async def test_the_note_goes_to_the_schedules_own_chat_first(
         user_id="user-1", schedule_key="routine-1", window_key=notice.window_key
     )
     assert kwargs["metadata"]["hidden_from_model"] is True
+    if called == "append_plain_session_message":
+        # The chat it opens is named for the schedule, as its run's would be.
+        assert kwargs["title"] == "Briefing"
 
 
 @pytest.mark.asyncio

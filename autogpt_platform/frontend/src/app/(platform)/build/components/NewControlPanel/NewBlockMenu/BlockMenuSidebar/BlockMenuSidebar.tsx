@@ -83,12 +83,12 @@ export const BlockMenuSidebar = () => {
       },
     },
     {
-      name: "Marketplace Agents",
+      name: "Marketplace Workflows",
       type: "marketplace_agents",
       number: blockCounts?.marketplace_agents,
     },
     {
-      name: "My Agents",
+      name: "My Workflows",
       type: "my_agents",
       number: blockCounts?.my_agents,
     },

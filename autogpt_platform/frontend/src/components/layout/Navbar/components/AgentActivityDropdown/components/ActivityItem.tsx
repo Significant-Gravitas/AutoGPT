@@ -3,6 +3,7 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { cn } from "@/lib/utils";
 import Link, { useLinkStatus } from "next/link";
@@ -10,6 +11,7 @@ import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
   Alert01Icon,
+  Alert02Icon,
   ArrowUpRight01Icon,
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -62,7 +64,9 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
           />
         );
       case AgentExecutionStatus.COMPLETED:
-        return (
+        return isCompletedWithErrors(execution) ? (
+          <Icon icon={Alert02Icon} size={18} className="text-amber-600" />
+        ) : (
           <Icon
             icon={CheckmarkCircle02Icon}
             size={18}
@@ -121,7 +125,9 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
     let statusText = "ended";
     switch (execution.status) {
       case AgentExecutionStatus.COMPLETED:
-        statusText = "completed";
+        statusText = isCompletedWithErrors(execution)
+          ? "completed with errors"
+          : "completed";
         break;
       case AgentExecutionStatus.FAILED:
         statusText = "failed";

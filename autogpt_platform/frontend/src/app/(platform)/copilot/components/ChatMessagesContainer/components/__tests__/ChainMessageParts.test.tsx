@@ -3,10 +3,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessagePart } from "../../helpers";
 import { ChainMessageParts } from "../ChainMessageParts";
 
+const toolChainParts: unknown[] = [];
+
 vi.mock("../../../ToolChain/ToolChain", () => ({
-  ToolChain: ({ isStreaming }: { isStreaming: boolean }) => (
-    <div data-testid="tool-chain" data-streaming={String(isStreaming)} />
-  ),
+  ToolChain: ({
+    isStreaming,
+    parts,
+  }: {
+    isStreaming: boolean;
+    parts: unknown;
+  }) => {
+    toolChainParts.push(parts);
+    return (
+      <div data-testid="tool-chain" data-streaming={String(isStreaming)} />
+    );
+  },
 }));
 
 vi.mock("../MessagePartRenderer", () => ({
@@ -142,5 +153,36 @@ describe("ChainMessageParts", () => {
 
     expect(screen.getAllByTestId("tool-chain").length).toBe(1);
     expect(screen.queryByTestId("expert-group")).toBeNull();
+  });
+
+  it("hands each chain the same parts while the message's parts are unchanged", () => {
+    const parts = [
+      {
+        type: "tool-web_search",
+        state: "output-available",
+        toolCallId: "search",
+        input: {},
+        output: {},
+      },
+    ] as MessagePart[];
+    toolChainParts.length = 0;
+
+    const { rerender } = render(
+      <ChainMessageParts
+        parts={parts}
+        messageID="message"
+        isCurrentlyStreaming
+      />,
+    );
+    rerender(
+      <ChainMessageParts
+        parts={parts}
+        messageID="message"
+        isCurrentlyStreaming={false}
+      />,
+    );
+
+    expect(toolChainParts).toHaveLength(2);
+    expect(toolChainParts[1]).toBe(toolChainParts[0]);
   });
 });

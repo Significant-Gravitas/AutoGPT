@@ -1,37 +1,32 @@
 "use client";
 
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
+import { ComponentProps, ReactNode, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
-import { RecentChats } from "./components/RecentChats/RecentChats";
+import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
+import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
+import { useNavItemClassName } from "./useNavItemClassName";
 import {
-  ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
@@ -49,7 +44,7 @@ type NavLink = {
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Workflows", href: "/library", icon: GridViewIcon },
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
@@ -95,17 +90,6 @@ function HomeIcon() {
       icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
-  );
-}
-
-// The stronger active state ships with the brain-dump experience.
-function useNavItemClassName() {
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  return cn(
-    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
-    isBrainDumpEnabled
-      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
-      : "data-[active=true]:!bg-zinc-100",
   );
 }
 
@@ -177,41 +161,12 @@ function NavMenu({
   );
 }
 
-function CollapsibleNavGroup({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <Collapsible defaultOpen className="group/collapsible">
-      <SidebarGroup className="py-1">
-        <SidebarGroupLabel
-          asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
-        >
-          <CollapsibleTrigger>
-            {label}
-            <Icon
-              icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
-        </SidebarGroupLabel>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
-        </CollapsibleContent>
-      </SidebarGroup>
-    </Collapsible>
-  );
-}
-
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
   const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
+  const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
@@ -247,7 +202,9 @@ export function AppSidebar(props: Props) {
 
         <motion.div
           variants={sidebarContainerVariants}
-          initial="hidden"
+          // On mobile the sheet's slide is the entrance; a blurred stagger on
+          // top of it delays the items and costs frames on phones.
+          initial={isMobile ? false : "hidden"}
           animate="show"
           className="flex shrink-0 flex-col gap-2"
         >
@@ -267,21 +224,7 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          {isLoggedIn && (
-            <motion.div
-              variants={itemVariants}
-              className="group-data-[collapsible=icon]:hidden"
-            >
-              <CollapsibleNavGroup label="Recent chats">
-                {/* Suspense boundary: RecentChats reads useSearchParams(), which
-                  Next.js requires to be wrapped to avoid forcing the route to
-                  client-side rendering. */}
-                <Suspense fallback={null}>
-                  <RecentChats />
-                </Suspense>
-              </CollapsibleNavGroup>
-            </motion.div>
-          )}
+          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
         </motion.div>
 
         <SidebarUserActions />

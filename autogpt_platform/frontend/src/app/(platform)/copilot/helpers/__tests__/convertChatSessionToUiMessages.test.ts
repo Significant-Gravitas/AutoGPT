@@ -391,12 +391,12 @@ function uiUser(
 describe("concatWithAssistantMerge", () => {
   it("returns b unchanged when a is empty", () => {
     const b = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge([], b)).toEqual(b);
+    expect(concatWithAssistantMerge([], b)).toBe(b);
   });
 
   it("returns a unchanged when b is empty", () => {
     const a = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge(a, [])).toEqual(a);
+    expect(concatWithAssistantMerge(a, [])).toBe(a);
   });
 
   it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {
@@ -718,6 +718,63 @@ describe("the [Attached files] block", () => {
   it("leaves a message with no block alone", () => {
     expect(userParts("just text")).toEqual([
       { type: "text", text: "just text", state: "done" },
+    ]);
+  });
+});
+
+describe("a pause marker row", () => {
+  const MARKER =
+    "[__COPILOT_SYSTEM_e3b0__] Paused: this task is out of today's budget.";
+  const PAUSE = {
+    reason: "daily",
+    resets_at: "2026-10-12T06:00:00.000Z",
+    steps: null,
+    checkpoint_saved: true,
+    started: true,
+  };
+
+  it("becomes the Paused card's part, riding the bubble it merges into", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "Do the thing.", sequence: 0 },
+        { role: "assistant", content: "Saved where I got to.", sequence: 1 },
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 2,
+          // The API client hands dates over as Date objects.
+          metadata: {
+            turn_paused: { ...PAUSE, resets_at: new Date(PAUSE.resets_at) },
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1].parts).toEqual([
+      { type: "text", text: "Saved where I got to.", state: "done" },
+      { type: "data-turn-paused", id: "seq-2", data: PAUSE },
+    ]);
+  });
+
+  it("stays a system note when its pause can't be read", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 0,
+          metadata: { turn_paused: { reason: "lunch" } },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: MARKER, state: "done" },
     ]);
   });
 });

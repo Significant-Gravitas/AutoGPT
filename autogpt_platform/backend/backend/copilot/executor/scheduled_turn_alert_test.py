@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 from collections.abc import Iterator
@@ -6,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot import stream_registry
+from backend.copilot import stream_registry, usage_activation_fixtures
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.executor.scheduled_turn_alert import (
@@ -24,18 +25,39 @@ from backend.copilot.response_model import (
     StreamError,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
 from backend.copilot.scheduled_chats.outcomes import RunOutcome
 from backend.copilot.scheduled_chats.streaks import advance
 from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
+from backend.copilot.turn_pause import PauseReason, TurnPause
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 _ALERT = "backend.copilot.executor.scheduled_turn_alert"
 _PRISMA_ERROR = (
     "Client is not connected to the query engine, you must call `connect()` "
     "before attempting to query data."
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_stream_publication(mocker):
+    mocker.patch(
+        "backend.copilot.executor.processor.stream_registry.publish_chunk",
+        new_callable=AsyncMock,
+    )
+
+
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
+    )
 
 
 def _entry(scheduled: ScheduledTurnOrigin | None) -> CoPilotExecutionEntry:
@@ -178,6 +200,19 @@ def test_looking_up_the_step_that_failed_is_not_work_done():
     assert outcome.whole_run
 
 
+def test_finding_the_agent_that_then_failed_is_not_work_done():
+    """The weekly report finds its agent, then run_agent fails (SECRT-2799):
+    the run did none of its work, so it failed outright."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_looked_up("find_library_agent"))
+    watch.observe(_run_agent_failure())
+
+    outcome = watch.outcome(None)
+
+    assert outcome.failure is not None and outcome.whole_run
+
+
 def test_the_discord_monitor_pauses_on_its_third_run():
     streak = None
     steps = []
@@ -218,6 +253,75 @@ def test_the_watch_counts_only_platform_tools_as_trying():
 
 def test_interactive_turns_are_not_watched():
     assert ScheduledTurnWatch.for_entry(_entry(None)) is None
+
+
+def _paused(reason: PauseReason, *, started: bool = True) -> StreamTurnPaused:
+    return StreamTurnPaused(
+        pause=TurnPause(
+            reason=reason, checkpoint_saved=started, started=started
+        ).as_part()
+    )
+
+
+def _refused_while_landing() -> StreamToolOutputAvailable:
+    """A tool call refused once the run had to land: the refusal reaches the
+    model as a failed tool result."""
+    return StreamToolOutputAvailable(
+        toolCallId="call-refused",
+        toolName="run_agent",
+        output="Tool calls are paused: this task has used the budget it has for now.",
+        success=False,
+    )
+
+
+def _landed_run(reason: PauseReason) -> ScheduledTurnWatch:
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_refused_while_landing())
+    watch.observe(_paused(reason))
+    return watch
+
+
+@pytest.mark.parametrize(
+    ("reason", "key"),
+    [("task", "turn:max_budget_exhausted"), ("steps", "turn:max_turns_exhausted")],
+)
+def test_a_run_that_lands_at_its_own_limit_ran_out_as_before(reason, key):
+    """Its own budget and step limit pause a run now, where they used to end
+    it with an error. Three in a row still pause the schedule."""
+    outcome = _landed_run(reason).outcome(None)
+
+    assert outcome.failure is not None
+    assert outcome.failure.key == key and outcome.failure.kind == "budget"
+    assert outcome.whole_run
+
+
+@pytest.mark.parametrize("reason", ["daily", "weekly", "trial"])
+def test_a_run_paused_by_the_accounts_allowance_counts_for_nothing(reason):
+    """The owner's allowance ran out mid-run: their state, not the
+    schedule's, and the runs after it say so as skips. The tool calls the
+    landing refused are no failure either."""
+    watch = _landed_run(reason)
+
+    assert watch.outcome(None).neutral
+    with patch(f"{_ALERT}.sentry_sdk") as sentry:
+        watch.report(None)
+    sentry.capture_message.assert_not_called()
+
+
+def test_a_run_at_its_own_limit_alerts_as_that_limit_not_as_a_tool():
+    watch = _landed_run("task")
+
+    with patch(f"{_ALERT}.sentry_sdk") as sentry:
+        watch.report(None)
+
+    sentry.capture_message.assert_called_once_with(
+        "Scheduled copilot turn failed: the turn errored", level="error"
+    )
+    scope = sentry.new_scope.return_value.__enter__.return_value
+    _, context = scope.set_context.call_args.args
+    assert context["turn_error_type"] == "max_budget_exhausted"
+    assert context["tool_failures"] == []
 
 
 def test_tool_error_type_reads_error_payloads_only():
@@ -495,6 +599,43 @@ async def test_a_broken_record_never_breaks_the_turn_cleanup(database_manager, c
 
 
 @pytest.mark.asyncio
+async def test_a_cancelled_record_still_closes_the_turns_browser(database_manager):
+    """Recording waits on the DatabaseManager and can be cancelled meanwhile,
+    as a shutdown cancels the turn. The cleanups after it still run, or the
+    turn's Chromium tree outlives it on the pod."""
+    database_manager.record_scheduled_run.side_effect = asyncio.CancelledError()
+
+    with patch(
+        "backend.copilot.executor.processor.close_browser_daemon",
+        new=AsyncMock(return_value=False),
+    ) as close_browser:
+        with pytest.raises(asyncio.CancelledError):
+            await _run_turn(_entry(_weekly()), [_run_agent_success()])
+
+    close_browser.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_turn_refused_at_pickup_counts_for_nothing(database_manager):
+    """The allowance ran out between the schedule firing and the turn being
+    picked up, so the turn never ran. Read as a run that tried nothing, it
+    would continue an open connection failure and could finish pausing a
+    monitor for a cause it never reached."""
+    not_started = TurnPause(reason="daily", checkpoint_saved=False, started=False)
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.refusal_for",
+            AsyncMock(return_value=not_started),
+        ),
+        patch("backend.copilot.budget_gate.upsert_chat_session", AsyncMock()),
+    ):
+        await _run_turn(_entry(_weekly()), [])
+
+    database_manager.record_scheduled_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_executor_alerts_when_the_codex_checkpoint_fails_after_a_scheduled_turn():
     session = ChatSession.new(
         "user-1", dry_run=False, llm_auth_provider="codex", llm_credential_id="cred-1"
@@ -550,6 +691,7 @@ async def test_executor_alerts_when_the_codex_checkpoint_fails_after_a_scheduled
     mark_completed.assert_awaited_once_with(
         entry.session_id,
         error_message="codex_credential_checkpoint_failed",
+        error_code=None,
         turn_id=entry.turn_id,
     )
     sentry.capture_message.assert_called_once_with(

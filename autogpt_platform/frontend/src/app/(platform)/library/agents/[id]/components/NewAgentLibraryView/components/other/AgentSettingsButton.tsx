@@ -9,10 +9,10 @@ export function AgentSettingsButton() {
       variant="ghost"
       size="small"
       className="m-0 min-w-0 rounded-full p-0 px-1"
-      aria-label="Agent Settings"
+      aria-label="Workflow Settings"
     >
       <Icon icon={Settings01Icon} size={18} className="text-zinc-600" />
-      <Text variant="small">Agent Settings</Text>
+      <Text variant="small">Workflow Settings</Text>
     </Button>
   );
 }

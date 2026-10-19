@@ -10,11 +10,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 @pytest.fixture(autouse=True)
 def resume_after_reconnect(mocker) -> MagicMock:
     """A connect resumes the owner's paused scheduled chats in the background.

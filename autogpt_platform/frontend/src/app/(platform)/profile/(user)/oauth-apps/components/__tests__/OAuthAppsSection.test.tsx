@@ -7,6 +7,8 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+
 import { OAuthAppsSection } from "../OAuthAppsSection";
 
 const toastSpy = vi.hoisted(() => vi.fn());
@@ -17,9 +19,14 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
     >();
   return {
     ...actual,
+    toast: (...args: unknown[]) => toastSpy(...args),
     useToast: () => ({ toast: toastSpy, dismiss: () => {}, toasts: [] }),
   };
 });
+
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => false,
+}));
 
 const uploadSpy = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/direct-upload", async (importOriginal) => {
@@ -92,6 +99,36 @@ describe("OAuthAppsSection - logo upload", () => {
       );
     });
     expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  it("sends an account without a plan to whoever runs this server, where nothing bills", async () => {
+    uploadSpy.mockRejectedValueOnce(
+      new ApiError("A subscription is required.", 402, null),
+    );
+
+    render(<OAuthAppsSection />);
+    await screen.findByText("My App");
+    const file = new File(["x"], "logo.png", { type: "image/png" });
+    fireEvent.change(logoInput(), { target: { files: [file] } });
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+    const [paywall] = toastSpy.mock.calls[0];
+    expect(paywall).toMatchObject({
+      title: "Uploading a logo needs an active plan",
+    });
+    render(
+      <>
+        {paywall.description}
+        {paywall.action}
+      </>,
+    );
+    expect(
+      screen.getByText("Ask whoever runs this server to set one up."),
+    ).toBeDefined();
+    expect(screen.queryByRole("link", { name: "See plans" })).toBeNull();
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Error" }),
+    );
   });
 
   it("surfaces a destructive toast when the upload fails", async () => {

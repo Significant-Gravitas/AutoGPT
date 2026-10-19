@@ -93,7 +93,7 @@ async def _enforce_spend_allowance(user_id: str) -> None:
     await enforce_payment_paywall(user_id)
 
     try:
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+        daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
@@ -102,6 +102,7 @@ async def _enforce_spend_allowance(user_id: str) -> None:
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
+            expected_tier=usage_tier,
         )
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc

@@ -1,13 +1,12 @@
-import { randomBytes } from "crypto";
 import type { Page } from "@playwright/test";
-import { expect, test } from "../coverage-fixture";
 import { createUniqueAgentName } from "../pages/build.page";
 import { LibraryPage } from "../pages/library.page";
+import { expect, test } from "./fixtures";
 
 const TIMEZONE = "America/New_York";
 const STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9";
 
-test.use({ storageState: { cookies: [], origins: [] }, timezoneId: TIMEZONE });
+test.use({ timezoneId: TIMEZONE });
 
 interface Schedule {
   id: string;
@@ -19,15 +18,15 @@ interface Schedule {
 test.describe("schedules journey", () => {
   test("a weekday schedule can be created, edited, and deleted from the Library, and every change survives a reload", async ({
     page,
+    journeyUser: _user,
   }) => {
-    test.setTimeout(90_000);
-    await signUpJourneyUser(page);
+    await setTimezone(page);
     const agentName = createUniqueAgentName("Journey schedule");
     const graphId = await createAgent(page, agentName);
 
     await new LibraryPage(page).openSavedAgent(agentName);
     await page
-      .getByRole("button", { name: /Setup your task|New agent task/i })
+      .getByRole("button", { name: /Setup your task|New workflow task/i })
       .first()
       .click();
     await page.getByRole("button", { name: "Schedule Task" }).click();
@@ -123,53 +122,12 @@ function expectWeekdayAt(schedule: Schedule, hour: number, minute: number) {
   expect([Number(parts.hour), Number(parts.minute)]).toEqual([hour, minute]);
 }
 
-// Onboarding steps that dismiss the first-visit cards covering the Library.
-const COMPLETED_ONBOARDING_STEPS = [
-  "ONBOARDING_COMPLETE",
-  "AGENT_NEW_RUN",
-  "CAPABILITY_CARDS",
-  "AGENTS_TAB_INTRO",
-  "MARKETPLACE_TAB_INTRO",
-  "BUILD_TAB_INTRO",
-  "WORKFLOWS_MOVED",
-];
-
-// A brand-new user by default. Previews paywall fresh users, so there
-// PLAYWRIGHT_JOURNEY_EMAIL and PLAYWRIGHT_JOURNEY_PASSWORD sign in as an
-// existing subscribed account instead.
-async function signUpJourneyUser(page: Page) {
-  const email = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
-  const password = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
-  if (email && password) {
-    const signIn = await page.request.post("/api/auth/sign-in/email", {
-      headers: { Origin: appOrigin() },
-      data: { email, password },
-    });
-    expect(signIn.ok(), `sign-in failed: ${signIn.status()}`).toBe(true);
-  } else {
-    const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
-    const signUp = await page.request.post("/api/auth/sign-up/email", {
-      headers: { Origin: appOrigin() },
-      data: {
-        email: `journey-${id}@${journeyEmailDomain()}`,
-        password: `Journey-${randomBytes(12).toString("hex")}`,
-        name: `Journey ${id}`,
-      },
-    });
-    expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
-  }
-  for (const step of COMPLETED_ONBOARDING_STEPS) {
-    const onboarding = await page.request.post(
-      "/api/proxy/api/onboarding/step",
-      { params: { step } },
-    );
-    expect(onboarding.ok(), `onboarding step ${step} failed`).toBe(true);
-  }
-  const timezone = await page.request.post(
+async function setTimezone(page: Page) {
+  const response = await page.request.post(
     "/api/proxy/api/auth/user/timezone",
     { data: { timezone: TIMEZONE } },
   );
-  expect(timezone.ok(), "setting the user's timezone failed").toBe(true);
+  expect(response.ok(), "setting the user's timezone failed").toBe(true);
 }
 
 async function createAgent(page: Page, name: string): Promise<string> {
@@ -198,21 +156,4 @@ async function createAgent(page: Page, name: string): Promise<string> {
     true,
   );
   return (await response.json()).id;
-}
-
-function appOrigin() {
-  return new URL(process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000")
-    .origin;
-}
-
-// Previews only accept sign-ups from allowlisted domains; @previews.agpt.co
-// keeps password sign-up and needs no inbox.
-function journeyEmailDomain() {
-  if (process.env.PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN) {
-    return process.env.PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN;
-  }
-  const { hostname } = new URL(appOrigin());
-  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname)
-    ? "example.com"
-    : "previews.agpt.co";
 }
