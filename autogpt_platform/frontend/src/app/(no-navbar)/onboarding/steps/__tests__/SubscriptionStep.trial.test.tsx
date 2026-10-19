@@ -25,6 +25,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../store";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+import { translateText } from "@/tests/integrations/translation";
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
@@ -76,6 +77,128 @@ function eligible(offer = trialOffer) {
 function mockStatus(response = eligible()) {
   server.use(getGetTrialsGetTrialStatusMockHandler200(response));
 }
+
+test.each(["paid", "trial"])(
+  "keeps a translated %s checkout usable while the request is pending",
+  async (mode) => {
+    mockStatus(
+      mode === "trial"
+        ? eligible()
+        : trialResponse({
+            eligible: false,
+            active: false,
+            status: null,
+            offer: null,
+          }),
+    );
+    let finishCheckout = () => {};
+    const pending = new Promise<void>((resolve) => {
+      finishCheckout = resolve;
+    });
+    const requested = vi.fn();
+    server.use(
+      http.post(
+        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        async ({ request }) => {
+          requested(await request.json());
+          await pending;
+          return HttpResponse.json({
+            url: "https://checkout.stripe.com/translated",
+          });
+        },
+      ),
+    );
+    render(<SubscriptionStep />);
+    const label = mode === "paid" ? "Get Pro" : "Start 7-day trial";
+    const button = await screen.findByRole("button", { name: label });
+    const translatedLabel =
+      mode === "paid" ? "احصل على برو" : "ابدأ الفترة التجريبية";
+    const translation = translateText(button, label, translatedLabel);
+
+    try {
+      fireEvent.click(button);
+      await waitFor(() => expect(requested).toHaveBeenCalledOnce());
+      expect(screen.getByRole("button", { name: translatedLabel })).toBe(
+        button,
+      );
+      expect(button.contains(translation)).toBe(true);
+      expect(button.hasAttribute("disabled")).toBe(true);
+      expect(requested).toHaveBeenCalledWith(
+        mode === "paid"
+          ? expect.objectContaining({ tier: "PRO", billing_cycle: "monthly" })
+          : { offer_token: trialOffer.token, return_to: "onboarding" },
+      );
+    } finally {
+      finishCheckout();
+    }
+
+    await waitFor(() => {
+      if (mode === "paid")
+        expect(checkoutLocation.href).toBe(
+          "https://checkout.stripe.com/translated",
+        );
+      else
+        expect(checkoutLocation.assign).toHaveBeenCalledWith(
+          "https://checkout.stripe.com/translated",
+        );
+    });
+  },
+);
+
+test.each(["paid", "trial"])(
+  "can retry a translated %s checkout after a failed request",
+  async (mode) => {
+    mockStatus(
+      mode === "trial"
+        ? eligible()
+        : trialResponse({
+            eligible: false,
+            active: false,
+            status: null,
+            offer: null,
+          }),
+    );
+    let attempts = 0;
+    server.use(
+      http.post(
+        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        () => {
+          attempts++;
+          return attempts === 1
+            ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
+            : HttpResponse.json({ url: "https://checkout.stripe.com/retried" });
+        },
+      ),
+    );
+    render(<SubscriptionStep />);
+    const label = mode === "paid" ? "Get Pro" : "Start 7-day trial";
+    const button = await screen.findByRole("button", { name: label });
+    const translation = translateText(button, label, "Translated checkout");
+
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(attempts).toBe(1);
+      expect(button.hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.getByRole("button", { name: "Translated checkout" })).toBe(
+      button,
+    );
+    expect(button.contains(translation)).toBe(true);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      if (mode === "paid")
+        expect(checkoutLocation.href).toBe(
+          "https://checkout.stripe.com/retried",
+        );
+      else
+        expect(checkoutLocation.assign).toHaveBeenCalledWith(
+          "https://checkout.stripe.com/retried",
+        );
+    });
+    expect(attempts).toBe(2);
+  },
+);
 
 test.each([
   ["PRO", "Pro"],

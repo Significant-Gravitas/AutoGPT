@@ -128,7 +128,7 @@ test("sends a failed charge without a readable invoice to billing", async () => 
 
   expect(
     await screen.findByText(
-      "Update your payment method in billing to continue. Your chats, agents and results are saved.",
+      "Update your payment method in billing to continue. Your chats, workflows and results are saved.",
     ),
   ).toBeDefined();
   expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();

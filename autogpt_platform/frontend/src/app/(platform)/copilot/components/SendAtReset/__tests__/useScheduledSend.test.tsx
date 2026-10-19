@@ -165,5 +165,143 @@ describe("useScheduledSend", () => {
       expect(cancelled).toBe(0);
       expect(composer.result.current[0]).toBe("");
     });
+
+    // The composer's Edit and the "send at reset" menu each change the same
+    // chat's send. A message the menu adds while Edit reads may not be in
+    // what Edit read, and cancelling that copy would drop the message.
+    describe("with a message added while it reads", () => {
+      const FIRST = "Draft the launch post";
+      const JOINED = `${FIRST}\n\nThen the newsletter`;
+
+      // The server holds the first message, then both once the add lands. A
+      // read answers with what the server held when the read came in.
+      function serverJoining() {
+        const calls = { reads: 0, added: 0, cancelled: 0 };
+        const hold: { nextRead?: Promise<void>; add?: Promise<void> } = {};
+        let waiting: string | null = FIRST;
+        server.use(
+          http.get("*/api/chat/sessions/:sessionId/at-reset", async () => {
+            calls.reads += 1;
+            const answer = waiting;
+            const held = hold.nextRead;
+            hold.nextRead = undefined;
+            await held;
+            return HttpResponse.json({
+              jobs: answer
+                ? [{ kind: "send", run_at: RUN_AT, message: answer }]
+                : [],
+            });
+          }),
+          http.post("*/api/chat/sessions/:sessionId/at-reset", async () => {
+            calls.added += 1;
+            await hold.add;
+            waiting = JOINED;
+            return HttpResponse.json({
+              kind: "send",
+              run_at: RUN_AT,
+              message: JOINED,
+            });
+          }),
+          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
+            calls.cancelled += 1;
+            waiting = null;
+            return new HttpResponse(null, { status: 204 });
+          }),
+        );
+        return { calls, hold };
+      }
+
+      async function openChat(sessionId: string) {
+        const client = new QueryClient({
+          defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+        });
+        function wrapper({ children }: { children: ReactNode }) {
+          return (
+            <QueryClientProvider client={client}>
+              {children}
+            </QueryClientProvider>
+          );
+        }
+        const chat = {
+          composer: renderHook(() => useScheduledSend({ sessionId }), {
+            wrapper,
+          }),
+          menu: renderHook(() => useScheduledSend({ sessionId }), { wrapper }),
+          draft: renderHook(() => useChatDraft(sessionDraftKey(sessionId))),
+        };
+        await waitFor(() =>
+          expect(chat.composer.result.current.pending?.message).toBe(FIRST),
+        );
+        return chat;
+      }
+
+      function gate() {
+        let release = () => {};
+        const closed = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { closed, release };
+      }
+
+      it("leaves it alone when the message lands before the read", async () => {
+        const { calls, hold } = serverJoining();
+        const chat = await openChat("chat-added-during-read");
+        const read = gate();
+        hold.nextRead = read.closed;
+        const readsBefore = calls.reads;
+
+        let editing = Promise.resolve();
+        act(() => {
+          editing = chat.composer.result.current.edit();
+        });
+        await waitFor(() => expect(calls.reads).toBe(readsBefore + 1));
+        await act(() =>
+          chat.menu.result.current.schedule("Then the newsletter"),
+        );
+        read.release();
+        await act(() => editing);
+
+        expect(calls.cancelled).toBe(0);
+        expect(chat.draft.result.current[0]).toBe("");
+        await waitFor(() =>
+          expect(chat.composer.result.current.pending?.message).toBe(JOINED),
+        );
+      });
+
+      it("still edits once a change it made has settled", async () => {
+        const { calls } = serverJoining();
+        const chat = await openChat("chat-edit-after-add");
+        await act(() =>
+          chat.menu.result.current.schedule("Then the newsletter"),
+        );
+
+        await act(() => chat.composer.result.current.edit());
+
+        expect(calls.cancelled).toBe(1);
+        expect(chat.draft.result.current[0]).toBe(JOINED);
+      });
+
+      it("leaves it alone when the read lands before the message", async () => {
+        const { calls, hold } = serverJoining();
+        const chat = await openChat("chat-read-during-add");
+        const add = gate();
+        hold.add = add.closed;
+
+        let adding = Promise.resolve();
+        act(() => {
+          adding = chat.menu.result.current.schedule("Then the newsletter");
+        });
+        await waitFor(() => expect(calls.added).toBe(1));
+        await act(() => chat.composer.result.current.edit());
+        add.release();
+        await act(() => adding);
+
+        expect(calls.cancelled).toBe(0);
+        expect(chat.draft.result.current[0]).toBe("");
+        await waitFor(() =>
+          expect(chat.composer.result.current.pending?.message).toBe(JOINED),
+        );
+      });
+    });
   });
 });
