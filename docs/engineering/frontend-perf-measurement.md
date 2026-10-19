@@ -72,6 +72,17 @@ If `window.__renderCounter` is missing, the script stops and tells you to restar
 
 Leave out `--scenario` to compare every scenario that has runs under both labels.
 
+When the change adds the scenario it is measured with (as `copilot-tool-wait` was), the commit before it has no such scenario. Stay on the branch, so `scripts/perf/` keeps the scenario and its fixture, and swap only the app files back to the base for the `before` runs:
+
+```bash
+git checkout origin/dev -- <app files the change touches>   # e.g. the files under src/
+pnpm perf --scenario copilot-tool-wait --label before
+git checkout HEAD -- <the same files>
+pnpm perf --scenario copilot-tool-wait --label after
+```
+
+The dev server hot-reloads each swap, and the default warm-up run absorbs the recompile. Swap only files under `src/`, never `scripts/perf/`.
+
 The output has three tables (metrics, top components and top render causes), each with `before`, `after` and `Δ` columns, followed by the raw runs in a collapsed block. Every value is the median of the runs, not the average.
 
 Tips for numbers you can trust:
@@ -112,6 +123,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
 | `library-running-events` | Open the same library at `/library?sort=updatedAt`, with the websocket mocked | Push a `graph_execution_event` for one of the 20 runs every 250 ms, 80 in all; print the `subscribe_graph_executions` frames and `GET /executions` requests seen | 20 s of events + 2 s |
 | `builder-run-events` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 40 node execution events over the websocket, one every 50 ms: the 10 unfinished nodes go RUNNING then COMPLETED, each event sent twice. The execution GET returns what has been sent so far, as the backend would | 2 s after the last event |
+| `copilot-tool-wait` | Open the 200-message chat, send "go", and wait until the reply's one tool call shows "Running Perf lookup…". The reply then sends only `: heartbeat` comments, so the turn stays on that tool | Nothing | 20 s |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
