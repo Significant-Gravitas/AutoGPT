@@ -329,7 +329,39 @@ describe("reply timing", () => {
     });
   });
 
-  it("finds the first of two same sends again after a rebuild", () => {
+  it("follows a reply past a follow-up the stream runtime logged in its turn", () => {
+    const logged = [
+      ...HISTORY,
+      SENT,
+      { ...toolCall("turn:t1"), id: "turn:t1" },
+      text("user:p1", "user", "and also this"),
+      text("turn:t1:after:user:p1", "assistant", "Both done."),
+    ];
+    const step = advanceReply(tracked(), streaming(logged), 1300);
+
+    expect(step.record).toMatchObject({
+      outcome: "answered",
+      firstTextMs: 300,
+    });
+  });
+
+  it("doesn't take an earlier same message for the sent one after a full rebuild", () => {
+    const rebuilt = [
+      text("seq-1", "user", "new question"),
+      text("seq-2", "assistant", "An earlier answer."),
+      text("seq-3", "user", "new question"),
+      toolCall("seq-4"),
+    ];
+    const step = advanceReply(
+      stillFollowed(endedWithoutText()),
+      view({ messages: rebuilt }),
+      1550,
+    );
+
+    expect(step.record).toMatchObject({ outcome: "no_text", endedAt: 1500 });
+  });
+
+  it("doesn't guess between two same sends after a rebuild", () => {
     const rebuilt = [
       ...HISTORY,
       text("seq-3", "user", "new question"),

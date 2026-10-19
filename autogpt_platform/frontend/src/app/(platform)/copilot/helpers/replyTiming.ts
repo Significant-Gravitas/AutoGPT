@@ -11,6 +11,7 @@ import {
 import { buildChainSegments } from "../components/ToolChain/helpers";
 import { getVisiblePartKind, type VisiblePartKind } from "../helpers";
 import { isBookkeepingPart } from "../messageParts";
+import { isDrainedUserKey } from "../stream/turnLog";
 import { parseSpecialMarkers } from "./messageMarkers";
 
 export type StreamClient = "ai-sdk" | "stream-runtime";
@@ -91,8 +92,9 @@ export const SETTLE_GRACE_MS = 250;
 
 // A turn that ended showing nothing may only have been queued behind the
 // user's other running turns, which the chat's status says once it is read
-// again: straight after the empty stream, then every 10 s.
-export const QUIET_TURN_GRACE_MS = 10_000;
+// again: straight after the empty stream, then every 10 s. This outlasts one
+// such read and its render.
+export const QUIET_TURN_GRACE_MS = 15_000;
 
 const DROPPED: ReplyStep = { tracking: null, record: null };
 
@@ -232,20 +234,28 @@ function findSentMessage(rows: UIMessage[], tracking: ReplyTracking) {
   const index = rows.findIndex((row) => row.id === tracking.sentId);
   if (index !== -1) return index;
   // Rebuilt from the server once its turn is over: the saved copy of the
-  // message has a new id. Any later message the user sent comes after it.
-  return rows.findIndex(
-    (row) => isSentRow(row) && messageContent(row) === tracking.sentContent,
+  // message has a new id. Only a single match is taken, since a rebuild can
+  // rename the earlier rows too: with the same message twice in the list,
+  // either could be the one sent.
+  const matches = rows.flatMap((row, i) =>
+    isSentRow(row) && messageContent(row) === tracking.sentContent ? [i] : [],
   );
+  return matches.length === 1 ? matches[0] : -1;
 }
 
 function isSentRow(row: UIMessage) {
   return row.role === "user" && !isFollowUpBubble(row);
 }
 
-/** A follow-up taken into a running turn, drawn at its drain point or
- *  promoted above the live reply: part of that turn, not a new one. */
+/** A follow-up taken into a running turn, drawn at its drain point,
+ *  promoted above the live reply, or logged in the turn by the stream
+ *  runtime: part of that turn, not a new one. */
 function isFollowUpBubble(row: UIMessage) {
-  return isMidTurnFollowUpRow(row) || isMidTurnFallbackRow(row);
+  return (
+    isMidTurnFollowUpRow(row) ||
+    isMidTurnFallbackRow(row) ||
+    isDrainedUserKey(row.id)
+  );
 }
 
 /** What the reply showed after the sent message, in on-screen order, up to
