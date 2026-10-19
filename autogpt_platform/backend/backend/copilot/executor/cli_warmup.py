@@ -44,7 +44,7 @@ def warm_cli(cli_path: str | None = None) -> None:
         )
         done = (
             f"read {size / 1e6:.0f} MB and ran -v (rc={result.returncode}) "
-            f"in {time.monotonic() - started:.1f}s: {path}"
+            f"in {time.monotonic() - started:.1f}s: {os.path.basename(path)}"
         )
         if result.returncode == 0:
             logger.info(f"CLI warm-up {done}")

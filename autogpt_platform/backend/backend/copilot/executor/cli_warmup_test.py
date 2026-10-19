@@ -4,6 +4,8 @@ import logging
 import threading
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from backend.copilot.executor import cli_warmup
 
 
@@ -47,6 +49,21 @@ def test_a_failing_version_run_is_a_warning(tmp_path, caplog):
 
     [failed] = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert "rc=1" in failed.getMessage()
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_the_logs_name_the_binary_but_not_where_it_is(tmp_path, caplog, returncode):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"cli")
+    run = MagicMock(return_value=MagicMock(returncode=returncode))
+    caplog.set_level(logging.INFO, logger=cli_warmup.__name__)
+
+    with patch("backend.copilot.executor.cli_warmup.subprocess.run", run):
+        cli_warmup.warm_cli(str(binary))
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert messages[-1].endswith(": claude")
+    assert not any(str(tmp_path) in message for message in messages)
 
 
 def test_a_missing_binary_is_skipped_without_raising(tmp_path):
