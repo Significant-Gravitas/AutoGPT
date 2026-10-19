@@ -11,6 +11,7 @@ being an answer the moment a user can link more than one ChatGPT account, and
 this contract is the one the UI will keep.
 """
 
+import asyncio
 import logging
 import time
 from typing import Optional, get_args
@@ -80,6 +81,13 @@ def is_deployment_chat_available() -> bool:
 
 async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
     """Every transport this user can chat over, one of them marked default."""
+    # Each is a database read, and a new chat waits for this list before it
+    # is created: read them side by side.
+    codex, microsoft_365, (saved_provider, saved_credential_id) = await asyncio.gather(
+        _valid_codex_credentials(user_id),
+        _valid_microsoft_365_copilot_credentials(user_id),
+        user_db().get_user_default_chat_route(user_id),
+    )
     transports = [
         ChatTransportResponse(
             auth_provider="platform",
@@ -101,7 +109,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
             available=True,
             default=False,
         )
-        for credentials in await _valid_codex_credentials(user_id)
+        for credentials in codex
     )
     transports.extend(
         ChatTransportResponse(
@@ -111,11 +119,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
             available=True,
             default=False,
         )
-        for credentials in await _valid_microsoft_365_copilot_credentials(user_id)
-    )
-
-    saved_provider, saved_credential_id = await user_db().get_user_default_chat_route(
-        user_id
+        for credentials in microsoft_365
     )
     _mark_default(transports, saved_provider, saved_credential_id)
     return transports
