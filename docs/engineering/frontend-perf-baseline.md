@@ -582,6 +582,54 @@ Added with SECRT-2995 and measured on `dev` at `a1578ad9a`, before that change. 
 | `PopperAnchor props:children` | 6,770 |
 | `PopperProvider props:children` | 6,770 |
 
+## copilot-resize-drag · baseline — median of 3 runs
+
+Added with the scenario (SECRT-2999): `dev` at `6d793e53d`, same machine type, 1 warm-up and 3 saved runs. Every pointer move of the drag wrote the panel width to the copilot UI store, and the page hook read the whole store, so each move re-rendered the whole 200-message transcript: about 3,000 renders per commit and one long task per move.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 193 | 190 – 196 | 3.1% |
+| total renders | 574,244 | 574,001 – 574,251 | 0.0% |
+| renders per commit | 2,975.4 | 2,929.9 – 3,021.1 | 3.1% |
+| max renders in one commit | 9,498 | 9,498 – 9,498 | 0.0% |
+| script time (ms) | 17,819 | 17,358 – 18,387 | 5.8% |
+| task time (ms) | 20,508 | 19,966 – 20,952 | 4.8% |
+| layout time (ms) | 575 | 575 – 577 | 0.4% |
+| style recalc time (ms) | 34 | 34 – 35 | 2.1% |
+| long tasks (≥ 50 ms) | 60 | 60 – 60 | 0.0% |
+| long task total (ms) | 19,661 | 19,213 – 20,218 | 5.1% |
+| heap used after GC (MB) | 86.5 | 84.1 – 95.6 | 13.4% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 41,418 |
+| `TooltipContent` | 41,418 |
+| `HugeiconsIcon` | 24,264 |
+| `Icon` | 24,264 |
+| `Presence` | 22,172 |
+| `Popper` | 21,204 |
+| `PopperAnchor` | 21,204 |
+| `PopperProvider` | 21,204 |
+| `Primitive.button` | 21,204 |
+| `Primitive.button.Slot` | 21,204 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 41,298 |
+| `HugeiconsIcon parent-same-props<-Icon` | 24,264 |
+| `Presence props:children` | 22,172 |
+| `Primitive.div props:children` | 21,204 |
+| `Primitive.div.Slot props:children` | 21,204 |
+| `Primitive.div.SlotClone props:children` | 21,204 |
+| `Popper props:children` | 20,955 |
+| `PopperAnchor props:children` | 20,955 |
+| `PopperProvider props:children` | 20,955 |
+| `TooltipProvider props:children` | 20,949 |
+
 ## library-agent-runs · baseline — median of 3 runs
 
 Added with SECRT-3010 and measured on `dev` at `ede2df2ae`, before that change. The websocket is mocked; every run printed the same: 3 new runs caused 3 `GET` refetches of the run list and the selected RUNNING run polled its detail 5 times. Each new run re-rendered every row of the list about twice (20 to 23 cards, each with its actions menu and two dialogs). Total renders move by one full-list re-render (about 1,300 renders) from run to run.
