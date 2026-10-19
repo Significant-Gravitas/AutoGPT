@@ -80,7 +80,6 @@ export function createCopilotFixture({
   const pendingTurns: string[] = [];
   const turnSessions: string[] = [];
   const servedTurns = new Map<string, number>();
-  let turnCount = 0;
 
   function find(id: string) {
     return sessions.find((session) => session.id === id);
@@ -188,7 +187,7 @@ export function createCopilotFixture({
       if (request.method() !== "POST") {
         return route.fulfill({ status: 204 });
       }
-      const tag = `${spec.id}:${++turnCount}`;
+      const { url, tag } = stream.open({ fixture: replyFixture, paceMs });
       const body = request.postDataJSON() as { message?: string } | null;
       pendingTurns.push(tag);
       turnSessions.push(spec.id);
@@ -196,9 +195,7 @@ export function createCopilotFixture({
         .waitForDone(tag, STREAM_TIMEOUT_MS)
         .then(() => appendTurn(spec, body?.message ?? ""))
         .catch(() => undefined);
-      await route.continue({
-        url: stream.url({ fixture: replyFixture, paceMs, tag }),
-      });
+      await route.continue({ url });
     },
   };
 

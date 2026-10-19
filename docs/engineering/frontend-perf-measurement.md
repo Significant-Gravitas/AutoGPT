@@ -48,7 +48,7 @@ Each run prints a table and saves `.perf/<scenario>/<label>-<timestamp>-<run>.js
 | `--scenario <name>` | required | Which scenario to run. |
 | `--label <text>` | `any` | Name of the set, e.g. `before`, `after`, `baseline`. Letters, digits, `.`, `_`, `-`. |
 | `--runs <n>` | `3` | Saved runs. |
-| `--warmup <n>` | `1` | Unsaved runs first. The dev server compiles chunks the first time a page uses them, which makes the first run slower and noisier. Keep at least 1. |
+| `--warmup <n>` | `1` | Unsaved runs first, so a dev-server compile or a cold cache after a restart or a code edit does not land in a saved run. |
 | `--base-url <url>` | `http://localhost:3000` | Frontend to measure. |
 | `--profile` | off | Also save a `.cpuprofile` for each run. Open it in Chrome DevTools → Performance → Load profile. |
 | `--screenshot` | off | Save a PNG of the page at the end of each window, to check the scenario did what it says. |

@@ -8,11 +8,12 @@ import { FIXTURES_DIR } from "./paths";
  * Replays a recorded `.sse` body one frame every `paceMs`, so a streamed
  * reply arrives at a steady, repeatable cadence instead of all at once.
  * The harness points the copilot stream request here with `route.continue`.
- * The fixture and pace of each stream are registered in-process by `url()`;
- * the request only carries the stream's tag.
+ * The fixture and pace of each stream are registered in-process by `open()`,
+ * which hands out a tag that is unique for the life of the server; the
+ * request only carries that tag.
  */
 export interface StreamServer {
-  url(args: { fixture: string; paceMs: number; tag: string }): string;
+  open(args: { fixture: string; paceMs: number }): { url: string; tag: string };
   waitForDone(tag: string, timeoutMs: number): Promise<void>;
   close(): Promise<void>;
 }
@@ -43,6 +44,7 @@ export async function startStreamServer(): Promise<StreamServer> {
   const waiters = new Map<string, (() => void)[]>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const streams = new Map<string, { frames: string[]; paceMs: number }>();
+  let opened = 0;
 
   function markDone(tag: string) {
     finished.add(tag);
@@ -86,9 +88,11 @@ export async function startStreamServer(): Promise<StreamServer> {
   const { port } = server.address() as AddressInfo;
 
   return {
-    url({ fixture, paceMs, tag }) {
+    open({ fixture, paceMs }) {
+      const tag = `stream-${++opened}`;
       streams.set(tag, { frames: splitFrames(readFixture(fixture)), paceMs });
-      return `http://127.0.0.1:${port}/stream?${new URLSearchParams({ tag })}`;
+      const query = new URLSearchParams({ tag });
+      return { url: `http://127.0.0.1:${port}/stream?${query}`, tag };
     },
     waitForDone(tag, timeoutMs) {
       if (finished.has(tag)) return Promise.resolve();
