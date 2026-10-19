@@ -6823,7 +6823,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -18824,7 +18832,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",
