@@ -18,10 +18,12 @@ interface Props {
 export function UserView({ user }: Props) {
   const { user: signedInUser } = useAuth();
   const isSelf = signedInUser?.id === user.id;
+  // Until the signed-in admin is known, their own row would offer Ban.
+  const canAct = Boolean(signedInUser) && !isSelf;
 
   return (
     <div className="flex flex-col gap-6">
-      <UserHeader user={user} isSelf={isSelf} />
+      <UserHeader user={user} isSelf={isSelf} canAct={canAct} />
       {user.banned ? <BannedAlert user={user} /> : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="contents lg:flex lg:flex-col lg:gap-6">

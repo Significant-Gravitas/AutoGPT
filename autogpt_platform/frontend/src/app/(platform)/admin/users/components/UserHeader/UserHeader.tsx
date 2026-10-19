@@ -19,9 +19,10 @@ import { UnbanDialog } from "./components/UnbanDialog";
 interface Props {
   user: AdminUser;
   isSelf: boolean;
+  canAct: boolean;
 }
 
-export function UserHeader({ user, isSelf }: Props) {
+export function UserHeader({ user, isSelf, canAct }: Props) {
   const impersonation = useAdminImpersonation();
   const displayName = getDisplayName(user);
   const isImpersonatingThisUser = impersonation.impersonatedUserId === user.id;
@@ -73,7 +74,7 @@ export function UserHeader({ user, isSelf }: Props) {
         </div>
       </div>
 
-      {isSelf ? null : (
+      {canAct ? (
         <div className="flex flex-wrap gap-2">
           {isImpersonatingThisUser ? (
             <Button
@@ -98,7 +99,7 @@ export function UserHeader({ user, isSelf }: Props) {
             <BanDialog user={user} />
           )}
         </div>
-      )}
+      ) : null}
     </AdminSection>
   );
 }

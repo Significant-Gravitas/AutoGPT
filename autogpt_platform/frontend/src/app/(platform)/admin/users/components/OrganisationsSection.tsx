@@ -3,6 +3,7 @@
 import { useGetAdminGetUserOrganizations } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { AdminSection } from "../../components/AdminSection";
@@ -13,10 +14,11 @@ interface Props {
 }
 
 export function OrganisationsSection({ userId }: Props) {
-  const { data: organisations, isLoading } = useGetAdminGetUserOrganizations(
-    userId,
-    { query: { select: okData } },
-  );
+  const {
+    data: organisations,
+    isLoading,
+    refetch,
+  } = useGetAdminGetUserOrganizations(userId, { query: { select: okData } });
 
   return (
     <AdminSection
@@ -29,9 +31,18 @@ export function OrganisationsSection({ userId }: Props) {
           <Skeleton className="h-10 w-full rounded-lg" />
         </div>
       ) : !organisations ? (
-        <Text variant="small" className="text-zinc-500">
-          Couldn&apos;t load organisations.
-        </Text>
+        <div className="flex items-center justify-between gap-4">
+          <Text variant="small" className="text-zinc-500">
+            Couldn&apos;t load organisations.
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => void refetch()}
+          >
+            Retry
+          </Button>
+        </div>
       ) : organisations.length === 0 ? (
         <Text variant="small" className="text-zinc-500">
           No organisations.

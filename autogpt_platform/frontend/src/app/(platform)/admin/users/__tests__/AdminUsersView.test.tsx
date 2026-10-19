@@ -1,3 +1,4 @@
+import { ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -8,18 +9,21 @@ import {
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUsersView } from "../components/AdminUsersView/AdminUsersView";
 
 const mockToast = vi.hoisted(() => vi.fn());
-const signedInUser = vi.hoisted(() => ({ id: "admin-self" }));
+const auth = vi.hoisted(() => ({
+  user: { id: "admin-self" } as { id: string } | null,
+}));
+const reloadMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ user: signedInUser }),
+  useAuth: () => ({ user: auth.user }),
 }));
 
 const ALEX = {
@@ -36,11 +40,30 @@ const ALEX = {
   banExpires: null,
 };
 
+const ORGANISATION = {
+  id: "org-1",
+  name: "Acme Inc",
+  slug: "acme",
+  avatar_url: null,
+  description: null,
+  is_personal: false,
+  member_count: 0,
+  created_at: "2026-03-12T10:00:00.000Z",
+};
+
 beforeEach(() => {
   mockToast.mockReset();
-  signedInUser.id = "admin-self";
+  reloadMock.mockReset();
+  auth.user = { id: "admin-self" };
+  // happy-dom can't navigate; a started impersonation reloads the page.
+  Object.defineProperty(window.location, "reload", {
+    configurable: true,
+    value: reloadMock,
+  });
   mockUserRoutes(ALEX);
 });
+
+afterEach(() => ImpersonationState.clear());
 
 describe("/admin/users", () => {
   it("shows a user found by exact email with their plan, organisations and filtered money links", async () => {
@@ -128,7 +151,7 @@ describe("/admin/users", () => {
   });
 
   it("offers no ban or impersonation on the signed-in admin's own account", async () => {
-    signedInUser.id = ALEX.id;
+    auth.user = { id: ALEX.id };
     renderPage(`?user=${ALEX.id}`);
 
     expect(
@@ -160,8 +183,8 @@ describe("/admin/users", () => {
     );
   });
 
-  it("asks before impersonating and sends the audit notice for this user", async () => {
-    const notices = mockImpersonationNotice();
+  it("asks before impersonating, and stays put when the audit notice fails", async () => {
+    const notices = mockImpersonationNotice(502);
     renderPage(`?user=${ALEX.id}`);
 
     fireEvent.click(await screen.findByRole("button", { name: "Impersonate" }));
@@ -171,7 +194,65 @@ describe("/admin/users", () => {
       within(dialog).getByRole("button", { name: "Impersonate" }),
     );
 
-    await waitFor(() => expect(notices).toEqual([{ target_user_id: ALEX.id }]));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't start impersonation",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect(notices).toEqual([{ target_user_id: ALEX.id }]);
+    expect(ImpersonationState.get()).toBeNull();
+    expect(reloadMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeDefined();
+  });
+
+  it("starts impersonating once the audit notice is delivered", async () => {
+    mockImpersonationNotice(200);
+    renderPage(`?user=${ALEX.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Impersonate" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Impersonate" }),
+    );
+
+    await waitFor(() => expect(reloadMock).toHaveBeenCalledTimes(1));
+    expect(ImpersonationState.get()).toBe(ALEX.id);
+  });
+
+  it("offers a retry when the organisations fail to load", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`*/api/admin/users/${ALEX.id}/organizations`, () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json([ORGANISATION]);
+      }),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    const section = await screen.findByRole("region", {
+      name: "Organisations",
+    });
+    fireEvent.click(
+      await within(section).findByRole("button", { name: "Retry" }),
+    );
+
+    expect(await within(section).findByText("Acme Inc")).toBeDefined();
+  });
+
+  it("offers no ban or impersonation until the signed-in admin is known", async () => {
+    auth.user = null;
+    renderPage(`?user=${ALEX.id}`);
+
+    expect(
+      await screen.findByRole("heading", { name: "Alex Rivera" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /ban user/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /impersonate/i })).toBeNull();
   });
 });
 
@@ -214,18 +295,7 @@ function mockUserRoutes(user: typeof ALEX) {
       }),
     ),
     http.get(`*/api/admin/users/${user.id}/organizations`, () =>
-      HttpResponse.json([
-        {
-          id: "org-1",
-          name: "Acme Inc",
-          slug: "acme",
-          avatar_url: null,
-          description: null,
-          is_personal: false,
-          member_count: 0,
-          created_at: "2026-03-12T10:00:00.000Z",
-        },
-      ]),
+      HttpResponse.json([ORGANISATION]),
     ),
   );
 }
@@ -255,15 +325,17 @@ function mockSetTier() {
   return bodies;
 }
 
-function mockImpersonationNotice() {
+function mockImpersonationNotice(status: 200 | 502) {
   const bodies: unknown[] = [];
   server.use(
     http.post("*/api/admin/impersonation/notify", async ({ request }) => {
       bodies.push(await request.json());
-      return HttpResponse.json(
-        { detail: "audit channel unavailable" },
-        { status: 502 },
-      );
+      return status === 200
+        ? HttpResponse.json({ alerted: true })
+        : HttpResponse.json(
+            { detail: "audit channel unavailable" },
+            { status },
+          );
     }),
   );
   return bodies;
