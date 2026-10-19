@@ -81,7 +81,7 @@ export async function startStreamServer(): Promise<StreamServer> {
       }
       response.write(`${frames[index++]}\n\n`);
     }, paceMs);
-    request.on("close", () => clearInterval(timer));
+    response.on("close", () => clearInterval(timer));
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
