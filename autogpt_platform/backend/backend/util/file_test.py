@@ -15,7 +15,7 @@ from backend.util.file import (
     resolve_media_content,
     store_media_file,
 )
-from backend.util.request import HTTPClientError, HTTPServerError, http_status_error
+from backend.util.request import HTTPClientError, HTTPServerError, Requests, Response
 from backend.util.type import MediaFileType
 
 
@@ -344,22 +344,19 @@ class TestFileCloudIntegration:
 # ---------------------------------------------------------------------------
 
 
-def _mock_requests(status: int, reason: str) -> MagicMock:
-    """Stand-in for the ``Requests`` class that answers every GET with
-    ``status``, raising on it only when built with ``raise_for_status=True``
-    (the default), like the real client."""
-    error = http_status_error(status, reason, b"<!DOCTYPE html>")
-    response = MagicMock(status=status, reason=reason, content=b"<!DOCTYPE html>")
-    response.raise_for_status.side_effect = error
-
-    def build(raise_for_status: bool = True) -> MagicMock:
-        client = MagicMock()
-        client.get = AsyncMock(
-            side_effect=error if raise_for_status else None, return_value=response
-        )
-        return client
-
-    return MagicMock(side_effect=build)
+def _mock_response(status: int, reason: str, url: str) -> Response:
+    """Build a ``Response`` suitable for mocking ``Requests._request``."""
+    client_response = MagicMock(
+        status=status,
+        reason=reason,
+        headers={"content-type": "text/html"},
+        request_info=None,
+    )
+    return Response(
+        response=client_response,
+        url=url,
+        body=b"<!DOCTYPE html>",
+    )
 
 
 class TestStoreMediaFileUrlErrors:
@@ -377,8 +374,11 @@ class TestStoreMediaFileUrlErrors:
         that blocks report as a handled error, not an unknown platform error."""
         url = "https://upload.wikimedia.org/thumb/a/ab/Cat.jpg/333px-Cat.jpg"
         reason = "Use thumbnail sizes listed on https://w.wiki/GHai"
+        response = _mock_response(400, reason, url)
 
-        with patch("backend.util.file.Requests", new=_mock_requests(400, reason)):
+        with patch.object(
+            Requests, "_request", AsyncMock(return_value=response)
+        ) as mock_req:
             with pytest.raises(ValueError) as exc_info:
                 await store_media_file(
                     file=MediaFileType(url),
@@ -386,23 +386,56 @@ class TestStoreMediaFileUrlErrors:
                     return_format="for_local_processing",
                 )
 
+        assert mock_req.call_count == 1
         assert not isinstance(exc_info.value, HTTPClientError)
         assert str(exc_info.value) == (
             f"Could not download file from {url}: HTTP 400 ({reason})"
         )
 
     @pytest.mark.asyncio
-    async def test_server_error_keeps_its_exception(self):
-        with patch(
-            "backend.util.file.Requests",
-            new=_mock_requests(503, "Service Unavailable"),
-        ):
-            with pytest.raises(HTTPServerError):
+    async def test_throttled_client_error_fails_immediately_without_retrying(self):
+        """HTTP 429 is both a client error (4xx) and in Requests' default
+        THROTTLE_RETRY_STATUS_CODES. With retry_max_attempts=1, it must fail
+        immediately as bad input instead of retrying forever."""
+        url = "https://example.com/throttled.png"
+        reason = "Too Many Requests"
+        response = _mock_response(429, reason, url)
+
+        with patch.object(
+            Requests, "_request", AsyncMock(return_value=response)
+        ) as mock_req:
+            with pytest.raises(ValueError) as exc_info:
                 await store_media_file(
-                    file=MediaFileType("https://example.com/image.png"),
+                    file=MediaFileType(url),
                     execution_context=make_test_context(),
                     return_format="for_local_processing",
                 )
+
+        assert mock_req.call_count == 1
+        assert not isinstance(exc_info.value, HTTPClientError)
+        assert str(exc_info.value) == (
+            f"Could not download file from {url}: HTTP 429 ({reason})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_server_error_keeps_its_exception_and_does_not_retry_forever(self):
+        """HTTP 503 is in THROTTLE_RETRY_STATUS_CODES. The real Requests retry
+        wrapper must be bounded by retry_max_attempts=1 and re-raise
+        HTTPServerError on attempt 1 without hanging indefinitely."""
+        url = "https://example.com/image.png"
+        response = _mock_response(503, "Service Unavailable", url)
+
+        with patch.object(
+            Requests, "_request", AsyncMock(return_value=response)
+        ) as mock_req:
+            with pytest.raises(HTTPServerError):
+                await store_media_file(
+                    file=MediaFileType(url),
+                    execution_context=make_test_context(),
+                    return_format="for_local_processing",
+                )
+
+        assert mock_req.call_count == 1
 
 
 # ---------------------------------------------------------------------------

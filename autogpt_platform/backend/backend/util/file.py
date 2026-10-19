@@ -463,8 +463,12 @@ async def _download_url(url: str) -> Response:
     to fix. Raising ValueError makes ``Block.execute`` report it as a handled
     ``BlockExecutionError`` instead of a ``BlockUnknownError`` that alerts
     Sentry. 5xx and network errors keep their original exceptions.
+
+    ``retry_max_attempts=1`` preserves the pre-#15340 behaviour where 429/5xx
+    errors fail on the first attempt instead of retrying indefinitely with
+    exponential backoff up to 300 s under ``Requests``' default retry loop.
     """
-    resp = await Requests(raise_for_status=False).get(url)
+    resp = await Requests(raise_for_status=False, retry_max_attempts=1).get(url)
     if 400 <= resp.status <= 499:
         reason = f" ({resp.reason})" if resp.reason else ""
         raise ValueError(
