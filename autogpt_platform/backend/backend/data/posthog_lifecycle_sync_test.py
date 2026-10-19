@@ -8,6 +8,8 @@ from prisma.enums import SubscriptionTier
 
 from backend.data import posthog_lifecycle_sync as lifecycle
 from backend.data.posthog_lifecycle import LifecycleSnapshot, LifecycleUser
+from backend.data.stripe_subscription_facts import LIST_EXPAND
+from backend.notifications.lifecycle_audience import LifecycleContact
 
 MODULE = "backend.data.posthog_lifecycle_sync"
 SIGNUP = datetime(2026, 1, 1, tzinfo=UTC)
@@ -36,6 +38,10 @@ def stripe_sub(sub_id: str, customer: str, status: str = "active", **extra) -> d
 def db_user(customer: str | None = "cus_1", tier=SubscriptionTier.PRO) -> MagicMock:
     return MagicMock(
         id="user-1",
+        email="sam@example.com",
+        timezone="Europe/London",
+        marketingOptOutAt=None,
+        marketingExcludedCountry=None,
         createdAt=SIGNUP,
         stripeCustomerId=customer,
         subscriptionTier=tier,
@@ -48,6 +54,17 @@ def posthog():
     client = MagicMock()
     with patch(f"{MODULE}.get_posthog_client", return_value=client):
         yield client
+
+
+@pytest.fixture(autouse=True)
+def mailerlite_sink():
+    """MailerLite's half of each sync: off unless a test turns it on."""
+    queued = AsyncMock()
+    with (
+        patch(f"{MODULE}.queue_lifecycle_fields", queued),
+        patch(f"{MODULE}.mailerlite_lifecycle_enabled", return_value=False),
+    ):
+        yield queued
 
 
 @pytest.fixture(autouse=True)
@@ -111,7 +128,9 @@ async def test_sync_reads_the_customers_current_subscriptions(posthog):
 
     assert snapshot is not None
     assert snapshot.subscription_status == "subscribed"
-    list_async.assert_awaited_once_with(customer="cus_1", status="all", limit=100)
+    list_async.assert_awaited_once_with(
+        customer="cus_1", status="all", limit=100, expand=LIST_EXPAND
+    )
     sent = posthog.capture.call_args.kwargs["properties"]["$set"]
     assert sent["subscription_status"] == "subscribed"
     assert sent["signup_at"] == "2026-01-01T00:00:00+00:00"
@@ -147,7 +166,7 @@ async def test_sync_uses_a_supplied_subscription_list(posthog):
     list_async.assert_not_awaited()
 
 
-async def test_sync_is_a_no_op_when_analytics_is_off():
+async def test_sync_is_a_no_op_when_posthog_and_mailerlite_are_off():
     prisma = MagicMock()
     with (
         patch(f"{MODULE}.get_posthog_client", return_value=None),
@@ -155,6 +174,79 @@ async def test_sync_is_a_no_op_when_analytics_is_off():
     ):
         assert await lifecycle.sync_posthog_lifecycle("user-1") is None
     prisma.assert_not_called()
+
+
+async def test_sync_queues_the_same_snapshot_for_mailerlite(posthog, mailerlite_sink):
+    find_unique = AsyncMock(return_value=db_user())
+    list_async = AsyncMock(return_value=stripe_page(stripe_sub("sub_1", "cus_1")))
+    with (
+        patch(f"{MODULE}.User.prisma", return_value=MagicMock(find_unique=find_unique)),
+        patch.object(stripe.Subscription, "list_async", list_async),
+    ):
+        snapshot = await lifecycle.sync_posthog_lifecycle("user-1")
+
+    mailerlite_sink.assert_awaited_once_with(
+        LifecycleContact(
+            id="user-1",
+            email="sam@example.com",
+            timezone="Europe/London",
+            stripe_customer_id="cus_1",
+        ),
+        snapshot,
+    )
+    sent = posthog.capture.call_args.kwargs["properties"]["$set"]
+    assert sent["subscription_status"] == snapshot.subscription_status
+
+
+async def test_sync_runs_for_mailerlite_alone(mailerlite_sink):
+    find_unique = AsyncMock(return_value=db_user(customer=None))
+    with (
+        patch(f"{MODULE}.get_posthog_client", return_value=None),
+        patch(f"{MODULE}.mailerlite_lifecycle_enabled", return_value=True),
+        patch(f"{MODULE}.User.prisma", return_value=MagicMock(find_unique=find_unique)),
+    ):
+        snapshot = await lifecycle.sync_posthog_lifecycle("user-1")
+    assert snapshot is not None
+    mailerlite_sink.assert_awaited_once()
+
+
+@pytest.mark.parametrize("paying", [False, True])
+async def test_an_enterprise_user_is_subscribed_only_while_paying(
+    posthog, mailerlite_sink, paying
+):
+    """SECRT-2795: no special case for the tier. Both sinks get the status."""
+    find_unique = AsyncMock(return_value=db_user(tier=SubscriptionTier.ENTERPRISE))
+    subs = [stripe_sub("sub_1", "cus_1")] if paying else []
+    with (
+        patch(f"{MODULE}.User.prisma", return_value=MagicMock(find_unique=find_unique)),
+        patch.object(
+            stripe.Subscription,
+            "list_async",
+            AsyncMock(return_value=stripe_page(*subs)),
+        ),
+    ):
+        snapshot = await lifecycle.sync_posthog_lifecycle("user-1")
+
+    expected = "subscribed" if paying else "signed"
+    sent = posthog.capture.call_args.kwargs["properties"]["$set"]
+    assert sent["subscription_status"] == expected
+    assert mailerlite_sink.await_args.args[1].subscription_status == expected
+    assert snapshot is not None and snapshot.subscription_status == expected
+
+
+async def test_a_sync_requested_over_rpc_is_scheduled_like_a_local_one():
+    with patch(f"{MODULE}.schedule_posthog_lifecycle_sync") as schedule:
+        await lifecycle.request_posthog_lifecycle_sync("user-1")
+    schedule.assert_called_once_with("user-1")
+
+
+async def test_the_daily_sweep_leaves_mailerlite_to_its_backfill(
+    sweep_sources, posthog, mailerlite_sink
+):
+    with patch(f"{MODULE}.mailerlite_lifecycle_enabled", return_value=True):
+        summary = await lifecycle.sync_all_posthog_lifecycles(now=NOW)
+    assert summary.sent == 3
+    mailerlite_sink.assert_not_awaited()
 
 
 async def test_sync_swallows_stripe_errors_and_sends_nothing(posthog):
@@ -240,7 +332,7 @@ async def test_scheduled_sync_failure_stays_in_the_background(posthog):
         await _drain()
 
 
-async def test_schedule_is_a_no_op_when_analytics_is_off():
+async def test_schedule_is_a_no_op_when_posthog_and_mailerlite_are_off():
     with (
         patch(f"{MODULE}.get_posthog_client", return_value=None),
         patch(f"{MODULE}.sync_posthog_lifecycle", new_callable=AsyncMock) as sync,
@@ -263,13 +355,8 @@ def test_schedule_swallows_client_errors():
 # ---- sync_all_posthog_lifecycles --------------------------------------------
 
 
-def batch_user(user_id: str, customer: str | None, tier: str = "NO_TIER"):
-    return LifecycleUser(
-        id=user_id,
-        created_at=SIGNUP,
-        stripe_customer_id=customer,
-        subscription_tier=SubscriptionTier(tier),
-    )
+def batch_user(user_id: str, customer: str | None):
+    return LifecycleUser(id=user_id, created_at=SIGNUP, stripe_customer_id=customer)
 
 
 @pytest.fixture
@@ -277,8 +364,8 @@ def sweep_sources():
     """Two DB batches over three users, and every subscription in Stripe."""
     batches = [
         [
-            batch_user("u-sub", "cus_sub", "PRO"),
-            batch_user("u-canceling", "cus_canceling", "PRO"),
+            batch_user("u-sub", "cus_sub"),
+            batch_user("u-canceling", "cus_canceling"),
         ],
         [batch_user("u-ended", "cus_ended")],
         [],
@@ -311,7 +398,7 @@ async def test_sweep_dry_run_counts_and_sends_nothing(sweep_sources):
         summary = await lifecycle.sync_all_posthog_lifecycles(dry_run=True, now=NOW)
 
     get_client.assert_not_called()
-    list_async.assert_awaited_once_with(status="all", limit=100)
+    list_async.assert_awaited_once_with(status="all", limit=100, expand=LIST_EXPAND)
     assert summary.aborted is None
     assert summary.stripe_subscriptions == 4
     assert summary.users == 3

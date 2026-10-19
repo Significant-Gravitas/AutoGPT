@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
-from fastapi import APIRouter, Body, HTTPException, Path, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_503_SERVICE_UNAVAILABLE
 
 from backend.api.features.experts import experts_db
@@ -13,6 +13,7 @@ from backend.api.features.schedules.model import (
     ScheduleCreationRequest,
     ScheduleUpdateRequest,
 )
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -35,6 +36,7 @@ router = APIRouter(dependencies=[Security(requires_user)])
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
 )
@@ -238,6 +240,7 @@ async def delete_graph_execution_schedule(
 
 
 @router.patch(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/schedules/{schedule_id}",
     summary="Update execution schedule",
 )

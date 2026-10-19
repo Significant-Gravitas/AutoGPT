@@ -450,6 +450,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for database server API to run on",
     )
 
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -920,10 +926,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -941,9 +947,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
@@ -986,6 +992,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
     )
 
     autopilot_bot_teams_allow_unverified: bool = Field(
@@ -1332,6 +1351,26 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    slack_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the Slack app used to sign in to Slack's MCP "
+        "server (mcp.slack.com). Slack does not support dynamic client "
+        "registration, so MCP sign-in to Slack is unavailable until this is set.",
+    )
+    slack_mcp_client_secret: str = Field(
+        default="", description="Client secret of the Slack MCP sign-in app"
+    )
+    hubspot_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the HubSpot MCP auth app used to sign in to "
+        "HubSpot's MCP server (mcp.hubspot.com). HubSpot does not support "
+        "dynamic client registration, so MCP sign-in to HubSpot is unavailable "
+        "until this is set.",
+    )
+    hubspot_mcp_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot MCP auth app"
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")

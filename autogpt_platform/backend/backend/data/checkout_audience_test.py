@@ -1,6 +1,7 @@
-"""Opening Stripe checkout queues the checkout opener for MailerLite, from
-each of the three checkout routes and the completed-checkout webhook, and none
-of it can cost the checkout or fail the webhook."""
+"""Opening Stripe checkout queues the checkout opener for MailerLite and sets
+the same segmentation on the PostHog person, from each of the three checkout
+routes and the completed-checkout webhook, and none of it can cost the
+checkout or fail the webhook."""
 
 import inspect
 import logging
@@ -24,7 +25,7 @@ from backend.data.notifications import (
 )
 from backend.data.onboarding_role import OnboardingRole
 from backend.data.subscription_trial_checkout import TrialUnavailable
-from backend.notifications import consent, subscriber_fields
+from backend.notifications import consent, posthog_audience, subscriber_fields
 from backend.notifications.consent_test import _cached_before_consent
 from backend.notifications.mailerlite import pseudonym
 
@@ -40,12 +41,23 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 # ── queueing it ──────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def posthog(monkeypatch) -> MagicMock:
+    """Where the opener's PostHog person properties go."""
+    send = MagicMock()
+    monkeypatch.setattr(posthog_audience, "send", send)
+    return send
+
+
+def _person(posthog: MagicMock) -> dict[str, str]:
+    """Everything the one PostHog update carries."""
+    posthog.assert_called_once()
+    user_id, update = posthog.call_args.args
+    assert user_id == "user-1"
+    return {**update.to_set_once, **update.to_set}
 
 
 @pytest.fixture
@@ -100,6 +112,36 @@ async def test_opening_checkout_queues_the_enriched_change(queued, recorded):
 
 
 @pytest.mark.asyncio
+async def test_opening_checkout_sets_the_same_values_on_the_posthog_person(
+    queued, posthog
+):
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    fields = queued.await_args.args[0].fields
+    person = _person(posthog)
+    for field in (
+        SubscriberField.EMAIL_TYPE,
+        SubscriberField.SIGNIN_METHOD,
+        SubscriberField.COUNTRY,
+        SubscriberField.COUNTRY_CODE,
+        SubscriberField.COUNTRY_SOURCE,
+        SubscriberField.EXCLUDE_DE_AT,
+    ):
+        assert person[field.value] == fields[field]
+    assert "checkout_opened_at" in person
+    # The profile step sends the role to PostHog itself.
+    assert "role" not in person
+
+
+@pytest.mark.asyncio
+async def test_a_posthog_failure_never_costs_the_mailerlite_change(queued, monkeypatch):
+    monkeypatch.setattr(
+        posthog_audience, "checkout_update", MagicMock(side_effect=RuntimeError("bug"))
+    )
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    assert queued.await_args.args[0].action is AudienceAction.CHECKOUT_OPENED
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "role",
     [
@@ -130,17 +172,20 @@ async def test_an_opener_without_a_readable_role_is_still_queued(
     ],
 )
 async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
-    queued, recorded, monkeypatch, caplog, countries, code
+    queued, recorded, posthog, monkeypatch, caplog, countries, code
 ):
     """Recorded on the account, since the trial and billing events that
-    follow carry no IP or billing country."""
-    providers = AsyncMock(return_value=["credential"])
-    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
+    follow carry no IP or billing country. PostHog is analytics, not
+    marketing, so it still gets the opener; the role, which only MailerLite
+    gets from here, is not read."""
+    role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", **countries)
     recorded.assert_awaited_once_with("user-1", code)
     queued.assert_not_awaited()
-    providers.assert_not_awaited()
+    role.assert_not_awaited()
+    assert _person(posthog)["country_code"] == code
     assert pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
 
@@ -177,15 +222,16 @@ async def test_an_opener_whose_browser_sits_in_moscow_is_never_queued(
 
 
 @pytest.mark.asyncio
-async def test_a_failure_never_reaches_the_checkout(queued, monkeypatch):
+async def test_a_failure_never_reaches_the_checkout(queued, posthog, monkeypatch):
     monkeypatch.setattr(
         checkout_audience, "get_user_by_id", AsyncMock(side_effect=RuntimeError("db"))
     )
     await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     queued.assert_not_awaited()
+    posthog.assert_not_called()
 
 
-def _opt_out(monkeypatch) -> tuple[AsyncMock, AsyncMock]:
+def _opt_out(monkeypatch) -> AsyncMock:
     """The account refused marketing at signup."""
     lookup = AsyncMock(
         return_value=SimpleNamespace(
@@ -195,19 +241,23 @@ def _opt_out(monkeypatch) -> tuple[AsyncMock, AsyncMock]:
             marketing_opt_out_at=CREATED,
         )
     )
-    providers = AsyncMock(return_value=["credential"])
     monkeypatch.setattr(checkout_audience, "get_user_by_id", lookup)
-    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
-    return lookup, providers
+    return lookup
 
 
 @pytest.mark.asyncio
-async def test_an_opted_out_opener_is_never_queued(queued, monkeypatch, caplog):
-    _, providers = _opt_out(monkeypatch)
+async def test_an_opted_out_opener_is_never_queued(
+    queued, posthog, monkeypatch, caplog
+):
+    """Only for MailerLite: PostHog is analytics, not marketing."""
+    _opt_out(monkeypatch)
+    role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     queued.assert_not_awaited()
-    providers.assert_not_awaited()
+    role.assert_not_awaited()
+    assert _person(posthog)["country_code"] == "US"
     assert pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
 
@@ -234,7 +284,7 @@ async def test_an_opener_cached_before_the_consent_fields_queues_nothing(
 async def test_an_opted_out_customers_completed_checkout_queues_nothing(
     queued, monkeypatch
 ):
-    lookup, _ = _opt_out(monkeypatch)
+    lookup = _opt_out(monkeypatch)
     with patch(
         "prisma.models.User.prisma",
         return_value=_user_prisma(SimpleNamespace(id="user-1")),

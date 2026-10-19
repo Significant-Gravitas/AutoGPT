@@ -270,6 +270,10 @@ function rowDifferences(a: LogRow | undefined, b: LogRow | undefined) {
   } else if (a.content !== b.content) {
     fields.push("content");
   }
+  // A drained row's metadata decides how it renders (a held call's result is hidden).
+  if (a.role === "user" && !jsonEqual(a.metadata, b.metadata)) {
+    fields.push("metadata");
+  }
   const sameCalls =
     a.toolCalls.length === b.toolCalls.length &&
     a.toolCalls.every((call, i) => {

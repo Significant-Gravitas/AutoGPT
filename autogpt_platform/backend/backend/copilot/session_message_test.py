@@ -1,14 +1,17 @@
 """Integration tests for append_session_message (notes posted between turns)."""
 
 import logging
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from prisma.errors import UniqueViolationError
-from prisma.models import ChatMessage, User
+from prisma.models import ChatMessage, ChatSession, User
 
 from backend.copilot import db as copilot_db
 from backend.copilot.model import get_chat_session
+from backend.copilot.scheduled_chats.notices import post_notice, skip_notice
+from backend.copilot.turn_queue import TurnRefusal
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
@@ -110,30 +113,39 @@ async def test_a_note_never_lands_in_someone_elses_chat(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_note_in_the_main_chat_reaches_a_copy_already_cached(
+async def test_an_autopilot_schedule_without_a_chat_gets_one_note_chat_per_window(
     server: SpinTestServer,
 ):
-    """A skipped AutoPilot schedule with no chat of its own posts into the
-    owner's main chat. Whoever had that chat open has it in the cache."""
+    """A skipped AutoPilot schedule that would have opened a fresh chat has
+    no chat of its own yet. Its note opens one, named for the schedule, and a
+    second skip in the same window opens nothing more."""
     user_id = f"session-message-{uuid4()}"
     await _create_user(user_id)
     try:
-        session_id = await _create_session(user_id)
-        cached = await get_chat_session(session_id, user_id)
-        assert cached is not None and cached.messages == []
-
-        posted_in = await copilot_db.append_plain_session_message(
-            user_id=user_id,
-            content="Skipped: scheduled chats need a plan",
-            message_id=str(uuid4()),
-            metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+        existing = await _create_session(user_id)
+        notice = skip_notice(
+            TurnRefusal(reason="paywalled", kind="no_plan"),
+            title="Morning digest",
+            now=datetime(2026, 10, 19, 9, tzinfo=timezone.utc),
+            run="recurring",
         )
+        assert notice is not None
 
-        assert posted_in == session_id
-        session = await get_chat_session(session_id, user_id)
-        assert session is not None
-        assert [m.content for m in session.messages] == [
-            "Skipped: scheduled chats need a plan"
-        ]
+        for _ in range(2):
+            await post_notice(
+                notice,
+                user_id=user_id,
+                schedule_key="schedule-1",
+                title="Morning digest",
+                session_id=None,
+                expert_id=None,
+            )
+
+        chats = await ChatSession.prisma().find_many(where={"userId": user_id})
+        opened = [chat for chat in chats if chat.id != existing]
+        assert [chat.title for chat in opened] == ["Morning digest"]
+        notes = await ChatMessage.prisma().find_many(where={"sessionId": opened[0].id})
+        assert [note.content for note in notes] == [notice.content]
+        assert await ChatMessage.prisma().count(where={"sessionId": existing}) == 0
     finally:
         await _cleanup(user_id)

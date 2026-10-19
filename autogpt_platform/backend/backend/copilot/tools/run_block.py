@@ -6,7 +6,7 @@ from typing import Any
 
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import unified_approvals
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
 
@@ -115,6 +115,7 @@ class RunBlockTool(BaseTool):
         input_data: dict | None = None,
         validate_only: bool = False,
         gate_approved: bool = False,
+        gate_decided: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -126,6 +127,8 @@ class RunBlockTool(BaseTool):
             input_data: Input values for the block
             gate_approved: The user approved this exact call on a card, so the
                 irreversible-action pause would ask the same question twice.
+            gate_decided: The chat's approval gate reached a verdict on this
+                call; with unified approvals on, its yes is the block's review.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -171,27 +174,6 @@ class RunBlockTool(BaseTool):
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
         prep: BlockPreparation = prep_or_err
-
-        # Check block-level permissions before execution.
-        perms = get_current_permissions()
-        if perms is not None and not perms.is_block_allowed(block_id, prep.block.name):
-            available_hint = (
-                f"Allowed identifiers: {perms.blocks!r}. "
-                if not perms.blocks_exclude and perms.blocks
-                else (
-                    f"Blocked identifiers: {perms.blocks!r}. "
-                    if perms.blocks_exclude and perms.blocks
-                    else ""
-                )
-            )
-            return ErrorResponse(
-                message=(
-                    f"Block '{prep.block.name}' ({block_id}) is not permitted "
-                    f"by the current execution permissions. {available_hint}"
-                    "Use find_capability to discover blocks that are allowed."
-                ),
-                session_id=session_id,
-            ).from_outside()
 
         # Dry-run fast-path: skip credential/HITL checks — simulation never calls
         # the real service so credentials and review gates are not needed.
@@ -286,7 +268,8 @@ class RunBlockTool(BaseTool):
             if spend_gate is not None:
                 return spend_gate
 
-        if gate_approved:
+        # Named args from run_capability._run_block, never gate markers in kwargs.
+        if gate_approved or (gate_decided and await unified_approvals(user_id)):
             synthetic_node_exec_id = (
                 f"{prep.synthetic_node_id}"
                 f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"

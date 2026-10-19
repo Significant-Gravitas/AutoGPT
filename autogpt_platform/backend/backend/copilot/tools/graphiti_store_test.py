@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_store import MemoryStoreTool
 from backend.copilot.tools.models import ErrorResponse, MemoryStoreResponse
@@ -264,7 +265,36 @@ class TestMemoryStoreTool:
             )
 
         assert isinstance(result, MemoryStoreResponse)
-        assert mock_enqueue.await_args.kwargs["expert_id"] == "expert-1"
+        assert mock_enqueue.await_args.args[0] == MemoryScope.for_expert(
+            "user-1", "expert-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_store_rejects_an_invalid_memory_scope_before_enqueue(self):
+        tool = MemoryStoreTool()
+        mock_enqueue = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="not a valid id",
+                session=_make_session(),
+                name="some_fact",
+                content="A fact worth remembering.",
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.message == "Invalid user ID for memory operations."
+        mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_store_invalid_source_kind_falls_back(self):
