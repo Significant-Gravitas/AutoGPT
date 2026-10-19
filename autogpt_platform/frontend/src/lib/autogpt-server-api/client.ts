@@ -876,6 +876,9 @@ export default class BackendAPI {
       isLogoutInProgress,
       isAuthenticationError,
     } = await import("./helpers");
+    const { isAccountBannedResponse, signOutBannedAccount } = await import(
+      "@/lib/auth/account-banned"
+    );
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -905,6 +908,9 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
       if (
         isAuthenticationError(response, error.message) &&
         isLogoutInProgress()

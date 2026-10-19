@@ -94,3 +94,82 @@ def _bypass_paywall(mocker):
     paywall_off = mocker.AsyncMock(return_value=False)
     mocker.patch("backend.copilot.rate_limit.is_user_paywalled", new=paywall_off)
     mocker.patch("backend.executor.utils.is_user_paywalled", new=paywall_off)
+
+
+_BAN_LOOKUPS = (
+    "backend.data.user.is_user_banned",
+    "backend.api.external.middleware.is_user_banned",
+    "backend.api.features.integrations.router.is_user_banned",
+    "backend.data.auth.oauth.is_user_banned",
+    "backend.executor.utils.is_user_banned",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_bans(mocker):
+    """No account is banned unless a test asks for ``real_ban_lookup``. Once a
+    session test has connected Prisma, the real lookup would query it from
+    TestClient's own event loop."""
+    from backend.data import user as user_module
+
+    real = user_module.is_user_banned
+    for target in _BAN_LOOKUPS:
+        mocker.patch(target, new=mocker.AsyncMock(return_value=False))
+    return real
+
+
+@pytest.fixture
+def real_ban_lookup(mocker, _no_bans):
+    for target in _BAN_LOOKUPS:
+        mocker.patch(target, new=_no_bans)
+
+
+@pytest.fixture
+def auth_row(mocker, real_ban_lookup):
+    """Give a fresh user id an auth row in one ban state, read by the real
+    ``is_user_banned``: ``auth_row("banned" | "until_tomorrow" | "lapsed" |
+    "unbanned") -> user_id``."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from prisma.models import AuthUser
+
+    from backend.data import db
+    from backend.data import user as user_module
+
+    now = datetime.now(timezone.utc)
+    states = {
+        "banned": (True, None),
+        "until_tomorrow": (True, now + timedelta(days=1)),
+        "lapsed": (True, now - timedelta(minutes=1)),
+        "unbanned": (None, None),
+    }
+    rows: dict[str, AuthUser] = {}
+
+    async def find_unique(where):
+        return rows.get(where["id"])
+
+    # Connected, so the lookup reads the row here rather than over the RPC.
+    mocker.patch.object(db, "is_connected", return_value=True)
+    mocker.patch.object(user_module, "AuthUser").prisma.return_value.find_unique = (
+        find_unique
+    )
+
+    def make(state: str) -> str:
+        user_id = str(uuid.uuid4())
+        banned, ban_expires = states[state]
+        rows[user_id] = AuthUser(
+            id=user_id,
+            name="Test",
+            email=f"{user_id}@example.com",
+            emailVerified=True,
+            banned=banned,
+            banExpires=ban_expires,
+            createdAt=now,
+            updatedAt=now,
+        )
+        return user_id
+
+    yield make
+    for user_id in rows:
+        user_module.is_user_banned.cache_delete(user_id)

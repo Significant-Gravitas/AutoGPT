@@ -52,12 +52,16 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    execute_community_rebuild,
+    execute_nightly_batch_sync,
+    execute_skill_learning_sync,
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.service import EXPOSED_FLAG
@@ -1282,7 +1286,14 @@ async def test_execute_graph_forwards_expert_id_and_schedule_id():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        UserPaywalledError("A subscription is required to run agents."),
+        UserBannedError("This account is banned, so its workflows can't run."),
+    ],
+)
+async def test_execute_graph_quietly_skips_a_refused_owner(caplog, refusal):
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1292,9 +1303,7 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         input_data={},
         input_credentials={},
     )
-    mock_add = AsyncMock(
-        side_effect=UserPaywalledError("A subscription is required to run agents.")
-    )
+    mock_add = AsyncMock(side_effect=refusal)
     mock_db = MagicMock()
     mock_db.increment_onboarding_runs = AsyncMock()
 
@@ -1315,6 +1324,34 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         for record in caplog.records
     )
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "job, work",
+    [
+        (execute_community_rebuild, f"{_SCHEDULER_PATH}.rebuild_communities_for_user"),
+        (
+            execute_nightly_batch_sync,
+            "backend.copilot.dream.nightly_batch.run_nightly_batch_submit",
+        ),
+        (
+            execute_skill_learning_sync,
+            "backend.copilot.learning.nightly.run_skill_learning_pass",
+        ),
+    ],
+)
+def test_a_nightly_job_does_no_work_for_a_banned_owner(job, work):
+    def flag_on_and_owner_banned(coro, *args, **kwargs):
+        coro.close()
+        return True
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=flag_on_and_owner_banned),
+        patch(work) as work_fn,
+    ):
+        assert job("user-1") is None
+
+    work_fn.assert_not_called()
 
 
 @pytest.mark.asyncio

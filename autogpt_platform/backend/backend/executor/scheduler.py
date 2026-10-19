@@ -64,6 +64,7 @@ from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
+from backend.data.user import is_user_banned
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
@@ -94,6 +95,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
@@ -275,6 +277,9 @@ async def _execute_graph(**kwargs):
         # Expected while the owner has no subscription: skip quietly. The
         # schedule stays registered so it resumes on its own once they
         # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserBannedError as e:
+        # Kept registered, so the schedule resumes if the ban is lifted.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -1346,6 +1351,8 @@ def execute_community_rebuild(user_id: str):
             user_id[:12],
         )
         return
+    if _owner_is_banned(user_id, "Community rebuild"):
+        return
 
     result = run_async(
         rebuild_communities_for_user(user_id),
@@ -1364,6 +1371,14 @@ def execute_community_rebuild(user_id: str):
             result.get("elapsed_seconds") or 0.0,
             result.get("communities_built"),
         )
+
+
+def _owner_is_banned(user_id: str, job: str) -> bool:
+    """Skip a per-user job while its owner is banned; the cron stays registered."""
+    if not run_async(is_user_banned(user_id)):
+        return False
+    logger.info(f"{job} skipped for user {user_id[:12]}: the account is banned")
+    return True
 
 
 def _morning_briefing_crontab(user_id: str) -> str:
@@ -1470,6 +1485,8 @@ def execute_nightly_batch_sync(user_id: str):
             user_id[:12],
         )
         return None
+    if _owner_is_banned(user_id, "Nightly batch"):
+        return None
 
     result: NightlyBatchResult = run_async(
         run_nightly_batch_submit(user_id),
@@ -1525,6 +1542,8 @@ def execute_skill_learning_sync(user_id: str):
         logger.info(
             "Skill learning skipped for user %s — flag flipped off", user_id[:12]
         )
+        return None
+    if _owner_is_banned(user_id, "Skill learning"):
         return None
 
     result = run_async(

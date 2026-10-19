@@ -19,6 +19,7 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhere
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -242,6 +243,25 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_banned(user_id: str) -> bool:
+    """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
+
+    Works in any process; the cache is read before the DatabaseManager is.
+    Lookup errors propagate, and ``@cached`` stores no call that raised.
+    """
+    return await user_db().is_auth_user_banned(user_id)
+
+
+async def is_auth_user_banned(user_id: str) -> bool:
+    """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
+    and a missing auth row are not bans."""
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not user.banned:
+        return False
+    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
 
 
 class OrphanedAuthIdentity(BaseModel):

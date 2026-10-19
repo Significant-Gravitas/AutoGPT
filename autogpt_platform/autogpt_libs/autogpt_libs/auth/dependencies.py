@@ -26,6 +26,12 @@ optional_bearer = HTTPBearer(auto_error=False)
 # Header name for admin impersonation
 IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 
+# The frontend signs the user out on this code (`account-banned.ts`).
+ACCOUNT_BANNED_DETAIL = {
+    "code": "account_banned",
+    "message": "This account has been banned.",
+}
+
 logger = logging.getLogger(__name__)
 
 # Recently settled self-heals, id -> monotonic expiry: a confirmed row for the
@@ -136,7 +142,36 @@ def get_optional_user_id(
         return None
 
 
-async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -> User:
+async def get_unbanned_jwt_payload(
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+) -> dict:
+    """``get_jwt_payload``, refused with 403 when the token's subject is banned.
+
+    The resolvers below all read it, and FastAPI resolves it once per request.
+    Under impersonation the subject is the admin, who may act as a banned user.
+    """
+    user_id = jwt_payload.get("sub")
+    if user_id and await _is_banned(user_id):
+        raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    return jwt_payload
+
+
+async def _is_banned(user_id: str) -> bool:
+    """False without the backend package or a connected DB, as the self-heal is:
+    every process that serves these routes has both."""
+    try:
+        from backend.data import db  # deferred -- only needed at runtime
+        from backend.data.user import is_user_banned  # deferred
+    except ImportError:
+        return False
+    if not db.is_connected():
+        return False
+    return await is_user_banned(user_id)
+
+
+async def requires_user(
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
+) -> User:
     """
     FastAPI dependency that requires a valid authenticated user.
 
@@ -147,7 +182,7 @@ async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -
 
 
 async def requires_admin_user(
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> User:
     """
     FastAPI dependency that requires a valid admin user.
@@ -159,7 +194,8 @@ async def requires_admin_user(
 
 
 async def get_user_id(
-    request: fastapi.Request, jwt_payload: dict = fastapi.Security(get_jwt_payload)
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> str:
     """
     FastAPI dependency that returns the ID of the authenticated user.
@@ -327,7 +363,7 @@ async def _finish_account_bootstrap(jwt_payload: dict) -> None:
 
 async def get_request_context(
     request: fastapi.Request,
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> RequestContext:
     """
     FastAPI dependency that resolves the full org/workspace context for a request.
