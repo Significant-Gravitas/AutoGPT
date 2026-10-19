@@ -1,3 +1,4 @@
+import { withPostHogConfig } from "@posthog/nextjs-config";
 import { withSentryConfig } from "@sentry/nextjs";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
@@ -186,7 +187,7 @@ const skipSentryPlugin =
   !enableSourceMaps ||
   !process.env.SENTRY_AUTH_TOKEN;
 
-export default skipSentryPlugin
+const configWithSentry = skipSentryPlugin
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
@@ -232,3 +233,23 @@ export default skipSentryPlugin
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
     });
+
+const postHogUploadConfigured = Boolean(
+  process.env.NODE_ENV === "production" &&
+    enableSourceMaps &&
+    process.env.POSTHOG_API_KEY &&
+    process.env.POSTHOG_PROJECT_ID,
+);
+
+export default postHogUploadConfigured
+  ? withPostHogConfig(configWithSentry, {
+      personalApiKey: process.env.POSTHOG_API_KEY,
+      projectId: process.env.POSTHOG_PROJECT_ID,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      sourcemaps: {
+        enabled: enableSourceMaps,
+        // Sentry also uploads these maps; neither plugin should delete them first.
+        deleteAfterUpload: false,
+      },
+    })
+  : configWithSentry;

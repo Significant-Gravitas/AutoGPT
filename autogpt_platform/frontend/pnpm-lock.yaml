@@ -40,6 +40,9 @@ importers:
       '@phosphor-icons/react':
         specifier: 2.1.10
         version: 2.1.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@posthog/nextjs-config':
+        specifier: 1.11.1
+        version: 1.11.1(next@15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.104.1(esbuild@0.25.12))
       '@posthog/react':
         specifier: 1.7.0
         version: 1.7.0(@types/react@18.3.17)(posthog-js@1.334.1)(react@18.3.1)
@@ -2818,8 +2821,25 @@ packages:
       webpack-plugin-serve:
         optional: true
 
+  '@posthog/cli@0.16.2':
+    resolution: {integrity: sha512-h8bpf9ffBUH/Z9IoyGV+wiI+vS8rIPorKT3eKQXuzuwawO0G7Qvy+hDd7HQ9YJjHByYZ77yPPQvrSs4WsqTUCg==}
+    engines: {node: '>=14.14', npm: '>=6'}
+    hasBin: true
+
   '@posthog/core@1.13.0':
     resolution: {integrity: sha512-knjncrk7qRmssFRbGzBl1Tunt21GRpe0Wv+uVelyL0Rh7PdQUsgguulzXFTps8hA6wPwTU4kq85qnbAJ3eH6Wg==}
+
+  '@posthog/core@1.57.4':
+    resolution: {integrity: sha512-JM2r3ab7D8HvxquB06jesAM7EBLf3pXIwYIOj/wwq59cML0aicSoJRZdDREruhbIHzc7iFgSgAqTqJQZxxvq9w==}
+
+  '@posthog/nextjs-config@1.11.1':
+    resolution: {integrity: sha512-Mk9olw1ECIaK371L3NWTzM1fnkxYuCmQfU6VQpOSoBFq51Y7xj1R66zazKJLsi7hcjMAqqTkzMs+DqiFF+Jz+w==}
+    engines: {node: ^20.20.0 || >=22.22.0}
+    peerDependencies:
+      next: '>12.1.0'
+
+  '@posthog/plugin-utils@2.0.0':
+    resolution: {integrity: sha512-PC94+3zeEQ2IkhiU+pskOIOEkAFKZvwVixvrwpRfy+cl4b6gkTuHN44vp5OeG5ndfQOLJQF5onx8/K7yZC3i1g==}
 
   '@posthog/react@1.7.0':
     resolution: {integrity: sha512-pM7GL7z/rKjiIwosbRiQA3buhLI6vUo+wg+T/ZrVZC7O5bVU07TfgNZTcuOj8E9dx7vDbfNrc1kjDN7PKMM8ug==}
@@ -2833,6 +2853,14 @@ packages:
 
   '@posthog/types@1.334.1':
     resolution: {integrity: sha512-ypFnwTO7qbV7icylLbujbamPdQXbJq0a61GUUBnJAeTbBw/qYPIss5IRYICcbCj0uunQrwD7/CGxVb5TOYKWgA==}
+
+  '@posthog/types@1.415.2':
+    resolution: {integrity: sha512-BIIHPyXcPZuNTImrR1qLqLKFw7j9o8co6LG/9OpLtpWJ3RT0y89Lx6VCtd37N9/dkr/qW7y0uPjJxAxjsALHtw==}
+
+  '@posthog/webpack-plugin@1.7.1':
+    resolution: {integrity: sha512-BMXDlpuilZR3XuTWPE3HcLEYkaStAgA3Ox3B88eCSVzFP2YY39+7sCbnjyOkeO5yY6I2TYMowSlQ49QaI8P+fA==}
+    peerDependencies:
+      webpack: ^5
 
   '@prisma/instrumentation@6.19.0':
     resolution: {integrity: sha512-QcuYy25pkXM8BJ37wVFBO7Zh34nyRV1GOb2n3lPkkbRYfl4hWl3PTcImP41P0KrzVXfa/45p6eVCos27x3exIg==}
@@ -8735,6 +8763,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   serialize-javascript@6.0.2:
     resolution: {integrity: sha512-Saa1xPByTTq2gdeFZYLLo+RFE35NHZkAbqZeWNd3BpzppeVisAqpDjcp8dyf6uIvEqJRd46jemmyA4iFIeVk8g==}
 
@@ -12129,7 +12162,29 @@ snapshots:
       type-fest: 4.41.0
       webpack-hot-middleware: 2.26.1
 
+  '@posthog/cli@0.16.2':
+    dependencies:
+      detect-libc: 2.1.2
+
   '@posthog/core@1.13.0':
+    dependencies:
+      cross-spawn: 7.0.6
+
+  '@posthog/core@1.57.4':
+    dependencies:
+      '@posthog/types': 1.415.2
+
+  '@posthog/nextjs-config@1.11.1(next@15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(webpack@5.104.1(esbuild@0.25.12))':
+    dependencies:
+      '@posthog/cli': 0.16.2
+      '@posthog/plugin-utils': 2.0.0
+      '@posthog/webpack-plugin': 1.7.1(webpack@5.104.1(esbuild@0.25.12))
+      next: 15.5.24(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      semver: 7.8.5
+    transitivePeerDependencies:
+      - webpack
+
+  '@posthog/plugin-utils@2.0.0':
     dependencies:
       cross-spawn: 7.0.6
 
@@ -12141,6 +12196,15 @@ snapshots:
       '@types/react': 18.3.17
 
   '@posthog/types@1.334.1': {}
+
+  '@posthog/types@1.415.2': {}
+
+  '@posthog/webpack-plugin@1.7.1(webpack@5.104.1(esbuild@0.25.12))':
+    dependencies:
+      '@posthog/cli': 0.16.2
+      '@posthog/core': 1.57.4
+      '@posthog/plugin-utils': 2.0.0
+      webpack: 5.104.1(esbuild@0.25.12)
 
   '@prisma/instrumentation@6.19.0(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -15306,8 +15370,7 @@ snapshots:
 
   destroy@1.2.0: {}
 
-  detect-libc@2.1.2:
-    optional: true
+  detect-libc@2.1.2: {}
 
   detect-node-es@1.1.0: {}
 
@@ -19123,6 +19186,8 @@ snapshots:
   semver@6.3.1: {}
 
   semver@7.7.3: {}
+
+  semver@7.8.5: {}
 
   serialize-javascript@6.0.2:
     dependencies:

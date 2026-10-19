@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ErrorEvent } from "@sentry/nextjs";
+
+const mirrorEvent = vi.hoisted(() => vi.fn((event: ErrorEvent) => event));
+vi.mock("@/services/analytics/sentry-posthog", () => ({
+  createPostHogSentryProcessor: () => mirrorEvent,
+}));
 
 const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
   initMock: vi.fn(),
@@ -97,8 +103,11 @@ describe("Sentry client instrumentation", () => {
     };
 
     expect(beforeSend).toBeTypeOf("function");
+    mirrorEvent.mockClear();
     expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+    expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
   });
 
   it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
@@ -135,9 +144,12 @@ describe("Sentry client instrumentation", () => {
       },
     };
 
+    mirrorEvent.mockClear();
     expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(blocked, {})).toBe(blocked);
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+    expect(mirrorEvent).toHaveBeenCalledTimes(2);
   });
 
   it("tags events with the environment the deployment names for itself", async () => {

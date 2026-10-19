@@ -11,10 +11,12 @@ import {
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { setupSessionReplay } from "@/lib/session-replay";
+import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = environment.getSentryDSN();
+const mirrorSentryEvent = createPostHogSentryProcessor(dsn);
 
 Sentry.init({
   dsn,
@@ -43,7 +45,9 @@ Sentry.init({
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : event;
+    if (isNextRSCNavigationFallback(event)) return null;
+    // Run after our filters; a regular integration runs before beforeSend.
+    return mirrorSentryEvent(event);
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent) ? null : event;
