@@ -3,8 +3,11 @@ import {
   assistantTextChunks,
   copilotResumeHandler,
   copilotStreamHandler,
+  createStreamHold,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clickStop,
@@ -130,6 +133,74 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       // Post-stop chunks never reach the bubble.
       expect(screen.queryByText(/should be cut off/i)).toBeNull();
     });
+
+    // A phone user's second taps came up to 1.5 s after Send, while his sends
+    // took up to 1.6 s to name their turn: past Stop's arming, still connecting.
+    it("a second tap on Send while the send connects neither stops nor loses it", async () => {
+      const { hold, release } = createStreamHold(0);
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Here is the answer."),
+          hold,
+        }),
+      );
+      renderHost();
+      const cancels = countCancels();
+
+      await typeAndSend("make some screenshots");
+      await sleep(1200);
+      await userEvent.setup().click(sendSlot());
+      await sleep(200);
+      expect(cancels()).toBe(0);
+
+      release();
+      expect(
+        await screen.findByText("Here is the answer.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    }, 15_000);
+
+    // The same user's second tap landed 0.15 s after Stop replaced Send.
+    it("a Stop that has just replaced Send ignores a tap, then stops once armed", async () => {
+      const { hold, release } = createStreamHold(4);
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "Working on it " },
+            { type: "text-delta", id: "t1", delta: "and done." },
+            { type: "text-end", id: "t1" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+          hold,
+        }),
+      );
+      renderHost();
+      const cancels = countCancels();
+      const user = userEvent.setup();
+
+      await typeAndSend("hello");
+      const stop = await screen.findByRole("button", { name: /^stop$/i });
+      await sleep(150);
+      await user.click(stop);
+      await sleep(200);
+      expect(cancels()).toBe(0);
+
+      await clickStop();
+      await waitFor(() => expect(cancels()).toBe(1));
+      expect(
+        await screen.findByText(/task stopped/i, undefined, { timeout: 5000 }),
+      ).toBeDefined();
+      release();
+    }, 15_000);
   });
 
   describe("Otto streaming — resume on mount", () => {
@@ -160,3 +231,26 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     });
   });
 });
+
+function countCancels() {
+  let count = 0;
+  server.use(
+    http.post(`*/api/proxy/api/chat/sessions/${TEST_SESSION_ID}/cancel`, () => {
+      count += 1;
+      return HttpResponse.json({ cancelled: true, reason: null });
+    }),
+  );
+  return () => count;
+}
+
+// Whatever button sits where Send was: the composer's last.
+function sendSlot() {
+  const form = screen.getByLabelText(/chat message input/i).closest("form");
+  if (!form) throw new Error("no composer form");
+  const buttons = within(form).getAllByRole("button");
+  return buttons[buttons.length - 1];
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

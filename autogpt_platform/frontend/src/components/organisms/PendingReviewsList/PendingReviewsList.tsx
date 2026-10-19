@@ -132,17 +132,24 @@ export function PendingReviewsList({
       let parsedData: any = undefined;
 
       if (!autoApproveThisNode) {
-        if (review.editable && reviewData) {
+        // An emptied draft is "" here and must fail the parse below, not
+        // fall back to the original payload the reviewer just cleared.
+        if (review.editable && reviewData !== undefined) {
           try {
             parsedData = JSON.parse(reviewData);
           } catch (error) {
-            toast({
-              title: "Invalid JSON",
-              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-              variant: "destructive",
-            });
-            setPendingAction(null);
-            return;
+            // A rejection sends nothing the reviewer edited, so a broken
+            // draft only has to block an approval.
+            if (approved) {
+              toast({
+                title: "Invalid JSON",
+                description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+                variant: "destructive",
+              });
+              setPendingAction(null);
+              return;
+            }
+            parsedData = review.payload;
           }
         } else {
           parsedData = review.payload;

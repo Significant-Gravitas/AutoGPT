@@ -592,6 +592,27 @@ async def test_get_store_creators_only_returns_approved(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "search_query, searched_for",
+    [("a" * 300, {"a" * 100}), ("   ", set())],
+    ids=["over-long query searches its first 100 characters", "blank query"],
+)
+async def test_get_store_creators_accepts_long_and_blank_queries(
+    mocker, search_query, searched_for
+):
+    mock_creator = mocker.patch("prisma.models.Creator.prisma")
+    mock_creator.return_value.find_many = AsyncMock(return_value=[])
+    mock_creator.return_value.count = AsyncMock(return_value=0)
+
+    await db.get_store_creators(search_query=search_query)
+
+    where = mock_creator.return_value.find_many.call_args.kwargs["where"]
+    assert {
+        match["contains"] for field in where.get("OR", []) for match in field.values()
+    } == searched_for
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_submission_stats_maps_row_to_pydantic(mocker):
     """The single FILTER aggregate query result maps cleanly into SubmissionStats."""
     query_mock = mocker.patch(
