@@ -16,7 +16,12 @@ from prometheus_client import REGISTRY
 from backend.blocks.typesafe._budget import prepare_state
 from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.gate import jev
-from backend.copilot.gate.classifier import supervise
+from backend.copilot.gate.classifier import (
+    ACTION_RUBRIC,
+    JUDGED_ACTION_RUBRIC,
+    supervise,
+)
+from backend.copilot.gate.judged_rubric import QUESTION_3_NAME
 
 _MOD = "backend.copilot.gate.classifier"
 _ANSWERS = json.loads(
@@ -129,6 +134,70 @@ async def test_without_a_key_jev_is_never_called():
     assert judgement.decided_by == "llm"
     call_jev.assert_not_awaited()
     llm.assert_awaited_once()
+
+
+@pytest.mark.parametrize("outward_judged", [False, True])
+async def test_a_judged_outward_call_meets_its_own_rubric_in_both_judges(
+    outward_judged,
+):
+    """Item 3 of the measured rubric asks on anything that leaves the platform,
+    so a judged call read by it would always ask, on the second look at the
+    whole chat as much as the first."""
+    llm = AsyncMock(return_value=_response("ask\nreason: posts a key"))
+    call_jev = _jev("ask_on_q1")
+    with (
+        patch(f"{_MOD}.call_provider_openai_compat_sync", llm),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch.object(jev, "call_jev", call_jev),
+        patch.object(jev.config, "gate_first_stage", "jev"),
+        patch.object(jev, "_api_key", "test-key"),
+    ):
+        await supervise(
+            tool_name="run_capability",
+            args={"id": "discord-send"},
+            user_messages=_LONG_CHAT,
+            outward_judged=outward_judged,
+        )
+    jev_rubric = jev.JUDGED_JEV_RUBRIC if outward_judged else jev.JEV_RUBRIC
+    assert call_jev.await_count == 2
+    for call in call_jev.await_args_list:
+        state, questions = call.args[1:3]
+        assert state.startswith(jev_rubric + "\n\n<<<BEGIN USER REQUEST")
+        assert questions is (jev.JUDGED_QUESTIONS if outward_judged else jev.QUESTIONS)
+    system = llm.await_args.kwargs["messages"][0]["content"]
+    assert system == (JUDGED_ACTION_RUBRIC if outward_judged else ACTION_RUBRIC)
+
+
+@pytest.mark.parametrize(
+    "outward_judged, name",
+    [(False, "data leaving the platform"), (True, QUESTION_3_NAME)],
+)
+async def test_a_judged_call_held_on_question_3_is_named_by_its_own_rubric(
+    outward_judged, name
+):
+    """Leaving the platform is what the judged tier allows, so a judged call's
+    card must not give it as the reason."""
+    recorded = _ANSWERS["ask_on_q1"]
+    on_q3 = {**recorded, "q1": recorded["q3"], "q3": recorded["q1"]}
+    llm = AsyncMock(return_value=_response("ask"))
+    with (
+        patch(f"{_MOD}.call_provider_openai_compat_sync", llm),
+        patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch.object(jev, "call_jev", AsyncMock(return_value=_result(on_q3))),
+        patch.object(jev.config, "gate_first_stage", "jev"),
+        patch.object(jev, "_api_key", "test-key"),
+    ):
+        judgement = await supervise(
+            tool_name="run_capability",
+            args={"id": "discord-send"},
+            user_messages=["post the notes in #team"],
+            outward_judged=outward_judged,
+        )
+    prompt = llm.await_args.kwargs["messages"][1]["content"]
+    assert f"rubric question 3 ({name})" in prompt
+    assert judgement.reason == (
+        f"A check flagged this as possibly {name}; could not pinpoint where."
+    )
 
 
 # The request scrolled past the first window: four messages came after it.
