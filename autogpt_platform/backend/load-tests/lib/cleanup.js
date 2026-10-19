@@ -32,7 +32,8 @@ export function cleanupTimeout() {
   return `${120 + accountCount() * 30}s`;
 }
 
-export function removeRunData(data) {
+// `when` names the caller in the log: teardown, or a setup() that threw.
+export function removeRunData(data, when) {
   if (!data || !Array.isArray(data.accounts)) return;
   const done = { executions: 0, libraryAgents: 0, sessions: 0, failed: 0 };
   for (const account of data.accounts) {
@@ -67,7 +68,7 @@ export function removeRunData(data) {
     done.failed += failed;
   }
   console.log(
-    `teardown: deleted ${done.executions} graph runs, ${done.libraryAgents} library agents and ${done.sessions} chat sessions${
+    `${when}: deleted ${done.executions} graph runs, ${done.libraryAgents} library agents and ${done.sessions} chat sessions${
       done.failed > 0
         ? `; ${done.failed} deletes failed, the log above says which`
         : ""

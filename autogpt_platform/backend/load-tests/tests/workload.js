@@ -90,8 +90,11 @@ export function setup() {
 
 // Deletes first, while the accounts are still subscribed.
 export function teardown(data) {
-  removeRunData(data);
-  cancelRunSubscriptions(data);
+  try {
+    removeRunData(data, "teardown");
+  } finally {
+    cancelRunSubscriptions(data, "teardown");
+  }
 }
 
 export function copilotReads(data) {

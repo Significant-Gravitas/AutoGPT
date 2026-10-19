@@ -21,6 +21,7 @@ import { Counter, Gauge, Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
 import { accountCount, accountHeaders } from "./auth.js";
+import { removeRunData } from "./cleanup.js";
 import { DUMMY_REPLY, streamTurn } from "./copilot.js";
 import {
   COVERED,
@@ -143,6 +144,7 @@ function refusal(result, data) {
 export function seedRun(auth, journeys) {
   const wants = (name) => journeys.includes(name);
   const runId = __ENV.RUN_ID || "manual";
+  if (wants("copilot_turn")) copilotEngine();
   const data = {
     auth: auth.auth,
     // Teardown deletes the chat sessions the turn journey created, which it
@@ -166,6 +168,52 @@ export function seedRun(auth, journeys) {
     },
   };
 
+  try {
+    seedAccounts(auth, wants, data, runId);
+  } catch (e) {
+    // k6 skips teardown() when setup() throws, so what the seed made so far
+    // is removed here.
+    try {
+      removeRunData(data, "setup failed");
+    } finally {
+      cancelRunSubscriptions(data, "setup failed");
+    }
+    throw e;
+  }
+
+  const { off, failed } = recordRunCoverage(data, journeys);
+  const subscriptions = data.stripe.enabled
+    ? `${data.stripe.subscribed} of ${data.accounts.length} subscribed in Stripe test mode${
+        data.stripe.tier ? ` (${data.stripe.tier})` : ""
+      }`
+    : "none (STRIPE_TEST_SECRET_KEY is not set)";
+  const line = `seed: ${data.accounts.length} accounts; subscriptions ${subscriptions}; store agents ${data.store.agents.length}, skills ${
+    data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
+  }; graph runs ${
+    data.graphs.enabled
+      ? `on for ${able(data, "graphRuns")} of ${data.accounts.length} accounts`
+      : `off (${data.graphs.reason})`
+  }; copilot turns ${
+    data.copilot.enabled
+      ? `on for ${able(data, "chat")} of ${data.accounts.length} accounts (dummy engine confirmed)`
+      : `off (${data.copilot.reason})`
+  }`;
+  if (failed.length > 0) {
+    console.error(
+      `${line}. FAILED ON THE TARGET: ${failed.join(", ")}, which fails the run; NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
+    );
+  } else if (off.length > 0) {
+    console.warn(
+      `${line}. NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
+    );
+  } else {
+    console.log(line);
+  }
+  return data;
+}
+
+// Subscribes and seeds every account, then decides which journeys can run.
+function seedAccounts(auth, wants, data, runId) {
   const pendingRuns = [];
   for (let i = 0; i < auth.auth.length; i++) {
     const headers = accountHeaders(auth, i);
@@ -211,36 +259,6 @@ export function seedRun(auth, journeys) {
 
   if (wants("graph_run")) decideGraphRuns(data, pendingRuns);
   if (wants("copilot_turn")) decideCopilot(auth, data);
-
-  const { off, failed } = recordRunCoverage(data, journeys);
-  const subscriptions = data.stripe.enabled
-    ? `${data.stripe.subscribed} of ${data.accounts.length} subscribed in Stripe test mode${
-        data.stripe.tier ? ` (${data.stripe.tier})` : ""
-      }`
-    : "none (STRIPE_TEST_SECRET_KEY is not set)";
-  const line = `seed: ${data.accounts.length} accounts; subscriptions ${subscriptions}; store agents ${data.store.agents.length}, skills ${
-    data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
-  }; graph runs ${
-    data.graphs.enabled
-      ? `on for ${able(data, "graphRuns")} of ${data.accounts.length} accounts`
-      : `off (${data.graphs.reason})`
-  }; copilot turns ${
-    data.copilot.enabled
-      ? `on for ${able(data, "chat")} of ${data.accounts.length} accounts (dummy engine confirmed)`
-      : `off (${data.copilot.reason})`
-  }`;
-  if (failed.length > 0) {
-    console.error(
-      `${line}. FAILED ON THE TARGET: ${failed.join(", ")}, which fails the run; NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
-    );
-  } else if (off.length > 0) {
-    console.warn(
-      `${line}. NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
-    );
-  } else {
-    console.log(line);
-  }
-  return data;
 }
 
 function able(data, field) {
@@ -454,13 +472,14 @@ function libraryCoverage(account) {
   return SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
 }
 
-// For teardown(): cancels the subscriptions the run created.
-export function cancelRunSubscriptions(data) {
+// For teardown(), and for a setup() that throws: cancels the subscriptions
+// the run created.
+export function cancelRunSubscriptions(data, when) {
   const ids = (data && data.stripe && data.stripe.subscriptions) || [];
   if (ids.length === 0) return;
   const result = cancelSubscriptions(ids);
   console.log(
-    `teardown: cancelled ${result.cancelled} of ${ids.length} Stripe test-mode subscription(s)${
+    `${when}: cancelled ${result.cancelled} of ${ids.length} Stripe test-mode subscription(s)${
       result.failed > 0
         ? `; ${result.failed} failed, scripts/cancel-load-test-subscriptions.js cancels leftovers`
         : ""
@@ -576,21 +595,27 @@ function waitForRuns(pending) {
   return { completed, failed, open: open.length };
 }
 
+// LOAD_TEST_COPILOT_ENGINE, "" or "dummy". seedRun() checks it before it
+// creates anything.
+function copilotEngine() {
+  const engine = __ENV.LOAD_TEST_COPILOT_ENGINE || "";
+  if (engine !== "" && engine !== "dummy") {
+    throw new Error(
+      `LOAD_TEST_COPILOT_ENGINE=${engine}: the workload sends turns only at the dummy engine; tests/copilot-real-model.js is the opt-in real-model test`,
+    );
+  }
+  return engine;
+}
+
 // Copilot turns are sent only when the operator says the target runs the
 // dummy engine, and after one probe turn confirms it. A probe that fails
 // then is a failure of the target, not a limit.
 function decideCopilot(auth, data) {
-  const engine = __ENV.LOAD_TEST_COPILOT_ENGINE || "";
-  if (engine === "") {
+  if (copilotEngine() === "") {
     data.copilot.code = ENGINE_UNSET;
     data.copilot.reason =
       "LOAD_TEST_COPILOT_ENGINE is not set; the turn journey is opt-in for a target that runs the dummy engine, CHAT_TEST_MODE=true (README: Copilot and model spend)";
     return;
-  }
-  if (engine !== "dummy") {
-    throw new Error(
-      `LOAD_TEST_COPILOT_ENGINE=${engine}: the workload sends turns only at the dummy engine; tests/copilot-real-model.js is the opt-in real-model test`,
-    );
   }
   const first = data.accounts.find((a) => a.chat === COVERED);
   if (!first) {

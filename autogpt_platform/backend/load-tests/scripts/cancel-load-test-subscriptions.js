@@ -1,8 +1,9 @@
 // Cancels the Stripe test-mode subscriptions that load-test runs left
-// behind, which happens when a run stops before its teardown. They are found
-// by the autogpt_load_test_run metadata the runs put on them: every run's by
-// default, or one run's with RUN_FILTER. Needs STRIPE_TEST_SECRET_KEY, as the
-// runs do (README: Paywalled targets).
+// behind, which happens when a run stops before its teardown or its setup()
+// runs out of time. They are found by the autogpt_load_test_run metadata
+// the runs put on them: every run's by default, or one run's with
+// RUN_FILTER. Needs STRIPE_TEST_SECRET_KEY, as the runs do (README:
+// Paywalled targets).
 //
 //   ./k6.sh run scripts/cancel-load-test-subscriptions.js
 //   RUN_FILTER=20261015T104309Z-1234 ./k6.sh run scripts/cancel-load-test-subscriptions.js

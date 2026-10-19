@@ -2,19 +2,21 @@
 // target that paywalls new accounts lets the run's accounts through. The
 // hosted Checkout page cannot be driven from k6, so setup() does what the
 // page would: the backend creates the Stripe customer and a Checkout session
-// for the cheapest tier it prices, and the Stripe test API attaches a test
-// card to that customer and starts a subscription on the session's price.
-// One request through the backend's lazy Stripe reconcile then copies the
-// tier onto the user, and the paywall opens for that account.
+// for the cheapest tier it prices monthly, and the Stripe test API attaches
+// a test card to that customer and starts a subscription on the session's
+// price. One request through the backend's lazy Stripe reconcile then copies
+// the tier onto the user, and the paywall opens for that account.
 //
 // STRIPE_TEST_SECRET_KEY is a test-mode key (sk_test_ or rk_test_) of the
 // Stripe account the target uses. It is read from the environment, checked
 // by prefix only, sent to api.stripe.com and nowhere else, and never logged
 // or written to a summary. Without it, nothing here runs.
 //
-// teardown() cancels the subscriptions the run created. A run that stops
-// before its teardown leaves them behind, each carrying the run id in its
-// metadata; scripts/cancel-load-test-subscriptions.js cancels those.
+// teardown() cancels the subscriptions the run created, and so does a
+// setup() that throws (lib/seed.js). A run stopped before its teardown, or
+// a setup() that runs out of time, leaves them behind, each carrying the run
+// id in its metadata; scripts/cancel-load-test-subscriptions.js cancels
+// those.
 import http from "k6/http";
 import { Counter } from "k6/metrics";
 
