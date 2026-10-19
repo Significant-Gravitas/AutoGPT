@@ -87,6 +87,7 @@ const EXECUTION_ID = "execution-1";
 const BLOCK_ID = "block-1";
 const NODE_IDS = ["node-1", "node-2", "node-3"];
 const POLL_INTERVAL_MS = 1_000;
+const RECONCILE_INTERVAL_MS = 10_000;
 
 type NodeStatus = "QUEUED" | "RUNNING" | "COMPLETED";
 
@@ -371,6 +372,29 @@ describe("builder execution updates", () => {
     });
     expect(executionRequests).toBe(requestsAtRelease);
   }, 15_000);
+
+  it(
+    "still catches up, slowly, on a run whose last events never reached the websocket",
+    async () => {
+      renderBuilder();
+      await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("RUNNING"));
+      act(() => socket.connect());
+      await acknowledgeSubscribe();
+      act(() =>
+        socket.send("node_execution_event", nodeExecution("node-1", "RUNNING")),
+      );
+
+      // The run finishes, but its events are lost before the websocket.
+      run = { status: "COMPLETED", nodes: { "node-1": "COMPLETED" } };
+      expect(await requestsDuring(POLL_INTERVAL_MS * 2.5)).toBe(0);
+
+      await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("COMPLETED"), {
+        timeout: RECONCILE_INTERVAL_MS + 2_000,
+      });
+      expect(useGraphStore.getState().isGraphRunning).toBe(false);
+    },
+    RECONCILE_INTERVAL_MS + 15_000,
+  );
 
   it("keeps the latest execution's status for a node that ran twice", async () => {
     run = { status: "RUNNING", nodes: { "node-1": "COMPLETED" } };

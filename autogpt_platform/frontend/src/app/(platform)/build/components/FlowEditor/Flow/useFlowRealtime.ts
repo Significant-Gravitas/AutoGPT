@@ -13,6 +13,13 @@ import { useEdgeStore } from "../../../stores/edgeStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV1GetExecutionDetailsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { create } from "zustand";
+import {
+  forgetDeliveries,
+  recordFetchStart,
+  recordFetchSuccess,
+  recordGraphStatusDelivery,
+  recordNodeExecutionDelivery,
+} from "./executionUpdateOrder";
 
 const useSubscribedExecutionStore = create<{ executionID: string | null }>(
   () => ({ executionID: null }),
@@ -30,32 +37,6 @@ export function useIsExecutionSubscribed(executionID: string | null) {
   return useSubscribedExecutionStore(
     (state) => executionID !== null && state.executionID === executionID,
   );
-}
-
-// What the websocket has delivered for the subscribed run. The backend
-// publishes every change to a run in order, so these are never older than a
-// fetched snapshot: a refetch still in flight when they arrive must not
-// overwrite them, and once subscribed there is no poll to put them right.
-const websocketDeliveries = {
-  nodeExecutions: new Map<string, NodeExecutionResult>(),
-  graphStatus: false,
-};
-
-function resetWebsocketDeliveries() {
-  websocketDeliveries.nodeExecutions.clear();
-  websocketDeliveries.graphStatus = false;
-}
-
-/** Latest copy of each node execution delivered since the subscribe, in arrival order. */
-export function getWebsocketNodeExecutions(): ReadonlyMap<
-  string,
-  NodeExecutionResult
-> {
-  return websocketDeliveries.nodeExecutions;
-}
-
-export function hasGraphStatusFromWebsocket() {
-  return websocketDeliveries.graphStatus;
 }
 
 export const useFlowRealtime = () => {
@@ -84,8 +65,7 @@ export const useFlowRealtime = () => {
           return;
         }
         const result = data as unknown as NodeExecutionResult;
-        websocketDeliveries.nodeExecutions.delete(result.node_exec_id);
-        websocketDeliveries.nodeExecutions.set(result.node_exec_id, result);
+        recordNodeExecutionDelivery(result);
         applyNodeExecutionEvent(data.node_id, result);
       },
     );
@@ -97,19 +77,32 @@ export const useFlowRealtime = () => {
           return;
         }
 
-        websocketDeliveries.graphStatus = true;
+        recordGraphStatusDelivery();
         setGraphExecutionStatus(graphExecution.status as AgentExecutionStatus);
       },
     );
 
+    const [executionDetailsURL] = getGetV1GetExecutionDetailsQueryKey(
+      flowID ?? "",
+      flowExecutionID ?? "",
+    );
+
     function refetchExecutionDetails() {
-      void queryClient.invalidateQueries({
-        queryKey: getGetV1GetExecutionDetailsQueryKey(
-          flowID!,
-          flowExecutionID!,
-        ),
-      });
+      void queryClient.invalidateQueries({ queryKey: [executionDetailsURL] });
     }
+
+    // Note when each execution-details fetch starts and lands, so useFlow can
+    // tell which websocket deliveries a snapshot already includes.
+    const unsubscribeQueryCache = queryClient
+      .getQueryCache()
+      .subscribe((event) => {
+        if (event.type !== "updated") return;
+        if (event.query.queryKey[0] !== executionDetailsURL) return;
+        if (event.action.type === "fetch") recordFetchStart();
+        if (event.action.type === "success") {
+          recordFetchSuccess(event.query.state.dataUpdatedAt);
+        }
+      });
 
     let hasSentSubscribe = false;
 
@@ -125,19 +118,19 @@ export const useFlowRealtime = () => {
       },
     );
 
-    // Events published while the socket is down are lost, so the poll and
-    // the next snapshot are the source of truth again until the resubscribe.
+    // Events published while the socket is down are lost, so snapshots are
+    // the source of truth again until the resubscribe.
     const deregisterDisconnect = api.onWebSocketDisconnect(() => {
       hasSentSubscribe = false;
       setSubscribedExecutionID(null);
-      resetWebsocketDeliveries();
+      forgetDeliveries();
     });
 
     const deregisterGraphExecutionSubscription =
       flowID && flowExecutionID
         ? api.onWebSocketConnect(() => {
             hasSentSubscribe = true;
-            resetWebsocketDeliveries();
+            forgetDeliveries();
             // Subscribe to execution updates
             api
               .subscribeToGraphExecution(flowExecutionID as GraphExecutionID) // TODO: We are currently using a manual type, we need to fix it in future
@@ -166,8 +159,9 @@ export const useFlowRealtime = () => {
       deregisterGraphExecutionStatusEvent();
       deregisterSubscribeAck();
       deregisterDisconnect();
+      unsubscribeQueryCache();
       setSubscribedExecutionID(null);
-      resetWebsocketDeliveries();
+      forgetDeliveries();
       resetEdgeBeads();
     };
   }, [

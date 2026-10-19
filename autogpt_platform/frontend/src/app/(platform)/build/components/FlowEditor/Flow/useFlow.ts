@@ -26,11 +26,16 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
+import { useIsExecutionSubscribed } from "./useFlowRealtime";
 import {
-  getWebsocketNodeExecutions,
-  hasGraphStatusFromWebsocket,
-  useIsExecutionSubscribed,
-} from "./useFlowRealtime";
+  isSnapshotStatusCurrent,
+  orderSnapshotExecutions,
+} from "./executionUpdateOrder";
+
+const POLL_INTERVAL_MS = 1_000;
+// While subscribed, a slow poll still catches an event the backend failed to
+// deliver (e.g. a dropped pub/sub message), as the 1 s poll used to.
+const RECONCILE_INTERVAL_MS = 10_000;
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
@@ -70,23 +75,24 @@ export const useFlow = () => {
   );
   const isExecutionSubscribed = useIsExecutionSubscribed(flowExecutionID);
 
-  const { data: executionDetails } = useGetV1GetExecutionDetails(
-    flowID || "",
-    flowExecutionID || "",
-    {
+  const { data: executionDetails, dataUpdatedAt: executionDetailsUpdatedAt } =
+    useGetV1GetExecutionDetails(flowID || "", flowExecutionID || "", {
       query: {
         select: (res) => res.data as GetV1GetExecutionDetails200,
         enabled: !!flowID && !!flowExecutionID,
-        // Poll while the graph is running until the server acknowledges the
-        // WebSocket subscription (race condition on fast executions like
-        // dry-runs); useFlowRealtime refetches once on that acknowledgement.
-        // Resumes if the WebSocket drops, and stops once the execution
-        // reaches a terminal state and isGraphRunning becomes false.
-        refetchInterval:
-          isGraphRunning && !isExecutionSubscribed ? 1000 : false,
+        // Poll every second while the graph is running until the server
+        // acknowledges the WebSocket subscription (race condition on fast
+        // executions like dry-runs); useFlowRealtime refetches once on that
+        // acknowledgement. Then only reconcile slowly, every second again if
+        // the WebSocket drops, and stop once the execution reaches a terminal
+        // state and isGraphRunning becomes false.
+        refetchInterval: isGraphRunning
+          ? isExecutionSubscribed
+            ? RECONCILE_INTERVAL_MS
+            : POLL_INTERVAL_MS
+          : false,
       },
-    },
-  );
+    });
 
   // Fetch all available graphs for sub-agent update detection
   const { data: availableGraphs } = useGetV1ListUserGraphs({
@@ -198,29 +204,30 @@ export const useFlow = () => {
   // update node statuses, execution results and edge beads. Executions the
   // store already has are no-ops, so a poll that changed nothing writes
   // nothing. Re-runs when the nodes are rebuilt (customNodes), which drops them.
-  // What the websocket delivered is newer than any snapshot, so its copies
-  // replace the snapshot's and go last.
+  // Websocket deliveries that arrived after this snapshot's fetch started may
+  // be newer than it, so they replace the snapshot's copies and go last.
   useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
       executionDetails.node_executions
     ) {
-      const websocketNodeExecutions = getWebsocketNodeExecutions();
-      executionDetails.node_executions.forEach((nodeExecution) => {
-        if (websocketNodeExecutions.has(nodeExecution.node_exec_id)) return;
-        applyNodeExecutionEvent(nodeExecution.node_id, nodeExecution);
-      });
-      websocketNodeExecutions.forEach((nodeExecution) => {
+      orderSnapshotExecutions(
+        executionDetails.node_executions,
+        executionDetailsUpdatedAt,
+      ).forEach((nodeExecution) => {
         applyNodeExecutionEvent(nodeExecution.node_id, nodeExecution);
       });
     }
   }, [executionDetails, applyNodeExecutionEvent, customNodes]);
 
-  // update graph execution status, unless the websocket has already sent a
-  // newer one
+  // update graph execution status, unless the websocket sent one after this
+  // snapshot's fetch started
   useEffect(() => {
-    if (executionDetails && !hasGraphStatusFromWebsocket()) {
+    if (
+      executionDetails &&
+      isSnapshotStatusCurrent(executionDetailsUpdatedAt)
+    ) {
       setGraphExecutionStatus(executionDetails.status as AgentExecutionStatus);
     }
   }, [executionDetails]);
