@@ -81,12 +81,16 @@ describe("useExecutionEvents subscriptions", () => {
   });
 
   test("subscribes again on a new connection after the socket drops", () => {
-    renderHook(() => useExecutionEvents({ graphIds: ["graph-a", "graph-b"] }));
+    const { rerender } = renderHook(
+      ({ graphIds }) => useExecutionEvents({ graphIds }),
+      { initialProps: { graphIds: ["graph-a", "graph-b"] } },
+    );
 
     act(() => {
       disconnectHandlers.forEach((handler) => handler());
       connectHandlers.forEach((handler) => handler());
     });
+    rerender({ graphIds: ["graph-a", "graph-b"] });
 
     expect(subscribeToGraphExecutions.mock.calls).toEqual([
       ["graph-a"],
