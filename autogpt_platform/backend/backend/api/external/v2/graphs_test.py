@@ -98,6 +98,11 @@ async def test_activating_moves_webhook_presets_only_for_a_credential_that_may_r
         "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
     )
     mocker.patch(
+        "backend.data.graph.get_graph_all_versions",
+        new_callable=AsyncMock,
+        return_value=[graph],
+    )
+    mocker.patch(
         "backend.api.external.v2.graphs.before_graph_activate",
         new_callable=AsyncMock,
         return_value=graph,
@@ -183,6 +188,11 @@ async def test_a_refused_library_move_leaves_the_active_version_alone(
     )
     mocker.patch(
         "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph_all_versions",
+        new_callable=AsyncMock,
+        return_value=[graph],
     )
     mocker.patch(
         "backend.api.external.v2.graphs.before_graph_activate",
@@ -291,34 +301,7 @@ async def test_listed_versions_carry_the_credentials_their_sub_graphs_need(
 ) -> None:
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    sub = await graph_db.create_graph(
-        graph_db.Graph(
-            name="Sub",
-            description="",
-            nodes=[graph_db.Node(block_id=ExecuteCodeBlock().id)],
-        ),
-        user_id,
-    )
-    parent = await graph_db.create_graph(
-        graph_db.Graph(
-            name="Parent",
-            description="",
-            nodes=[
-                graph_db.Node(
-                    block_id=AgentExecutorBlock().id,
-                    input_default={
-                        "user_id": user_id,
-                        "graph_id": sub.id,
-                        "graph_version": sub.version,
-                        "inputs": {},
-                        "input_schema": {},
-                        "output_schema": {},
-                    },
-                )
-            ],
-        ),
-        user_id,
-    )
+    parent = await _parent_of_a_sub_graph(user_id)
     auth = _AUTH.model_copy(update={"user_id": user_id})
 
     single = await get_graph(parent.id, version=None, auth=auth)
@@ -326,6 +309,25 @@ async def test_listed_versions_carry_the_credentials_their_sub_graphs_need(
 
     assert single.credentials_input_schema["properties"]
     assert listed.items[0].credentials_input_schema == single.credentials_input_schema
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_version_change_returns_the_library_agent_a_fresh_read_does(
+    server: SpinTestServer,
+) -> None:
+    """A sub-graph's credentials included, which the active-version routes rely on."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    parent = await _parent_of_a_sub_graph(user_id)
+    await library_db.create_library_agent(parent, user_id)
+
+    changed = await library_db.update_agent_version_in_library(
+        user_id, parent.id, parent.version
+    )
+    fresh = await library_db.get_library_agent_by_graph_id(user_id, parent.id)
+
+    assert fresh and fresh.credentials_input_schema["properties"]
+    assert changed.credentials_input_schema == fresh.credentials_input_schema
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -443,6 +445,55 @@ async def _preset_version_once_v2_is_active(
         where={"id": preset.id}
     )
     return preset.agentGraphVersion
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_activating_a_draft_deactivates_the_version_that_was_active(
+    server: SpinTestServer, mocker: pytest_mock.MockFixture
+) -> None:
+    """Left active, the old version's webhook triggers keep firing."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    auth = _AUTH.model_copy(update={"user_id": user_id})
+    v1 = await create_graph(_REQUEST, auth=auth)
+    deactivate = mocker.patch(
+        "backend.api.external.v2.graphs.on_graph_deactivate", new_callable=AsyncMock
+    )
+
+    await _save_inactive_then_activate(v1.id, _REQUEST, auth)
+
+    assert [call.args[0].version for call in deactivate.await_args_list] == [1]
+
+
+async def _parent_of_a_sub_graph(user_id: str) -> graph_db.GraphModel:
+    sub = await graph_db.create_graph(
+        graph_db.Graph(
+            name="Sub",
+            description="",
+            nodes=[graph_db.Node(block_id=ExecuteCodeBlock().id)],
+        ),
+        user_id,
+    )
+    return await graph_db.create_graph(
+        graph_db.Graph(
+            name="Parent",
+            description="",
+            nodes=[
+                graph_db.Node(
+                    block_id=AgentExecutorBlock().id,
+                    input_default={
+                        "user_id": user_id,
+                        "graph_id": sub.id,
+                        "graph_version": sub.version,
+                        "inputs": {},
+                        "input_schema": {},
+                        "output_schema": {},
+                    },
+                )
+            ],
+        ),
+        user_id,
+    )
 
 
 async def _save_inactive_then_activate(

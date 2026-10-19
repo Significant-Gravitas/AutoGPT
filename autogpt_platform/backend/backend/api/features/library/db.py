@@ -852,7 +852,7 @@ async def update_agent_version_in_library(
                     },
                 },
             },
-            include={"AgentGraph": {"include": {"Nodes": True}}},
+            include=library_agent_include(user_id),
         )
 
     if lib is None:
