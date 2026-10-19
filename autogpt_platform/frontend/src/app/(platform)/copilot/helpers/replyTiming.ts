@@ -5,6 +5,7 @@ import {
 } from "../components/ChatMessagesContainer/helpers";
 import {
   isMidTurnFallbackRow,
+  isMidTurnFollowUpRow,
   splitMessagesAtDrainHints,
 } from "../components/ChatMessagesContainer/midTurnSplit";
 import { buildChainSegments } from "../components/ToolChain/helpers";
@@ -37,8 +38,9 @@ export interface ReplyTracking {
   /** What was on screen when the send went out; the reply comes after it. */
   priorIds: ReadonlySet<string>;
   sentId: string | null;
-  /** The sent message's text, which finds it again under a new id. */
-  sentText: string | null;
+  /** The sent message's text and attachments, which find it again under a
+   *  new id. */
+  sentContent: string | null;
   wasActive: boolean;
   hasReturned: boolean;
   /** The chat waited behind the user's other running turns. */
@@ -87,9 +89,10 @@ export interface ReplyStep {
 // last of its text a tick after the turn finishes.
 export const SETTLE_GRACE_MS = 250;
 
-// A turn that showed nothing may only have been queued behind the user's
-// other running turns, which the chat's status says once it is read again.
-export const QUIET_TURN_GRACE_MS = 3000;
+// A turn that ended showing nothing may only have been queued behind the
+// user's other running turns, which the chat's status says once it is read
+// again: straight after the empty stream, then every 10 s.
+export const QUIET_TURN_GRACE_MS = 10_000;
 
 const DROPPED: ReplyStep = { tracking: null, record: null };
 
@@ -117,7 +120,7 @@ export function beginReplyTracking(
     streamClient,
     priorIds: new Set(view.messages.map((message) => message.id)),
     sentId: null,
-    sentText: null,
+    sentContent: null,
     wasActive: false,
     hasReturned: false,
     wasQueued: false,
@@ -134,8 +137,13 @@ export function advanceReply(
   if (view.isUserStopping || view.sessionId !== tracking.sessionId) {
     return abandonReply(tracking, now);
   }
-  // The rows the page draws: a follow-up drained mid-turn splits its turn.
-  const rows = splitMessagesAtDrainHints(view.messages);
+  // The rows the page draws after what was on screen at the send: a
+  // follow-up drained mid-turn splits its turn.
+  const afterPrior =
+    view.messages.findLastIndex((message) =>
+      tracking.priorIds.has(message.id),
+    ) + 1;
+  const rows = splitMessagesAtDrainHints(view.messages.slice(afterPrior));
   const sentIndex = findSentMessage(rows, tracking);
   if (sentIndex === -1 && tracking.sentId) {
     // The send was taken back: refused (a 429 or 402 puts it back in the
@@ -150,7 +158,7 @@ export function advanceReply(
   const next: ReplyTracking = {
     ...tracking,
     sentId: sent?.id ?? null,
-    sentText: sent ? messageText(sent) : null,
+    sentContent: sent ? messageContent(sent) : null,
     wasActive:
       tracking.wasActive ||
       view.status === "submitted" ||
@@ -172,7 +180,8 @@ export function advanceReply(
     at: now,
     outcome: failed ? "abandoned" : "no_text",
   };
-  const grace = next.firstOutput ? SETTLE_GRACE_MS : QUIET_TURN_GRACE_MS;
+  const mayBeQueued = !next.firstOutput && ending.outcome === "no_text";
+  const grace = mayBeQueued ? QUIET_TURN_GRACE_MS : SETTLE_GRACE_MS;
   const waited = now - ending.at;
   if (waited < grace) {
     return {
@@ -217,34 +226,30 @@ function finish(
   };
 }
 
+/** Where the sent message is among the rows drawn after the earlier ones. */
 function findSentMessage(rows: UIMessage[], tracking: ReplyTracking) {
-  if (tracking.sentId) {
-    const index = rows.findIndex((row) => row.id === tracking.sentId);
-    if (index !== -1) return index;
-    // Rebuilt from the server once its turn is over: the saved copy of the
-    // message has a new id.
-    return rows.findLastIndex(
-      (row) =>
-        isOwnUserRow(row, tracking) && messageText(row) === tracking.sentText,
-    );
-  }
-  const afterPrior =
-    rows.findLastIndex((row) => tracking.priorIds.has(row.id)) + 1;
+  if (!tracking.sentId) return rows.findIndex(isSentRow);
+  const index = rows.findIndex((row) => row.id === tracking.sentId);
+  if (index !== -1) return index;
+  // Rebuilt from the server once its turn is over: the saved copy of the
+  // message has a new id. Any later message the user sent comes after it.
   return rows.findIndex(
-    (row, index) => index >= afterPrior && isOwnUserRow(row, tracking),
+    (row) => isSentRow(row) && messageContent(row) === tracking.sentContent,
   );
 }
 
-function isOwnUserRow(row: UIMessage, tracking: ReplyTracking) {
-  return (
-    row.role === "user" &&
-    !isMidTurnFallbackRow(row) &&
-    !tracking.priorIds.has(row.id)
-  );
+function isSentRow(row: UIMessage) {
+  return row.role === "user" && !isFollowUpBubble(row);
+}
+
+/** A follow-up taken into a running turn, drawn at its drain point or
+ *  promoted above the live reply: part of that turn, not a new one. */
+function isFollowUpBubble(row: UIMessage) {
+  return isMidTurnFollowUpRow(row) || isMidTurnFallbackRow(row);
 }
 
 /** What the reply showed after the sent message, in on-screen order, up to
- *  the next message the user sent. */
+ *  the next turn the user started. */
 function scanReply(rows: UIMessage[]) {
   const scan = {
     firstKind: null as VisiblePartKind | null,
@@ -254,9 +259,7 @@ function scanReply(rows: UIMessage[]) {
   };
   for (const row of rows) {
     if (row.role === "user") {
-      // A promoted follow-up sits above the live reply it was drained into,
-      // so it does not mark where that reply ends.
-      if (isMidTurnFallbackRow(row)) continue;
+      if (isFollowUpBubble(row)) continue;
       scan.isFollowedUp = true;
       break;
     }
@@ -288,8 +291,15 @@ function foldedIntoChains(parts: MessagePart[]): ReadonlySet<MessagePart> {
   );
 }
 
-function messageText(message: UIMessage) {
-  return message.parts
+/** A message's text and the names of its attachments, in any order. */
+function messageContent(message: UIMessage) {
+  const text = message.parts
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("");
+  const attachments = message.parts
+    .flatMap((part) =>
+      part.type === "file" ? [part.filename ?? part.url] : [],
+    )
+    .sort();
+  return JSON.stringify([text, attachments]);
 }

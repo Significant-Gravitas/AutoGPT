@@ -307,6 +307,137 @@ describe("reply timing", () => {
     });
   });
 
+  it("follows a reply past a follow-up drained into its turn", () => {
+    const drained = assistant("a1", [
+      { type: "step-start" },
+      toolPart("call-1"),
+      {
+        type: "data-pending-drained",
+        data: { messages: [{ id: "p1", content: "and also this" }] },
+      },
+      { type: "text", text: "Both done." },
+    ]);
+    const step = advanceReply(
+      tracked(),
+      streaming([...HISTORY, SENT, drained]),
+      1300,
+    );
+
+    expect(step.record).toMatchObject({
+      outcome: "answered",
+      firstTextMs: 300,
+    });
+  });
+
+  it("finds the first of two same sends again after a rebuild", () => {
+    const rebuilt = [
+      ...HISTORY,
+      text("seq-3", "user", "new question"),
+      toolCall("seq-4"),
+      text("seq-5", "user", "new question"),
+      text("seq-6", "assistant", "Done."),
+    ];
+    const step = advanceReply(
+      stillFollowed(endedWithoutText()),
+      view({ messages: rebuilt }),
+      1550,
+    );
+
+    expect(step.record).toMatchObject({ outcome: "no_text", endedAt: 1500 });
+  });
+
+  it("tells attachment-only sends apart by their files after a rebuild", () => {
+    function attachment(id: string, filename: string, url: string) {
+      return {
+        id,
+        role: "user",
+        parts: [{ type: "file", mediaType: "application/pdf", filename, url }],
+      } as UIMessage;
+    }
+    const sent = advanceReply(
+      tracked(),
+      streaming([
+        ...HISTORY,
+        attachment("u1", "a.pdf", "blob:a"),
+        toolCall("a1"),
+      ]),
+      1100,
+    );
+    const answer = text("seq-4", "assistant", "Done.");
+
+    const other = advanceReply(
+      stillFollowed(sent),
+      view({
+        messages: [...HISTORY, attachment("seq-3", "b.pdf", "/b"), answer],
+      }),
+      1500,
+    );
+    expect(other.record?.outcome).not.toBe("answered");
+
+    const same = advanceReply(
+      stillFollowed(sent),
+      view({
+        messages: [...HISTORY, attachment("seq-3", "a.pdf", "/a"), answer],
+      }),
+      1500,
+    );
+    expect(same.record).toMatchObject({ outcome: "answered" });
+  });
+
+  it("ends a send that failed with nothing shown after the short grace", () => {
+    const step = advanceReply(
+      { ...tracked(), hasReturned: true },
+      view({ messages: [...HISTORY, SENT], status: "error" }),
+      1100,
+    );
+
+    expect(step).toMatchObject({ record: null, recheckInMs: SETTLE_GRACE_MS });
+  });
+
+  it("does not take an error marker for the answer", () => {
+    const failed = [
+      ...HISTORY,
+      SENT,
+      text("a1", "assistant", "[__COPILOT_ERROR_f7a1__] The provider is down."),
+    ];
+    const shown = advanceReply(tracked(), streaming(failed), 1100);
+    expect(shown.record).toBeNull();
+
+    const ended = advanceReply(
+      stillFollowed(shown),
+      view({ messages: failed }),
+      1500,
+    );
+    const step = advanceReply(
+      stillFollowed(ended),
+      view({ messages: failed }),
+      1500 + SETTLE_GRACE_MS,
+    );
+    expect(step.record).toMatchObject({
+      outcome: "abandoned",
+      endedAt: 1500,
+      firstTextMs: null,
+    });
+  });
+
+  it("counts narration shown on its own before a later tool call folds it", () => {
+    const narrated = assistant("a1", [
+      { type: "step-start" },
+      toolPart("call-1"),
+      { type: "text", text: "Checking the docs next." },
+    ]);
+    const step = advanceReply(
+      tracked(),
+      streaming([...HISTORY, SENT, narrated]),
+      1100,
+    );
+
+    expect(step.record).toMatchObject({
+      outcome: "answered",
+      firstTextMs: 100,
+    });
+  });
+
   it("drops a send taken back before its turn began", () => {
     const sent = advanceReply(tracked(), streaming([...HISTORY, SENT]), 1100);
     const refused = advanceReply(
