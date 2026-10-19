@@ -127,7 +127,11 @@ export function BillingOffer({ controller }: Props) {
           ? () => activation.start("/settings/billing")
           : controller?.onUpgrade
       }
-      disabled={isTrial ? activation.isBusy : controller?.isUpdatingTier}
+      disabled={
+        isTrial
+          ? activation.isBusy
+          : controller?.isUpdatingTier || controller?.isRedirecting
+      }
       caption={
         isTrial
           ? "Starting now ends your trial early. You’ll review the charge first."
