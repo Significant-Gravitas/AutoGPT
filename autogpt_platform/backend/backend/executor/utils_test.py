@@ -3320,6 +3320,48 @@ async def test_only_a_sub_graph_inherits_its_parents_chat(
 
 
 @pytest.mark.asyncio
+async def test_a_sub_graph_of_a_chat_turns_run_keeps_its_tree_and_its_chat(
+    mocker: MockerFixture,
+):
+    """The sub-graph's own row needs the tree for its resume to keep it, and
+    its context needs the chat whose gate answers its pauses."""
+    from backend.blocks.autopilot import _spawner_envelope_from
+    from backend.copilot.tree import TurnEnvelope
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+    tree = TurnEnvelope(
+        tree_id="tree-1",
+        depth=1,
+        tools=frozenset({"run_sub_session"}),
+        spend_session_id="chat-1",
+    )
+    parent = ExecutionContext(
+        approval_chat_id="chat-1",
+        parent_execution_id="parent-exec",
+        copilot_tree_id=tree.tree_id,
+        copilot_tree_depth=tree.depth,
+        copilot_tree_tools=sorted(tree.tools or ()),
+        copilot_tree_spend_session_id=tree.spend_session_id,
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        trigger=ExecutionTrigger.SUBGRAPH,
+        trigger_ref="parent-exec",
+        execution_context=parent,
+    )
+
+    stored = mock_edb.create_graph_execution.await_args.kwargs["copilot_tree"]
+    assert TurnEnvelope.model_validate(stored) == tree
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.approval_chat_id == "chat-1"
+    assert _spawner_envelope_from(context) == tree
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("nested", [False, True])
 async def test_a_resumed_run_is_stamped_with_the_chat_at_the_end_of_its_chain(
     mocker: MockerFixture, nested: bool
