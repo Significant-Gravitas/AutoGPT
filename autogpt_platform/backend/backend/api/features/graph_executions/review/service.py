@@ -16,6 +16,13 @@ from backend.copilot.constants import parse_node_id_from_exec_id
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
+from backend.copilot.gate.workflow import (
+    close_step_cards,
+    finish_step_cards,
+    is_step_card,
+    step_of,
+    step_rule_keys,
+)
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -83,14 +90,23 @@ async def process_reviews(
         )
 
     graph_exec_id, chat_session_id = _one_scope(reviews_map.values(), graph_exec_id)
+    # A run still running would finish its pass with nothing waiting, the step
+    # unrun; a queued or ended run is safe to answer.
+    for review in reviews_map.values():
+        step = step_of(review)
+        if step is not None and await _running(user_id, step.graph_exec_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This workflow is still running other steps. Answer once it pauses.",
+            )
     if graph_exec_id is not None:
         await _assert_awaiting_review(user_id, graph_exec_id)
 
     # Read before the answer lands: a turn it wakes claims the held calls.
+    ruled = [r.node_exec_id for r in reviews if r.chat_rule]
     chat_rule_keys = (
-        await held_subject_keys(
-            chat_session_id, [r.node_exec_id for r in reviews if r.chat_rule]
-        )
+        await held_subject_keys(chat_session_id, ruled)
+        | step_rule_keys(reviews_map[node_exec_id] for node_exec_id in ruled)
         if chat_session_id is not None
         else {}
     )
@@ -126,11 +142,42 @@ async def process_reviews(
             {review.node_exec_id: review.chat_rule_scope for review in reviews},
         )
 
-    # A held call finishes on its own: the answer starts the chat's next turn.
     if chat_session_id is not None and updated_reviews:
-        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
+        # A workflow step's card answers the step's own row; its run resumes
+        # below, so the card never wakes the chat.
+        finished = await finish_step_cards(user_id, updated_reviews.values())
+        for run in {step.graph_exec_id: step for step in finished.answered}.values():
+            meta = await get_graph_execution_meta(
+                user_id=user_id, execution_id=run.graph_exec_id
+            )
+            if (
+                meta is not None
+                and meta.status in (ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE)
+                and not await has_pending_reviews_for_graph_exec(run.graph_exec_id)
+            ):
+                await _resume(
+                    user_id,
+                    run.graph_exec_id,
+                    run.graph_id,
+                    run.graph_version,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+        # A held call finishes on its own: the answer starts the chat's next turn.
+        await wake_for_held_calls(
+            user_id,
+            chat_session_id,
+            [r for r in updated_reviews.values() if not is_step_card(r)],
+        )
+        if finished.failed:
+            # Each card is kept, so answering it again finishes the job.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The answer could not reach its workflow step. Try again.",
+            )
 
     if graph_exec_id is not None and updated_reviews:
+        await close_step_cards(user_id, updated_reviews)
         await _resume_if_nothing_pending(
             user_id,
             graph_exec_id,
@@ -277,17 +324,36 @@ async def _resume_if_nothing_pending(
         return
 
     first_review = next(iter(updated_reviews.values()))
+    await _resume(
+        user_id,
+        graph_exec_id,
+        first_review.graph_id,
+        first_review.graph_version,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+
+
+async def _resume(
+    user_id: str,
+    graph_exec_id: str,
+    graph_id: Optional[str],
+    graph_version: Optional[int],
+    *,
+    organization_id: Optional[str],
+    team_id: Optional[str],
+) -> None:
+    """Re-queue a run whose reviews are all answered; its paused steps re-run
+    and find their answers."""
     try:
-        assert first_review.graph_id and first_review.graph_version is not None
+        assert graph_id and graph_version is not None
         user = await get_user_by_id(user_id)
         settings = await get_graph_settings(
-            user_id=user_id,
-            graph_id=first_review.graph_id,
-            graph_version=first_review.graph_version,
+            user_id=user_id, graph_id=graph_id, graph_version=graph_version
         )
         workspace = await get_or_create_workspace(user_id)
         await add_graph_execution(
-            graph_id=first_review.graph_id,
+            graph_id=graph_id,
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             execution_context=ExecutionContext(
@@ -304,3 +370,8 @@ async def _resume_if_nothing_pending(
         logger.info(f"Resumed execution {graph_exec_id}")
     except Exception as e:
         logger.error(f"Failed to resume execution {graph_exec_id}: {e}")
+
+
+async def _running(user_id: str, graph_exec_id: str) -> bool:
+    meta = await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
+    return meta is not None and meta.status == ExecutionStatus.RUNNING
