@@ -1258,6 +1258,11 @@ model Expert {
   // unaffected. Cleared by the resume-learning endpoint.
   learningPausedAt DateTime?
 
+  // Approval mode every new web chat with this expert starts on
+  // ("ask_first" | "auto" | "unsupervised"). null = platform default.
+  // Hire-only: templates never carry one and a hire copies nothing.
+  autopilotMode String?
+
   // Null until the credential allow-list has been seeded from the expert's
   // installed workflows. Distinguishes "never curated" from "deliberately
   // empty": without it, revoking an expert's last credential would look

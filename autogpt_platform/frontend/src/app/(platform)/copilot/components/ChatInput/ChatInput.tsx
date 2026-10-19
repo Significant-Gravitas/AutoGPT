@@ -38,7 +38,7 @@ import {
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
-import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
+import { ConnectionPickerDialog } from "./components/ConnectionPicker/ConnectionPickerDialog";
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
@@ -47,7 +47,7 @@ import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
-import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
+import { TokenDevtoolDialog } from "../TokenDevtoolBadge/TokenDevtoolDialog";
 import {
   sendAtResetFailureTitle,
   SEND_AT_RESET_LABEL,
@@ -70,6 +70,7 @@ import {
   ArrowUp02Icon,
   DashboardSpeed02Icon,
   FlashIcon,
+  VoiceIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -108,8 +109,8 @@ interface Props {
   /** Card composer: the text always keeps its own row above the controls,
    *  instead of sharing a single pill row until it wraps. Empty state only. */
   stacked?: boolean;
-  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
-  voiceToggle?: ReactNode;
+  /** Starts voice mode from the + menu. Absent when the flag is off. */
+  voiceMode?: { onStart: () => void; disabled?: boolean };
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
   /**
@@ -126,6 +127,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Attachments stay open during a reply, and a message with attachments
+   *  goes to `onSend`, which must hold it until the reply ends. */
+  canAttachWhileStreaming?: boolean;
   /** Out of AutoPilot budget with a reset ahead: the text stays editable and
    *  submitting sets it to send at the reset. Text only. */
   atReset?: { onSchedule: (message: string) => Promise<void> };
@@ -151,12 +155,13 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
   stacked = false,
-  voiceToggle,
+  voiceMode,
   modeSelector,
   voiceBar,
   variant = "default",
   expertId = null,
   expertName = null,
+  canAttachWhileStreaming = false,
   atReset,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
@@ -196,7 +201,8 @@ export function ChatInput({
   const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
-  const isBusy = disabled || isStreaming || isUploadingFiles;
+  const isBusy =
+    disabled || isUploadingFiles || (isStreaming && !canAttachWhileStreaming);
   // The textarea is only truly disabled when the session is unavailable, not
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
@@ -312,6 +318,9 @@ export function ChatInput({
       : !sendDisabled && (!!value.trim() || hasAttachments)) &&
     !isRecording &&
     !isTranscribing;
+  // The pending endpoint takes text only, so attachments are queued through
+  // `onSend`, and only by a host that holds them until the reply ends.
+  const canQueue = hasAttachments ? canAttachWhileStreaming : !!onEnqueue;
 
   function handleClearGuidedPrompt() {
     // Only discard untouched guided prompts — never a draft the user typed
@@ -361,24 +370,33 @@ export function ChatInput({
   }
 
   const isCompact = variant === "compact";
-  // Model tier and the dev token readout sit behind the + instead of as
-  // icons in the tray; their sheets anchor to the + side of the composer.
+  // Voice mode, model tier and the dev token readout sit behind the +
+  // instead of as icons in the tray; the last two open in a dialog.
   const [plusPanel, setPlusPanel] = useState<"model" | "devtool" | null>(null);
   const showModelControl =
     !stacked && !isCompact && (!hasSession || !isStreaming);
-  // Wait for the menu to close and hand focus back before the sheet opens,
-  // or the returning focus dismisses it straight away.
-  function openPlusPanel(panel: "model" | "devtool") {
-    setTimeout(() => setPlusPanel(panel), 0);
+  if (!showModelControl && plusPanel === "model") {
+    setPlusPanel(null);
   }
   const plusMenuItems: ComposerMenuItem[] = [
+    ...(voiceMode
+      ? [
+          {
+            key: "voice",
+            label: "Voice mode",
+            icon: VoiceIcon,
+            disabled: voiceMode.disabled,
+            onSelect: voiceMode.onStart,
+          },
+        ]
+      : []),
     ...(showModelControl
       ? [
           {
             key: "model",
             label: "Model and connection",
             icon: FlashIcon,
-            onSelect: () => openPlusPanel("model"),
+            onSelect: () => setPlusPanel("model"),
           },
         ]
       : []),
@@ -388,7 +406,7 @@ export function ChatInput({
             key: "devtool",
             label: "Token usage",
             icon: DashboardSpeed02Icon,
-            onSelect: () => openPlusPanel("devtool"),
+            onSelect: () => setPlusPanel("devtool"),
           },
         ]
       : []),
@@ -404,11 +422,10 @@ export function ChatInput({
       ? COMPACT_SEND_BUTTON_CLASS
       : MOBILE_SEND_BUTTON_CLASS;
 
-  // Per-message settings and voice mode sit behind the "..." button, so the
-  // row stays usable at phone width. Model and token usage live in the + menu.
+  // Per-message settings sit behind the "..." button, so the row stays
+  // usable at phone width.
   const showDryRunToggle = showAdvancedComposerControls && !hasSession;
-  const hasOverflowControls =
-    !!modeSelector || showDryRunToggle || !!voiceToggle;
+  const hasOverflowControls = !!modeSelector || showDryRunToggle;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
@@ -503,22 +520,6 @@ export function ChatInput({
               }
             />
             {recipientPicker}
-            {showModelControl && (
-              <ConnectionPicker
-                connectionLocked={hasSession}
-                anchorOnly
-                open={plusPanel === "model"}
-                onOpenChange={(open) => setPlusPanel(open ? "model" : null)}
-              />
-            )}
-            {devtoolSessionId && (
-              <TokenDevtoolBadge
-                sessionId={devtoolSessionId}
-                anchorOnly
-                open={plusPanel === "devtool"}
-                onOpenChange={(open) => setPlusPanel(open ? "devtool" : null)}
-              />
-            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
@@ -576,7 +577,6 @@ export function ChatInput({
                     onToggle={handleToggleDryRun}
                   />
                 )}
-                {voiceToggle}
               </ComposerOverflowMenu>
             )}
             {showMicButton && (
@@ -593,13 +593,16 @@ export function ChatInput({
                 }}
               />
             )}
-            {isStreaming && canSend && onEnqueue && !hasAttachments && (
+            {isStreaming && canSend && canQueue && (
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={() => void handleEnqueue()}
+                type={hasAttachments ? "submit" : "button"}
+                onClick={
+                  hasAttachments ? undefined : () => void handleEnqueue()
+                }
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,
@@ -637,6 +640,20 @@ export function ChatInput({
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
       </InputGroup>
+      {showModelControl && (
+        <ConnectionPickerDialog
+          connectionLocked={hasSession}
+          open={plusPanel === "model"}
+          onOpenChange={(open) => setPlusPanel(open ? "model" : null)}
+        />
+      )}
+      {devtoolSessionId && (
+        <TokenDevtoolDialog
+          sessionId={devtoolSessionId}
+          open={plusPanel === "devtool"}
+          onOpenChange={(open) => setPlusPanel(open ? "devtool" : null)}
+        />
+      )}
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
           key={expertId ?? "everyone"}

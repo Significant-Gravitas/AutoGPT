@@ -68,7 +68,7 @@ export function PaywallModal() {
           {recovery.paymentFailed ? (
             <PaymentRecoveryCard
               payment={recovery.payment}
-              fallback="Update your payment method in billing to continue. Your chats, agents and results are saved."
+              fallback="Update your payment method in billing to continue. Your chats, workflows and results are saved."
             />
           ) : (
             <>

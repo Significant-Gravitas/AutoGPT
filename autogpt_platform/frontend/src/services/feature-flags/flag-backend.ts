@@ -6,9 +6,11 @@ export type FlagBackend = "launchdarkly" | "posthog" | "dual" | "server";
 const configured = process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND;
 
 export const FLAG_BACKEND: FlagBackend =
-  configured === "posthog" || configured === "dual" || configured === "server"
+  configured === "launchdarkly" ||
+  configured === "posthog" ||
+  configured === "dual"
     ? configured
-    : "launchdarkly";
+    : "server";
 
 export function usesLaunchDarkly() {
   return FLAG_BACKEND === "launchdarkly" || FLAG_BACKEND === "dual";

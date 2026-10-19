@@ -220,7 +220,7 @@ def initialize_feature_flags() -> None:
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        if not settings.secrets.posthog_secret_key:
+        if posthog.is_configured() and not settings.secrets.posthog_secret_key:
             logger.warning(
                 f"Feature flag backend is {backend.value} without "
                 "POSTHOG_SECRET_KEY: every flag read becomes a remote "
@@ -517,20 +517,28 @@ async def _evaluate_flag_value(
     ``evaluated`` is False whenever *default* is standing in for an answer the
     vendor could not give.
     """
-    context = None
-    if attributes:
-        # Layered once, so every vendor evaluates the same per-request facts.
-        user_context, context_resolved = await _fetch_user_context_status(user_id)
-        context = (_with_request_attributes(user_context, attributes), context_resolved)
     backend = settings.config.feature_flag_backend
-    if backend is FeatureFlagBackend.POSTHOG:
-        result = await _evaluate_posthog(
-            flag_key, user_id, default, context, exposure=flag_key in EXPERIMENT_FLAGS
-        )
-    elif backend is FeatureFlagBackend.DUAL:
-        result = await _evaluate_dual(flag_key, user_id, default, context)
+    if backend is FeatureFlagBackend.POSTHOG and posthog.get_flag_client() is None:
+        # As on LaunchDarkly: no client means the default, without a user lookup.
+        result = (default, False)
     else:
-        result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
+        context = None
+        if attributes:
+            # Layered once, so every vendor evaluates the same per-request facts.
+            user_context, resolved = await _fetch_user_context_status(user_id)
+            context = (_with_request_attributes(user_context, attributes), resolved)
+        if backend is FeatureFlagBackend.POSTHOG:
+            result = await _evaluate_posthog(
+                flag_key,
+                user_id,
+                default,
+                context,
+                exposure=flag_key in EXPERIMENT_FLAGS,
+            )
+        elif backend is FeatureFlagBackend.DUAL:
+            result = await _evaluate_dual(flag_key, user_id, default, context)
+        else:
+            result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
     _record_flag_for_sentry(flag_key, *result)
     return result
 
