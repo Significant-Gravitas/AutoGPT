@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from backend.blocks.google.gmail import GmailReadBlock
 from backend.blocks.text import MatchTextPatternBlock
+from backend.copilot.constants import COPILOT_NODE_PREFIX
 from backend.copilot.tools.models import BlockOutputResponse
 
 from . import google_data_redaction
@@ -176,6 +177,39 @@ def test_tool_run_input_redacted():
     assert redact_google_data(inputs) == {
         "input": {"block_id": GMAIL_BLOCK_ID, "input_data": REDACTED}
     }
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        # resume_capability
+        {
+            "review_id": f"{COPILOT_NODE_PREFIX}{GMAIL_BLOCK_ID}:1a2b3c4d",
+            "input_overrides": {"body": "the new email"},
+        },
+        # continue_run_block takes the review id alone; its input is the
+        # stored one, so only the id is left and stays readable.
+        {"review_id": f"{COPILOT_NODE_PREFIX}{GMAIL_BLOCK_ID}:1a2b3c4d"},
+    ],
+)
+def test_resumed_google_tool_run_input_redacted(call: dict[str, Any]):
+    """A LangSmith tool run records the call without its result; the review
+    id names the block it resumes."""
+    redacted = redact_google_data({"input": call})
+
+    assert "the new email" not in json.dumps(redacted)
+    assert redacted["input"]["review_id"] == call["review_id"]
+
+
+def test_resumed_tool_run_input_of_another_block_stays_readable():
+    inputs = {
+        "input": {
+            "review_id": f"{COPILOT_NODE_PREFIX}{TEXT_BLOCK_ID}:1a2b3c4d",
+            "input_overrides": {"text": "hello"},
+        }
+    }
+
+    assert redact_google_data(inputs) == inputs
 
 
 def test_google_block_output_response_is_remembered():

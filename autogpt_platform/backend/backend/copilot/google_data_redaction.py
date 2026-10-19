@@ -11,8 +11,9 @@ Langfuse over OTLP, applies it as the client's ``hide_inputs`` and
 
 Data counts as Google's by the block that produced it, never by what it says:
 
-* a call whose ``block_id`` (``run_block``) or capability ``id``
-  (``run_capability``) names a block on the ``google`` provider;
+* a call whose ``block_id`` (``run_block``), capability ``id``
+  (``run_capability``) or block ``review_id`` (``resume_capability``,
+  ``continue_run_block``) names a block on the ``google`` provider;
 * a ``block_output`` response whose ``provider`` is ``google``;
 * a tool output this process built from such a response, remembered by hash,
   which covers outputs too large to hand the model whole (it then gets a
@@ -49,6 +50,7 @@ from pydantic import BaseModel
 
 from backend.blocks import get_blocks
 from backend.copilot.capabilities.block_meta import get_block_provider
+from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.integrations.providers import ProviderName
 
 REDACTED = "[redacted: Google data]"
@@ -168,11 +170,15 @@ def is_google_output(text: str) -> bool:
 
 def is_google_call(arguments: dict[str, Any] | None) -> bool:
     """Whether a tool call's arguments name a block on the ``google``
-    provider, as ``run_block``'s ``block_id`` or ``run_capability``'s ``id``."""
+    provider, as ``run_block``'s ``block_id``, ``run_capability``'s ``id``,
+    or the ``review_id`` ``resume_capability`` and ``continue_run_block``
+    take, which embeds the block id."""
     if not arguments:
         return False
-    return is_google_block_ref(arguments.get("block_id")) or is_google_block_ref(
-        arguments.get("id")
+    return (
+        is_google_block_ref(arguments.get("block_id"))
+        or is_google_block_ref(arguments.get("id"))
+        or is_google_block_ref(_reviewed_block_id(arguments.get("review_id")))
     )
 
 
@@ -180,6 +186,13 @@ def is_google_block_ref(ref: object) -> bool:
     """Whether *ref* names a block on the ``google`` provider, by id,
     ``block:<id>`` capability id or class name."""
     return isinstance(ref, str) and ref.strip().lower() in _google_block_refs()
+
+
+def _reviewed_block_id(review_id: object) -> str | None:
+    """The block a block review's id names: ``copilot-node-{block_id}:{hex}``."""
+    if not isinstance(review_id, str) or not review_id.startswith(COPILOT_NODE_PREFIX):
+        return None
+    return parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
 
 
 def _hide(data: dict) -> dict:
