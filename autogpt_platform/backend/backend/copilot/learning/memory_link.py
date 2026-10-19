@@ -21,6 +21,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.skill_versions import SkillVersionRecord
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ async def link_version_to_memory(user_id: str, version: SkillVersionRecord) -> b
         # ``dream_`` name prefix: the dream pass must not treat our own
         # write as new user activity worth a paid consolidation pass.
         return await enqueue_episode(
-            user_id,
+            MemoryScope.build(user_id, version.expert_id),
             f"skill_learning_{version.id}",
             name=f"dream_skill_{version.id}",
             episode_body=envelope.model_dump_json(),
@@ -70,7 +71,6 @@ async def link_version_to_memory(user_id: str, version: SkillVersionRecord) -> b
                 "confidence": None,
                 "provenance": envelope.provenance,
             },
-            expert_id=version.expert_id,
         )
     except Exception:
         logger.warning(

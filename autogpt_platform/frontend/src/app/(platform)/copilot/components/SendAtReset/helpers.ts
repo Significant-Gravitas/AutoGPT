@@ -1,3 +1,4 @@
+import type { AtResetTurn } from "@/app/api/__generated__/models/atResetTurn";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   formatResetClock,
@@ -8,6 +9,10 @@ export const SEND_AT_RESET_LABEL = "Send at reset";
 export const SCHEDULE_FAILED_TITLE = "Couldn’t schedule your message";
 export const SEND_AT_RESET_PLACEHOLDER =
   "Write now, and it sends when your budget resets…";
+/** How long after a page sends a message to be set the request may still
+ *  land: the server can take seconds over it, and keeps going after a reload
+ *  drops the page. */
+export const SEND_SETTLE_MS = 15_000;
 
 /** Thrown when the budget turned out to be back, so the message went out
  *  straight away instead, and that send failed; `cause` is how it failed. */
@@ -65,4 +70,23 @@ export function scheduledSendLabel(runAt: Date | string, now = new Date()) {
 export function returnToDraft(current: string, message: string) {
   if (!current.trim() || current === message) return message;
   return `${message}\n\n${current}`;
+}
+
+/** Whether the send waiting holds `message`: the server joins each send set
+ *  while one waits onto it, after a blank line. */
+export function holdsMessage(waiting: string, message: string) {
+  return (
+    waiting === message ||
+    waiting.startsWith(`${message}\n\n`) ||
+    waiting.endsWith(`\n\n${message}`) ||
+    waiting.includes(`\n\n${message}\n\n`)
+  );
+}
+
+/** Whether a read of the chat's send found `message` in it. */
+export function readHolds(
+  read: { send: AtResetTurn | null } | { error: unknown },
+  message: string,
+) {
+  return "send" in read && holdsMessage(read.send?.message ?? "", message);
 }
