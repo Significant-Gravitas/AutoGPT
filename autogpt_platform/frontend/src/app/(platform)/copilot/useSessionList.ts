@@ -247,6 +247,7 @@ function readFirstPage(queryClient: QueryClient) {
 }
 
 async function refreshFirstPage(queryClient: QueryClient) {
+  const firstPageBefore = readFirstPage(queryClient);
   const firstPage = await getV2ListSessions({
     limit: SESSION_LIST_PAGE_SIZE,
     offset: 0,
@@ -255,6 +256,11 @@ async function refreshFirstPage(queryClient: QueryClient) {
   // old pages and would put the old page 0 back when it lands, so patch after
   // it instead.
   await settleListFetch(queryClient);
+  // Page 0 changed while this poll was out (a refetch or an edit of the
+  // list), so it is at least as new as what this poll brought back. Sharing
+  // keeps page 0's object while its content is unchanged, so a fetch of an
+  // older page alone does not count.
+  if (readFirstPage(queryClient) !== firstPageBefore) return firstPage;
   const next = replaceFirstPage(
     queryClient.getQueryData<SessionListInfiniteData>(SESSION_LIST_QUERY_KEY),
     firstPage,

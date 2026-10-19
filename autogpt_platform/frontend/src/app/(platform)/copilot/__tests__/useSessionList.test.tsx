@@ -180,4 +180,69 @@ describe("useSessionList — older pages", () => {
       "Renamed on page one",
     );
   });
+
+  it("drops a first-page poll that a newer refetch of the list overtook", async () => {
+    let holdNextFirstPage = false;
+    let releaseFirstPage: () => void = () => {};
+    server.use(
+      http.get("*/api/chat/sessions", async ({ request }) => {
+        const url = new URL(request.url);
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        const limit = Number(url.searchParams.get("limit") ?? "50");
+        listRequests.push(String(offset));
+        // The page is read when the request arrives, as the server would.
+        const body = {
+          sessions: listed.slice(offset, offset + limit).map((s) => ({
+            ...s,
+            is_processing: false,
+            created_at: "2026-01-05T09:00:00Z",
+            updated_at: "2026-01-05T09:00:00Z",
+          })),
+          total: listed.length,
+        };
+        if (offset === 0 && holdNextFirstPage) {
+          holdNextFirstPage = false;
+          await new Promise<void>((resolve) => {
+            releaseFirstPage = resolve;
+          });
+        }
+        return HttpResponse.json(body);
+      }),
+    );
+    const client = makeClient();
+    const { result } = renderSessionList(client);
+    await waitFor(() => expect(result.current.sessions).toHaveLength(50));
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(75));
+    await settle();
+
+    // The poll's request leaves, then the chat is renamed and the rename's
+    // invalidation refetches the list before the poll's response arrives.
+    holdNextFirstPage = true;
+    listRequests = [];
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
+    });
+    await waitFor(() => expect(listRequests).toEqual(["0"]));
+    listed[3] = { ...listed[3], title: "Renamed after the poll left" };
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+    });
+    await waitFor(() =>
+      expect(result.current.sessions.find((s) => s.id === "s3")?.title).toBe(
+        "Renamed after the poll left",
+      ),
+    );
+
+    await act(async () => {
+      releaseFirstPage();
+    });
+    await settle();
+
+    expect(result.current.sessions.find((s) => s.id === "s3")?.title).toBe(
+      "Renamed after the poll left",
+    );
+  });
 });
