@@ -1,3 +1,4 @@
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { FileUIPart, UIMessage } from "ai";
@@ -167,6 +168,8 @@ async function uploadFiles(
           mime_type: data.mime_type || "application/octet-stream",
         } as UploadedFile;
       } catch (err) {
+        // The send's own failure toast says a plan is needed.
+        if (isPaywallError(err)) throw err;
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
@@ -177,6 +180,11 @@ async function uploadFiles(
       }
     }),
   );
+  const paywalled = results.find(
+    (r): r is PromiseRejectedResult =>
+      r.status === "rejected" && isPaywallError(r.reason),
+  );
+  if (paywalled) throw paywalled.reason;
   return results
     .filter(
       (r): r is PromiseFulfilledResult<UploadedFile> =>
