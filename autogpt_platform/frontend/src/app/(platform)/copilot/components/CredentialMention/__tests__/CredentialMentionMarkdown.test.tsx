@@ -1,5 +1,6 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, it } from "vitest";
+import type { ComponentProps } from "react";
 import { CredentialMentionMarkdown } from "../CredentialMentionMarkdown";
 
 describe("credential badges in messages", () => {
@@ -36,5 +37,32 @@ describe("credential badges in messages", () => {
     expect(table?.parentElement?.classList.contains("overflow-x-auto")).toBe(
       true,
     );
+  });
+
+  it("keeps the same badge and image elements while the reply streams in", async () => {
+    function FramedImage({ src, alt }: ComponentProps<"img">) {
+      return <span data-testid="framed-image" data-src={src} title={alt} />;
+    }
+    const components = { img: FramedImage };
+    const reply =
+      "Use [Work Gmail](credential://google/work-secret-id) with ![chart](https://example.com/chart.png)";
+    const { container, rerender } = render(
+      <CredentialMentionMarkdown components={components}>
+        {reply}
+      </CredentialMentionMarkdown>,
+    );
+    const framed = await screen.findByTestId("framed-image");
+    const badge = container.querySelector('img[src*="google"]');
+    expect(badge).not.toBeNull();
+
+    rerender(
+      <CredentialMentionMarkdown components={components}>
+        {`${reply} and more text`}
+      </CredentialMentionMarkdown>,
+    );
+    expect(await screen.findByText(/and more text/)).toBeTruthy();
+
+    expect(screen.getByTestId("framed-image")).toBe(framed);
+    expect(container.querySelector('img[src*="google"]')).toBe(badge);
   });
 });

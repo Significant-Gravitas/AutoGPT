@@ -367,6 +367,51 @@ const math: MathPlugin = {
   ],
 };
 
+type StreamdownComponents = NonNullable<MessageResponseProps["components"]>;
+
+// Streamdown re-parses every block of a message when the identity of a
+// component in `components` changes, and React remounts any element whose
+// component type changes, so everything handed to Streamdown is built once.
+function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
+  // Tables can be wider than the chat column (long URLs, many columns).
+  // Wrap in an overflow-x-auto div so the page never grows past the
+  // chat container — the table scrolls internally instead.
+  return (
+    <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
+      <table {...tableProps}>{children}</table>
+    </div>
+  );
+}
+
+function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
+  return <ExternalLinkModal {...modalProps} />;
+}
+
+const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+
+const LINK_SAFETY = {
+  enabled: true,
+  onLinkCheck: isSameOriginLink,
+  renderModal: renderExternalLinkModal,
+};
+
+const TABLE_COMPONENT: StreamdownComponents = { table: MessageTable };
+
+const componentsWithTable = new WeakMap<
+  StreamdownComponents,
+  StreamdownComponents
+>();
+
+function withTableComponent(components: StreamdownComponents | undefined) {
+  if (!components) return TABLE_COMPONENT;
+  let merged = componentsWithTable.get(components);
+  if (!merged) {
+    merged = { ...TABLE_COMPONENT, ...components };
+    componentsWithTable.set(components, merged);
+  }
+  return merged;
+}
+
 export const MessageResponse = memo(
   ({ className, children, components, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -386,23 +431,9 @@ export const MessageResponse = memo(
         "[&_tbody_tr:hover_td]:bg-zinc-50",
         className,
       )}
-      components={{
-        // Tables can be wider than the chat column (long URLs, many columns).
-        // Wrap in an overflow-x-auto div so the page never grows past the
-        // chat container — the table scrolls internally instead.
-        table: ({ children, ...tableProps }) => (
-          <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
-            <table {...tableProps}>{children}</table>
-          </div>
-        ),
-        ...components,
-      }}
-      plugins={{ code, mermaid, math, cjk }}
-      linkSafety={{
-        enabled: true,
-        onLinkCheck: isSameOriginLink,
-        renderModal: (modalProps) => <ExternalLinkModal {...modalProps} />,
-      }}
+      components={withTableComponent(components)}
+      plugins={STREAMDOWN_PLUGINS}
+      linkSafety={LINK_SAFETY}
       {...props}
     >
       {typeof children === "string"
