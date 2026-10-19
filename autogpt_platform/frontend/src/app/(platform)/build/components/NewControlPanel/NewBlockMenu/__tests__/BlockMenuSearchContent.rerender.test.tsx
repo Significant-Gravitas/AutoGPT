@@ -3,8 +3,8 @@ import type { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import type { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
 import { server } from "@/mocks/mock-server";
-import { act, cleanup, render, waitFor } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { act, render, waitFor } from "@/tests/integrations/test-utils";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BlockMenuSearchContent } from "../BlockMenuSearchContent/BlockMenuSearchContent";
 import { getSearchItemKeys } from "../BlockMenuSearchContent/helper";
@@ -75,10 +75,6 @@ beforeEach(() => {
     creators_list: [],
   });
   vi.mocked(highlightText).mockClear();
-});
-
-afterEach(() => {
-  cleanup();
 });
 
 describe("BlockMenuSearchContent", () => {

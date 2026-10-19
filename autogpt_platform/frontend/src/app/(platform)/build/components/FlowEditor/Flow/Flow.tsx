@@ -134,16 +134,10 @@ function FlowCanvas({
   isGraphRunning,
   children,
 }: FlowCanvasProps) {
-  const nodes = useNodeStore(useShallow((state) => state.nodes));
-  const setNodes = useNodeStore(useShallow((state) => state.setNodes));
-
-  const onNodesChange = useNodeStore(
-    useShallow((state) => state.onNodesChange),
-  );
-
-  const hasWebhookNodes = useNodeStore(
-    useShallow((state) => state.hasWebhookNodes()),
-  );
+  const nodes = useNodeStore((state) => state.nodes);
+  const setNodes = useNodeStore((state) => state.setNodes);
+  const onNodesChange = useNodeStore((state) => state.onNodesChange);
+  const hasWebhookNodes = useNodeStore((state) => state.hasWebhookNodes());
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -195,7 +189,7 @@ function FlowCanvas({
       {isReadOnly && <ReadOnlyBanner />}
       {!isReadOnly &&
         (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
-      {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
+      <GraphLoadingBox flowContentLoading={isFlowContentLoading} />
       {isGraphRunning && <RunningBackground />}
       {children}
     </ReactFlow>

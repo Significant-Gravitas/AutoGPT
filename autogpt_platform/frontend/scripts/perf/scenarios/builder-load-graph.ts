@@ -1,13 +1,12 @@
 import { BuildPage } from "../../../src/playwright/pages/build.page";
 import { buildGraph } from "../lib/builder-fixture";
 import { fulfillJSON, installRoutes } from "../lib/routes";
-import { type Scenario } from "../lib/scenario";
+import { settle, type Scenario } from "../lib/scenario";
 
 const SMALL_GRAPH_ID = "00000000-0000-4000-8000-0000000000c1";
 const LARGE_GRAPH_ID = "00000000-0000-4000-8000-0000000000c2";
 const LARGE_NODE_COUNT = 100;
 const READY_TIMEOUT_MS = 60_000;
-const SETTLE_MS = 1_000;
 
 export const builderLoadGraph: Scenario = {
   name: "builder-load-graph",
@@ -42,10 +41,7 @@ export const builderLoadGraph: Scenario = {
     await nodes
       .first()
       .waitFor({ state: "attached", timeout: READY_TIMEOUT_MS });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15_000 })
-      .catch(() => undefined);
-    await page.waitForTimeout(SETTLE_MS);
+    await settle(page);
     return {
       async run() {
         // The app router follows history.pushState, so this is the same
