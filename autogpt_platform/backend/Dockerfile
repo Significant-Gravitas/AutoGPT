@@ -199,8 +199,9 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
 
 ENV PORT=8000
 
-# The commit Sentry reports as the release. Declared after every layer so a new
-# sha only changes image metadata and leaves the cached layers above intact.
+# The commit Sentry and copilot Langfuse metadata report as the release.
+# Declared after every layer so a new sha only changes image metadata and
+# leaves the cached layers above intact.
 ARG SENTRY_RELEASE=""
 ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 

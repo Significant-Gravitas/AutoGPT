@@ -996,8 +996,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     sentry_release: str = Field(
         default="",
-        description="Git sha of the deployed build, reported to Sentry as the "
-        "release. Blank reports no release.",
+        description="Commit or tag of the deployed build, reported as the Sentry "
+        "release and in copilot Langfuse metadata. Blank reports no release.",
     )
 
     sentry_environment: str = Field(
