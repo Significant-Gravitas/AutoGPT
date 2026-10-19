@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 from collections.abc import Iterator
@@ -511,6 +512,23 @@ async def test_a_broken_record_never_breaks_the_turn_cleanup(database_manager, c
         await _run_turn(_entry(_weekly()), [_run_agent_success()])
 
     assert "toward its schedule's failure streak" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_record_still_closes_the_turns_browser(database_manager):
+    """Recording waits on the DatabaseManager and can be cancelled meanwhile,
+    as a shutdown cancels the turn. The cleanups after it still run, or the
+    turn's Chromium tree outlives it on the pod."""
+    database_manager.record_scheduled_run.side_effect = asyncio.CancelledError()
+
+    with patch(
+        "backend.copilot.executor.processor.close_browser_daemon",
+        new=AsyncMock(return_value=False),
+    ) as close_browser:
+        with pytest.raises(asyncio.CancelledError):
+            await _run_turn(_entry(_weekly()), [_run_agent_success()])
+
+    close_browser.assert_awaited_once()
 
 
 @pytest.mark.asyncio

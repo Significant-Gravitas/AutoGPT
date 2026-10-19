@@ -945,13 +945,18 @@ class CoPilotProcessor:
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
                 finally:
-                    # After the turn is marked done, so the owner never waits on
-                    # it: counts the run toward its schedule's failure streak.
-                    if scheduled_watch is not None:
-                        await scheduled_watch.record(error_msg)
-                    await cost_context_stack.aclose()
-                    # A browser turn leaves a Chromium tree on this pod that
-                    # nothing else ever stops; state is already persisted, so
-                    # the next turn restores it wherever it lands.
-                    if await close_browser_daemon(entry.session_id):
-                        log.info("Browser daemon teardown attempted for this turn")
+                    try:
+                        # After the turn is marked done, so the owner never
+                        # waits on it: counts the run toward its schedule's
+                        # failure streak. It can be cancelled while it waits,
+                        # so the cleanups below still run.
+                        if scheduled_watch is not None:
+                            await scheduled_watch.record(error_msg)
+                    finally:
+                        await cost_context_stack.aclose()
+                        # A browser turn leaves a Chromium tree on this pod
+                        # that nothing else ever stops; state is already
+                        # persisted, so the next turn restores it wherever it
+                        # lands.
+                        if await close_browser_daemon(entry.session_id):
+                            log.info("Browser daemon teardown attempted for this turn")
