@@ -2,6 +2,7 @@ import type { Scenario } from "../lib/scenario";
 import { builderConnectEdge } from "./builder-connect-edge";
 import { builderDragRunning } from "./builder-drag-running";
 import { builderRunEvents } from "./builder-run-events";
+import { builderRunBeads } from "./builder-run-beads";
 import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
 import { copilotResizeDrag } from "./copilot-resize-drag";
@@ -28,6 +29,7 @@ export const SCENARIOS: Scenario[] = [
   builderRunEvents,
   copilotToolWait,
   copilotResizeDrag,
+  builderRunBeads,
   libraryAgentRuns,
 ];
 
