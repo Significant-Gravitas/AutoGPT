@@ -2747,6 +2747,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
