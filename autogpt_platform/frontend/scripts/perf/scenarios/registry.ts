@@ -4,6 +4,7 @@ import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
 import { copilotStreamReply } from "./copilot-stream-reply";
 import { copilotSwitchThreads } from "./copilot-switch-threads";
+import { copilotToolWait } from "./copilot-tool-wait";
 import { copilotType } from "./copilot-type";
 import { libraryRunning } from "./library-running";
 
@@ -15,6 +16,7 @@ export const SCENARIOS: Scenario[] = [
   copilotSwitchThreads,
   builderDragRunning,
   libraryRunning,
+  copilotToolWait,
 ];
 
 export function findScenario(name: string) {
