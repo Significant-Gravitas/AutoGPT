@@ -7,6 +7,7 @@ import {
   screen,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
@@ -163,6 +164,43 @@ describe("ContextPanelToggle files button", () => {
 
     const button = await screen.findByLabelText("Open files (1 document)");
     expect(button.textContent).toBe("1");
+  });
+
+  test("does not re-render for a streamed token that only adds text", async () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="toggle" onRender={onRender}>
+        <ContextPanelToggle sessionId="s1" />
+      </Profiler>,
+    );
+    expect(await screen.findByLabelText("Open files")).toBeDefined();
+
+    function reply(text: string) {
+      return [
+        {
+          id: "assistant-message",
+          role: "assistant" as const,
+          parts: [{ type: "text" as const, text }],
+        },
+      ];
+    }
+    act(() => {
+      useCopilotStreamStore.getState().setMessageSnapshot("s1", reply("Hel"));
+    });
+    onRender.mockClear();
+
+    act(() => {
+      useCopilotStreamStore
+        .getState()
+        .setMessageSnapshot("s1", reply("Hello, here"));
+    });
+    act(() => {
+      useCopilotStreamStore
+        .getState()
+        .setMessageSnapshot("s1", reply("Hello, here is the plan"));
+    });
+
+    expect(onRender).not.toHaveBeenCalled();
   });
 
   test("opens the files tab of the side panel", () => {
