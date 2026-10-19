@@ -14,7 +14,9 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
 )
 from backend.copilot.trial_reads import (
+    forget_usage_state,
     shared_trial_read,
+    shared_usage_state_read,
     sharing_trial_reads,
     trial_reads_fresh,
     trial_reads_shared,
@@ -240,4 +242,77 @@ async def test_the_chat_routes_trial_checks_read_the_trial_once():
         shared = store.get_subscription_trial.await_count
 
     assert unshared == 4
+    assert shared == 1
+
+
+def _usage_state(tier: SubscriptionTier = SubscriptionTier.PRO) -> UsageActivationState:
+    return UsageActivationState(user_id="u1", tier=tier, ready=True)
+
+
+@pytest.mark.asyncio
+async def test_inside_a_block_a_users_usage_state_is_read_once():
+    state = _usage_state()
+    read = AsyncMock(return_value=state)
+    await shared_usage_state_read("u1", read)
+    with trial_reads_shared():
+        assert await shared_usage_state_read("u1", read) is state
+        assert await shared_usage_state_read("u1", read) is state
+        with trial_reads_fresh():
+            await shared_usage_state_read("u1", read)
+    assert read.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_a_forgotten_usage_state_is_read_again_and_shared_from_then_on():
+    before, after = _usage_state(SubscriptionTier.NO_TIER), _usage_state()
+    read = AsyncMock(side_effect=[before, after])
+    with trial_reads_shared():
+        assert await shared_usage_state_read("u1", read) is before
+        forget_usage_state("u1")
+        assert await shared_usage_state_read("u1", read) is after
+        assert await shared_usage_state_read("u1", read) is after
+    assert read.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_the_chat_routes_checks_read_the_usage_state_once():
+    """Paywall, limits and limit check each read a paid user's usage state:
+    three database round trips outside a block, one inside the route's."""
+
+    async def run_checks() -> None:
+        await enforce_payment_paywall("u1")
+        daily, weekly, tier = await get_global_rate_limits("u1", 1, 1)
+        await check_rate_limit("u1", daily, weekly, expected_tier=tier)
+
+    usage_db = MagicMock()
+    usage_db.get_usage_activation_state = AsyncMock(return_value=_usage_state())
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    with (
+        patch("backend.copilot.usage_activation.pro_activation_db", return_value=usage_db),
+        patch(
+            "backend.copilot.rate_limit._fetch_cost_limits_flag",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.rate_limit.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+    ):
+        await run_checks()
+        unshared = usage_db.get_usage_activation_state.await_count
+        usage_db.get_usage_activation_state.reset_mock()
+        with trial_reads_shared():
+            await run_checks()
+        shared = usage_db.get_usage_activation_state.await_count
+
+    assert unshared == 3
     assert shared == 1

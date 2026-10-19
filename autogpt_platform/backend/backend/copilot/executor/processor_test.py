@@ -50,6 +50,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.data.model import OAuth2Credentials
+from backend.data.pro_activation import UsageActivationState
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -320,13 +321,18 @@ class TestExecuteAsyncScheduledTurnContext:
 
 
 @pytest.mark.asyncio
-async def test_turn_setup_shares_one_trial_read_until_the_model_answers() -> None:
-    """Cost attribution and the setup's tier checks share one trial read; a
-    lookup after the model's first output, like a tool's, reads it again."""
-    store = MagicMock()
-    store.get_subscription_trial = AsyncMock(
-        return_value=MagicMock(id="trial-1", active=True, consumed_at=None)
+async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() -> None:
+    """The allowance gate, cost attribution and the setup's tier checks share
+    one usage-state read; a lookup after the model's first output, like a
+    tool's, reads it again."""
+    usage_db = MagicMock()
+    usage_db.get_usage_activation_state = AsyncMock(
+        return_value=UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.PRO, ready=True
+        )
     )
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
 
     async def stream(**_kwargs):
         await get_user_tier("user-1")
@@ -356,13 +362,24 @@ async def test_turn_setup_shares_one_trial_read_until_the_model_answers() -> Non
             new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
         ),
         patch(
-            "backend.copilot.trial_cost_context.db_accessors.credit_db",
-            return_value=store,
+            "backend.copilot.usage_activation.pro_activation_db",
+            return_value=usage_db,
         ),
-        patch("backend.copilot.rate_limit.credit_db", return_value=store),
         patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+            "backend.copilot.rate_limit.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.rate_limit._fetch_cost_limits_flag",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.rate_limit.get_feature_flag_value",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
         ),
     ):
         await asyncio.create_task(
@@ -371,7 +388,7 @@ async def test_turn_setup_shares_one_trial_read_until_the_model_answers() -> Non
             )
         )
 
-    assert store.get_subscription_trial.await_count == 2
+    assert usage_db.get_usage_activation_state.await_count == 2
 
 
 @pytest.mark.asyncio
