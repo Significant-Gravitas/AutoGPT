@@ -798,8 +798,12 @@ def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
         )
     ]
     with ExitStack() as stack:
-        _, _, _, reward, run_node, _, _ = [stack.enter_context(p) for p in patches]
+        _, _, publish, reward, run_node, _, _ = [
+            stack.enter_context(p) for p in patches
+        ]
         resp = _post("generic_webhook")
 
     assert resp.status_code == 200, resp.text
-    assert reward.await_count == run_node.await_count == (0 if paywalled else 1)
+    expected = 0 if paywalled else 1
+    assert publish.await_count == reward.await_count == run_node.await_count
+    assert run_node.await_count == expected

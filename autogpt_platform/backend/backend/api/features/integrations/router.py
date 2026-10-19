@@ -1278,14 +1278,15 @@ async def webhook_ingress_generic(
         event_type=event_type,
         payload=payload,
     )
+    has_triggers = bool(webhook.triggered_nodes or webhook.triggered_presets)
+    # Each run would refuse a paywalled owner anyway. Stop before publishing and
+    # the reward, so a retried delivery after a failed lookup repeats neither.
+    if has_triggers and await is_user_paywalled(user_id):
+        return
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not (webhook.triggered_nodes or webhook.triggered_presets):
-        return
-
-    # Each run would refuse a paywalled owner anyway; stop before the reward.
-    if await is_user_paywalled(user_id):
+    if not has_triggers:
         return
 
     await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)

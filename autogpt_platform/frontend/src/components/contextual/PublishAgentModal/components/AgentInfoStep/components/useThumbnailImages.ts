@@ -1,7 +1,4 @@
-import {
-  isPaywallError,
-  toastPlanRequired,
-} from "@/components/contextual/PaywallToast/helpers";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useState, useRef, useEffect } from "react";
 import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
@@ -122,10 +119,8 @@ export function useThumbnailImages({
         setSelectedImage(imageUrl);
       }
     } catch (error) {
-      if (isPaywallError(error)) {
-        toastPlanRequired("Uploading images needs an active plan");
+      if (toastIfPlanRequired(error, "Uploading images needs an active plan"))
         return;
-      }
       const detail =
         error instanceof Error ? error.message : "Please try again.";
       toast({
@@ -154,10 +149,10 @@ export function useThumbnailImages({
         setSelectedImage(image_url);
       }
     } catch (error) {
-      if (isPaywallError(error)) {
-        toastPlanRequired("Generating an image needs an active plan");
+      if (
+        toastIfPlanRequired(error, "Generating an image needs an active plan")
+      )
         return;
-      }
       toast({
         title: "Generation failed",
         description: "Failed to generate image. Please try again.",

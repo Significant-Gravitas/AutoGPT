@@ -15,7 +15,10 @@ export function isPaywallError(error: unknown) {
   return error instanceof ApiError && error.status === 402;
 }
 
-export function toastPlanRequired(title: string) {
+/** Shows the plan toast and returns true when `error` is a 402, so a caller
+ *  can skip its own failure toast. */
+export function toastIfPlanRequired(error: unknown, title: string) {
+  if (!isPaywallError(error)) return false;
   toast({
     title,
     description: <PlanRequiredDescription />,
@@ -24,4 +27,5 @@ export function toastPlanRequired(title: string) {
     replaceKey: PAYWALL_TOAST_KEY,
     action: <PaywallToastAction />,
   });
+  return true;
 }

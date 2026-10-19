@@ -1,7 +1,4 @@
-import {
-  isPaywallError,
-  toastPlanRequired,
-} from "@/components/contextual/PaywallToast/helpers";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -144,10 +141,7 @@ export function useAgentInfoStep({
 
       onSuccess(response);
     } catch (error) {
-      if (isPaywallError(error)) {
-        toastPlanRequired("Publishing needs an active plan");
-        return;
-      }
+      if (toastIfPlanRequired(error, "Publishing needs an active plan")) return;
       Sentry.captureException(error);
       toast({
         title: "Submit Workflow Error",

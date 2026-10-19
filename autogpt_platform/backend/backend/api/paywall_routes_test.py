@@ -17,9 +17,10 @@ from fastapi.routing import APIRoute
 from backend.api.rest_api import app
 from backend.copilot.rate_limit import enforce_payment_paywall
 
-# The check depends on the chat's model route, so it runs in the handler: the
-# platform route needs a plan, a ChatGPT connection needs Max
-# (enforce_codex_access_http), which no account without a plan has.
+# These check in the handler, because whether the request does paid work
+# depends on its input: a chat's model route (the platform needs a plan, a
+# ChatGPT connection needs Max via enforce_codex_access_http), or a search
+# with a query to embed.
 CHECKED_IN_HANDLER = {
     "POST /api/chat/sessions",
     "POST /api/chat/sessions/{session_id}/continue",
@@ -28,6 +29,7 @@ CHECKED_IN_HANDLER = {
     "POST /api/chat/speech",
     "GET /api/integrations/codex/credentials/{credential_id}/account",
     "GET /api/integrations/codex/credentials/{credential_id}/rate-limits",
+    "GET /api/search/global",
 }
 
 OPEN_WHILE_PAYWALLED = {
@@ -347,7 +349,7 @@ CLOSED_SAMPLES = [
     "POST /api/oauth/apps/a-1/logo/upload",
     "POST /api/otto/ask",
     "POST /api/review/action",
-    "GET /api/search/global",
+    "GET /api/search/global?q=weekly report",
     "POST /api/skill-learning/run",
     "POST /api/skills",
     "POST /api/store/skills/submissions",

@@ -1,7 +1,4 @@
-import {
-  isPaywallError,
-  toastPlanRequired,
-} from "@/components/contextual/PaywallToast/helpers";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -360,6 +357,10 @@ export function useCredentialsInput({
       }
       // A superseded flow must not surface its errors over the newer flow.
       if (flowId !== oauthFlowIdRef.current) return;
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -371,8 +372,6 @@ export function useCredentialsInput({
           provider,
         });
         setOAuthError(OAUTH_ERROR_FLOW_TIMED_OUT);
-      } else if (isPaywallError(error)) {
-        toastPlanRequired("Connecting a service needs an active plan");
       } else {
         if (message === OAUTH_ERROR_POPUP_BLOCKED_NO_TAB) {
           trackCredentialConnectionFailure("credential_oauth_popup_blocked", {
