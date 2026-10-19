@@ -52,6 +52,7 @@ from backend.blocks import get_blocks
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.integrations.providers import ProviderName
+from backend.util.settings import Settings
 
 REDACTED = "[redacted: Google data]"
 
@@ -67,6 +68,9 @@ _REMEMBERED_LIMIT = 4096
 # How ``gate.held`` wraps a held call's late result.
 _HELD_RESULT_OPEN = re.compile(r"<held_call_result\b[^>]*>\n")
 _HELD_RESULT_CLOSE = "\n</held_call_result>"
+# Each pair hashes a slice of up to the whole text; a turn opens with a few
+# held results at most.
+_HELD_RESULT_PAIR_LIMIT = 100
 
 _remembered: OrderedDict[str, None] = OrderedDict()
 _remembered_lock = threading.Lock()
@@ -120,7 +124,16 @@ def install_langfuse_mask() -> None:
     and drops a mask passed later. Raises when the client it gets back does
     not mask, so the caller can leave tracing off rather than trace unmasked.
     """
-    client = Langfuse(mask=mask_langfuse_data)
+    # The configured credentials, which ``.env`` puts in ``Settings`` but not
+    # in the environment the SDK would otherwise read them from. ``host``
+    # still yields to ``LANGFUSE_BASE_URL``, as it would by default.
+    secrets = Settings().secrets
+    client = Langfuse(
+        public_key=secrets.langfuse_public_key or None,
+        secret_key=secrets.langfuse_secret_key or None,
+        host=secrets.langfuse_host or None,
+        mask=mask_langfuse_data,
+    )
     # ``_resources`` is None when the client is disabled (no keys): it sends
     # nothing, so there is nothing to mask.
     resources = client._resources
@@ -312,17 +325,22 @@ def _wraps_google_held_result(text: str) -> bool:
 
     The row may be folded into a longer message (the SDK's turn opener), and
     the output it wraps may itself quote the closing tag, so every closing
-    tag after an opening one is tried.
+    tag after an opening one is tried. A text with more pairs than that
+    could take is redacted rather than scanned.
     """
     if "<held_call_result" not in text:
         return False
     closes = [
         match.start() for match in re.finditer(re.escape(_HELD_RESULT_CLOSE), text)
     ]
+    pairs = 0
     for opening in _HELD_RESULT_OPEN.finditer(text):
         for close in closes:
             if close < opening.end():
                 continue
+            pairs += 1
+            if pairs > _HELD_RESULT_PAIR_LIMIT:
+                return True
             row = text[opening.start() : close + len(_HELD_RESULT_CLOSE)]
             inner = text[opening.end() : close]
             if is_google_output(inner) or is_google_output(row):

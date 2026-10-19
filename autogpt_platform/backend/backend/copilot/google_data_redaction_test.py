@@ -3,7 +3,7 @@
 import json
 from collections.abc import Iterator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import langsmith
 import pytest
@@ -295,6 +295,31 @@ def test_install_langfuse_mask_accepts_a_client_built_with_it(
         LangfuseResourceManager.reset()
 
 
+def test_install_langfuse_mask_uses_the_configured_credentials():
+    """Credentials read from ``.env`` reach ``Settings`` but not the process
+    environment the SDK falls back to; without them the first client, which
+    every later ``get_client()`` reuses, would be disabled."""
+    secrets = MagicMock(
+        langfuse_public_key="pk-from-settings",
+        langfuse_secret_key="sk-from-settings",
+        langfuse_host="https://langfuse.example.com",
+    )
+    with (
+        patch.object(google_data_redaction, "Settings") as settings,
+        patch.object(google_data_redaction, "Langfuse") as langfuse,
+    ):
+        settings.return_value.secrets = secrets
+        langfuse.return_value._resources.mask = mask_langfuse_data
+        install_langfuse_mask()
+
+    langfuse.assert_called_once_with(
+        public_key="pk-from-settings",
+        secret_key="sk-from-settings",
+        host="https://langfuse.example.com",
+        mask=mask_langfuse_data,
+    )
+
+
 def test_install_trace_redaction_masks_both_tracers():
     with (
         patch.object(google_data_redaction, "Langfuse") as langfuse,
@@ -303,7 +328,8 @@ def test_install_trace_redaction_masks_both_tracers():
         langfuse.return_value._resources.mask = mask_langfuse_data
         install_trace_redaction()
 
-    langfuse.assert_called_once_with(mask=mask_langfuse_data)
+    langfuse.assert_called_once()
+    assert langfuse.call_args.kwargs["mask"] is mask_langfuse_data
     client = configure.call_args.kwargs["client"]
     assert isinstance(client, langsmith.Client)
     inputs = {"input": {"block_id": GMAIL_BLOCK_ID, "input_data": {"q": "x"}}}
@@ -417,6 +443,19 @@ def test_held_result_quoting_its_closing_tag_is_redacted():
     sent = json.dumps(redact_google_data(_sdk_held_history(_held_result(quoting))))
 
     assert EMAIL not in sent
+
+
+def test_text_with_too_many_held_result_tags_is_redacted_without_a_full_scan():
+    """Trying every pair of tags would stall the tracer on a result that
+    repeats them; past a bound the text is redacted rather than scanned."""
+    many = _held_result("x") * 200
+
+    with patch.object(
+        google_data_redaction, "is_google_output", wraps=is_google_output
+    ) as checked:
+        assert redact_google_data(many) == REDACTED
+
+    assert checked.call_count < 1000
 
 
 @pytest.mark.parametrize("history", [_baseline_held_history, _sdk_held_history])
