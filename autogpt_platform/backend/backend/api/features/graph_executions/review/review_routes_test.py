@@ -1,6 +1,7 @@
 import datetime
 from types import SimpleNamespace
 from typing import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -12,7 +13,16 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.rest_api import app
 from backend.blocks.github._auth import TEST_CREDENTIALS
 from backend.blocks.github.issues import GithubMakeIssueBlock
+from backend.copilot.constants import step_card_id
+from backend.copilot.gate import review as review_store
 from backend.copilot.gate.held import HeldCall
+from backend.copilot.gate.held_db_test import (
+    _hold,
+    _new_session,
+    _Post,
+    _resolved,
+    _row,
+)
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -1658,3 +1668,40 @@ async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
     with pytest.raises(BlockExecutionError, match="rejected by reviewer"):
         await run_node(resumed)
     create_issue.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_burst_answered_through_the_route_starts_one_turn_past_a_step_card(
+    client: httpx.AsyncClient, setup_test_user: str, test_user_id: str
+) -> None:
+    """A workflow step's card waiting in the same chat holds no turn back: its
+    answer resumes the run, not the chat, and it can leave from the run page."""
+    session = await _new_session(test_user_id)
+    post = _Post()
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch("backend.copilot.tools.get_tool", return_value=post),
+    ):
+        cards = [await _hold(session, test_user_id, text) for text in "abc"]
+        step = step_card_id(test_user_id, f"step-{session.session_id}")
+        assert await review_store.open_review_row(
+            step, test_user_id, session, {}, "Run a workflow step"
+        )
+        dispatch = AsyncMock()
+        with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+            waits = []
+            for card in cards:
+                response = await client.post(
+                    "/api/review/action",
+                    json={"reviews": [{"node_exec_id": card, "approved": True}]},
+                )
+                assert response.status_code == 200
+                waits.append(response.json()["awaiting_other_cards"])
+        delivered = await _resolved(test_user_id, session)
+
+    assert waits == [True, True, False]
+    dispatch.assert_awaited_once()
+    assert len(delivered) == 3
+    assert sorted(run["text"] for run in post.runs) == ["a", "b", "c"]
+    step_row = await _row(step, test_user_id)
+    assert step_row is not None and step_row.status == ReviewStatus.WAITING
