@@ -91,8 +91,7 @@ async def test_every_call_through_openrouter_asks_for_the_preferred_providers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every model call the CLI makes through OpenRouter, on every turn,
-    carries the providers the platform prefers, and leaves OpenRouter free to
-    fall back when none of them can serve it."""
+    restricts fallback to the configured providers."""
     if _resolve_cli_path() is None:
         pytest.skip("No Claude Code CLI binary available")
     preferred = ["provider-a/global", "provider-b"]
@@ -112,7 +111,8 @@ async def test_every_call_through_openrouter_asks_for_the_preferred_providers(
     asked = [(c.turn, c.routing) for c in provider.calls if c.route == "openrouter"]
     assert {turn for turn, _ in asked} == set(range(len(PROMPTS))), asked
     assert all(
-        routing == {"order": preferred, "allow_fallbacks": True} for _, routing in asked
+        routing == {"order": preferred, "allow_fallbacks": False}
+        for _, routing in asked
     ), asked
 
 

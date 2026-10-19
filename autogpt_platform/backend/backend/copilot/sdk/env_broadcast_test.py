@@ -59,8 +59,6 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
             "impersonated": False,
         },
         "provider": {
-            # Fastest first, then the other global endpoints at the same
-            # price, then (fallbacks on) anyone else serving the model.
             "order": [
                 "google-vertex/global",
                 "anthropic",
@@ -68,12 +66,20 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
                 "azure/global",
                 "claude-on-aws",
             ],
-            "allow_fallbacks": True,
+            "allow_fallbacks": False,
         },
     }
 
 
-@pytest.mark.parametrize("model", [SONNET, "claude-sonnet-5-5"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        SONNET,
+        "claude-sonnet-5-5",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-haiku-4-5",
+    ],
+)
 def test_a_claude_call_asks_for_the_configured_providers_first(model: str):
     cfg = _config(openrouter_provider_order=["provider-a/global", "provider-b"])
 
@@ -81,7 +87,7 @@ def test_a_claude_call_asks_for_the_configured_providers_first(model: str):
 
     assert body["provider"] == {
         "order": ["provider-a/global", "provider-b"],
-        "allow_fallbacks": True,
+        "allow_fallbacks": False,
     }
 
 
@@ -90,6 +96,26 @@ def test_another_vendors_model_keeps_openrouters_routing(model: str | None):
     body = _extra_body(session_id="sess-1", user_id="user-1", model=model)
 
     assert "provider" not in body
+
+
+@pytest.mark.parametrize(
+    "fallback_model, routes_claude",
+    [
+        ("", True),
+        ("anthropic/claude-opus-4-7", True),
+        ("claude-haiku-4-5", True),
+        ("moonshotai/kimi-k2.6", False),
+        ("qwen/qwen3-coder", False),
+    ],
+)
+def test_mixed_vendor_fallback_keeps_openrouters_routing(
+    fallback_model: str, routes_claude: bool
+):
+    body = _extra_body(
+        _config(claude_agent_fallback_model=fallback_model), model=SONNET
+    )
+
+    assert ("provider" in body) is routes_claude
 
 
 @pytest.mark.parametrize(

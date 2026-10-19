@@ -286,12 +286,14 @@ def _broadcast_extra_body(
     )
     if user_id:
         body["metadata"] = {"user_id": body["user"]}
-    # The order names Claude providers; another vendor's model keeps
-    # OpenRouter's own routing.
-    if config.openrouter_provider_order and _is_claude_model(model):
+    claude_only = _is_claude_model(model) and (
+        not config.claude_agent_fallback_model
+        or _is_claude_model(config.claude_agent_fallback_model)
+    )
+    if config.openrouter_provider_order and claude_only:
         body["provider"] = {
             "order": list(config.openrouter_provider_order),
-            "allow_fallbacks": True,
+            "allow_fallbacks": False,
         }
     return json.dumps(body)
 

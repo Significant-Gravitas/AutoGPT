@@ -713,16 +713,14 @@ class ChatConfig(BaseSettings):
             "azure/global",
             "claude-on-aws",
         ],
-        description="OpenRouter providers the SDK path's Claude calls go to "
-        "first, in order (the provider tags in OpenRouter's endpoint list for a "
-        "model). The global Claude endpoints charge the same but differ in how "
-        "soon they start answering: on a cached prompt Google Vertex's first "
-        "token came about 0.7 s sooner than OpenRouter's default provider's "
-        "(2026-10-15), then Anthropic's. The rest of the list are the other "
-        "global endpoints at the same price, so a call Vertex and Anthropic "
-        "can't serve stays at that price; the regional endpoints (10% dearer) "
-        "come after all of them. A call none of them can serve falls back to "
-        "OpenRouter's other providers. Set as a comma-separated list "
+        description="Allowed OpenRouter providers for the SDK path's Claude "
+        "calls, tried in order using the model's endpoint tags. Sessions with "
+        "a non-Claude fallback retain OpenRouter's routing. The default "
+        "prefers Google Vertex global, then Anthropic, then the other standard "
+        "Claude providers. Fallback stays within this list; if none can serve "
+        "the request, it fails instead of trying an unlisted provider. This "
+        "setting selects providers, not a price ceiling; recheck endpoint "
+        "pricing when changing models or this list. Set as a comma-separated list "
         "(``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``); an "
         "empty value leaves the choice to OpenRouter.",
     )
