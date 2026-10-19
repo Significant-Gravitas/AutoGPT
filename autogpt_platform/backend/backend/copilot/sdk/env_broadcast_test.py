@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.llm_attribution import set_turn_impersonated
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.sdk.env import build_sdk_env
 
@@ -31,10 +31,12 @@ def _config(**overrides) -> ChatConfig:
 
 
 @pytest.fixture(autouse=True)
-def _not_impersonated():
+def _outside_a_turn():
     set_turn_impersonated(False)
+    set_turn_trace_id(None)
     yield
     set_turn_impersonated(False)
+    set_turn_trace_id(None)
 
 
 def _extra_body(**kwargs) -> dict:
@@ -71,6 +73,16 @@ def test_an_impersonated_turn_is_marked():
     body = _extra_body(session_id="sess-1", user_id="user-1")
 
     assert body["trace"]["impersonated"] is True
+
+
+def test_every_request_of_a_turn_carries_its_trace_id():
+    """Broadcast maps ``trace.trace_id`` to ``$ai_trace_id``, so the turn's
+    main, sub-agent and compaction calls group into one PostHog trace."""
+    set_turn_trace_id("turn-1")
+
+    body = _extra_body(session_id="sess-1", user_id="user-1")
+
+    assert body["trace"]["trace_id"] == "turn-1"
 
 
 def test_no_user_sends_no_user_fields():

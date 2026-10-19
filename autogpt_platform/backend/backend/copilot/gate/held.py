@@ -21,7 +21,10 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
-from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.constants import (
+    COPILOT_NODE_EXEC_ID_SEPARATOR,
+    COPILOT_STEP_CARD_PREFIX,
+)
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
@@ -370,7 +373,7 @@ def _wake_message(waiting: int) -> str:
 
 
 async def _waiting(user_id: str, session_id: str) -> int:
-    """The chat's cards still waiting for an answer, as its queue shows them."""
+    """The chat's held calls still waiting for an answer."""
     try:
         rows = await review_db().get_pending_reviews_for_chat_session(
             session_id, user_id
@@ -380,7 +383,14 @@ async def _waiting(user_id: str, session_id: str) -> int:
         logger.warning(f"Waiting cards in {session_id} unreadable", exc_info=True)
         return 0
     gate_prefix = review_store.node_id_for("")
-    return sum(1 for row in rows if row.node_exec_id.startswith(gate_prefix))
+    # A workflow step's card resumes its run, not this chat, and leaves by the
+    # run page or a stopped run, neither of which wakes the chat.
+    return sum(
+        1
+        for row in rows
+        if row.node_exec_id.startswith(gate_prefix)
+        and not row.node_exec_id.startswith(COPILOT_STEP_CARD_PREFIX)
+    )
 
 
 async def _resolve(

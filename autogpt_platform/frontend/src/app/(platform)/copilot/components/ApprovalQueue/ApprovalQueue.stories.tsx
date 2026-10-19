@@ -462,6 +462,8 @@ export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
 export const RealSandboxCommand = realStory("Sandbox Command");
 export const RealGmailNewsletter = realStory("Gmail Newsletter");
+// A step of a workflow Otto started, parked on its own review: its card in the chat.
+export const RealWorkflowStep = realStory("Workflow Step");
 
 // One turn's three real cards. Review all opens Home's dialog over them; once
 // one is answered, Close and continue starts the turn and folds the box.

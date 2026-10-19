@@ -3,6 +3,7 @@
 import type { HomeExpert } from "@/app/api/__generated__/models/homeExpert";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { HeldReviewDialog } from "@/app/(platform)/home/components/NeedsYou/components/HeldReviewDialog";
+import { cn } from "@/lib/utils";
 import { ApprovalCard } from "./components/ApprovalCard/ApprovalCard";
 import { CompactApprovalLine } from "./components/CompactApprovalLine";
 import { QueueFooter } from "./components/QueueFooter";
@@ -43,7 +44,7 @@ export function ApprovalQueue({
 }: Props) {
   const queue = useApprovalQueue({ items, onAnswered, onContinued });
   const review = useChatReview({ queue, reviews, expert });
-  const { pending, receipts } = queue;
+  const { pending, receipts, leaving } = queue;
   const dialogOpen = review.carousel.open;
   if (pending.length === 0 && receipts.length === 0 && !dialogOpen) return null;
 
@@ -83,7 +84,10 @@ export function ApprovalQueue({
   return (
     <section
       aria-label="Waiting for you"
-      className="overflow-hidden rounded-xl border border-zinc-200 bg-white"
+      className={cn(
+        "overflow-hidden rounded-xl border border-zinc-200 bg-white transition-opacity duration-200 motion-reduce:transition-none",
+        leaving && "opacity-0",
+      )}
     >
       <QueueHeader
         count={pending.length}

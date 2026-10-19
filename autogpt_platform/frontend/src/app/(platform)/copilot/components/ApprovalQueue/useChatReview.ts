@@ -49,12 +49,14 @@ export function useChatReview({ queue, reviews, expert }: Args) {
     const first = rows.find((row) => !row.receipt);
     if (!first) return;
     answeredHere.current = 0;
+    queue.setReviewing(true);
     carousel.openAt(first.item.id);
   }
 
   // Closing part-way is Close and continue; the last answer already started the turn.
   function close() {
     carousel.close();
+    queue.setReviewing(false);
     if (answeredHere.current > 0 && queue.pending.length > 0)
       void queue.continueNow();
   }
