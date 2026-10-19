@@ -9,6 +9,7 @@ from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     HTTPException,
     Path,
     Query,
@@ -21,6 +22,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
+from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -132,7 +134,11 @@ class LoginResponse(BaseModel):
     cancel_url: str | None = None
 
 
-@router.get("/{provider}/login", summary="Initiate OAuth flow")
+@router.get(
+    "/{provider}/login",
+    summary="Initiate OAuth flow",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def login(
     provider: Annotated[
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
@@ -341,7 +347,11 @@ async def _complete_codex_login(
     return to_meta_response(credentials)
 
 
-@router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
+@router.post(
+    "/{provider}/callback",
+    summary="Exchange OAuth code for tokens",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def callback(
     provider: Annotated[
         ProviderName, Path(title="The target provider for this OAuth exchange")
@@ -630,6 +640,7 @@ def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
 
 @router.post(
     "/{provider}/device-auth/initiate",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Initiate device code OAuth flow",
 )
 async def device_auth_initiate(
@@ -708,6 +719,7 @@ async def device_auth_initiate(
 
 @router.post(
     "/{provider}/device-auth/poll",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Poll device code OAuth flow for completion",
 )
 async def device_auth_poll(
@@ -1049,7 +1061,12 @@ async def get_picker_token(
     )
 
 
-@router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
+@router.post(
+    "/{provider}/credentials",
+    status_code=201,
+    summary="Create Credentials",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
@@ -1261,10 +1278,15 @@ async def webhook_ingress_generic(
         event_type=event_type,
         payload=payload,
     )
+    has_triggers = bool(webhook.triggered_nodes or webhook.triggered_presets)
+    # Each run would refuse a paywalled owner anyway. Stop before publishing and
+    # the reward, so a retried delivery after a failed lookup repeats neither.
+    if has_triggers and await is_user_paywalled(user_id):
+        return
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not (webhook.triggered_nodes or webhook.triggered_presets):
+    if not has_triggers:
         return
 
     await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
@@ -1286,7 +1308,9 @@ async def webhook_ingress_generic(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-@router.post("/webhooks/{webhook_id}/ping")
+@router.post(
+    "/webhooks/{webhook_id}/ping", dependencies=[Depends(enforce_payment_paywall)]
+)
 async def webhook_ping(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
     user_id: Annotated[str, Security(get_user_id)],  # require auth
@@ -1946,7 +1970,7 @@ def _get_provider_oauth_handler(
     )
 
 
-@router.get("/ayrshare/sso_url")
+@router.get("/ayrshare/sso_url", dependencies=[Depends(enforce_payment_paywall)])
 async def get_ayrshare_sso_url(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:

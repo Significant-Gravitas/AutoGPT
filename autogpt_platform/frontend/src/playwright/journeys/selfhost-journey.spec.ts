@@ -128,7 +128,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await connectHandles(page, "output", "value");
     await expect.poll(() => buildPage.getEdgeCount()).toBe(1);
     await buildPage.fillLastNodeTextInput("Agent Output", outputName);
-    await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
     await buildPage.saveAgent(agentName, "Self-hosted first-hour journey");
     await buildPage.waitForSaveComplete();
     await buildPage.waitForSaveButton();
@@ -180,8 +179,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     "a self-hosted install must not make the browser call other hosts",
   ).toEqual([]);
 });
-
-const AGENTATION = "[data-agentation-root], [data-agentation-toolbar]";
 
 // Drags from the first node's named output to the second node's named input.
 // BuildPage.connectNodes takes each node's first handle, which for Store Value
@@ -269,7 +266,6 @@ async function expectNoHostedOnlyChrome(page: Page) {
   const accountMenu = page.getByTestId("profile-popout-menu-trigger");
   await expect(accountMenu).toBeVisible();
   await expect.soft(page.getByText(/earn credits/i)).toHaveCount(0);
-  await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
 
   await accountMenu.click();
   const menu = page.getByTestId("account-menu-popover");

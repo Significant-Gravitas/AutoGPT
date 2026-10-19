@@ -29,7 +29,9 @@
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
     "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts",
-    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs"
+    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs",
+    "perf": "npx --yes tsx scripts/perf/measure.ts",
+    "perf:compare": "npx --yes tsx scripts/perf/compare.ts"
   },
   "browserslist": [
     "defaults"
@@ -158,7 +160,6 @@
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
     "@vitest/coverage-v8": "4.1.0",
-    "agentation": "3.0.2",
     "concurrently": "9.2.1",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",

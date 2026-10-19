@@ -5,8 +5,23 @@ setup_test_user, and setup_admin_user are defined in the parent conftest.py
 (backend/conftest.py) and are available here automatically.
 """
 
+from types import SimpleNamespace
+
 import pytest
+from prisma.enums import SubscriptionTier
 from pytest_snapshot.plugin import Snapshot
+
+from backend.copilot import rate_limit
+from backend.copilot.rate_limit import is_user_paywalled as _REAL_IS_USER_PAYWALLED
+from backend.data.pro_activation import UsageActivationState
+from backend.util.feature_flag import Flag
+
+# Every module that imports the check by name.
+_PAYWALL_CHECK_SITES = (
+    "backend.copilot.rate_limit.is_user_paywalled",
+    "backend.executor.utils.is_user_paywalled",
+    "backend.api.features.integrations.router.is_user_paywalled",
+)
 
 
 @pytest.fixture
@@ -92,5 +107,31 @@ def _bypass_paywall(mocker):
     bypassing this helper.
     """
     paywall_off = mocker.AsyncMock(return_value=False)
-    mocker.patch("backend.copilot.rate_limit.is_user_paywalled", new=paywall_off)
-    mocker.patch("backend.executor.utils.is_user_paywalled", new=paywall_off)
+    for site in _PAYWALL_CHECK_SITES:
+        mocker.patch(site, new=paywall_off)
+
+
+@pytest.fixture
+def paywalled_user(mocker, test_user_id):
+    """Make the signed-in test user one without a plan, judged by the real check.
+
+    Undoes ``_bypass_paywall`` and stubs only the stored tier and the payments
+    flag, so a 402 comes from the same ``is_user_paywalled`` production runs.
+    """
+
+    async def no_plan(user_id: str) -> UsageActivationState:
+        return UsageActivationState(
+            user_id=user_id, tier=SubscriptionTier.NO_TIER, ready=True
+        )
+
+    async def payments_on(flag: Flag, *args, **kwargs) -> bool:
+        return flag == Flag.ENABLE_PLATFORM_PAYMENT
+
+    for site in _PAYWALL_CHECK_SITES:
+        mocker.patch(site, new=_REAL_IS_USER_PAYWALLED)
+    mocker.patch(
+        "backend.copilot.usage_activation.pro_activation_db",
+        return_value=SimpleNamespace(get_usage_activation_state=no_plan),
+    )
+    mocker.patch.object(rate_limit, "is_feature_enabled", new=payments_on)
+    return test_user_id

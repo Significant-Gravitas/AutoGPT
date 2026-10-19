@@ -37,6 +37,7 @@ from backend.copilot.tree import (
     release_turn,
     root_envelope,
 )
+from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -356,10 +357,17 @@ class CoPilotExecutionEntry(BaseModel):
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
 
+    cost_context: TrialCostContext | None = None
+
     scheduled: ScheduledTurnOrigin | None = None
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
 
+    tool_name: str | None = None
+    """What started the turn, as registered with the stream registry
+    (``"autopilot_block"`` for the AutoPilot block, whose turns may run on the
+    credit balance once the plan's allowance is used up). ``None`` for entries
+    queued before the field existed."""
     trace_headers: dict[str, str] = Field(default_factory=dict)
     """``sentry-trace``/``baggage`` of the transaction that dispatched the turn,
     which the turn's own transaction continues. Empty when the dispatcher was
@@ -401,6 +409,7 @@ async def enqueue_copilot_turn(
     impersonated: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    tool_name: str | None = None,
     trace_headers: Mapping[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
@@ -458,6 +467,8 @@ async def enqueue_copilot_turn(
             else tracing.trace_propagation_headers()
         ),
         enqueued_at=time.time(),
+        cost_context=await capture_cost_context(user_id),
+        tool_name=tool_name,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -687,6 +698,7 @@ async def dispatch_turn(
             impersonated=impersonated,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            tool_name=tool_name,
             trace_headers=trace_headers,
         )
         slot.keep()
@@ -831,6 +843,8 @@ async def schedule_chat_turn(
     message_id: str | None = None,
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
+    require_fresh_slot: bool = False,
+    dedupe_content: bool = True,
     is_user_message: bool = True,
     expert_id: str | None = None,
     session_origin: str | None = None,
@@ -856,6 +870,9 @@ async def schedule_chat_turn(
     subscribe to the existing in-flight turn's stream instead of opening
     a new one). ``message_already_persisted`` re-dispatches an orphaned
     kickoff row only when this caller atomically admits the idle session.
+    ``require_fresh_slot`` applies the same rule to a new message: when
+    another turn already holds the session, return ``None`` before anything
+    is saved. ``dedupe_content`` is passed to :func:`append_and_save_message`.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -886,7 +903,7 @@ async def schedule_chat_turn(
         message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id) as slot:
-        if message_already_persisted and not slot.admitted:
+        if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         is_duplicate = False
         if message and not message_already_persisted:
@@ -897,7 +914,9 @@ async def schedule_chat_turn(
                 metadata=message_metadata,
             )
             is_duplicate = (
-                await append_and_save_message(session_id, chat_message)
+                await append_and_save_message(
+                    session_id, chat_message, dedupe_content=dedupe_content
+                )
             ) is None
             if not is_duplicate and is_user_message:
                 track_user_message(

@@ -4,7 +4,8 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
@@ -40,10 +41,17 @@ interface Props {
   expertName?: string;
   /** Expert the new conversation will address; scopes workspace-file pickers. */
   expertId?: string | null;
-  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
-  voiceToggle?: ReactNode;
+  /** Starts voice mode from the + menu. Absent when the flag is off. */
+  voiceMode?: ComponentProps<typeof ChatInput>["voiceMode"];
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
+  /** Out of AutoPilot budget with a reset ahead: the composer sets the new
+   *  chat's first message to send at the reset. */
+  atReset?: ComponentProps<typeof ChatInput>["atReset"];
+  /** Shown above the composer while sending is paused. */
+  usageNotice?: ReactNode;
+  /** The running-low hint, shown under the composer. */
+  lowHint?: ReactNode;
 }
 
 export function EmptySession({
@@ -56,8 +64,11 @@ export function EmptySession({
   isKickoffStarting,
   expertName,
   expertId = null,
-  voiceToggle,
+  voiceMode,
   modeSelector,
+  atReset,
+  usageNotice,
+  lowHint,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -129,7 +140,7 @@ export function EmptySession({
               prompts={intro.prompts}
               transcript={intro.transcript}
               onSelectPrompt={onSend}
-              disabled={isComposerDisabled}
+              disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the
@@ -167,24 +178,30 @@ export function EmptySession({
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
               >
+                {usageNotice && (
+                  <div className="mb-3 text-left">{usageNotice}</div>
+                )}
                 <ChatInput
                   inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
-                  voiceToggle={voiceToggle}
+                  voiceMode={voiceMode}
                   modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}
+                  atReset={atReset}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={
-                    selectedExpert
-                      ? getExpertInputPlaceholder(selectedExpert.name)
-                      : inputPlaceholder
+                    atReset
+                      ? SEND_AT_RESET_PLACEHOLDER
+                      : selectedExpert
+                        ? getExpertInputPlaceholder(selectedExpert.name)
+                        : inputPlaceholder
                   }
-                  className={
-                    isBrainDumpEnabled
-                      ? "w-full [&_textarea]:min-h-[4.5rem]"
-                      : "w-full"
-                  }
+                  className={cn(
+                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+                    isBrainDumpEnabled && "[&_textarea]:min-h-[4.5rem]",
+                  )}
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
@@ -193,6 +210,7 @@ export function EmptySession({
                     intro.isVisible ? recipientPicker : undefined
                   }
                 />
+                {lowHint}
               </div>
             </div>
           )}

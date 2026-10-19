@@ -117,6 +117,7 @@ export function BuilderChatPanel({ className }: Props) {
                       onSend={onSend}
                       disabled={false}
                       isStreaming={isStreaming}
+                      isTurnStarting={status === "submitted"}
                       onStop={stop}
                       onEnqueue={onSend}
                       placeholder="Ask the builder to edit or run this workflow…"

@@ -2,6 +2,8 @@
 one: the reconcile grants that plan once it is paid for, and nothing else."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from prisma.enums import SubscriptionTier
@@ -39,17 +41,49 @@ def switched(subscription: dict) -> dict:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("activation_ready", [False, True])
 async def test_a_paid_switch_to_the_chosen_plan_converts_the_trial_onto_it(
-    trial, switched, boundaries
+    trial, switched, boundaries, monkeypatch, activation_ready
 ):
+    publish = AsyncMock(return_value=activation_ready)
+    monkeypatch.setattr(
+        fulfillment.subscription_activation, "publish_initial_pro_activation", publish
+    )
+    boundaries.user.find_unique_or_raise = AsyncMock()
+    boundaries.subscriptiontrial.find_unique_or_raise = AsyncMock(
+        return_value=SimpleNamespace(
+            convertedAt=datetime.now(UTC) if activation_ready else None,
+            stripeConversionInvoiceId="in_max" if activation_ready else None,
+        )
+    )
     result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
 
-    assert result is not None and result[1] == SubscriptionTier.MAX
+    expected = SubscriptionTier.MAX if activation_ready else SubscriptionTier.NO_TIER
+    assert result is not None and result[1] == expected
+    publish.assert_awaited_once()
+    assert publish.await_args.args[2] == "price_max"
     saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
-    assert saved["convertedAt"] is not None
-    assert saved["stripeConversionInvoiceId"] == "in_max"
+    assert (saved["convertedAt"] is not None) == activation_ready
+    assert saved["stripeConversionInvoiceId"] == (
+        "in_max" if activation_ready else None
+    )
     granted = boundaries.user.update_many.await_args.kwargs["data"]
-    assert granted == {"subscriptionTier": SubscriptionTier.MAX}
+    assert granted == {"subscriptionTier": expected}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["BASIC", "BUSINESS"])
+async def test_other_chosen_plans_keep_existing_conversion_without_a_usage_reset(
+    trial, switched, boundaries, monkeypatch, tier
+):
+    switched["metadata"]["trial_conversion_tier"] = tier
+    publish = AsyncMock()
+    monkeypatch.setattr(
+        fulfillment.subscription_activation, "publish_initial_pro_activation", publish
+    )
+    result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier(tier)
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio

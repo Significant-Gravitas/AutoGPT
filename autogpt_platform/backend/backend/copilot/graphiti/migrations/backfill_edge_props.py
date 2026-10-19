@@ -37,10 +37,9 @@ import logging
 import sys
 from collections import defaultdict
 
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryEnvelope, SourceKind
+from backend.copilot.graphiti.scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -115,19 +114,14 @@ _UUID_CHUNK_SIZE = 500
 async def backfill_one_user(user_id: str) -> int:
     """Recover/default edge metadata for one user. Returns count updated."""
     try:
-        group_id = derive_group_id(user_id)
+        scope = MemoryScope.for_user(user_id)
     except ValueError:
         logger.warning(
             "Skipping user %s — invalid for group_id derivation", user_id[:12]
         )
         return 0
 
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-    )
+    driver = open_driver(scope)
     try:
         updated = await backfill_graph(driver)
         if updated:
