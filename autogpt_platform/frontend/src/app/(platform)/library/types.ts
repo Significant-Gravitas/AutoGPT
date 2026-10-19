@@ -43,6 +43,8 @@ export interface FleetSummary {
   idle: number;
   /** Total spend for the current calendar month, in cents. */
   monthlySpend: number;
+  /** The scheduler didn't answer: scheduled/idle counts are unknown. */
+  schedulesUnavailable?: boolean;
 }
 
 export type SitrepPriority =

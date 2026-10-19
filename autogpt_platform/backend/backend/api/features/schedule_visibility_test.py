@@ -34,7 +34,7 @@ async def test_rest_lists_paused_active_expert_schedules(graph_only):
 
     with (
         patch(
-            "backend.api.features.schedules.routes.get_scheduler_client",
+            "backend.api.features.schedules.routes.get_interactive_scheduler_client",
             return_value=MagicMock(
                 get_graph_execution_schedules=AsyncMock(side_effect=list_schedules)
             ),

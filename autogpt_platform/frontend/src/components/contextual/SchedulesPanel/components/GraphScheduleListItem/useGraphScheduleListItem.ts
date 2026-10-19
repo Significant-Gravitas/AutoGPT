@@ -2,7 +2,10 @@ import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endp
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -66,6 +69,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
       setIsDeleteOpen(false);
       invalidateAllScheduleQueries(queryClient, schedule.graph_id);
     } catch (error) {
+      reconcileAfterScheduleWriteError(queryClient, error, schedule.graph_id);
       toast({
         title: "Failed to delete schedule",
         description:

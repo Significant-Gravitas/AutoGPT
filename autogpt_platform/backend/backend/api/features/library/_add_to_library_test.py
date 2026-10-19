@@ -4,6 +4,7 @@ import prisma.errors
 import pytest
 
 from ._add_to_library import _marketplace_metadata, add_graph_to_library
+from ._schedule_info import ScheduleInfo
 
 
 def _make_slv(
@@ -41,7 +42,7 @@ async def test_add_graph_to_library_create_new_agent() -> None:
         ) as mock_from_db,
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
-            new=AsyncMock(return_value={}),
+            new=AsyncMock(return_value=ScheduleInfo()),
         ),
         patch(
             "backend.api.features.orgs.db.get_user_default_team",
@@ -55,7 +56,7 @@ async def test_add_graph_to_library_create_new_agent() -> None:
     assert result is converted_agent
     mock_from_db.assert_called_once_with(
         created_agent,
-        schedule_info={},
+        schedule_info=ScheduleInfo(),
     )
     # Verify create was called with correct data
     create_call = mock_prisma.return_value.create.call_args
@@ -93,7 +94,7 @@ async def test_add_graph_to_library_no_default_team_stays_untenanted() -> None:
         ),
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
-            new=AsyncMock(return_value={}),
+            new=AsyncMock(return_value=ScheduleInfo()),
         ),
         patch(
             "backend.api.features.orgs.db.get_user_default_team",
@@ -130,7 +131,7 @@ async def test_add_graph_to_library_default_team_lookup_failure_stays_untenanted
         ),
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
-            new=AsyncMock(return_value={}),
+            new=AsyncMock(return_value=ScheduleInfo()),
         ),
         patch(
             "backend.api.features.orgs.db.get_user_default_team",
@@ -164,7 +165,7 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
         ) as mock_from_db,
         patch(
             "backend.api.features.library._add_to_library._fetch_schedule_info",
-            new=AsyncMock(return_value={}),
+            new=AsyncMock(return_value=ScheduleInfo()),
         ),
         patch(
             "backend.api.features.orgs.db.get_user_default_team",
@@ -183,7 +184,7 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     assert result is converted_agent
     mock_from_db.assert_called_once_with(
         updated_agent,
-        schedule_info={},
+        schedule_info=ScheduleInfo(),
     )
     # Verify update was called with correct where and data
     update_call = mock_prisma.return_value.update.call_args

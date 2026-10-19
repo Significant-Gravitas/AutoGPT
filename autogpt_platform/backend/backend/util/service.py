@@ -408,6 +408,11 @@ class AppService(BaseAppService, ABC):
         app.add_exception_handler(
             exceptions.MissingConfigError, cls._handle_internal_http_error(503)
         )
+        # Without its own handler a ConflictError took the catch-all 500 path,
+        # which re-raises after responding and drops the keep-alive connection.
+        app.add_exception_handler(
+            exceptions.ConflictError, cls._handle_internal_http_error(409)
+        )
         app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
 
     @conn_retry("FastAPI server", "Running FastAPI server")
@@ -655,7 +660,7 @@ async def _send_trace_headers_async(request: httpx.Request) -> None:
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
-    call_timeout: int | None = api_call_timeout,
+    call_timeout: float | httpx.Timeout | None = api_call_timeout,
     request_retry: bool = False,
 ) -> ASC:
 

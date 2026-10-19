@@ -27224,6 +27224,12 @@
             "title": "Next Scheduled Run",
             "description": "ISO 8601 timestamp of the next scheduled run, if any"
           },
+          "schedule_info_unavailable": {
+            "type": "boolean",
+            "title": "Schedule Info Unavailable",
+            "description": "The scheduler could not be reached, so is_scheduled and next_scheduled_run are unknown rather than false",
+            "default": false
+          },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
           "marketplace_listing": {
             "anyOf": [
@@ -31409,6 +31415,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id",
             "description": "Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow."
+          },
+          "schedule_id": {
+            "anyOf": [
+              { "type": "string", "format": "uuid" },
+              { "type": "null" }
+            ],
+            "title": "Schedule Id",
+            "description": "Idempotency key: mint one per submission and resend it when retrying. A retry of a create that was applied but not confirmed returns that schedule instead of creating a duplicate. Becomes the schedule's id."
           }
         },
         "type": "object",

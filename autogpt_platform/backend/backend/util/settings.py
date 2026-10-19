@@ -620,6 +620,29 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    scheduler_request_timeout_seconds: float = Field(
+        default=25.0,
+        gt=0,
+        description=(
+            "How long a schedule listing a user is waiting on (schedule lists, "
+            "admin diagnostics) waits for the scheduler before answering 503. "
+            "Just under the 30s Vercel proxy cut-off, so it only replaces the "
+            "proxy's 504; prod listings are slow (p50 15s). Writes are not cut "
+            "short once the scheduler has the request: see "
+            "schedule_availability.write_schedule."
+        ),
+    )
+
+    scheduler_connect_timeout_seconds: float = Field(
+        default=3.0,
+        gt=0,
+        description=(
+            "How long a schedule request a user is waiting on tries to reach the "
+            "scheduler. A scheduler that is restarting refuses or drops the "
+            "connection; this turns that into a fast 503 instead of a hang."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(

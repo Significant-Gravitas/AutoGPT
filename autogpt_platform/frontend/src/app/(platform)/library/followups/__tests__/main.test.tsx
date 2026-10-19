@@ -112,6 +112,38 @@ describe("FollowupsPage", () => {
     expect(screen.queryByTestId("followups-list")).toBeNull();
   });
 
+  test("a scheduler outage reads as temporarily unavailable, never as nothing scheduled", async () => {
+    const unavailable = () =>
+      HttpResponse.json(
+        {
+          detail: {
+            code: "scheduler_unavailable",
+            message: "Schedules are temporarily unavailable.",
+          },
+        },
+        { status: 503 },
+      );
+    server.use(
+      http.get("*/api/schedules/followups", unavailable),
+      http.get("*/api/schedules", unavailable),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+    expect(screen.queryByText(/Failed to load/i)).toBeNull();
+
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([makeFollowup({})]),
+      defaultGraphSchedulesHandler(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByTestId("followups-list")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
   test("renders one row per follow-up returned by the API", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([

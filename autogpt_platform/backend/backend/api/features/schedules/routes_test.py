@@ -140,7 +140,7 @@ def test_list_copilot_turn_schedules_filters_to_copilot_kind(
         return_value=[copilot_info, graph_info]
     )
     mocker.patch(
-        "backend.api.features.schedules.routes.get_scheduler_client",
+        "backend.api.features.schedules.routes.get_interactive_scheduler_client",
         return_value=mock_client,
     )
 
@@ -178,7 +178,7 @@ def _patch_scheduler(mocker: pytest_mock.MockFixture, **methods) -> Mock:
     for name, value in methods.items():
         setattr(scheduler_client, name, value)
     mocker.patch(
-        "backend.api.features.schedules.routes.get_scheduler_client",
+        "backend.api.features.schedules.routes.get_interactive_scheduler_client",
         return_value=scheduler_client,
     )
     return scheduler_client

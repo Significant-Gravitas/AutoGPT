@@ -21,6 +21,8 @@ import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
+import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { parseAsString, useQueryStates } from "nuqs";
 
 function parseTab(
@@ -80,12 +82,18 @@ export function useSidebarRunsList({
     },
   );
 
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
+      ...schedulerQueryOptions,
     },
   });
+  // A restarting scheduler costs the Scheduled tab, not the whole sidebar.
+  const schedulesUnavailable = isSchedulerUnavailableError(
+    schedulesQuery.error,
+  );
 
   const presetsQuery = useAgentPresetsQuery(graphId || undefined);
 
@@ -128,11 +136,11 @@ export function useSidebarRunsList({
   const triggersCount = triggers.length + triggerAgents.length;
   const loading =
     !runsQuery.isSuccess ||
-    !schedulesQuery.isSuccess ||
+    (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const error =
-    schedulesQuery.error ||
+    (schedulesUnavailable ? null : schedulesQuery.error) ||
     runsQuery.error ||
     presetsQuery.error ||
     (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
@@ -216,6 +224,8 @@ export function useSidebarRunsList({
   }, [triggers, triggerAgents, activeItem, tabValue, onSelectRun]);
 
   return {
+    schedulesUnavailable,
+    retrySchedules: () => void schedulesQuery.refetch(),
     runs,
     schedules,
     templates,
