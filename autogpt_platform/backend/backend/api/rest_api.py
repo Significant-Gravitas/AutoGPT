@@ -28,6 +28,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -45,6 +46,7 @@ import backend.api.features.chat.speech as chat_speech
 import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.feature_flags.routes as feature_flags_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -522,6 +524,11 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
 # Dev-only surface: the test-data seeder is never mounted outside a local
 # app_env, matching how docs_url/metrics are gated above. The runtime
 # `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
@@ -550,6 +557,7 @@ app.include_router(
     skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
 )
 app.include_router(home_routes.router, prefix="/api")
+app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

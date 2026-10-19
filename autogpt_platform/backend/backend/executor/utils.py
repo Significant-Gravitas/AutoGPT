@@ -5,7 +5,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast, get_args
+from typing import Any, Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -1450,11 +1450,12 @@ async def _add_graph_execution(
         if not graph_exec:
             raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
+        approval_chat_id = await starting_chat(graph_exec, user_id, edb)
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.
         pause_irreversible_actions = (
             pause_irreversible_actions
-            or await _started_from_attended_chat(graph_exec, user_id, edb)
+            or await _started_from_attended_chat(approval_chat_id)
         )
 
         # The persisted row is authoritative on resume. A caller cannot turn
@@ -1534,6 +1535,13 @@ async def _add_graph_execution(
         # A sub-graph inherits the tree through its parent's context.
         if copilot_tree is None and execution_context is not None:
             copilot_tree = _spawner_envelope_from(execution_context)
+        # A sub-graph asks in the chat that started its parent run.
+        if trigger == ExecutionTrigger.COPILOT:
+            approval_chat_id = trigger_ref
+        elif trigger == ExecutionTrigger.SUBGRAPH and execution_context:
+            approval_chat_id = execution_context.approval_chat_id
+        else:
+            approval_chat_id = None
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
         # inherit dry_run so child-graph validation skips credential checks.
@@ -1700,10 +1708,21 @@ async def _add_graph_execution(
             }
         )
 
-    if pause_irreversible_actions:
-        execution_context = execution_context.model_copy(
-            update={"sensitive_action_safe_mode": True}
+    stamp: dict[str, Any] = {
+        "approval_chat_id": (
+            None
+            if dry_run or execution_context.dry_run or graph_exec.is_dry_run
+            else approval_chat_id or None
         )
+    }
+    if execution_context.graph_sensitive_action_safe_mode is None:
+        # Kept apart from the pause forced below: the gate holds it as a floor.
+        stamp["graph_sensitive_action_safe_mode"] = (
+            execution_context.sensitive_action_safe_mode
+        )
+    if pause_irreversible_actions:
+        stamp["sensitive_action_safe_mode"] = True
+    execution_context = execution_context.model_copy(update=stamp)
 
     if copilot_tree is not None and execution_context.copilot_tree_id is None:
         execution_context = execution_context.model_copy(
@@ -1839,11 +1858,15 @@ def _serialise_copilot_tree(
     return data
 
 
-async def _started_from_attended_chat(
+# A sub-graph run whose parent run is gone: no chat can be named for it.
+PARENT_GONE = ""
+
+
+async def starting_chat(
     graph_exec: GraphExecutionMeta, user_id: str, edb
-) -> bool:
-    # A sub-graph run follows its parent run's chat. A parent or chat that is
-    # gone cannot prove nobody is watching, so the run pauses.
+) -> str | None:
+    """The chat that started this run, through its sub-graph parents: None when
+    no chat did, ``PARENT_GONE`` when a parent run no longer exists."""
     while (
         graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
         and graph_exec.trigger_ref
@@ -1852,14 +1875,21 @@ async def _started_from_attended_chat(
             user_id=user_id, execution_id=graph_exec.trigger_ref
         )
         if parent is None:
-            return True
+            return PARENT_GONE
         graph_exec = parent
-    if (
-        graph_exec.trigger_source != ExecutionTrigger.COPILOT
-        or not graph_exec.trigger_ref
-    ):
+    if graph_exec.trigger_source != ExecutionTrigger.COPILOT:
+        return None
+    return graph_exec.trigger_ref or None
+
+
+async def _started_from_attended_chat(chat_id: str | None) -> bool:
+    # A parent or chat that is gone cannot prove nobody is watching, so the
+    # run pauses.
+    if chat_id is None:
         return False
-    session = await chat_db().get_chat_session_metadata(graph_exec.trigger_ref)
+    if chat_id == PARENT_GONE:
+        return True
+    session = await chat_db().get_chat_session_metadata(chat_id)
     return session is None or session.metadata.pauses_irreversible_actions
 
 

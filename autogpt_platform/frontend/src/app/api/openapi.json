@@ -2747,6 +2747,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
@@ -3093,47 +3135,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/auth/user/email": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Update user email",
-        "operationId": "postV1Update user email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "type": "string", "title": "Email" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": { "type": "string" },
-                  "type": "object",
-                  "title": "Response Postv1Update User Email"
-                }
               }
             }
           },
@@ -6822,7 +6823,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -7918,6 +7927,56 @@
         }
       }
     },
+    "/api/experts/{expert_id}/mode": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Mode",
+        "description": "Set the approval mode new web chats with this expert start on.\n\nThreads already open keep the mode stored on them, and the composer's\nselector still overrides it per thread. Routines, scheduled follow-ups\nand chats driven from a linked chat platform are not gated by it.",
+        "operationId": "update_expert_mode",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertModeUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Approval modes are not enabled for this account"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -8268,6 +8327,46 @@
           },
           "503": {
             "description": "Workflow schedule cleanup temporarily unavailable"
+          }
+        }
+      }
+    },
+    "/api/feature-flags": {
+      "get": {
+        "tags": ["feature-flags"],
+        "summary": "Get Feature Flags",
+        "description": "The frontend's flags for the caller, evaluated as the backend's own reads are.",
+        "operationId": "get_feature_flags",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "visitor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed.",
+              "title": "Visitor Id"
+            },
+            "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FrontendFlagValues" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -12428,7 +12527,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
-        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "description": "Hand back the user's own recording, for as long as it is kept.\n\nMeant for a take that failed: \"your recording is safe\" has to be\ntrue, and this is what makes it checkable. A transcribed take has no\nrecording left, since only the transcript is kept. A failed take's\nrecording is deleted within 48 hours (see ``retention.py``), and one\nthat is due is refused even before the sweep reaches it; a signed URL\nfor one that is gone would only fail at the bucket, so say so here\ninstead.",
         "operationId": "download_brain_dump_recording",
         "responses": {
           "200": {
@@ -15631,7 +15730,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.  409 means the delete could not be ordered with another\nchange to the owner's skills; nothing was deleted, so try again.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16433,6 +16532,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -18719,7 +18819,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",
@@ -21903,6 +22004,16 @@
             "type": "boolean",
             "title": "Expert Kickoff",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           }
         },
         "additionalProperties": false,
@@ -23655,6 +23766,16 @@
             ],
             "title": "Learning Paused At"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -23935,7 +24056,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Job Title"
           },
-          "is_archived": { "type": "boolean", "title": "Is Archived" }
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
         },
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
@@ -23963,6 +24094,24 @@
         "type": "object",
         "required": ["learning_paused"],
         "title": "ExpertLearningPolicyRequest"
+      },
+      "ExpertModeUpdate": {
+        "properties": {
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
+        },
+        "type": "object",
+        "required": ["autopilot_mode"],
+        "title": "ExpertModeUpdate",
+        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default. The field is required,\nso an empty body cannot clear it by accident."
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -24371,6 +24520,16 @@
             ],
             "title": "Learning Paused At"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -24761,6 +24920,84 @@
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse"
+      },
+      "FrontendFlag": {
+        "type": "string",
+        "enum": [
+          "marketplace-search-terms",
+          "enable-platform-payment",
+          "artifacts-page",
+          "chat-mode-option",
+          "generic-trigger-agents",
+          "chat-search",
+          "autogpt-new-layout",
+          "chat-workspace-files",
+          "chat-pinning",
+          "task-progress-bar",
+          "hire-experts",
+          "skills-hub",
+          "settings-notifications",
+          "onboarding-brain-dump",
+          "onboarding-expert-team",
+          "graphiti-memory",
+          "graphiti-communities-enabled",
+          "dream-pass-enabled",
+          "dream-pass-invalidate-entity",
+          "dream-skill-learning-enabled",
+          "copilot-bot-platforms",
+          "copilot-voice-mode",
+          "copilot-auto-mode",
+          "copilot-stream-shadow",
+          "copilot-stream-runtime"
+        ],
+        "title": "FrontendFlag",
+        "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
+        "x-enum-varnames": [
+          "MARKETPLACE_SEARCH_TERMS",
+          "ENABLE_PLATFORM_PAYMENT",
+          "ARTIFACTS_PAGE",
+          "CHAT_MODE_OPTION",
+          "GENERIC_TRIGGER_AGENTS",
+          "CHAT_SEARCH",
+          "AUTOGPT_NEW_LAYOUT",
+          "CHAT_WORKSPACE_FILES",
+          "CHAT_PINNING",
+          "TASK_PROGRESS_BAR",
+          "HIRE_EXPERTS",
+          "SKILLS_HUB",
+          "SETTINGS_NOTIFICATIONS",
+          "ONBOARDING_BRAIN_DUMP",
+          "ONBOARDING_EXPERT_TEAM",
+          "GRAPHITI_MEMORY",
+          "GRAPHITI_COMMUNITIES_ENABLED",
+          "DREAM_PASS_ENABLED",
+          "DREAM_PASS_INVALIDATE_ENTITY",
+          "DREAM_SKILL_LEARNING_ENABLED",
+          "COPILOT_BOT_PLATFORMS",
+          "COPILOT_VOICE_MODE",
+          "COPILOT_AUTO_MODE",
+          "COPILOT_STREAM_SHADOW",
+          "COPILOT_STREAM_RUNTIME"
+        ]
+      },
+      "FrontendFlagValues": {
+        "properties": {
+          "flags": {
+            "additionalProperties": true,
+            "propertyNames": { "$ref": "#/components/schemas/FrontendFlag" },
+            "type": "object",
+            "title": "Flags",
+            "description": "Each flag the vendor answered, or null for one it has no definition of, which takes the frontend's default; one left out has no answer yet."
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False when no flag vendor is configured or it gave up starting, so every flag is its default."
+          }
+        },
+        "type": "object",
+        "required": ["flags", "configured"],
+        "title": "FrontendFlagValues"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -28227,6 +28464,10 @@
       "NightlyBatchResult": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "nightly_id": {
             "type": "string",
             "title": "Nightly Id",
