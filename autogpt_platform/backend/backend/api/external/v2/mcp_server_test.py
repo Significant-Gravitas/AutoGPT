@@ -22,8 +22,11 @@ from backend.api.external.v2.mcp_server import (
     create_mcp_server,
     protected_resource_metadata,
 )
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.tools import TOOL_REGISTRY
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 
 async def test_the_server_carries_every_opted_in_tool_with_its_scopes():

@@ -112,6 +112,35 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-haiku-5-5",
+                display_name="Claude Haiku 5.5",
+                provider="anthropic",
+                creator="anthropic",
+                # Native window is 1M, but Anthropic bills prompts above
+                # 100K tokens at 5x ($0.50/$2.50) and token billing here is
+                # flat-rate. Capping at 100K keeps prompt compression and
+                # the max_tokens budget inside the base price tier.
+                context_window=100000,
+                max_output_tokens=128000,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # OpenRouter live listing 2026-10-08 (anthropic/claude-haiku-5.5):
+                # $0.10/1M in, $0.50/1M out, cache read $0.01/1M, cache write
+                # (5m) $0.125/1M. Credits use that base tier (standard 1.5x
+                # margin, i.e. USD x 150); see context_window for >100K.
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=1.5,
+                    cache_creation_credits_per_1m=18.75,
+                    provider_input_usd_per_1m=0.10,
+                    provider_output_usd_per_1m=0.50,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-opus-4-5-20251101",
                 display_name="Claude Opus 4.5",
                 provider="anthropic",
@@ -556,8 +585,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=38.61,
-                    output_credits_per_1m=154.305,
+                    input_credits_per_1m=48,
+                    output_credits_per_1m=133.5,
                 ),
             ),
             CatalogModel(
@@ -711,8 +740,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=3,
-                    input_credits_per_1m=112.5,
-                    output_credits_per_1m=562.5,
+                    input_credits_per_1m=123.75,
+                    output_credits_per_1m=618.75,
                 ),
             ),
             CatalogModel(
@@ -744,12 +773,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=16384,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-23: $0.09/$0.34 per 1M,
-                # cache read $0.05/1M (drifted from the $0.14/$0.40 launch price).
+                # Live OpenRouter rate as of 2026-10-17: $0.20/$0.40 per 1M,
+                # cache read $0.05/1M (flagged by check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=13.5,
-                    output_credits_per_1m=51.0,
+                    input_credits_per_1m=30,
+                    output_credits_per_1m=60,
                     cache_read_credits_per_1m=7.5,
                 ),
             ),
@@ -775,13 +804,13 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 supports_parallel_tool_calls=True,
-                # Live OpenRouter rate as of 2026-09-25: $0.021/$0.0616 per
-                # 1M, cache read $0.0042/1M (dropped from $0.06/$0.18,
-                # verified via check_openrouter_prices.py).
+                # Live OpenRouter rate as of 2026-10-17: $0.06/$0.18 per
+                # 1M, cache read $0.0042/1M (flagged by
+                # check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=3.15,
-                    output_credits_per_1m=9.24,
+                    input_credits_per_1m=9,
+                    output_credits_per_1m=27,
                     cache_read_credits_per_1m=0.63,
                 ),
             ),
@@ -844,6 +873,26 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=15.0,
                     output_credits_per_1m=30.0,
                     cache_read_credits_per_1m=0.3,
+                ),
+            ),
+            CatalogModel(
+                slug="meta/muse-spark-open",
+                display_name="Muse Spark Open",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $1.25/$4.25 per Mtok, cache read $0.15/1M --
+                # live OpenRouter listing 2026-10-16 (meta/muse-spark-open).
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=187.5,
+                    output_credits_per_1m=637.5,
+                    cache_read_credits_per_1m=22.5,
                 ),
             ),
             CatalogModel(
@@ -1074,8 +1123,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=67.5,
-                    output_credits_per_1m=337.5,
+                    input_credits_per_1m=75,
+                    output_credits_per_1m=375,
                 ),
             ),
             CatalogModel(
@@ -1155,7 +1204,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=5.55, output_credits_per_1m=25.5
+                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90
                 ),
             ),
             CatalogModel(

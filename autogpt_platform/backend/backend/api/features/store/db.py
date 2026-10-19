@@ -45,6 +45,9 @@ settings = Settings()
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
+# Creator search reads only this much of a query, which bounds its ILIKE pattern.
+MAX_CREATOR_SEARCH_QUERY_LENGTH = 100
+
 
 class StoreAgentsSortOptions(Enum):
     RATING = "rating"
@@ -534,12 +537,8 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    if search_query:
-        # Sanitize and validate search query by escaping special characters
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise DatabaseError("Invalid search query")
-
+    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    if sanitized_query:
         # Escape special SQL characters
         sanitized_query = (
             sanitized_query.replace("\\", "\\\\")

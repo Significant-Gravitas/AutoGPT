@@ -1,6 +1,5 @@
 """A failed payment on a change Stripe holds until it's paid changed nothing,
-so it must not end the plans a lapsed payment otherwise ends. A trial that
-converts early waits like this for the customer's bank to confirm. The failure
+so it must not end the paid plans a lapsed payment otherwise ends. The failure
 event can also arrive after the bank confirmed or the hold lapsed."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,6 +18,7 @@ def _failed_invoice(billing_reason: str) -> dict:
         "customer": "cus_1",
         "subscription": "sub_trial",
         "amount_due": 32000,
+        "status": "open",
         "billing_reason": billing_reason,
     }
 
@@ -27,7 +27,7 @@ def _failed_invoice(billing_reason: str) -> dict:
 def lapse():
     user = MagicMock(spec=User)
     user.id = "user-1"
-    user.subscriptionTier = SubscriptionTier.TRIAL
+    user.subscriptionTier = SubscriptionTier.PRO
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -44,12 +44,21 @@ def lapse():
         ) as cancel,
         patch.object(credit, "set_subscription_tier", new_callable=AsyncMock) as tier,
         patch.object(stripe.Invoice, "pay_async", new_callable=AsyncMock),
+        patch.object(credit, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(
+            stripe.Invoice,
+            "retrieve_async",
+            AsyncMock(return_value=_failed_invoice("subscription_cycle")),
+        ) as retrieve,
     ):
-        yield MagicMock(settled=settled, deduct=deduct, cancel=cancel, tier=tier)
+        yield MagicMock(
+            settled=settled, deduct=deduct, cancel=cancel, tier=tier, retrieve=retrieve
+        )
 
 
 @pytest.mark.asyncio
 async def test_a_failed_payment_on_a_held_change_cancels_nothing(lapse):
+    lapse.retrieve.return_value = _failed_invoice("subscription_update")
     await credit.handle_subscription_payment_failure(
         _failed_invoice("subscription_update")
     )

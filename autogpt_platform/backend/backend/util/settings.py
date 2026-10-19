@@ -450,6 +450,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for database server API to run on",
     )
 
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -933,10 +939,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
 
     @field_validator("feature_flag_backend", mode="before")
@@ -954,9 +960,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,

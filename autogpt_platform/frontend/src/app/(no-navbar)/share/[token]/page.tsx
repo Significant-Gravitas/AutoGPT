@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/__legacy__/ui/card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
@@ -31,6 +32,7 @@ function ExecutionShareChrome({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
       </div>
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }

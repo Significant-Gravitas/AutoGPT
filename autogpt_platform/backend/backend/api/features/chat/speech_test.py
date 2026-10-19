@@ -12,7 +12,10 @@ from backend.api.features.chat import speech as speech_routes
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot import speech as speech_module
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.copilot.usage_activation_fixtures import usage_snapshot
 from backend.util.exceptions import UserPaywalledError
+
+_usage_snapshot = usage_snapshot
 
 app = fastapi.FastAPI()
 app.include_router(speech_routes.router)
