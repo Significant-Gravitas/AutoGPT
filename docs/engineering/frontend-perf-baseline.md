@@ -14,7 +14,8 @@ Absolute timings depend on the machine, so compare a branch against these number
 
 What stands out:
 
-- **Streaming a reply re-renders the whole conversation.** In `copilot-stream-reply`, each commit renders about 2,500 components, and one commit renders more than 11,000. Most of them are tooltips, icons and Radix wrappers inside the 200 existing rows. `copilot-idle` shows the same chat at rest: about 40 renders per commit.
+- **Streaming a reply re-renders the whole conversation.** In `copilot-stream-reply`, one reply costs about 210,000 renders and 5.7 s of script time over 56 commits. The biggest commits render more than 11,000 components: the 200 existing rows, mostly their tooltips, icons and Radix wrappers. Most of the cost comes after the stream ends, when the page refetches the session and re-renders the transcript several times. `copilot-idle` shows the same chat at rest: about 40 renders per commit.
+- **The end of a turn is not fully deterministic.** One run in three to five does one fewer full-transcript re-render (about 11,000 renders, 5%), whatever the run's timing. The median absorbs it; use `--runs 5` when a change to this scenario is close to that size.
 - **Switching threads is the most expensive scenario:** about 270,000 renders and 11.7 s of script time over nine switches.
 - **Dragging a node during a running execution** renders about 500 components per pointer move, with 39 long tasks in 2 s.
 - **The library with 20 running workflows** and **Home with a reply streaming in the background** are quiet.
@@ -161,47 +162,47 @@ What stands out:
 
 | metric | median | range | spread |
 | --- | --- | --- | --- |
-| commits | 26 | 26 – 26 | 0.0% |
-| total renders | 66,169 | 66,169 – 66,169 | 0.0% |
-| renders per commit | 2,545.0 | 2,545.0 – 2,545.0 | 0.0% |
-| max renders in one commit | 11,036 | 11,036 – 11,036 | 0.0% |
-| script time (ms) | 1,840 | 1,780 – 2,005 | 12.2% |
-| task time (ms) | 2,054 | 1,985 – 2,208 | 10.9% |
-| layout time (ms) | 8 | 8 – 8 | 2.2% |
-| style recalc time (ms) | 89 | 89 – 90 | 0.9% |
-| long tasks (≥ 50 ms) | 6 | 6 – 6 | 0.0% |
-| long task total (ms) | 1,903 | 1,842 – 2,068 | 11.9% |
-| heap used after GC (MB) | 97.6 | 96.2 – 99.6 | 3.5% |
+| commits | 56 | 55 – 56 | 1.8% |
+| total renders | 209,512 | 198,596 – 209,513 | 5.2% |
+| renders per commit | 3,741.3 | 3,546.4 – 3,809.3 | 7.0% |
+| max renders in one commit | 11,149 | 11,149 – 11,149 | 0.0% |
+| script time (ms) | 5,725 | 5,344 – 5,788 | 7.8% |
+| task time (ms) | 6,179 | 5,819 – 6,309 | 7.9% |
+| layout time (ms) | 21 | 21 – 24 | 11.5% |
+| style recalc time (ms) | 195 | 181 – 226 | 23.1% |
+| long tasks (≥ 50 ms) | 18 | 17 – 18 | 5.6% |
+| long task total (ms) | 5,876 | 5,506 – 5,980 | 8.1% |
+| heap used after GC (MB) | 84.8 | 84.6 – 86.7 | 2.5% |
 
 **Top components (median renders)**
 
 | name | renders |
 | --- | --- |
-| `Tooltip` | 5,121 |
-| `TooltipContent` | 5,121 |
-| `HugeiconsIcon` | 2,859 |
-| `Icon` | 2,859 |
-| `Presence` | 2,620 |
-| `Popper` | 2,588 |
-| `PopperAnchor` | 2,588 |
-| `PopperProvider` | 2,588 |
-| `Primitive.div` | 2,588 |
-| `Primitive.div.Slot` | 2,588 |
+| `Tooltip` | 16,233 |
+| `TooltipContent` | 16,229 |
+| `HugeiconsIcon` | 9,064 |
+| `Icon` | 9,064 |
+| `Presence` | 8,305 |
+| `Primitive.div` | 8,201 |
+| `Popper` | 8,197 |
+| `PopperAnchor` | 8,197 |
+| `PopperProvider` | 8,197 |
+| `Primitive.div.Slot` | 8,197 |
 
 **Top render causes (median renders)**
 
 | name | renders |
 | --- | --- |
-| `Tooltip props:children` | 5,108 |
-| `HugeiconsIcon parent-same-props<-Icon` | 2,857 |
-| `Presence props:children` | 2,619 |
-| `Primitive.div props:children` | 2,587 |
-| `Primitive.div.Slot props:children` | 2,587 |
-| `Primitive.div.SlotClone props:children` | 2,587 |
-| `PopperAnchor props:children` | 2,581 |
-| `Popper props:children` | 2,580 |
-| `PopperProvider props:children` | 2,580 |
-| `TooltipProvider props:children` | 2,570 |
+| `Tooltip props:children` | 16,186 |
+| `HugeiconsIcon parent-same-props<-Icon` | 9,057 |
+| `Presence props:children` | 8,299 |
+| `Primitive.div props:children` | 8,192 |
+| `Primitive.div.Slot props:children` | 8,190 |
+| `Primitive.div.SlotClone props:children` | 8,190 |
+| `PopperAnchor props:children` | 8,171 |
+| `Popper props:children` | 8,166 |
+| `PopperProvider props:children` | 8,166 |
+| `TooltipProvider props:children` | 8,143 |
 
 ## copilot-switch-threads · baseline — median of 3 runs
 

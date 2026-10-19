@@ -79,7 +79,7 @@ Tips for numbers you can trust:
 - Compare on the same machine and the same build type. Dev React is slower than production React, but a before/after delta on the same build type is still valid.
 - Alternate the two checkouts when you can (before, after, before, after) so a machine that slows down over time does not favour one side.
 - Keep the rest of the setup equal on both sides. `.env.default` turns on the React Query devtools and the token devtool, and they render too, so leave them as they are or change them for both runs.
-- Read total renders and the per-component counts first: they are deterministic, and on the baseline most scenarios repeat them exactly from run to run. Commits, and so renders per commit, depend on how React batches updates into frames, so they can shift once a change makes rendering cheaper. Timing metrics move by a few percent. Treat any change smaller than the spread the script prints as noise.
+- Read total renders and the per-component counts first: they are deterministic, and on the baseline most scenarios repeat them exactly from run to run. The exception is the end of a copilot turn, which now and then does one full-transcript re-render fewer (see the baseline). Commits, and so renders per commit, depend on how React batches updates into frames, so they can shift once a change makes rendering cheaper. Timing metrics move by a few percent. Treat any change smaller than the spread the script prints as noise.
 
 ## Reading the causes column
 
@@ -102,7 +102,7 @@ Names come from the component function. Third-party code bundled already minifie
 | Name | Setup | Measured | Window |
 | --- | --- | --- | --- |
 | `copilot-idle` | Open the 200-message chat | Nothing | 20 s |
-| `copilot-stream-reply` | Open the 200-message chat | Type "go", press Enter, stream the 20-line fixture reply at about 33 chunks a second | Until the reply has been sent, + 1 s |
+| `copilot-stream-reply` | Open the 200-message chat | Type "go", press Enter, stream the 20-line fixture reply at about 33 chunks a second | Until the reply has been sent and the page has refetched the session, + 1 s |
 | `copilot-background-stream` | Start the same reply slowly (200 ms a chunk) in the 200-message chat, click Home, and wait 3 s for Home's entrance animations | Nothing | 15 s |
 | `copilot-type` | Open the 200-message chat and focus the composer | Type 19 characters, 50 ms apart | 2 s after the last key |
 | `copilot-switch-threads` | Open the 200-message chat and list the 200 / 50 / 10-message chats in the sidebar | Click 50 → 10 → 200, three rounds, 2 s on each | Until done |

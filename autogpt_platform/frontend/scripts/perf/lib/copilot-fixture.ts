@@ -8,6 +8,8 @@ const FIXED_TIME = "2026-01-05T09:00:00.000Z";
 const STREAM_TIMEOUT_MS = 120_000;
 const TURN_START_TIMEOUT_MS = 15_000;
 const POLL_MS = 50;
+/** How long to wait for the page to refetch the session after a turn. */
+const REFETCH_TIMEOUT_MS = 5_000;
 
 export interface SessionSpec {
   id: string;
@@ -76,6 +78,8 @@ export function createCopilotFixture({
   const reply = replyText(readFixture(replyFixture));
   const extraRows = new Map<string, SessionRow[]>();
   const pendingTurns: string[] = [];
+  const turnSessions: string[] = [];
+  const servedTurns = new Map<string, number>();
   let turnCount = 0;
 
   function find(id: string) {
@@ -155,6 +159,9 @@ export function createCopilotFixture({
       const olderPage = new URL(route.request().url()).searchParams.has(
         "before_sequence",
       );
+      if (!olderPage) {
+        servedTurns.set(spec.id, (extraRows.get(spec.id)?.length ?? 0) / 2);
+      }
       await fulfillJSON(
         route,
         olderPage
@@ -184,6 +191,7 @@ export function createCopilotFixture({
       const tag = `${spec.id}:${++turnCount}`;
       const body = request.postDataJSON() as { message?: string } | null;
       pendingTurns.push(tag);
+      turnSessions.push(spec.id);
       stream
         .waitForDone(tag, STREAM_TIMEOUT_MS)
         .then(() => appendTurn(spec, body?.message ?? ""))
@@ -196,16 +204,46 @@ export function createCopilotFixture({
 
   return {
     handlers,
-    /** Resolves once turn number `turn` (1-based) has been fully streamed. */
+    /**
+     * Resolves once turn number `turn` (1-based) has been fully streamed and
+     * the page has refetched the session with it. Ending the window on that
+     * refetch, rather than on a timer after the stream, keeps the page's
+     * post-turn re-render inside the window on every run. If the page never
+     * refetches, it gives up after REFETCH_TIMEOUT_MS and carries on.
+     */
     async waitForTurn(turn: number) {
-      const deadline = Date.now() + TURN_START_TIMEOUT_MS;
-      while (pendingTurns.length < turn) {
-        if (Date.now() > deadline) {
+      await until(
+        () => pendingTurns.length >= turn,
+        TURN_START_TIMEOUT_MS,
+        () => {
           throw new Error(`Copilot turn ${turn} never reached the stream`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-      }
+        },
+      );
       await stream.waitForDone(pendingTurns[turn - 1], STREAM_TIMEOUT_MS);
+      const session = turnSessions[turn - 1];
+      const turnInSession = turnSessions
+        .slice(0, turn)
+        .filter((id) => id === session).length;
+      await until(
+        () => (servedTurns.get(session) ?? 0) >= turnInSession,
+        REFETCH_TIMEOUT_MS,
+        () =>
+          console.warn(
+            `⚠ the page did not refetch the session after turn ${turn}`,
+          ),
+      );
     },
   };
+}
+
+async function until(
+  condition: () => boolean,
+  timeoutMs: number,
+  onTimeout: () => void,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) return onTimeout();
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
 }
