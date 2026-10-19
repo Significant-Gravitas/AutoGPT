@@ -200,6 +200,19 @@ def test_looking_up_the_step_that_failed_is_not_work_done():
     assert outcome.whole_run
 
 
+def test_finding_the_agent_that_then_failed_is_not_work_done():
+    """The weekly report finds its agent, then run_agent fails (SECRT-2799):
+    the run did none of its work, so it failed outright."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_looked_up("find_library_agent"))
+    watch.observe(_run_agent_failure())
+
+    outcome = watch.outcome(None)
+
+    assert outcome.failure is not None and outcome.whole_run
+
+
 def test_the_discord_monitor_pauses_on_its_third_run():
     streak = None
     steps = []
