@@ -6,6 +6,7 @@ import {
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
+  copilotResumeHandler,
   copilotStreamErrorHandler,
   copilotStreamHandler,
   createStreamHold,
@@ -24,6 +25,7 @@ import {
   copilotStreamSequenceHandler,
   renderHost,
   resetChatRuntimes,
+  sessionHandler,
   STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
@@ -134,6 +136,12 @@ const TOOL_CALL: UIMessageChunk[] = [
     output: { result: "sunny" },
   },
 ];
+
+// The server moved the chat to another engine; it starts the next turn itself.
+const ENGINE_SWITCH: UIMessageChunk = {
+  type: "data-mode-changed",
+  data: { mode: "extended_thinking" },
+};
 
 const TOOL_THEN_TEXT: UIMessageChunk[] = [
   { type: "start", messageId: "msg-1" },
@@ -370,6 +378,62 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       });
       expect(attributes).not.toHaveProperty("copilot.reply.first_text_ms");
     });
+
+    it("times a reply to the text of the turn the server starts after it", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            ...TOOL_CALL,
+            ENGINE_SWITCH,
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+        copilotResumeHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Your agent is ready.", {
+            messageId: "msg-2",
+          }),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("build me an agent");
+      await screen.findAllByText(/searched the web/i, undefined, {
+        timeout: 5000,
+      });
+      // Dispatched after the turn ends, later than a turn that ended without
+      // text is given to show some.
+      await sleep(SETTLE_GRACE_MS + HELD_MS);
+      server.use(
+        sessionHandler({
+          chat_status: "running",
+          active_stream: {
+            turn_id: "continuation-turn",
+            last_message_id: "msg-1",
+            started_at: "2026-05-13T00:00:00Z",
+          },
+        }),
+      );
+      await screen.findByText("Your agent is ready.", undefined, {
+        timeout: 5000,
+      });
+      server.use(sessionHandler());
+      const span = await recordedReply();
+
+      expect(attributesOf(span)).toMatchObject({
+        "copilot.reply.outcome": "answered",
+        "copilot.reply.first_output_kind": "tool",
+      });
+      expect(
+        msOf(span, "first_text_ms") - msOf(span, "first_output_ms"),
+      ).toBeGreaterThanOrEqual(SETTLE_GRACE_MS + HELD_MS);
+    }, 15_000);
 
     it("does not time a follow-up queued behind the running turn", async () => {
       const { hold, release } = createStreamHold(3);

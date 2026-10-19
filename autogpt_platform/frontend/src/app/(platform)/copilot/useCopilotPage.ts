@@ -361,7 +361,8 @@ export function useCopilotPage({
     sessionId,
     messages: displayMessages,
     status,
-    isSettled: isLocalStreamSettled,
+    // The runtime's watch for a continuation is the AI SDK's finish probe.
+    isSettled: isLocalStreamSettled && !runtimeStream?.isAwaitingContinuation,
     isQueued: sessionChatStatus === "queued",
     isUserStopping,
     streamClient: isStreamRuntime ? "stream-runtime" : "ai-sdk",
