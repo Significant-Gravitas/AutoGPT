@@ -23,6 +23,7 @@ import { TaskListRow } from "./components/TaskListRow";
 import { TemplateListItem } from "./components/TemplateListItem";
 import { TriggerAgentListItem } from "./components/TriggerAgentListItem";
 import { TriggerListItem } from "./components/TriggerListItem";
+import { uniqueRunsByID } from "./helpers";
 import { useSidebarRunsList } from "./useSidebarRunsList";
 
 interface Props {
@@ -161,7 +162,7 @@ export function SidebarRunsList({
           )}
         >
           <InfiniteList
-            items={runs}
+            items={uniqueRunsByID(runs)}
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
