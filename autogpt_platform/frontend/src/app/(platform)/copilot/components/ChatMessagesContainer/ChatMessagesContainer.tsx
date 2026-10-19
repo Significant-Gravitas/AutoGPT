@@ -19,7 +19,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
-import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
+import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
@@ -432,12 +432,17 @@ export function ChatMessagesContainer({
     !isRestoringActiveSession &&
     liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
-  const { elapsedSeconds } = useElapsedTimer(
+  // Only the start time lives here: the indicator ticks its own label, so
+  // the transcript does not re-render every second for the whole turn.
+  const streamClock = useElapsedAnchor(
     isActivelyStreaming,
     activeStreamStartedAt,
   );
   const indicator = (
-    <ThinkingIndicator active={showThinking} elapsedSeconds={elapsedSeconds} />
+    <ThinkingIndicator
+      active={showThinking}
+      startedAtMs={streamClock.startedAtMs}
+    />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
   // stays out of the transcript for them wherever it would render.
@@ -454,24 +459,7 @@ export function ChatMessagesContainer({
     );
     return () => clearTimeout(timer);
   }, [isRestoringActiveSession]);
-  const { elapsedSeconds: restoreElapsedSeconds } =
-    useElapsedTimer(showRestoreFallback);
-
-  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
-  // Reset when a new streaming turn begins.
-  const frozenElapsedRef = useRef(0);
-  const wasStreamingRef = useRef(false);
-  useEffect(() => {
-    if (isActivelyStreaming) {
-      if (!wasStreamingRef.current) {
-        frozenElapsedRef.current = 0;
-      }
-      if (elapsedSeconds > 0) {
-        frozenElapsedRef.current = elapsedSeconds;
-      }
-    }
-    wasStreamingRef.current = isActivelyStreaming;
-  });
+  const restoreClock = useElapsedAnchor(showRestoreFallback);
 
   const thread = (
     <>
@@ -705,7 +693,7 @@ export function ChatMessagesContainer({
                       turnMessages={turnMessagesForRow(messages, message)}
                       elapsedSeconds={
                         rowIndex === renderRows.length - 1
-                          ? frozenElapsedRef.current
+                          ? streamClock.frozenSeconds
                           : undefined
                       }
                       stats={turnStats?.get(message.id)}
@@ -809,7 +797,7 @@ export function ChatMessagesContainer({
                   <div className="flex flex-col gap-1 text-sm text-slate-500">
                     <ThinkingIndicator
                       active
-                      elapsedSeconds={restoreElapsedSeconds}
+                      startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
