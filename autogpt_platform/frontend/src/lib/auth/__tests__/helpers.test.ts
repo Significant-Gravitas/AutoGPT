@@ -92,13 +92,14 @@ describe("getRedirectPath", () => {
 });
 
 describe("broadcastLogout", () => {
-  it("writes a logout timestamp to the logout storage key", () => {
+  it("writes a fresh value to the logout storage key every time", () => {
+    broadcastLogout();
     broadcastLogout();
 
-    expect(storageSet).toHaveBeenCalledWith(
-      "supabase-logout",
-      expect.stringMatching(/^\d+$/),
-    );
+    // Other tabs only hear a write that changes the value.
+    const [first, second] = storageSet.mock.calls.map(([, value]) => value);
+    expect(storageSet).toHaveBeenCalledWith("supabase-logout", first);
+    expect(first).not.toBe(second);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   setWebSocketDisconnectIntent,
 } from "../helpers";
 import type { User } from "../types";
+import { ImpersonationState } from "@/lib/impersonation";
 
 interface FetchUserResult {
   user: User | null;
@@ -76,7 +77,11 @@ export async function validateSession(
     }
 
     if (result.user) {
-      const shouldUpdateUser = params.currentUser?.id !== result.user.id;
+      // A role change (e.g. an admin demoted) is a new identity too: it
+      // decides what this tab may do, impersonation included.
+      const shouldUpdateUser =
+        params.currentUser?.id !== result.user.id ||
+        params.currentUser?.role !== result.user.role;
       clearWebSocketDisconnectIntent();
       return {
         isValid: true,
@@ -105,8 +110,16 @@ interface RefreshSessionResult {
   error?: string;
 }
 
+// Never rejects: callers always get a result. A call that didn't reach the
+// server is reported as an error, which the store treats as no session.
 export async function refreshSession(): Promise<RefreshSessionResult> {
-  const result = await refreshSessionAction();
+  let result: RefreshSessionResult;
+  try {
+    result = await refreshSessionAction();
+  } catch (error) {
+    console.warn("Session refresh failed:", error);
+    return { user: null, error: "Couldn't reach the server" };
+  }
 
   if (result.user) {
     clearWebSocketDisconnectIntent();
@@ -135,6 +148,10 @@ export function handleStorageEvent(
   }
 
   setWebSocketDisconnectIntent();
+
+  // Another tab logged out: drop this tab's sessionStorage copy of any admin
+  // impersonation too, or it would be re-sent after the next sign-in.
+  ImpersonationState.clear();
 
   if (params.api) {
     params.api.disconnectWebSocket();
