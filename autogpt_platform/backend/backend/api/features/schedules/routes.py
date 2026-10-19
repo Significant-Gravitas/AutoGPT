@@ -229,14 +229,28 @@ async def delete_graph_execution_schedule(
     except NotFoundError:
         # Gone already, perhaps by a delete whose streak cleanup failed: a
         # retry still clears the streak, or the chat stays listed as paused.
-        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+        await _forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
     # A follow-up's failure streak is keyed by its schedule id.
-    await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+    await _forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
+
+
+async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
+    """The schedule is gone whatever this does, so a failure is logged, not
+    answered: a 500 would say the delete failed. A streak left behind keeps
+    the chat listed as paused, and deleting it from there again clears it."""
+    try:
+        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
+        )
 
 
 @router.patch(
