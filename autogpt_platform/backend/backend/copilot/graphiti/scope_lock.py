@@ -41,6 +41,7 @@ fences the graph write.
 
 import asyncio
 import logging
+import sys
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -51,6 +52,11 @@ from backend.copilot.dream.locks import EXTEND_SCRIPT, UNLOCK_SCRIPT
 from backend.data.redis_client import get_redis_async
 
 from .scope import write_lock_key
+
+if sys.version_info >= (3, 11):
+    from asyncio import timeout
+else:
+    from async_timeout import timeout
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +109,7 @@ async def _acquire(key: str, token: str, wait_seconds: float) -> LockState:
     deadline = loop.time() + wait_seconds
     while True:
         try:
-            async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):
+            async with timeout(_REDIS_TIMEOUT_SECONDS):
                 acquired = await _take_or_wait_turn(key, token)
         except Exception:
             logger.warning(
@@ -163,7 +169,7 @@ async def _release(key: str, token: str) -> None:
 
 
 async def _script(script: str, key: str, token: str, *args: int) -> int:
-    async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):
+    async with timeout(_REDIS_TIMEOUT_SECONDS):
         redis = await get_redis_async()
         # redis-py types ``eval`` as returning ``str``; the dream lock casts too.
         return int(await cast(Any, redis.eval(script, 1, key, token, *args)))

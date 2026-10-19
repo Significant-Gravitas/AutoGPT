@@ -9,6 +9,7 @@ packages = [{ include = "backend", format = "sdist" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
+async-timeout = {version = "^5.0.1", python = "<3.11"}
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"

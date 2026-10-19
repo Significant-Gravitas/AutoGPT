@@ -128,7 +128,7 @@ async def _watch(scope: MemoryScope, answered: asyncio.Event, seen: list[bool]):
 async def _searched(seen: list[bool], times: int) -> None:
     """Wait until the watcher has searched ``times`` times since the
     forget answered."""
-    async with asyncio.timeout(20):
+    async with scope_lock.timeout(20):
         while len(seen) < times:
             await asyncio.sleep(0.05)
 
