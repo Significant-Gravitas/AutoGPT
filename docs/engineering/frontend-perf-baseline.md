@@ -629,3 +629,52 @@ Added with the scenario (SECRT-2999): `dev` at `6d793e53d`, same machine type, 1
 | `PopperAnchor props:children` | 20,955 |
 | `PopperProvider props:children` | 20,955 |
 | `TooltipProvider props:children` | 20,949 |
+
+## builder-run-beads · baseline — median of 5 runs
+
+Added with SECRT-3009: `dev` app code at `6d793e53d` on a similar 16 GB cloud sandbox, 2 warm-ups and 5 saved runs. On this code every bead re-renders `JSBeads` once per animation frame (about 150 `JSBeads state#0` renders in the window); the heavy commits are the nodes re-rendering on each new execution.
+
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 84 | 79 – 85 | 7.1% |
+| total renders | 54,037 | 53,947 – 54,078 | 0.2% |
+| renders per commit | 642.7 | 636.2 – 684.0 | 7.4% |
+| max renders in one commit | 7,285 | 7,285 – 7,285 | 0.0% |
+| script time (ms) | 2,332 | 2,142 – 2,505 | 15.6% |
+| task time (ms) | 2,791 | 2,567 – 3,057 | 17.6% |
+| layout time (ms) | 39 | 38 – 43 | 13.0% |
+| style recalc time (ms) | 31 | 29 – 32 | 10.9% |
+| long tasks (≥ 50 ms) | 16 | 11 – 17 | 37.5% |
+| long task total (ms) | 2,274 | 2,069 – 2,613 | 23.9% |
+| heap used after GC (MB) | 99.4 | 97.1 – 103.1 | 6.0% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Text` | 2,954 |
+| `TooltipProvider` | 2,819 |
+| `HugeiconsIcon` | 2,675 |
+| `Icon` | 2,675 |
+| `Primitive.div` | 2,411 |
+| `Tooltip` | 2,322 |
+| `TooltipContent` | 2,322 |
+| `Presence` | 1,561 |
+| `SelectItem` | 1,512 |
+| `Primitive.div.Slot` | 1,427 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `TooltipProvider props:children` | 2,759 |
+| `HugeiconsIcon parent-same-props<-Icon` | 2,323 |
+| `Tooltip props:children` | 2,282 |
+| `SelectItem props:onMouseDown,children` | 1,512 |
+| `Presence props:children` | 1,461 |
+| `Primitive.div props:children` | 1,437 |
+| `Primitive.div.Slot props:children` | 1,407 |
+| `Primitive.div.SlotClone props:children` | 1,407 |
+| `Popper props:children` | 1,269 |
+| `PopperAnchor props:children` | 1,269 |

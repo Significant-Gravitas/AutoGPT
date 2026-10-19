@@ -17,8 +17,8 @@ from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import routes as chat_routes
-from backend.copilot import rate_limit
-from backend.copilot.billing_e2e.trial_account import active_trial
+from backend.copilot import rate_limit, usage_activation
+from backend.copilot.billing_e2e.trial_account import active_trial, usage_state_of
 from backend.copilot.briefing import scheduling as briefing_scheduling
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
@@ -63,6 +63,10 @@ class RouteTrialAccount:
         assert user_id == self.user_id
         return self.tier
 
+    async def read_usage_state(self, user_id: str):
+        assert user_id == self.user_id
+        return usage_state_of(user_id, self.tier, self.trial)
+
     async def read_counter(self, key: str) -> int | None:
         # Any day's daily counter: the check computes its own date.
         daily = rate_limit._daily_key(self.user_id).rsplit(":", 1)[0]
@@ -90,6 +94,13 @@ def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> RouteTrialA
     mocker.patch.object(rate_limit, "is_user_paywalled", _REAL_IS_USER_PAYWALLED)
     mocker.patch.object(
         rate_limit, "_fetch_user_tier", AsyncMock(side_effect=account.read_tier)
+    )
+    mocker.patch.object(
+        usage_activation,
+        "pro_activation_db",
+        return_value=MagicMock(
+            get_usage_activation_state=AsyncMock(side_effect=account.read_usage_state)
+        ),
     )
     mocker.patch.object(
         rate_limit,

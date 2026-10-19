@@ -125,6 +125,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `builder-run-events` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 40 node execution events over the websocket, one every 50 ms: the 10 unfinished nodes go RUNNING then COMPLETED, each event sent twice. The execution GET returns what has been sent so far, as the backend would | 2 s after the last event |
 | `copilot-tool-wait` | Open the 200-message chat, send "go", and wait until the reply's one tool call shows "Running Perf lookup…". The reply then sends only `: heartbeat` comments, so the turn stays on that tool | Nothing | 20 s |
 | `copilot-resize-drag` | Open the 200-message chat and click "Open files" so the files panel docks on the right | Drag the panel's resize handle 120 px wider with 60 pointer moves over 1 s | 1 s after the drop |
+| `builder-run-beads` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 10 new node executions over the websocket (a second, finished run of nodes 30 to 39 with new `node_exec_id`s), one every 150 ms, so each edge into one of those StoreValue nodes gets a new bead that travels the edge and is removed on arrival | 2 s after the last event |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 

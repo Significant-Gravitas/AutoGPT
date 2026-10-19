@@ -23,11 +23,13 @@ from backend.copilot.gate.policy import Effect
 from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
+from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
+from backend.copilot.turn_budget import resolve_turn_budget
 
 from .audit import audit_thread
 from .executor_turns import BaselineTurnsViaExecutor, Executor, SdkTurnsViaExecutor
@@ -64,7 +66,7 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
         scenario, provider, session, tmp_path, monkeypatch
     )
     remaining_at_start: list[float] = []
-    paid_budget_at_start: dict[int, float] = {}
+    paid_budget_at_start: dict[int, float | None] = {}
     usage_by_turn: list[list[Usage]] = []
 
     for turn, prompt in enumerate(PROMPTS):
@@ -73,10 +75,11 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
             account.convert_to_paid()
         remaining_at_start.append(account.remaining_usd())
         if turn >= CONVERTED_TURN:
-            # What the paid plan allows one query as this turn starts.
-            paid_budget_at_start[turn] = (
-                await sdk_service._resolve_dynamic_max_budget_usd(session.user_id)
-            )
+            # What the paid plan allows one query as this turn starts, in the
+            # CLI's units: the turn's budget plus the backstop's headroom.
+            paid_budget_at_start[turn] = TurnGovernor(
+                budget=await resolve_turn_budget(session.user_id), step_checkin=1
+            ).cli_budget_usd(scenario.model)
         session.messages.append(ChatMessage(role="user", content=prompt))
         usage_before = len(session.usage)
         await run_turn(session, prompt)
@@ -89,8 +92,9 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
         if isinstance(run_turn, SdkTurnsViaExecutor)
         else None
     )
+    metered = run_turn.metered if isinstance(run_turn, SdkTurnsViaExecutor) else None
     findings = audit_thread(
-        scenario, provider, ledger, session, usage_by_turn, cli_resumed
+        scenario, provider, ledger, session, usage_by_turn, cli_resumed, metered
     )
     assert not findings, "\n".join(f.message for f in findings)
 
