@@ -59,6 +59,8 @@ class TruncatedLogger:
     def _log(self, log, msg: str, extra: dict):
         # logging's own arguments go to logging; as metadata they lose the traceback.
         kwargs = {key: extra.pop(key) for key in _LOGGING_KWARGS if key in extra}
+        # Skip this frame and the level method, so the record names the caller.
+        kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 2
         log(self._wrap(msg, **extra), extra=self._get_metadata(**extra), **kwargs)
 
     def _get_metadata(self, **extra):
