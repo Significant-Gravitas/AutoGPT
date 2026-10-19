@@ -67,7 +67,8 @@ async def test_skipped_undated_entries_are_logged(caplog):
     with caplog.at_level("WARNING"):
         await run_block(RSS_WITH_MISSING_FIELDS)
 
-    assert "Skipped 1 entries without a date" in caplog.text
+    assert "Skipped 1 RSS feed entries without a date" in caplog.text
+    assert "example.com" not in caplog.text
 
 
 async def test_atom_entry_with_only_updated_uses_updated_date():

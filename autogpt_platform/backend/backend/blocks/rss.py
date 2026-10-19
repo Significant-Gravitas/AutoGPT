@@ -177,8 +177,7 @@ class ReadRSSFeedBlock(Block):
 
             if undated_count:
                 logging.warning(
-                    f"Skipped {undated_count} entries without a date in RSS feed "
-                    f"{input_data.rss_url}"
+                    f"Skipped {undated_count} RSS feed entries without a date"
                 )
 
             yield "entries", all_entries
