@@ -110,6 +110,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `library-running` | Open the library with 20 workflows, all with a RUNNING run | Nothing | 30 s |
 | `copilot-stream-code` | Open the 10-message chat | Type "go", press Enter, stream a reply that is one 130-line code block (`fixtures/reply-long-code.sse`) at about 33 chunks a second | Until the last line of the reply is on screen and the page has refetched the session, + 1 s |
 | `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
+| `library-running-events` | Open the same library at `/library?sort=updatedAt`, with the websocket mocked | Push a `graph_execution_event` for one of the 20 runs every 250 ms, 80 in all; print the `subscribe_graph_executions` frames and `GET /executions` requests seen | 20 s of events + 2 s |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
