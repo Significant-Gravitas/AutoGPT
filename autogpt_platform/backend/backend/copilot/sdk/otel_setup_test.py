@@ -177,6 +177,52 @@ class TestSetupLangfuseOtel:
 
         mock_configure.assert_not_called()
 
+    def test_tracing_left_off_when_redaction_cannot_install(self):
+        """LangSmith reads these to decide whether to trace at all, so they
+        must not outlive a redaction that failed to install."""
+        mock_settings = MagicMock()
+        mock_settings.secrets.langfuse_public_key = "pk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
+        mock_settings.secrets.langfuse_tracing_environment = "test"
+        keys = [
+            "LANGSMITH_OTEL_ENABLED",
+            "LANGSMITH_OTEL_ONLY",
+            "LANGSMITH_TRACING",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+        ]
+        seen_at_install: dict[str, str | None] = {}
+
+        def failing_install():
+            seen_at_install.update({key: os.environ.get(key) for key in keys})
+            raise RuntimeError("no client")
+
+        with (
+            patch(
+                "backend.copilot.sdk.service._is_langfuse_configured",
+                return_value=True,
+            ),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch(
+                "backend.copilot.sdk.service.install_trace_redaction",
+                side_effect=failing_install,
+            ),
+            patch("backend.copilot.sdk.service.configure_claude_agent_sdk"),
+            patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "https://mine"}),
+        ):
+            for key in keys:
+                os.environ.pop(key, None)
+            from backend.copilot.sdk.service import _setup_langfuse_otel
+
+            _setup_langfuse_otel()
+
+            # The LangSmith client picks its OTEL mode up as it is built.
+            assert seen_at_install["LANGSMITH_OTEL_ONLY"] == "true"
+            assert seen_at_install["LANGSMITH_TRACING"] is None
+            for key in keys:
+                assert key not in os.environ, f"{key} outlived the failed install"
+            assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://mine"
+
     def test_graceful_failure_on_exception(self):
         """Setup should not raise even if internal code fails."""
         with (
