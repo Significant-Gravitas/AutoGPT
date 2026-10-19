@@ -10,7 +10,7 @@ find no parent and are silently dropped from the trace.
 
 from collections.abc import AsyncGenerator
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import claude_agent_sdk
 import pytest
@@ -37,8 +37,15 @@ class _ScriptedClient:
 
     def __init__(self, options: ClaudeAgentOptions) -> None:
         self.options = options
+        self._transport = MagicMock(write=AsyncMock())
 
-    async def query(self, prompt: str) -> None:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def query(self, prompt: str, session_id: str = "default") -> None:
         return None
 
     async def receive_response(self) -> AsyncGenerator[Any, None]:

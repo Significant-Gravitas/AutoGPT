@@ -253,6 +253,7 @@ from .tool_display import (
     stamp_tool_display_name,
     strip_display_token,
 )
+from .trace_input import record_turn_input
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -4252,6 +4253,7 @@ async def _run_stream_attempt(
         # with content immediately.
         yield StreamStatus(message="Reading your message\u2026")
 
+        record_turn_input(state.query_message, ctx.file_ids)
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
                 *ctx.attachments.image_blocks,
