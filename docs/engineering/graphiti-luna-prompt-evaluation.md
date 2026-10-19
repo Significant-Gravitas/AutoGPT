@@ -171,12 +171,14 @@ Python 3.11/3.12/3.13 reports validate after registering the three intentional
 paid-test skips. The paid run above predates the stricter assertions; it was not
 repeated after the provider's daily quota was exhausted.
 
-The assertion follow-ups passed **374 unit tests** with one pre-existing xfail.
-Twenty-two false passes were reproduced before adding exact payment-value checks
+The assertion follow-ups passed **390 unit tests** with one pre-existing xfail.
+Thirty false passes were reproduced before adding exact payment-value checks
 and scenario-specific checks for invented signing claims and explicit company
 misattribution. Payment values must directly follow a payment term, and explicit
-counterparty detail claims include the "has" form. Positive controls allow negated
-signing statements, source instructions, and supplier briefs naming the
+counterparty detail claims include the "has" form. Signing instructions cannot
+hide a later affirmative claim across "but" or "and"; punctuation-boundary
+controls also pass. Positive controls allow negated signing statements, source
+instructions, and supplier briefs naming the
 counterparty. These pattern checks cover the demonstrated wording; they are not a
 general semantic judge. Offline
 replay of four saved migrated-Luna runs of the incidental-detail scenario passed

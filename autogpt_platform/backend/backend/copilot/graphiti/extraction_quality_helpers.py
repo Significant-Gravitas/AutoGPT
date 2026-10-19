@@ -50,12 +50,13 @@ def _missing_details(facts: list[str]) -> list[str]:
 
 
 def _has_signed_claim(fact: str) -> bool:
-    # Remove known negations and instructions before looking for signing claims.
+    # A negated instruction must not hide a later claim after "but" or "and".
     negated = (
         r"\b(?:not|never|\w+n['’]t)\s+(?:(?:yet|already|been|be|ever)\s+)*signed\b"
         r"|\bno\s+(?:agreement|contract|document)\s+"
         r"(?:(?:has|have|had|is|was|been|ever|yet)\s+)*signed\b"
-        r"|\b(?:without|not(?:\s+to)?|never)\s+claim(?:ing)?\b[^.;!?]*?\bsigned\b"
+        r"|\b(?:without|not(?:\s+to)?|never)\s+claim(?:ing)?\b"
+        r"(?:(?!\b(?:but|and)\b)[^.;!?])*?\bsigned\b"
         r"|\bsigned\s+no\s+(?:agreements?|contracts?|documents?)\b"
     )
     remaining = re.sub(negated, "", fact, flags=re.IGNORECASE)

@@ -114,6 +114,24 @@ def test_extraction_rejects_invented_signature_claims(claim: str):
 
 
 @pytest.mark.parametrize(
+    "instruction",
+    [
+        "Jordan Rivera asked not to claim the agreement",
+        "Jordan Rivera instructed that the brief must not claim an agreement",
+        "Jordan Rivera requested a brief without claiming an agreement",
+        "Jordan Rivera instructed the brief to never claim an agreement",
+    ],
+)
+@pytest.mark.parametrize("separator", [" but ", " and ", "; ", ". "])
+def test_signing_instruction_does_not_hide_later_claim(
+    instruction: str, separator: str
+):
+    facts = [fact for details in _FACTS.values() for fact in details]
+    claim = f"{instruction}{separator}Elm Studio signed an agreement."
+    assert extraction_issues([*facts, claim]) == ["unsupported signed-status claim"]
+
+
+@pytest.mark.parametrize(
     "fact",
     [
         "Elm Studio has not signed an agreement.",
