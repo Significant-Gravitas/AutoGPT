@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
@@ -11,15 +12,24 @@ const TAG_ICON_SIZE: Record<ChipSize, number> = {
   default: 15,
 };
 
+/** The category colour, pulled darker for the text and icon and washed out
+ *  for the fill and edge, so the tag reads clearly on white. */
+export function categoryTagStyle(color: string): CSSProperties {
+  return {
+    color: `color-mix(in srgb, ${color} 55%, #18181b)`,
+    backgroundColor: `color-mix(in srgb, ${color} 12%, white)`,
+    borderColor: `color-mix(in srgb, ${color} 35%, white)`,
+  };
+}
+
 interface Props {
   category: string;
   size?: ChipSize;
   className?: string;
 }
 
-/** A category worn as a label rather than a filter: same chip, no click.
- *  The glyph carries the category's colour and the label takes it from
- *  `currentColor`, so the tag needs no separate swatch. */
+/** A category worn as a label rather than a filter: same chip, no click,
+ *  tinted with the category's colour (see categoryTagStyle). */
 export function CategoryTag({ category, size = "small", className }: Props) {
   const color = getCategoryHex(category);
   const { accent, icon } = getCategoryAccent(category);
@@ -29,11 +39,13 @@ export function CategoryTag({ category, size = "small", className }: Props) {
       className={cn(
         CHIP_SHAPE,
         CHIP_SIZE[size],
+        // A label, not a button: shorter than the clickable chip.
+        size === "small" && "h-[22px]",
         "max-w-full",
         accent.icon,
         className,
       )}
-      style={color ? { color } : undefined}
+      style={color ? categoryTagStyle(color) : undefined}
     >
       {icon ? (
         <Icon

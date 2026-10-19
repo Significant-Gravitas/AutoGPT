@@ -57,9 +57,22 @@ from backend.util.exceptions import (
 @pytest.fixture(autouse=True)
 def no_trial_attribution(mocker):
     store = MagicMock()
-    store.get_subscription_trial = AsyncMock(return_value=None)
+    store.get_usage_activation_state = AsyncMock(
+        side_effect=lambda user_id: SimpleNamespace(
+            user_id=user_id, generation=None, trial_id=None, ready=True
+        )
+    )
     mocker.patch(
-        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+        "backend.copilot.usage_activation.pro_activation_db", return_value=store
+    )
+
+
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
     )
 
 
@@ -814,7 +827,10 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     sdk_engine.assert_not_called()
     upsert.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message="expert is not owned by user", turn_id="turn-1"
+        "sess-1",
+        error_message="expert is not owned by user",
+        error_code=None,
+        turn_id="turn-1",
     )
 
 
@@ -888,7 +904,10 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message=expected_message, turn_id="turn-1"
+        "sess-1",
+        error_message=expected_message,
+        error_code=None,
+        turn_id="turn-1",
     )
 
 
@@ -1126,6 +1145,7 @@ async def test_codex_release_failure_does_not_fail_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message=None,
+        error_code=None,
         turn_id="turn-codex",
     )
 
@@ -1180,6 +1200,7 @@ async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_checkpoint_failed",
+        error_code=None,
         turn_id="turn-codex",
     )
 
@@ -1215,6 +1236,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_session_route_mismatch",
+        error_code=None,
         turn_id="turn-codex",
     )
 
@@ -1257,6 +1279,7 @@ async def test_codex_entitlement_is_checked_before_credential_acquire():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="Max plan required",
+        error_code=None,
         turn_id="turn-codex",
     )
 
@@ -1305,6 +1328,7 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
     mark_completed.assert_awaited_once_with(
         "sess-codex",
         error_message="codex_credential_busy",
+        error_code=None,
         turn_id="turn-codex",
     )
 

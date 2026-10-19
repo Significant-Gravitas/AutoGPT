@@ -51,6 +51,7 @@ from . import ingest as ingest_mod
 from .client import derive_group_id
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .scope import MemoryScope
 
 PASS_ID = "e2e-pass"
 SESSION_ID = "e2e-session"
@@ -254,7 +255,7 @@ async def _ingest_dream_proposal(user_id: str) -> None:
     """Write one dream proposal through the production path and await it."""
     completion = ingest_mod.IngestionCompletion()
     queued = await apply_mod._write_proposed_finding(
-        user_id,
+        MemoryScope.for_user(user_id),
         PASS_ID,
         0,
         PROPOSAL,
@@ -357,7 +358,7 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
-    assert await try_ratify_on_hit(user_id, [edge_uuid]) == 1
+    assert await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid]) == 1
 
     edge = await _sole_edge(driver)
     assert edge["status"] == "active"
@@ -375,7 +376,7 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     assert edge["confidence"] == pytest.approx(PROPOSAL.confidence)
 
     assert (
-        await try_ratify_on_hit(user_id, [edge_uuid]) == 0
+        await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid]) == 0
     ), "the status='tentative' guard makes repeat hits no-ops"
 
 
@@ -392,7 +393,7 @@ async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) ->
     driver, user_id = dream_graph
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
 
     result = await run_ratification_pass(user_id)
 
@@ -416,10 +417,10 @@ async def test_repeated_hits_accumulate_in_the_counter(dream_graph) -> None:
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
-    await record_memory_hit(user_id, edge_uuid)
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
 
-    assert await get_hit_count(user_id, edge_uuid) == 2
+    assert await get_hit_count(MemoryScope.for_user(user_id), edge_uuid) == 2
 
 
 @pytest.mark.integration
@@ -466,7 +467,7 @@ async def test_sweep_never_touches_an_already_active_edge(dream_graph) -> None:
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
     # Promote it the production way: a real hit, then the sweep's promote leg.
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
     assert (await run_ratification_pass(user_id)).ratified_count == 1
     promoted = await _sole_edge(driver)
     assert promoted["status"] == "active"
