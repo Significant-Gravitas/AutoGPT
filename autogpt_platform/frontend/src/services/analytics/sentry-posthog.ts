@@ -10,6 +10,13 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
   });
 
   return function mirrorSentryEvent(event: ErrorEvent) {
+    if (
+      event.logger === "console" &&
+      event.message ===
+        "[PostHog.js] This capture call is ignored due to client rate limiting."
+    ) {
+      return event;
+    }
     try {
       if (
         environment.isPostHogEnabled() &&
