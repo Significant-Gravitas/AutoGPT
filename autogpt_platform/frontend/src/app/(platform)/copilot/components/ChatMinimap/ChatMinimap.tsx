@@ -3,8 +3,13 @@
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
-import { useMemo, useState } from "react";
-import { tickColor, tickScale, toMinimapEntries } from "./helpers";
+import { memo, useMemo, useState } from "react";
+import {
+  haveSameMinimapRows,
+  tickColor,
+  tickScale,
+  toMinimapEntries,
+} from "./helpers";
 import { isKey } from "@/lib/keyboard";
 
 const TICK_SPRING = { type: "spring", stiffness: 200, damping: 15 } as const;
@@ -20,7 +25,7 @@ interface Props {
  * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
-export function ChatMinimap({ messages }: Props) {
+export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
   const entries = useMemo(() => toMinimapEntries(messages), [messages]);
@@ -91,6 +96,10 @@ export function ChatMinimap({ messages }: Props) {
       </div>
     </div>
   );
+}, areSameMinimapProps);
+
+function areSameMinimapProps(prev: Props, next: Props) {
+  return haveSameMinimapRows(prev.messages, next.messages);
 }
 
 function scrollToMessage(id: string) {
