@@ -4,7 +4,7 @@ Run the AutoGPT Platform in one container. The image bundles the web app, APIs,
 workers, PostgreSQL, RabbitMQ, a three-node Valkey cluster, and FalkorDB-backed
 memory while persisting runtime data under `/data`.
 
-> This single-node distribution is experimental. It is intended for local and
+> This single-node distribution is intended for local and
 > small self-hosted installations, not high-availability deployments.
 
 ## Quick start

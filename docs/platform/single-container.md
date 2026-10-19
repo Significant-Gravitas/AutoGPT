@@ -1,4 +1,4 @@
-# Run AutoGPT in One Docker Container (Experimental)
+# Run AutoGPT in One Docker Container
 
 The image packages the AutoGPT Platform frontend and backend together with
 PostgreSQL, a three-node Valkey cluster, RabbitMQ, nginx, and FalkorDB.

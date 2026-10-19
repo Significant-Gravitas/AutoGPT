@@ -22,7 +22,7 @@ The quickest way to self-host is the single-container image on Docker Hub,
 [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt).
 It bundles the web app, APIs, workers, PostgreSQL, RabbitMQ, Valkey, and
 FalkorDB-backed memory, and keeps all of its data in one Docker volume. The
-image is experimental: it is meant for local and small installations, not
+image is meant for local and small installations, not
 high-availability deployments.
 
 ### Prerequisites

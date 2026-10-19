@@ -80,4 +80,4 @@ This strategy allows us to share previously closed-source components, fostering 
 ## Ready to Get Started?
 
 * **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
-* **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md) (experimental), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.
+* **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.

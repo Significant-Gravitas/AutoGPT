@@ -19,7 +19,7 @@
 ## Self-Hosting
 
 * [Setting Up AutoGPT (Self-Host)](getting-started.md)
-* [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
+* [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
 * [Advanced Setup](advanced_setup.md)
 

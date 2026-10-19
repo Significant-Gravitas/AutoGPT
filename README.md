@@ -83,7 +83,7 @@ The hosted Platform is a paid service. See [current plans, trial terms, and usag
 
 Run AutoGPT on your own infrastructure. You provide model credentials, configure the deployment, and manage its updates and operation.
 
-The quickest way to self-host is the experimental single-container image on
+The quickest way to self-host is the single-container image on
 Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt):
 
 ```bash
