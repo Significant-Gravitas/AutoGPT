@@ -119,6 +119,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `copilot-switch-threads` | Open the 200-message chat and list the 200 / 50 / 10-message chats in the sidebar | Click 50 → 10 → 200, three rounds, 2 s on each | Until done |
 | `builder-drag-running` | Open a 50-node workflow whose run is RUNNING (the page polls it every second) | Drag one node for 2 s with 60 pointer moves | 2 s |
 | `library-running` | Open the library with 20 workflows, all with a RUNNING run | Nothing | 30 s |
+| `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
 | `copilot-tool-wait` | Open the 200-message chat, send "go", and wait until the reply's one tool call shows "Running Perf lookup…". The reply then sends only `: heartbeat` comments, so the turn stays on that tool | Nothing | 20 s |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.

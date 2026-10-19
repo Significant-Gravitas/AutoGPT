@@ -342,6 +342,54 @@ What stands out:
 | `r$ props:state,children` | 12 |
 | `rV props:state,children` | 12 |
 
+## builder-connect-edge · baseline — median of 10 runs
+
+Added later than the other tables: app code is `dev` at `a1578ad9a` (2026-10-19); build, browser and machine are the same as above. Ten saved runs instead of three. A few runs have extra commits in the window; total renders hardly move.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 20 | 20 – 36 | 80.0% |
+| total renders | 9,197 | 9,197 – 9,457 | 2.8% |
+| renders per commit | 459.9 | 262.7 – 459.9 | 42.9% |
+| max renders in one commit | 8,682 | 8,682 – 8,682 | 0.0% |
+| script time (ms) | 516 | 489 – 633 | 27.9% |
+| task time (ms) | 673 | 641 – 863 | 33.0% |
+| layout time (ms) | 3 | 2 – 4 | 48.4% |
+| style recalc time (ms) | 7 | 6 – 10 | 59.1% |
+| long tasks (≥ 50 ms) | 1 | 1 – 2 | 100.0% |
+| long task total (ms) | 412 | 396 – 571 | 42.6% |
+| heap used after GC (MB) | 85.4 | 84.0 – 85.8 | 2.0% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Text` | 491 |
+| `HugeiconsIcon` | 417 |
+| `Icon` | 417 |
+| `Primitive.div` | 401 |
+| `Tooltip` | 370 |
+| `TooltipContent` | 370 |
+| `HandleComponent` | 346 |
+| `SelectItem` | 296 |
+| `TooltipProvider` | 295 |
+| `Presence` | 240 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 370 |
+| `HugeiconsIcon parent-same-props<-Icon` | 362 |
+| `HandleComponent state#8` | 344 |
+| `SelectItem props:onMouseDown,children` | 296 |
+| `TooltipProvider props:children` | 295 |
+| `Presence props:children` | 240 |
+| `Primitive.div props:children` | 231 |
+| `Primitive.div.Slot props:children` | 231 |
+| `Primitive.div.SlotClone props:children` | 231 |
+| `Text props:children` | 224 |
+
 ## copilot-tool-wait · baseline — median of 3 runs
 
 Added with SECRT-2995 and measured on `dev` at `a1578ad9a`, before that change. Each of the 20 long tasks is one tick of the thinking timer, which re-rendered the whole transcript once a second while the tool ran.
