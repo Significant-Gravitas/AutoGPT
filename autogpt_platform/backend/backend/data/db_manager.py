@@ -187,6 +187,7 @@ from backend.data.user import (
     get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
+    get_near_expiry_oauth_credentials,
     get_user_by_id,
     get_user_credentials,
     get_user_default_chat_route,
@@ -411,6 +412,7 @@ class DatabaseManager(AppService):
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
@@ -605,6 +607,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -908,6 +911,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
 
@@ -1108,6 +1112,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired

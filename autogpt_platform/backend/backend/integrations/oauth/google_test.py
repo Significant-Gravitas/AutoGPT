@@ -8,6 +8,9 @@ google-auth's AuthorizedSession, which expected a google-auth
 Credentials and then called .before_request() on it.
 """
 
+import asyncio
+from datetime import datetime, timezone
+from threading import Event
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -38,6 +41,36 @@ def _creds() -> OAuth2Credentials:
         refresh_token_expires_at=None,
         scopes=["https://www.googleapis.com/auth/userinfo.email"],
     )
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_the_event_loop_responsive(mocker: MockerFixture):
+    heartbeat = Event()
+    progressed = []
+    google_creds = MagicMock(
+        token="new-access",
+        refresh_token="refresh-token-value",
+        expiry=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        scopes=_creds().scopes,
+    )
+
+    def refresh(_request):
+        progressed.append(heartbeat.wait(timeout=1))
+
+    google_creds.refresh.side_effect = refresh
+    mocker.patch(
+        "backend.integrations.oauth.google.Credentials", return_value=google_creds
+    )
+    asyncio.get_running_loop().call_soon(heartbeat.set)
+    credentials = _creds()
+
+    result = await _handler().refresh_tokens(credentials)
+
+    assert progressed == [True]
+    assert result.id == credentials.id
+    assert result.access_token.get_secret_value() == "new-access"
+    assert result.refresh_token == credentials.refresh_token
+    assert result.access_token_expires_at == 1_893_456_000
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
@@ -148,6 +149,10 @@ class SdkTurns:
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
+            # Nothing is queued mid-turn, so a finished turn simply ends.
+            "gate_auto_continue": AsyncMock(
+                return_value=AutoContinueGate(proceed=True)
+            ),
             "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
