@@ -505,6 +505,37 @@ async def test_a_schedule_of_a_judged_workflow_asks(gate, cron):
     assert judge.await_count == int(not cron)
 
 
+async def test_a_judge_rule_from_a_run_does_not_cover_its_schedule(gate):
+    """A run-now card's "let Otto judge" names the same workflow, and would
+    send the schedule to a supervisor that never reads its runs."""
+    graph = _graph([_node("send", SendDiscordMessageBlock(), {})])
+    judge = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", AsyncMock(return_value=_answer())),
+        patch(f"{_GATE}.supervise", judge),
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+    ):
+        await chat_rules.set_answer_rules(
+            "session-1",
+            "user-1",
+            {"r": SimpleNamespace(status=ReviewStatus.APPROVED)},
+            {"r": "judge"},
+            {"r": f"workflow:{graph.id}"},
+        )
+        result = await RunAgentTool().execute(
+            "user-1",
+            _session(),
+            "call-1",
+            library_agent_id="lib-1",
+            schedule_name="Weekly digest",
+            cron="0 9 * * 1",
+        )
+    assert _is_held(result)
+    judge.assert_not_awaited()
+
+
 async def test_a_judged_workflows_name_is_not_vouched_for(gate):
     """A workflow's name is its author's free text, so it must not reach the
     supervisor under the key the gate fills in itself."""

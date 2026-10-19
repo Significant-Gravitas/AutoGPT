@@ -184,6 +184,9 @@ async def check_action(
         else None
     )
     rule = hit.rule if hit else None
+    # No supervisor reads a scheduled run, so a judge rule falls back to the mode.
+    if rule == "judge" and subject is not None and subject.schedules:
+        rule = None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)

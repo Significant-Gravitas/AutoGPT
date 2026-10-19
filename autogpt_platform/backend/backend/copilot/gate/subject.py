@@ -39,6 +39,9 @@ class Subject(BaseModel):
     # What one call is expected to cost, in microdollars; a paid read or
     # workspace step asks once the chat has spent its ceiling.
     estimate: int = 0
+    # The call creates a schedule: no supervisor reads its runs, so a judge
+    # rule cannot speak for it.
+    schedules: bool = False
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
@@ -81,6 +84,7 @@ def workflow_subject(
         reason=_reason(effect, name, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
         estimate=0 if schedules else _priced(effect, lambda: graph_cost_credits(graph)),
+        schedules=schedules,
     )
     steps = _irreversible_steps(graph)
     if unreadable is not None and steps:
