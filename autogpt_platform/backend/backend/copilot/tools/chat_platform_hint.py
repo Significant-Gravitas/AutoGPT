@@ -75,8 +75,11 @@ def _beyond_the_bot(block_name: str, input_data: dict[str, Any]) -> bool:
 
 
 def _telegram_chat_id(input_data: dict[str, Any]) -> str | None:
+    chat_id = input_data.get("chat_id")
+    if chat_id is None:
+        return None
     try:
-        return str(int(input_data.get("chat_id")))  # type: ignore[arg-type]
+        return str(int(chat_id))
     except (TypeError, ValueError):
         return None
 
