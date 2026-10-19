@@ -22,6 +22,7 @@ import {
   parseHandleIdToPath,
 } from "@/components/renderers/InputRenderer/helpers";
 import { accumulateExecutionData } from "./helpers";
+import { reuseUnchanged } from "@/lib/reuseUnchanged";
 import { NodeResolutionData } from "./types";
 
 const MINIMUM_MOVE_BEFORE_LOG = 50;
@@ -66,6 +67,10 @@ type NodeStore = {
   cleanNodesStatuses: () => void;
 
   updateNodeExecutionResult: (
+    nodeId: string,
+    result: NodeExecutionResult,
+  ) => void;
+  applyNodeExecutionEvent: (
     nodeId: string,
     result: NodeExecutionResult,
   ) => void;
@@ -310,11 +315,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     );
   },
   updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => {
-    set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, status } } : n,
-      ),
-    }));
+    set((state) => applyExecutionUpdate(state, nodeId, { status }));
   },
   getNodeStatus: (nodeId: string) => {
     return get().nodes.find((n) => n.id === nodeId)?.data?.status;
@@ -330,114 +331,13 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
 
   updateNodeExecutionResult: (nodeId: string, result: NodeExecutionResult) => {
-    set((state) => {
-      let latestNodeInputData = state.latestNodeInputData;
-      let latestNodeOutputData = state.latestNodeOutputData;
-      let accumulatedNodeInputData = state.accumulatedNodeInputData;
-      let accumulatedNodeOutputData = state.accumulatedNodeOutputData;
-
-      const nodes = state.nodes.map((n) => {
-        if (n.id !== nodeId) return n;
-
-        const existingResults = n.data.nodeExecutionResults || [];
-        const duplicateIndex = existingResults.findIndex(
-          (r) => r.node_exec_id === result.node_exec_id,
-        );
-
-        if (duplicateIndex !== -1) {
-          const oldResult = existingResults[duplicateIndex];
-          const inputDataChanged =
-            JSON.stringify(oldResult.input_data) !==
-            JSON.stringify(result.input_data);
-          const outputDataChanged =
-            JSON.stringify(oldResult.output_data) !==
-            JSON.stringify(result.output_data);
-
-          if (!inputDataChanged && !outputDataChanged) {
-            return n;
-          }
-
-          const updatedResults = [...existingResults];
-          updatedResults[duplicateIndex] = result;
-
-          const recomputedAccumulatedInput = updatedResults.reduce(
-            (acc, r) => accumulateExecutionData(acc, r.input_data),
-            {} as Record<string, unknown[]>,
-          );
-          const recomputedAccumulatedOutput = updatedResults.reduce(
-            (acc, r) => accumulateExecutionData(acc, r.output_data),
-            {} as Record<string, unknown[]>,
-          );
-
-          const mostRecentResult = updatedResults[updatedResults.length - 1];
-          latestNodeInputData = {
-            ...latestNodeInputData,
-            [nodeId]: mostRecentResult.input_data,
-          };
-          latestNodeOutputData = {
-            ...latestNodeOutputData,
-            [nodeId]: mostRecentResult.output_data,
-          };
-
-          accumulatedNodeInputData = {
-            ...accumulatedNodeInputData,
-            [nodeId]: recomputedAccumulatedInput,
-          };
-          accumulatedNodeOutputData = {
-            ...accumulatedNodeOutputData,
-            [nodeId]: recomputedAccumulatedOutput,
-          };
-
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              nodeExecutionResults: updatedResults,
-            },
-          };
-        }
-
-        accumulatedNodeInputData = {
-          ...accumulatedNodeInputData,
-          [nodeId]: accumulateExecutionData(
-            accumulatedNodeInputData[nodeId] || {},
-            result.input_data,
-          ),
-        };
-        accumulatedNodeOutputData = {
-          ...accumulatedNodeOutputData,
-          [nodeId]: accumulateExecutionData(
-            accumulatedNodeOutputData[nodeId] || {},
-            result.output_data,
-          ),
-        };
-
-        latestNodeInputData = {
-          ...latestNodeInputData,
-          [nodeId]: result.input_data,
-        };
-        latestNodeOutputData = {
-          ...latestNodeOutputData,
-          [nodeId]: result.output_data,
-        };
-
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            nodeExecutionResults: [...existingResults, result],
-          },
-        };
-      });
-
-      return {
-        nodes,
-        latestNodeInputData,
-        latestNodeOutputData,
-        accumulatedNodeInputData,
-        accumulatedNodeOutputData,
-      };
-    });
+    set((state) => applyExecutionUpdate(state, nodeId, { result }));
+  },
+  applyNodeExecutionEvent: (nodeId: string, result: NodeExecutionResult) => {
+    set((state) =>
+      applyExecutionUpdate(state, nodeId, { result, status: result.status }),
+    );
+    useEdgeStore.getState().updateEdgeBeads(nodeId, result);
   },
   getNodeExecutionResults: (nodeId: string) => {
     return (
@@ -684,3 +584,119 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return mismatch?.newType;
   },
 }));
+
+/**
+ * Applies a status and/or an execution result to one node in a single write.
+ * Returns `state` itself when nothing changes, so subscribers are not notified.
+ */
+function applyExecutionUpdate(
+  state: NodeStore,
+  nodeId: string,
+  update: { result?: NodeExecutionResult; status?: AgentExecutionStatus },
+) {
+  const index = state.nodes.findIndex((n) => n.id === nodeId);
+  if (index === -1) return state;
+
+  const node = state.nodes[index];
+  const resultUpdate = update.result
+    ? withExecutionResult(state, node, update.result)
+    : null;
+  const statusChanged =
+    update.status !== undefined && update.status !== node.data.status;
+  if (!resultUpdate && !statusChanged) return state;
+
+  const { nodeExecutionResults, ...executionData } = resultUpdate ?? {};
+  const nodes = [...state.nodes];
+  nodes[index] = {
+    ...node,
+    data: {
+      ...node.data,
+      ...(nodeExecutionResults && { nodeExecutionResults }),
+      ...(statusChanged && { status: update.status }),
+    },
+  };
+  return { nodes, ...executionData };
+}
+
+/**
+ * The node's results and the store's latest and accumulated data once
+ * `result` is added, or null when the node already has an equal result.
+ */
+function withExecutionResult(
+  state: NodeStore,
+  node: CustomNode,
+  result: NodeExecutionResult,
+) {
+  const nodeId = node.id;
+  const existingResults = node.data.nodeExecutionResults || [];
+  const duplicateIndex = existingResults.findIndex(
+    (r) => r.node_exec_id === result.node_exec_id,
+  );
+
+  if (duplicateIndex === -1) {
+    return {
+      nodeExecutionResults: [...existingResults, result],
+      latestNodeInputData: {
+        ...state.latestNodeInputData,
+        [nodeId]: result.input_data,
+      },
+      latestNodeOutputData: {
+        ...state.latestNodeOutputData,
+        [nodeId]: result.output_data,
+      },
+      accumulatedNodeInputData: {
+        ...state.accumulatedNodeInputData,
+        [nodeId]: accumulateExecutionData(
+          state.accumulatedNodeInputData[nodeId] || {},
+          result.input_data,
+        ),
+      },
+      accumulatedNodeOutputData: {
+        ...state.accumulatedNodeOutputData,
+        [nodeId]: accumulateExecutionData(
+          state.accumulatedNodeOutputData[nodeId] || {},
+          result.output_data,
+        ),
+      },
+    };
+  }
+
+  const oldResult = existingResults[duplicateIndex];
+  const inputDataUnchanged =
+    reuseUnchanged(oldResult.input_data, result.input_data) ===
+    oldResult.input_data;
+  const outputDataUnchanged =
+    reuseUnchanged(oldResult.output_data, result.output_data) ===
+    oldResult.output_data;
+  if (inputDataUnchanged && outputDataUnchanged) return null;
+
+  const updatedResults = [...existingResults];
+  updatedResults[duplicateIndex] = result;
+  const mostRecentResult = updatedResults[updatedResults.length - 1];
+
+  return {
+    nodeExecutionResults: updatedResults,
+    latestNodeInputData: {
+      ...state.latestNodeInputData,
+      [nodeId]: mostRecentResult.input_data,
+    },
+    latestNodeOutputData: {
+      ...state.latestNodeOutputData,
+      [nodeId]: mostRecentResult.output_data,
+    },
+    accumulatedNodeInputData: {
+      ...state.accumulatedNodeInputData,
+      [nodeId]: updatedResults.reduce(
+        (acc, r) => accumulateExecutionData(acc, r.input_data),
+        {} as Record<string, unknown[]>,
+      ),
+    },
+    accumulatedNodeOutputData: {
+      ...state.accumulatedNodeOutputData,
+      [nodeId]: updatedResults.reduce(
+        (acc, r) => accumulateExecutionData(acc, r.output_data),
+        {} as Record<string, unknown[]>,
+      ),
+    },
+  };
+}
