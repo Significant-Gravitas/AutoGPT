@@ -1755,13 +1755,16 @@ async def get_sub_graphs_of_each(
             fetched.update({(row.id, row.version, row.userId): row for row in rows})
 
         for i, level in enumerate(refs):
-            new = {
-                graph.id: graph
-                for ref in level
-                if (graph := fetched[ref]) and graph.id not in found[i]
-            }
-            found[i].update(new)
-            frontiers[i] = list(new.values())
+            # Walk every version a level references, as get_sub_graphs always
+            # has; the result still keeps one graph per id.
+            frontiers[i] = list(
+                {
+                    ref: graph
+                    for ref in level
+                    if (graph := fetched[ref]) and graph.id not in found[i]
+                }.values()
+            )
+            found[i].update({graph.id: graph for graph in frontiers[i]})
 
     return [
         [g for g in sub_graphs.values() if g.id != root.id]
