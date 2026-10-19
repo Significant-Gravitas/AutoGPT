@@ -41,12 +41,14 @@ def paused_cause(
 
 
 def step_label(failure: RunFailure) -> str:
-    """What failed, named as a step of the scheduled chat."""
+    """What failed, named as a step of the scheduled chat. The email reads
+    "The step “Twitter connection” failed", so an unnamed provider gets a
+    label of its own rather than "a connected service connection"."""
     name = provider_name(failure.provider)
     if failure.kind == "connection":
-        return f"{name} connection"
+        return f"{name} connection" if failure.provider else "Connected account"
     if failure.kind == "chat_link":
-        return f"Posting to {name}"
+        return f"Posting to {name}" if failure.provider else "Posting to chat"
     if failure.key == "turn:max_turns_exhausted":
         return "Step limit"
     if failure.kind == "budget":
