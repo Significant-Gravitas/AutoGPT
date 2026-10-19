@@ -139,13 +139,15 @@ def _fires(
             # croniter starts after the time it is given; a cron second is
             # the smallest step it takes.
             schedule = croniter(cron, start - timedelta(seconds=1))
+            for _ in range(limit):
+                fire = schedule.get_next(datetime)
+                if fire >= end:
+                    break
+                fires.append(fire)
         except (ValueError, KeyError):
+            # Unreadable, or a date that never comes (31 February), which
+            # croniter only finds out once it steps.
             return []
-        for _ in range(limit):
-            fire = schedule.get_next(datetime)
-            if fire >= end:
-                break
-            fires.append(fire)
     return sorted(fires)
 
 

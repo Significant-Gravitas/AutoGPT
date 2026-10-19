@@ -63,6 +63,12 @@ def test_nothing_runs_less_often_than_once_a_week(crons):
     assert less_often(crons, _CHICAGO, _NOW) == []
 
 
+def test_a_date_that_never_comes_reads_as_unreadable():
+    """31 February parses, and croniter only refuses it once it steps."""
+    assert less_often(["0 9 * * *", "0 0 31 2 *"], _CHICAGO, _NOW) == []
+    assert describe(["0 0 31 2 *"], _CHICAGO, _NOW) is None
+
+
 def test_times_stay_on_the_schedules_own_clock():
     utc_now = _NOW.astimezone(timezone.utc)
 
