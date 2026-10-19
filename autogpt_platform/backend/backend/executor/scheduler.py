@@ -96,6 +96,7 @@ from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
+from backend.data.user import is_user_banned
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
@@ -126,6 +127,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
@@ -347,6 +349,9 @@ async def _execute_graph(**kwargs):
         # Expected while the owner has no subscription: skip quietly. The
         # schedule stays registered so it resumes on its own once they
         # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserBannedError as e:
+        # Kept registered, so the schedule resumes if the ban is lifted.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -1457,6 +1462,19 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
+    # A banned owner's crons stay registered and resume if the ban is lifted.
+    try:
+        banned = run_async(
+            is_user_banned(scope.owner_user_id),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
+    except Exception:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        return False
+    if banned:
+        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+        return False
     try:
         return run_async(
             memory_scope_may_fire(scope, _expert_scope_status),

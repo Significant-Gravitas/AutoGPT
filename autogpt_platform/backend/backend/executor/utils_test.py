@@ -2121,6 +2121,32 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
     paywall_mock.assert_not_called()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bypass_paywall", [False, True])
+async def test_add_graph_execution_refuses_a_banned_owner(
+    mocker: MockerFixture, bypass_paywall: bool
+):
+    """Every run starts here (schedules, webhooks, the external API, copilot
+    tools), and an admin requeue doesn't revive a banned account's run."""
+    from backend.util.exceptions import UserBannedError
+
+    mocker.patch(
+        "backend.executor.utils.is_user_banned",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock()
+    mock_edb.get_graph_execution = mocker.AsyncMock()
+
+    with pytest.raises(UserBannedError):
+        await add_graph_execution(
+            graph_id="g", user_id="banned-user", bypass_paywall=bypass_paywall
+        )
+
+    mock_edb.create_graph_execution.assert_not_called()
+    mock_edb.get_graph_execution.assert_not_called()
+
+
 # ============================================================================
 # Born-tenanted fallback: a NEW execution created without an explicit org is
 # tenanted at creation with the user's default org/team.

@@ -48,6 +48,7 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.user import is_user_banned
 from backend.integrations.credentials_store import is_system_credential
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
@@ -63,6 +64,7 @@ from backend.util.exceptions import (
     GraphNotFoundError,
     GraphValidationError,
     NotFoundError,
+    UserBannedError,
 )
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
@@ -1318,7 +1320,7 @@ async def add_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
         raise
-    except UserPaywalledError:
+    except (UserPaywalledError, UserBannedError):
         raise
     except Exception:
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
@@ -1409,6 +1411,8 @@ async def _add_graph_execution(
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run workflows.")
+    if await is_user_banned(user_id):
+        raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
     context_expert_id = execution_context.expert_id if execution_context else None
