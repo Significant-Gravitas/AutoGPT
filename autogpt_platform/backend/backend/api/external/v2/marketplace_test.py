@@ -2,13 +2,18 @@ import io
 from typing import Optional
 from unittest import mock
 
+import fastapi
+import fastapi.testclient
+import prisma.models
 import pytest
 import pytest_mock
 from fastapi import HTTPException, Response, UploadFile
-from prisma.enums import APIKeyPermission
+from prisma.enums import APIKeyPermission, SubmissionStatus
 
+from .errors import add_v2_exception_handlers
 from .marketplace import upload_submission_media
-from .tenancy import TenantContext
+from .routes import v2_router
+from .tenancy import TenantContext, require_auth
 
 _LIMIT = 10 * 1024 * 1024
 _ELEVEN_MB = 11 * 1024 * 1024
@@ -60,3 +65,47 @@ class _CountingBody(io.BytesIO):
         chunk = super().read(size)
         self.bytes_read += len(chunk)
         return chunk
+
+
+@pytest.mark.parametrize(
+    "owning_org_id, status, expected",
+    [
+        ("org-1", SubmissionStatus.APPROVED, 400),
+        ("org-2", SubmissionStatus.PENDING, 404),
+        ("org-1", SubmissionStatus.PENDING, 204),
+    ],
+    ids=["approved", "another-org", "deleted"],
+)
+def test_a_submission_that_cannot_be_deleted_says_why(
+    mocker: pytest_mock.MockFixture,
+    owning_org_id: str,
+    status: SubmissionStatus,
+    expected: int,
+):
+    version = mock.Mock(
+        id="slv-1",
+        storeListingId="sl-1",
+        submissionStatus=status,
+        StoreListing=mock.Mock(owningOrgId=owning_org_id, owningUserId="user-1"),
+    )
+    client = mock.AsyncMock()
+    client.find_unique.return_value = version
+    client.count.return_value = 1
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=client
+    )
+    app = fastapi.FastAPI()
+    app.include_router(v2_router)
+    add_v2_exception_handlers(app)
+    app.dependency_overrides[require_auth] = lambda: TenantContext(
+        user_id="user-1",
+        scopes=list(APIKeyPermission),
+        type="api_key",
+        organization_id="org-1",
+    )
+
+    response = fastapi.testclient.TestClient(app).delete(
+        "/marketplace/submissions/slv-1"
+    )
+
+    assert response.status_code == expected, response.text

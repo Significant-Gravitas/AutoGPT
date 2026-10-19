@@ -4,7 +4,7 @@ from uuid import uuid4
 import prisma.models
 import pytest
 import pytest_mock
-from prisma.enums import APIKeyPermission
+from prisma.enums import APIKeyPermission, SubmissionStatus
 
 from backend.api.features.library import db as library_db
 from backend.blocks import _base
@@ -284,6 +284,44 @@ async def test_a_page_read_of_a_graph_is_of_its_active_version(
 
     # The active v1 has no nodes; the draft's code block needs credentials.
     assert page.items == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_library_agent_saved_past_its_listed_version_lists_as_published(
+    server: SpinTestServer,
+) -> None:
+    """As its single read reports it: a later save is still the listed agent."""
+    auth = await _new_user_auth()
+    v1 = await create_graph(_REQUEST, auth=auth)
+    listing = await prisma.models.StoreListing.prisma().create(
+        data={
+            "slug": f"listed-{v1.id}",
+            "agentGraphId": v1.id,
+            "owningUserId": auth.user_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    await prisma.models.StoreListingVersion.prisma().create(
+        data={
+            "agentGraphId": v1.id,
+            "agentGraphVersion": 1,
+            "name": "Agent",
+            "subHeading": "",
+            "description": "",
+            "storeListingId": listing.id,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isAvailable": True,
+            "imageUrls": [],
+            "categories": [],
+        }
+    )
+    await update_graph(v1.id, _REQUEST, auth=auth)
+
+    listed = await library_db.list_library_agents(auth.user_id, published=True)
+    unlisted = await library_db.list_library_agents(auth.user_id, published=False)
+
+    assert [agent.graph_version for agent in listed.agents] == [2]
+    assert unlisted.agents == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
