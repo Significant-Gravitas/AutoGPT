@@ -71,6 +71,22 @@ def test_an_optional_auth_route_sees_a_banned_account_as_signed_out(
     assert response.json() == {"user_id": None if state == "banned" else user_id}
 
 
+def test_an_optional_auth_route_answers_when_the_ban_is_unreadable(mocker):
+    mocker.patch("backend.data.db.is_connected", return_value=True)
+    mocker.patch(
+        "backend.data.user.is_user_banned",
+        new=mocker.AsyncMock(side_effect=ConnectionError()),
+    )
+    mocker.patch(
+        "autogpt_libs.auth.jwt_utils.parse_jwt_token", return_value={"sub": "u1"}
+    )
+
+    response = _client({}).get("/optional", headers={"Authorization": "Bearer t"})
+
+    assert response.status_code == 200
+    assert response.json() == {"user_id": None}
+
+
 def test_every_route_that_reads_a_token_refuses_a_banned_account():
     """A route that takes ``get_jwt_payload`` without one of the resolvers
     above would let a banned account through."""

@@ -483,6 +483,36 @@ async def test_a_ban_ends_an_open_socket_at_its_next_message(
 
 
 @pytest.mark.asyncio
+async def test_an_unreadable_ban_keeps_an_open_socket(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch(
+        "backend.api.ws_api.is_user_banned",
+        new=AsyncMock(side_effect=ConnectionError()),
+    )
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+    mock_manager.subscribe_graph_exec.return_value = (
+        f"{DEFAULT_USER_ID}|graph_exec#test-graph-exec-1"
+    )
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_websocket.close.assert_not_called()
+    mock_manager.subscribe_graph_exec.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_authenticate_websocket_auth_disabled_returns_default(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 

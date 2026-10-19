@@ -1448,7 +1448,16 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
     # A banned owner's crons stay registered and resume if the ban is lifted.
-    if run_async(is_user_banned(scope.owner_user_id)):
+    try:
+        banned = run_async(
+            is_user_banned(scope.owner_user_id),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
+    except Exception:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        return False
+    if banned:
         logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
         return False
     try:

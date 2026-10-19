@@ -6,6 +6,7 @@ backend test job (and counted by codecov), not just the integration suite.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 import time
@@ -1356,6 +1357,25 @@ def test_a_nightly_job_does_no_work_for_a_banned_owner(job, work):
         assert job("user-1") is None
 
     work_fn.assert_not_called()
+
+
+def test_a_memory_cron_skips_when_the_ban_is_unreadable():
+    """Bounded by the registry gate's own budget, and skipped like it."""
+    timeouts = []
+
+    def ban_lookup_times_out(coro, *args, **kwargs):
+        coro.close()
+        timeouts.append(kwargs.get("timeout"))
+        raise concurrent.futures.TimeoutError()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=ban_lookup_times_out),
+        patch("backend.copilot.dream.nightly_batch.run_nightly_batch_submit") as work,
+    ):
+        assert execute_nightly_batch_sync("user-1") is None
+
+    work.assert_not_called()
+    assert timeouts == [scheduler_module.bridge_timeout()]
 
 
 @pytest.mark.asyncio

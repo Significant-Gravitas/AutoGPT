@@ -126,7 +126,8 @@ async def get_optional_user_id(
         credentials: Optional HTTPAuthorizationCredentials object from FastAPI Security dependency.
 
     Returns:
-        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present.
+        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present
+        or its account is banned.
     """
     if not credentials:
         return None
@@ -140,10 +141,16 @@ async def get_optional_user_id(
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
     user_id = payload.get("sub")
-    # A banned account reads these routes as someone signed out would.
-    if user_id and await _is_banned(user_id):
+    if not user_id:
         return None
-    return user_id
+    # A banned account, or one whose ban can't be read, reads these routes as
+    # someone signed out would; they stay up either way.
+    try:
+        banned = await _is_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
+        return None
+    return None if banned else user_id
 
 
 async def get_unbanned_jwt_payload(

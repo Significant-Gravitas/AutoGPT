@@ -248,7 +248,7 @@ async def websocket_router(
         while True:
             data = await websocket.receive_text()
             # The socket outlives its token, so a ban ends it at the next message.
-            if await is_user_banned(user_id):
+            if await _banned_now(user_id):
                 await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
                 break
             try:
@@ -339,6 +339,15 @@ async def websocket_router(
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
+
+
+async def _banned_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
+        return False
 
 
 @app.get("/")
