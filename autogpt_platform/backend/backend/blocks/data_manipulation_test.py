@@ -22,6 +22,9 @@ async def _find(obj: Any, key: Any) -> list[tuple[str, Any]]:
         ("[10, 20, 30]", "0", [("output", 10)]),
         (["a", "b"], "5", [("missing", ["a", "b"])]),
         ([], "0", [("missing", [])]),
+        # Same range rule as an int key: negatives are missing.
+        ([1, 2, 3], "-1", [("missing", [1, 2, 3])]),
+        ([1, 2, 3], -1, [("missing", [1, 2, 3])]),
         ([10, 20, 30], 5, [("missing", [10, 20, 30])]),
     ],
 )
@@ -49,6 +52,11 @@ async def test_non_index_key_on_empty_list_unchanged():
 async def test_list_of_dicts_still_plucks_matching_key():
     obj = [{"1": "a"}, {"2": "b"}, {"1": "c"}]
     assert await _find(obj, "1") == [("output", ["a", "c"])]
+
+
+async def test_digit_key_on_list_of_dicts_never_picks_a_row():
+    # Whether "1" plucks a column must not depend on which dict comes first.
+    assert await _find([{"2": "b"}, {"1": "a"}], "1") == [("output", [])]
 
 
 async def test_list_lookup_by_int_key_unchanged():

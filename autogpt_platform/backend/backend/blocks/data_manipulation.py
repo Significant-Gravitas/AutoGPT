@@ -197,7 +197,8 @@ class FindInDictionaryBlock(Block):
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             yield "output", obj[key]
         elif isinstance(obj, list) and isinstance(key, str):
-            is_index = key.strip().isascii() and key.strip().isdigit()
+            digits = key.strip().removeprefix("-")
+            is_index = digits.isascii() and digits.isdigit()
             if len(obj) == 0:
                 # Any index into an empty list is out of range.
                 if is_index:
@@ -206,17 +207,19 @@ class FindInDictionaryBlock(Block):
                     yield "output", []
             elif isinstance(obj[0], dict) and key in obj[0]:
                 yield "output", [item[key] for item in obj if key in item]
-            elif is_index:
+            elif is_index and not isinstance(obj[0], dict):
                 # Builder inputs send `str | int` keys as strings by default,
-                # so treat a numeric string as a list index. isdigit() alone
-                # also accepts characters like "²" that int() rejects.
+                # so treat a numeric string as a list index, with the same
+                # range rule as an int key (negatives are missing). isdigit()
+                # alone also accepts characters like "²" that int() rejects.
+                # Lists of dicts keep plucking by key, whatever obj[0] holds.
                 try:
                     index = int(key.strip())
                 except ValueError:
                     # Python 3.11+ refuses to convert very long digit strings.
                     yield "missing", input_data.input
                     return
-                if index < len(obj):
+                if 0 <= index < len(obj):
                     yield "output", obj[index]
                 else:
                     yield "missing", input_data.input
