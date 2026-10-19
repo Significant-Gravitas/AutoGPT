@@ -50,6 +50,19 @@ describe("transformDates", () => {
     }
   });
 
+  it("keeps a chat preview that reads as a date as text", () => {
+    const out = transformDates({
+      sessions: [
+        {
+          updated_at: "2026-10-19T12:00:00Z",
+          last_message: "2026-10-19T12:00:00Z",
+        },
+      ],
+    });
+    expect(out.sessions[0].updated_at).toBeInstanceOf(Date);
+    expect(out.sessions[0].last_message).toBe("2026-10-19T12:00:00Z");
+  });
+
   it("skips user payloads nested inside lists of executions", () => {
     const out = transformDates([
       {

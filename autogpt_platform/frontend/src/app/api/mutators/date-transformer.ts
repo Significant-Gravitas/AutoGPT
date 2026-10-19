@@ -10,7 +10,7 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 // Keys holding user-supplied data. Their values are copied verbatim so
 // "Run again", saving a graph or approving a review resubmits exactly what
-// the user entered.
+// the user entered, and chat text stays text even when it reads as a date.
 const USER_PAYLOAD_KEYS = new Set([
   "inputs",
   "outputs",
@@ -22,6 +22,7 @@ const USER_PAYLOAD_KEYS = new Set([
   "payload",
   "reviewed_data",
   "agentInput",
+  "last_message",
 ]);
 
 /**
