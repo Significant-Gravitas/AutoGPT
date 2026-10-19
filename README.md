@@ -80,9 +80,9 @@ The hosted Platform is a paid service. See [current plans, trial terms, and usag
 
 Run AutoGPT on your own infrastructure. You provide model credentials, configure the deployment, and manage its updates and operation.
 
-Follow the [self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started/) for current requirements and supported installation paths. The [installer reference](docs/platform/installer.md) tracks appliance release availability; use the manual setup while its release gates are pending.
+Follow the [self-hosting guide](https://agpt.co/docs/platform/self-hosting/getting-started) for current requirements and supported installation paths. The [installer reference](docs/platform/installer.md) tracks appliance release availability; use the manual setup while its release gates are pending.
 
-[Read the self-hosting guide →](https://docs.agpt.co/platform/self-hosting/getting-started/)
+[Read the self-hosting guide →](https://agpt.co/docs/platform/self-hosting/getting-started)
 
 | | Hosted Platform | Self-hosted |
 | --- | --- | --- |
@@ -98,7 +98,7 @@ See the [license](#license) for the repository's usage terms.
 Experts can use skills and workflows to do their jobs. The visual builder lets you define repeatable steps, connect tools, and inspect how work runs. Start with a workflow from the marketplace or build your own.
 
 - **[Visual builder](https://agpt.co/product/build/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=build):** connect blocks, branch logic, and control the steps.
-- **[Marketplace](https://agpt.co/product/marketplace/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=marketplace):** discover workflows you can adapt to your work.
+- **[Marketplace](https://platform.agpt.co/marketplace?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=marketplace):** discover workflows you can adapt to your work.
 - **[Integrations](https://agpt.co/docs/integrations):** connect the tools your team uses.
 
 ## Build with us
@@ -108,7 +108,7 @@ Explore the code, report a problem, or help improve AutoGPT.
 | Resource | Where to go |
 | --- | --- |
 | Platform source and development setup | [autogpt_platform/](autogpt_platform/README.md) |
-| Documentation | [docs.agpt.co](https://docs.agpt.co/) |
+| Documentation | [agpt.co/docs](https://agpt.co/docs) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Bugs and feature requests | [GitHub Issues](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose) |
 | Community and support | [Discord](https://discord.gg/autogpt) |
