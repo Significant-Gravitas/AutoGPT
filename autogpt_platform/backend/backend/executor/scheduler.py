@@ -35,6 +35,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine, or_
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.retention import (
+    RecordingPurgeResult,
+    purge_expired_recordings,
+)
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -91,6 +96,7 @@ from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
+from backend.data.user import is_user_banned
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
@@ -121,6 +127,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
@@ -342,6 +349,9 @@ async def _execute_graph(**kwargs):
         # Expected while the owner has no subscription: skip quietly. The
         # schedule stays registered so it resumes on its own once they
         # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserBannedError as e:
+        # Kept registered, so the schedule resumes if the ban is lifted.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -1392,6 +1402,16 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
+def purge_expired_recordings_job():
+    """Delete brain-dump voice recordings that reached their max age."""
+    run_async(_purge_expired_recordings())
+
+
+async def _purge_expired_recordings() -> RecordingPurgeResult:
+    db = get_database_manager_async_client()
+    return await purge_expired_recordings(db.clear_brain_dump_audio_paths)
+
+
 def execute_community_rebuild(user_id: str, expert_id: str | None = None):
     """Weekly community-rebuild cron body of one memory scope (P-1.7).
 
@@ -1442,6 +1462,19 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
+    # A banned owner's crons stay registered and resume if the ban is lifted.
+    try:
+        banned = run_async(
+            is_user_banned(scope.owner_user_id),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
+    except Exception:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        return False
+    if banned:
+        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+        return False
     try:
         return run_async(
             memory_scope_may_fire(scope, _expert_scope_status),
@@ -1478,6 +1511,7 @@ def _morning_briefing_crontab(user_id: str) -> str:
 
 
 _POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+RECORDING_PURGE_JOB_ID = "purge_expired_brain_dump_recordings"
 
 
 def _job_timezone_name(job: JobObj) -> str | None:
@@ -2952,6 +2986,7 @@ class Scheduler(AppService):
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
+            self._register_recording_purge()
             self._register_memory_cron_reconcile()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
@@ -4161,6 +4196,33 @@ class Scheduler(AppService):
             sync_posthog_lifecycles,
             trigger,
             id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_recording_purge(self) -> None:
+        """The brain-dump recording sweep, which keeps "deleted within 48
+        hours" by running every ``RECORDING_PURGE_INTERVAL``.
+
+        Registered like the PostHog sweep: replacing an interval job re-arms
+        it at start + interval, so restarts closer together than the
+        interval would postpone the sweep indefinitely. An unchanged job is
+        left with the next run it has, and an overdue run fires on start.
+        """
+        trigger = IntervalTrigger(
+            seconds=int(RECORDING_PURGE_INTERVAL.total_seconds()),
+            timezone=timezone.utc,
+        )
+        existing = self.scheduler.get_job(
+            RECORDING_PURGE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            purge_expired_recordings_job,
+            trigger,
+            id=RECORDING_PURGE_JOB_ID,
             replace_existing=True,
             max_instances=1,
             jobstore=Jobstores.EXECUTION.value,

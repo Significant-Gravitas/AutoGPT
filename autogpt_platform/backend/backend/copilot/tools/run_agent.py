@@ -20,6 +20,7 @@ from backend.copilot.gate.subject import (
     graph_cost_credits,
     workflow_subject,
 )
+from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_chat_outcome
@@ -54,7 +55,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import GATE_APPROVED, BaseTool
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -335,6 +336,9 @@ class RunAgentTool(BaseTool):
         validators defined in the Pydantic model.
         """
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        # Only a card approval lifts a run's forced pause; its steps' pauses go
+        # to the gate on their own.
+        kwargs.pop(GATE_DECIDED, None)
         params = RunAgentInput(**kwargs)
         # Session-level dry_run forces all runs to be dry. In normal sessions
         # the LLM may still request dry_run=True on individual calls.
@@ -1232,9 +1236,11 @@ class RunAgentTool(BaseTool):
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
+                card_chat = await card_chat_for_run(user_id, execution.id)
                 return ExecutionStartedResponse(
                     message=(
-                        f"Workflow '{library_agent.name}' is awaiting human review. "
+                        f"Workflow '{library_agent.name}' "
+                        f"{awaiting_whom(card_chat, session_id)}. "
                         f"The user can approve or reject inline. After approval, "
                         f"the execution resumes automatically. Use tool:view_agent_output "
                         f"with execution_id='{execution.id}' to check the result."

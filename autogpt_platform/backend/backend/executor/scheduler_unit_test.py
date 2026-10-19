@@ -6,6 +6,7 @@ backend test job (and counted by codecov), not just the integration suite.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 import time
@@ -21,6 +22,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -55,6 +57,9 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    execute_community_rebuild,
+    execute_nightly_batch_sync,
+    execute_skill_learning_sync,
     reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
@@ -62,6 +67,7 @@ from backend.executor.scheduler import (
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.service import EXPOSED_FLAG
@@ -1286,7 +1292,14 @@ async def test_execute_graph_forwards_expert_id_and_schedule_id():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        UserPaywalledError("A subscription is required to run agents."),
+        UserBannedError("This account is banned, so its workflows can't run."),
+    ],
+)
+async def test_execute_graph_quietly_skips_a_refused_owner(caplog, refusal):
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1296,9 +1309,7 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         input_data={},
         input_credentials={},
     )
-    mock_add = AsyncMock(
-        side_effect=UserPaywalledError("A subscription is required to run agents.")
-    )
+    mock_add = AsyncMock(side_effect=refusal)
     mock_db = MagicMock()
     mock_db.increment_onboarding_runs = AsyncMock()
 
@@ -1319,6 +1330,53 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         for record in caplog.records
     )
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "job, work",
+    [
+        (execute_community_rebuild, f"{_SCHEDULER_PATH}.rebuild_communities_for_user"),
+        (
+            execute_nightly_batch_sync,
+            "backend.copilot.dream.nightly_batch.run_nightly_batch_submit",
+        ),
+        (
+            execute_skill_learning_sync,
+            "backend.copilot.learning.nightly.run_skill_learning_pass",
+        ),
+    ],
+)
+def test_a_nightly_job_does_no_work_for_a_banned_owner(job, work):
+    def flag_on_and_owner_banned(coro, *args, **kwargs):
+        coro.close()
+        return True
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=flag_on_and_owner_banned),
+        patch(work) as work_fn,
+    ):
+        assert job("user-1") is None
+
+    work_fn.assert_not_called()
+
+
+def test_a_memory_cron_skips_when_the_ban_is_unreadable():
+    """Bounded by the registry gate's own budget, and skipped like it."""
+    timeouts = []
+
+    def ban_lookup_times_out(coro, *args, **kwargs):
+        coro.close()
+        timeouts.append(kwargs.get("timeout"))
+        raise concurrent.futures.TimeoutError()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=ban_lookup_times_out),
+        patch("backend.copilot.dream.nightly_batch.run_nightly_batch_submit") as work,
+    ):
+        assert execute_nightly_batch_sync("user-1") is None
+
+    work.assert_not_called()
+    assert timeouts == [scheduler_module.bridge_timeout()]
 
 
 @pytest.mark.asyncio
@@ -1786,6 +1844,29 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
     assert kwargs["coalesce"] is True
     assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
     assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
+
+
+def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
+    """The brain-dump recording sweep keeps "deleted within 48 hours". It is
+    registered once the scheduler has started, so an unchanged job keeps its
+    next run; a start that stopped calling ``_register_recording_purge``
+    would leave no sweep at all."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job"
+        and args
+        and args[0] is scheduler_module.purge_expired_recordings_job
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert kwargs["id"] == scheduler_module.RECORDING_PURGE_JOB_ID
+    assert args[1].interval == RECORDING_PURGE_INTERVAL
+    assert kwargs["max_instances"] == 1
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
 
 
 def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):

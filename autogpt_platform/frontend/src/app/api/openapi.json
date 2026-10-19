@@ -2747,6 +2747,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
@@ -3093,47 +3135,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/auth/user/email": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Update user email",
-        "operationId": "postV1Update user email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "type": "string", "title": "Email" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": { "type": "string" },
-                  "type": "object",
-                  "title": "Response Postv1Update User Email"
-                }
               }
             }
           },
@@ -6822,7 +6823,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -12518,7 +12527,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
-        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "description": "Hand back the user's own recording, for as long as it is kept.\n\nMeant for a take that failed: \"your recording is safe\" has to be\ntrue, and this is what makes it checkable. A transcribed take has no\nrecording left, since only the transcript is kept. A failed take's\nrecording is deleted within 48 hours (see ``retention.py``), and one\nthat is due is refused even before the sweep reaches it; a signed URL\nfor one that is gone would only fail at the bucket, so say so here\ninstead.",
         "operationId": "download_brain_dump_recording",
         "responses": {
           "200": {
@@ -18810,7 +18819,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",

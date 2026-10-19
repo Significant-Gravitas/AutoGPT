@@ -75,7 +75,12 @@ class BlockEffect(Enum):
     READ = "read"  # fetches or computes; changes nothing
     WORKSPACE = "workspace"  # writes only to the user's workspace or key-value store
     PLATFORM = "platform"  # changes only the user's own objects on the platform
-    EXTERNAL = "external"  # changes something outside the platform
+    # Changes something outside the platform where a mistake is cheap and the
+    # norms casual: a chat-channel post, a label, a draft, a new record.
+    EXTERNAL_JUDGED = "external_judged"
+    # Changes something outside the platform that is hard to take back, or reaches
+    # people or money in the user's name: an email, a payment, a delete, a public post.
+    EXTERNAL = "external"
 
 
 class BlockType(Enum):
@@ -633,7 +638,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 one provider and ``primitive`` otherwise; set it explicitly on
                 provider-backed generic blocks (code sandboxes, SQL, HTTP).
             effect: What running the block does; see BlockEffect. Irreversible
-                implies EXTERNAL.
+                implies EXTERNAL or EXTERNAL_JUDGED.
         """
         self.id = id
         self.input_schema = input_schema
@@ -879,6 +884,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             chat_session_id=(
                 None if is_graph_execution else execution_context.session_id
             ),
+            block=self,
+            execution_context=execution_context,
         )
 
         if decision is None:

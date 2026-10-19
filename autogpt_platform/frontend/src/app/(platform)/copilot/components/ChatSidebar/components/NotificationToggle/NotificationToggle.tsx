@@ -18,12 +18,14 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationToggle() {
-  const {
-    isNotificationsEnabled,
-    setNotificationsEnabled,
-    isSoundEnabled,
-    toggleSound,
-  } = useCopilotUIStore();
+  const isNotificationsEnabled = useCopilotUIStore(
+    (s) => s.isNotificationsEnabled,
+  );
+  const setNotificationsEnabled = useCopilotUIStore(
+    (s) => s.setNotificationsEnabled,
+  );
+  const isSoundEnabled = useCopilotUIStore((s) => s.isSoundEnabled);
+  const toggleSound = useCopilotUIStore((s) => s.toggleSound);
 
   async function handleToggleNotifications() {
     if (isNotificationsEnabled) {
