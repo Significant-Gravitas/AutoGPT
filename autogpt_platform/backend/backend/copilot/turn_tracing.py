@@ -93,13 +93,19 @@ class TurnTrace:
         ``message`` is the user message the turn answers, its server tags
         stripped. The chat route saves it before dispatch, sometimes behind a
         server block (a voice turn's instructions, a first turn's context); a
-        schedule or a sub-session doesn't, and the engine saves it when the
-        turn starts. Either way it counts once."""
+        sub-session doesn't, and the engine saves it when the turn starts.
+        Either way it counts once. A turn with no user message of its own (a
+        kickoff, a scheduled follow-up the scheduler stores as the model's, a
+        continuation) is the first only in a chat nobody has written to yet."""
         try:
             users = sum(1 for row in session.messages if row.role == "user")
-            if message and not _is_latest_user_message(session.messages, message):
-                users += 1
-            self.span.set_tag("copilot.turn.first", "true" if users <= 1 else "false")
+            if message is None:
+                first = users == 0
+            else:
+                if message and not _is_latest_user_message(session.messages, message):
+                    users += 1
+                first = users <= 1
+            self.span.set_tag("copilot.turn.first", "true" if first else "false")
             self.span.set_tag(
                 "copilot.expert", "true" if session.expert_id else "false"
             )

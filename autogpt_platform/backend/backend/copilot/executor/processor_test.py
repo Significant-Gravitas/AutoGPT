@@ -552,33 +552,43 @@ class TestExecuteAsyncAclose:
         assert ("copilot.turn.request_to_first_text_ms" in data) is answered
 
     @pytest.mark.parametrize(
-        "history, message, first",
+        "history, message, is_user_message, first",
         [
             # A follow-up the chat route saved before dispatching it.
             (
                 [("user", "hi"), ("assistant", "hello"), ("user", "next")],
                 "next",
+                True,
                 "false",
             ),
             # The chat's first message, saved by the chat route.
-            ([("user", "hi")], "hi", "true"),
+            ([("user", "hi")], "hi", True, "true"),
             # An expert's greeting before the chat's first user message.
-            ([("assistant", "Welcome!"), ("user", "hi")], "hi", "true"),
-            # A schedule's or sub-session's first turn: nothing saved yet, the
-            # engine saves the message when the turn starts.
-            ([], "do this", "true"),
-            # A schedule's follow-up, dispatched without saving its message.
-            ([("user", "hi"), ("assistant", "hello")], "do this", "false"),
-            # A recurring schedule sending the same prompt into its chat again.
-            # A first turn redelivered after it saved a tool call looks the
-            # same: the engine saves its message again and resumes the chat.
-            ([("user", "brief me"), ("assistant", "done")], "brief me", "false"),
-            # A redelivered schedule turn whose message the engine saved with
-            # its server tags stripped: the same message, not a second one.
-            ([("user", "do this")], "<user_context>x</user_context>do this", "true"),
+            ([("assistant", "Welcome!"), ("user", "hi")], "hi", True, "true"),
+            # A sub-session's first turn: nothing saved yet, the engine saves
+            # the message when the turn starts.
+            ([], "do this", True, "true"),
+            # A sub-session's follow-up, dispatched without saving its message.
+            ([("user", "hi"), ("assistant", "hello")], "do this", True, "false"),
+            # A first turn redelivered after it saved a tool call: the engine
+            # saves its message again and resumes the chat.
+            ([("user", "brief me"), ("assistant", "done")], "brief me", True, "false"),
+            # A redelivered turn whose message the engine saved with its
+            # server tags stripped: the same message, not a second one.
+            (
+                [("user", "do this")],
+                "<user_context>x</user_context>do this",
+                True,
+                "true",
+            ),
             # A voice chat's first message: the route saves and dispatches it
             # behind the voice instructions, which the turn's copy drops.
-            ([("user", VOICE_TURN_PREFIX + "hi")], VOICE_TURN_PREFIX + "hi", "true"),
+            (
+                [("user", VOICE_TURN_PREFIX + "hi")],
+                VOICE_TURN_PREFIX + "hi",
+                True,
+                "true",
+            ),
             (
                 [
                     ("user", VOICE_TURN_PREFIX + "hi"),
@@ -586,19 +596,28 @@ class TestExecuteAsyncAclose:
                     ("user", VOICE_TURN_PREFIX + "next"),
                 ],
                 VOICE_TURN_PREFIX + "next",
+                True,
                 "false",
             ),
             # A first turn redelivered after the engine saved its message
             # behind the user's context block, before anything answered it.
-            ([("user", format_user_context_prefix("ctx") + "hi")], "hi", "true"),
+            ([("user", format_user_context_prefix("ctx") + "hi")], "hi", True, "true"),
+            # Scheduled follow-ups the scheduler stores as the model's, like a
+            # recurring routine sending its prompt into its chat again.
+            ([("user", "brief me"), ("assistant", "done")], "brief me", False, "false"),
+            ([("user", "hi"), ("assistant", "hello")], "do this", False, "false"),
+            # Keep going on a chat's first turn.
+            ([("user", "hi"), ("assistant", "partly")], "continue", False, "false"),
+            # A scheduled turn into a chat nobody has written to yet.
+            ([], "do this", False, "true"),
             # A kickoff the platform posts as the chat's first message.
-            ([("assistant", "kickoff")], None, "true"),
+            ([("assistant", "kickoff")], "", False, "true"),
         ],
     )
     @pytest.mark.parametrize("expert_id", [None, "expert-1"])
     @pytest.mark.asyncio
     async def test_a_turn_is_tagged_with_the_kind_of_chat_it_is_in(
-        self, sentry_transactions, history, message, first, expert_id
+        self, sentry_transactions, history, message, is_user_message, first, expert_id
     ) -> None:
         session = ChatSession.new(
             "user-1",
@@ -612,7 +631,7 @@ class TestExecuteAsyncAclose:
             ChatMessage(role=role, content=content) for role, content in history
         ]
         entry = _make_entry().model_copy(
-            update={"message": message or "", "is_user_message": message is not None}
+            update={"message": message, "is_user_message": is_user_message}
         )
         expert_store = MagicMock()
         expert_store.resolve_private_expert_tenancy = AsyncMock(
