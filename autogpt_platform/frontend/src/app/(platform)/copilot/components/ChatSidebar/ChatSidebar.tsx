@@ -26,7 +26,8 @@ import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
 import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
@@ -203,24 +204,27 @@ export function ChatSidebar() {
     }
   }
 
-  function handleSelectSession(id: string, expertId: string | null) {
-    setSessionId(id);
-    if (isExpertsEnabled) {
-      setExpertIdParam(expertId);
-    }
-    closeSearch();
-  }
+  // Row handlers are shared by every row and keep one identity across renders
+  // (see `ChatSessionRow`), so a list update only re-renders the rows whose
+  // own props changed.
+  const handleSelectSession = useStableCallback(
+    (id: string, expertId: string | null) => {
+      setSessionId(id);
+      if (isExpertsEnabled) {
+        setExpertIdParam(expertId);
+      }
+      closeSearch();
+    },
+  );
 
-  function handleRenameClick(
-    e: React.MouseEvent,
-    id: string,
-    title: string | null | undefined,
-  ) {
-    e.stopPropagation();
-    renameCancelledRef.current = false;
-    setEditingSessionId(id);
-    setEditingTitle(title || "");
-  }
+  const handleRenameClick = useStableCallback(
+    (e: React.MouseEvent, id: string, title: string | null | undefined) => {
+      e.stopPropagation();
+      renameCancelledRef.current = false;
+      setEditingSessionId(id);
+      setEditingTitle(title || "");
+    },
+  );
 
   function handleRenameSubmit(id: string) {
     const trimmed = editingTitle.trim();
@@ -231,26 +235,50 @@ export function ChatSidebar() {
     }
   }
 
-  function handleDeleteClick(
-    e: React.MouseEvent,
-    id: string,
-    title: string | null | undefined,
-  ) {
-    e.stopPropagation();
-    requestDelete(id, title);
-  }
+  const handleRenameCancel = useStableCallback(() => {
+    renameCancelledRef.current = true;
+    setEditingSessionId(null);
+  });
 
-  function handleExcludeClick(e: React.MouseEvent, id: string) {
-    e.stopPropagation();
-    excludeFromLearning({ sourceKind: CHAT_SOURCE_KIND, sourceRef: id });
-  }
+  const handleRenameBlur = useStableCallback((id: string) => {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      return;
+    }
+    handleRenameSubmit(id);
+  });
 
-  function handlePinClick(e: React.MouseEvent, id: string, isPinned: boolean) {
-    e.stopPropagation();
-    setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
-  }
+  const handleDeleteClick = useStableCallback(
+    (e: React.MouseEvent, id: string, title: string | null | undefined) => {
+      e.stopPropagation();
+      requestDelete(id, title);
+    },
+  );
 
-  async function handleExportClick(
+  const handleExcludeClick = useStableCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      excludeFromLearning({ sourceKind: CHAT_SOURCE_KIND, sourceRef: id });
+    },
+  );
+
+  const handlePinClick = useStableCallback(
+    (e: React.MouseEvent, id: string, isPinned: boolean) => {
+      e.stopPropagation();
+      setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
+    },
+  );
+
+  const handleShareClick = useStableCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      setSharingSessionId(id);
+    },
+  );
+
+  const handleExportClick = useStableCallback(handleExport);
+
+  async function handleExport(
     e: React.MouseEvent,
     id: string,
     title: string | null | undefined,
@@ -280,10 +308,14 @@ export function ChatSidebar() {
     }
   }
 
-  const { pinned, groups, showHeaders } = groupSessionsForSidebar({
-    sessions,
-    floatPinned: isPinningEnabled,
-  });
+  const { pinned, groups, showHeaders } = useMemo(
+    () =>
+      groupSessionsForSidebar({
+        sessions,
+        floatPinned: isPinningEnabled,
+      }),
+    [sessions, isPinningEnabled],
+  );
   const sessionSections = isExpertsEnabled && showHeaders ? groups : null;
 
   function renderSessionRow(
@@ -291,14 +323,15 @@ export function ChatSidebar() {
     index: number,
     list: SessionSummaryResponse[],
   ) {
+    const isEditing = editingSessionId === session.id;
     return (
       <ChatSessionRow
         key={session.id}
         session={session}
         isActive={session.id === sessionId}
         isNextActive={list[index + 1]?.id === sessionId}
-        isEditing={editingSessionId === session.id}
-        editingTitle={editingTitle}
+        isEditing={isEditing}
+        editingTitle={isEditing ? editingTitle : ""}
         renameInputRef={renameInputRef}
         isExporting={exportingSessionIds.has(session.id)}
         isDeleting={isDeleting}
@@ -317,30 +350,16 @@ export function ChatSidebar() {
         showCompleted={
           completedSessionIDs.has(session.id) && session.id !== sessionId
         }
-        onSelect={() =>
-          handleSelectSession(session.id, session.expert_id ?? null)
-        }
+        onSelect={handleSelectSession}
         onEditingTitleChange={setEditingTitle}
-        onRenameCancel={() => {
-          renameCancelledRef.current = true;
-          setEditingSessionId(null);
-        }}
-        onRenameBlur={() => {
-          if (renameCancelledRef.current) {
-            renameCancelledRef.current = false;
-            return;
-          }
-          handleRenameSubmit(session.id);
-        }}
-        onPin={(e) => handlePinClick(e, session.id, !!session.is_pinned)}
-        onRename={(e) => handleRenameClick(e, session.id, session.title)}
-        onExport={(e) => handleExportClick(e, session.id, session.title)}
-        onShare={(e) => {
-          e.stopPropagation();
-          setSharingSessionId(session.id);
-        }}
-        onExcludeFromLearning={(e) => handleExcludeClick(e, session.id)}
-        onDelete={(e) => handleDeleteClick(e, session.id, session.title)}
+        onRenameCancel={handleRenameCancel}
+        onRenameBlur={handleRenameBlur}
+        onPin={handlePinClick}
+        onRename={handleRenameClick}
+        onExport={handleExportClick}
+        onShare={handleShareClick}
+        onExcludeFromLearning={handleExcludeClick}
+        onDelete={handleDeleteClick}
       />
     );
   }

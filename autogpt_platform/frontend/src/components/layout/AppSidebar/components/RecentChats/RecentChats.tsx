@@ -58,13 +58,14 @@ export function RecentChats() {
   }
 
   function renderItem(session: (typeof sessions)[number]) {
+    const isEditing = editingSessionId === session.id;
     return (
       <RecentChatItem
         key={session.id}
         session={session}
         isActive={session.id === activeSessionId}
-        isEditing={editingSessionId === session.id}
-        editingTitle={editingTitle}
+        isEditing={isEditing}
+        editingTitle={isEditing ? editingTitle : ""}
         onEditingTitleChange={setEditingTitle}
         onSubmitRename={submitRename}
         onCancelRename={cancelRename}
