@@ -314,6 +314,7 @@ async def _flip(db: Any, session_id: str, user_id: str) -> bool:
         expect_status=CHAT_STATUS_IDLE,
         status=CHAT_STATUS_QUEUED,
         user_id=user_id,
+        unarchive=True,
     )
 
 

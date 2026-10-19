@@ -943,6 +943,28 @@ async def test_update_chat_session_status_owner_gated_returns_true_on_match() ->
 
 
 @pytest.mark.asyncio
+async def test_update_chat_session_status_unarchive_clears_archived_at() -> None:
+    """A queued turn brings an archived chat back in the same write."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        await update_chat_session_status(
+            session_id="s1",
+            expect_status="idle",
+            status="queued",
+            user_id="u1",
+            unarchive=True,
+        )
+    assert update_many.call_args.kwargs["data"] == {
+        "chatStatus": "queued",
+        "archivedAt": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_chat_session_status_returns_false_when_cas_fails() -> None:
     from backend.copilot.db import update_chat_session_status
 

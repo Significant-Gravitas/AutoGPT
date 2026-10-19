@@ -17,6 +17,7 @@ from prisma.types import (
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
+    ChatSessionUpdateManyMutationInput,
     ChatSessionWhereInput,
     FindManyChatMessageArgsFromChatSession,
 )
@@ -1556,6 +1557,7 @@ async def update_chat_session_status(
     status: str,
     expect_status: str | None = None,
     user_id: str | None = None,
+    unarchive: bool = False,
 ) -> bool:
     """Update ``ChatSession.chatStatus`` to ``status``.
 
@@ -1563,16 +1565,19 @@ async def update_chat_session_status(
     value — required for race-safe cancel/claim/restore (so two
     concurrent transitions can't both win).  Pass ``user_id`` to
     enforce ownership in the same statement (used by the user-initiated
-    cancel path).  Returns True iff the row was matched and updated.
+    cancel path).  Pass ``unarchive`` when the transition is a new turn, so
+    an archived chat comes back into the user's lists in the same write.
+    Returns True iff the row was matched and updated.
     """
     where: ChatSessionWhereInput = {"id": session_id}
     if expect_status is not None:
         where["chatStatus"] = expect_status
     if user_id is not None:
         where["userId"] = user_id
-    updated = await PrismaChatSession.prisma().update_many(
-        where=where, data={"chatStatus": status}
-    )
+    data: ChatSessionUpdateManyMutationInput = {"chatStatus": status}
+    if unarchive:
+        data["archivedAt"] = None
+    updated = await PrismaChatSession.prisma().update_many(where=where, data=data)
     return updated > 0
 
 

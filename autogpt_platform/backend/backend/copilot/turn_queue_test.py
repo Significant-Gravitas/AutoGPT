@@ -145,7 +145,11 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     assert metadata["kind"] == "expert_kickoff"
     # Session is flipped idle → queued.
     db.update_chat_session_status.assert_awaited_once_with(
-        session_id="s1", expect_status="idle", status="queued", user_id="u1"
+        session_id="s1",
+        expect_status="idle",
+        status="queued",
+        user_id="u1",
+        unarchive=True,
     )
 
 
