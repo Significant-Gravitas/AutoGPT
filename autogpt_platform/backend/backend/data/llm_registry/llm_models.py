@@ -32,6 +32,7 @@ CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-fable-5",
     "claude-mythos-5",
     "claude-opus-5",
+    "claude-haiku-5",
 )
 
 # The tokenizer generation introduced with Opus 4.7 (shared by the whole
@@ -184,6 +185,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
     CLAUDE_5_5_SONNET = "claude-sonnet-5-5"
+    CLAUDE_5_5_HAIKU = "claude-haiku-5-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -243,6 +245,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
+    META_MUSE_SPARK_OPEN = "meta/muse-spark-open"
     META_MUSE_WONDER = "meta/muse-wonder"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
@@ -351,6 +354,7 @@ _OPENROUTER_ALIASES: Mapping[str, LLMModel] = {
     "anthropic/claude-opus-4-5": LLMModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LLMModel.CLAUDE_4_5_SONNET,
     "anthropic/claude-sonnet-5.5": LLMModel.CLAUDE_5_5_SONNET,
+    "anthropic/claude-haiku-5.5": LLMModel.CLAUDE_5_5_HAIKU,
     "openai/gpt-5.4": LLMModel.GPT5_4,
     "openai/gpt-5.4-mini": LLMModel.GPT5_4_MINI,
     "openai/gpt-5.4-nano": LLMModel.GPT5_4_NANO,

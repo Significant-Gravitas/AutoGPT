@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { expectTypingKept } from "@/tests/integrations/typing";
 import { Input } from "./Input";
 
 describe("Input keyboard handling", () => {
@@ -51,4 +53,33 @@ describe("Input keyboard handling", () => {
     fireEvent.keyDown(amount, { key: "Enter" });
     expect(onKeyDown).toHaveBeenCalledTimes(1);
   });
+});
+
+// Every text field built on the atom inherits this: if the atom ever rewrote
+// its value (a formatter, a late sync), IME input and the caret would break
+// everywhere at once.
+describe("Input typing", () => {
+  function ControlledInput({ type }: { type: "text" | "textarea" }) {
+    const [value, setValue] = useState("Wstern");
+    return (
+      <Input
+        id="field"
+        label="Field"
+        type={type}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+    );
+  }
+
+  it.each(["text", "textarea"] as const)(
+    "keeps the text and caret as typed in the %s variant",
+    async (type) => {
+      render(<ControlledInput type={type} />);
+      const field = screen.getByLabelText("Field") as HTMLInputElement;
+
+      await expectTypingKept(field, "e", 1);
+      await expectTypingKept(field, " 日本語");
+    },
+  );
 });

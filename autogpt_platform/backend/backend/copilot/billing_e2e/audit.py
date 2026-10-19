@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from backend.copilot.model import ChatSession, Usage
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
-from .invoice import Call
+from .credit_audit import credit_charge_problems, debit_problems
+from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, Call
 from .ledger import PlatformLedger
 from .provider import FakeProvider
 from .scenarios import Check, Scenario, expected_charge_usd
@@ -26,18 +27,26 @@ def audit_thread(
     session: ChatSession,
     usage_by_turn: list[list[Usage]],
     cli_resumed: list[tuple[int, bool]] | None,
+    metered: dict[int, float] | None,
 ) -> list[Finding]:
     """Every way the thread strayed from its invoice or its planned path.
 
     ``cli_resumed`` says, for each CLI launch of an SDK thread, its turn and
     whether it resumed the chat's session; None for engines without a CLI.
+    ``metered`` is the live spend each SDK turn's governor reached; None for
+    engines without one.
     """
     findings = _audit_path(provider, cli_resumed, turns=len(usage_by_turn))
     findings += _audit_attribution(session, ledger)
+    findings += [
+        Finding(check="charge", message=problem)
+        for problem in debit_problems(scenario.credits, session, ledger)
+    ]
     for turn, session_usage in enumerate(usage_by_turn):
-        findings += _audit_turn(
-            scenario, turn, provider.calls_in(turn), ledger, session_usage
-        )
+        calls = provider.calls_in(turn)
+        findings += _audit_turn(scenario, turn, calls, ledger, session_usage)
+        if metered is not None:
+            findings += _audit_meter(turn, calls, metered.get(turn, 0.0))
     return findings
 
 
@@ -123,13 +132,14 @@ def _audit_unbilled(
     """A turn that owes nothing leaves no charge, cost-log row or usage."""
     spend = [charge.microdollars for charge in ledger.spend_in(turn)]
     tree = [charge.microdollars for charge in ledger.tree_in(turn)]
+    debits = [debit.credits for debit in ledger.debits_in(turn)]
     rows = ledger.rows_in(turn)
-    if not (spend or tree or rows or session_usage):
+    if not (spend or tree or debits or rows or session_usage):
         return []
     message = (
-        f"turn {turn} owes nothing, yet charged {spend} to spend and {tree} to "
-        f"the tree, logged {len(rows)} cost-log row(s) and recorded "
-        f"{len(session_usage)} session usage entries"
+        f"turn {turn} owes nothing, yet charged {spend} to spend, {tree} to "
+        f"the tree and {debits} credits, logged {len(rows)} cost-log row(s) "
+        f"and recorded {len(session_usage)} session usage entries"
     )
     return [Finding(check="charge", message=message)]
 
@@ -151,6 +161,11 @@ def _audit_spend(
         sum(expected_charge_usd(scenario.charge, call) for call in calls)
     )
     tolerance = _MICRODOLLAR_TOLERANCE_PER_CALL * len(calls)
+    if scenario.credits is not None:
+        problems = credit_charge_problems(
+            scenario.credits, turn, expected or 0, tolerance, ledger
+        )
+        return [Finding(check="charge", message=problem) for problem in problems]
     messages = []
     if len(spend) != 1 or abs(spend[0] - (expected or 0)) > tolerance:
         messages.append(
@@ -175,12 +190,24 @@ def _audit_row(
                 f"for a route the platform does not pay for"
             )
     else:
-        charged = [charge.microdollars for charge in ledger.spend_in(turn)]
+        # A turn billed to credits charges no spend window: the tree has the
+        # cost it recorded.
+        charges = (
+            ledger.spend_in(turn) if scenario.credits is None else ledger.tree_in(turn)
+        )
+        charged = [charge.microdollars for charge in charges]
         if row.tracking_type != "cost_usd" or [row.cost_microdollars] != charged:
             messages.append(
                 f"turn {turn}: logged {row.tracking_type} {row.cost_microdollars}, "
                 f"charged {charged}"
             )
+    mode = (row.metadata or {}).get("billing_mode")
+    billed_to_credits = scenario.credits is not None
+    if (mode == "credits") != billed_to_credits:
+        messages.append(
+            f"turn {turn}: cost-log billing mode {mode!r}, though the turn is "
+            f"{'' if billed_to_credits else 'not '}billed to credits"
+        )
     return [Finding(check="charge", message=message) for message in messages]
 
 
@@ -214,3 +241,38 @@ def _audit_tokens(
     if recorded != [owed]:
         messages.append(f"turn {turn}: session usage {recorded}, the turn owes {owed}")
     return [Finding(check="tokens", message=message) for message in messages]
+
+
+def _audit_meter(turn: int, calls: list[Call], metered: float) -> list[Finding]:
+    """The governor's live spend: every call the CLI made, failed attempts
+    included, at list price.
+
+    A task lands on this figure before its budget runs out. A model the rate
+    card can't find is priced as Opus, several times Sonnet, which lands
+    tasks early: OpenRouter's ``anthropic/`` slugs once did that.
+    """
+    ranges = [r for r in map(_list_price_range, calls) if r is not None]
+    if len(ranges) != len(calls):
+        # A route the suite has no list price for (Codex).
+        return []
+    low = sum(r[0] for r in ranges)
+    high = sum(r[1] for r in ranges)
+    if low - 1e-9 <= metered <= high + 1e-9:
+        return []
+    message = (
+        f"turn {turn}: the governor metered ${metered:.6f} for "
+        f"{len(calls)} call(s) listed at ${low:.6f}-${high:.6f}"
+    )
+    return [Finding(check="meter", message=message)]
+
+
+def _list_price_range(call: Call) -> tuple[float, float] | None:
+    """A call at list price, its cache writes at their own rate up to the 1h
+    rate: the CLI's usage doesn't say which a write was."""
+    if call.model == KIMI:
+        price = MOONSHOT_FALLBACK.of(call.usage, None)
+        return price, price
+    list_price = ANTHROPIC_PRICES.get(call.model.removeprefix("anthropic/"))
+    if list_price is None:
+        return None
+    return list_price.of(call.usage, call.cache_ttl), list_price.of(call.usage, "1h")

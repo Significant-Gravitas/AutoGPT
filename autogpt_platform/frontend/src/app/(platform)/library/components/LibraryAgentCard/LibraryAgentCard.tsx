@@ -150,7 +150,7 @@ export function LibraryAgentCard({
               type="button"
               onClick={() => {
                 const prompt = encodeURIComponent(
-                  `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
+                  `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
                 );
                 router.push(`/home?autosubmit=true#prompt=${prompt}`);
               }}
@@ -169,7 +169,7 @@ export function LibraryAgentCard({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
-        <TooltipContent className="max-w-xs text-red-600">
+        <TooltipContent className="max-w-xs text-red-300">
           {statusInfo.lastError}
         </TooltipContent>
       </Tooltip>

@@ -26,7 +26,10 @@ def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
     """Personal AutoPilot manages every schedule on the account; an expert
-    only its own."""
+    only its own. Neither sees a chat's resume or send at the budget reset:
+    the user set those from the chat, and cancels them there."""
+    if isinstance(job, CopilotTurnJobInfo) and job.purpose != "followup":
+        return False
     return session.expert_id is None or job.expert_id == session.expert_id
 
 
@@ -190,7 +193,7 @@ class ListSchedulesTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )

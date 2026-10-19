@@ -10,7 +10,8 @@ Failure-mode policy:
 * Enforcement path (:func:`check_rate_limit`) **fails closed** — if Redis
   is unreachable we raise :class:`RateLimitUnavailable` so the API layer
   returns HTTP 503. A brown-out must not let a user bypass their
-  daily / weekly USD cap.
+  daily / weekly USD cap. Trials whose lifetime cap makes both windows
+  redundant use their durable trial counter instead of Redis.
 * Observability paths (:func:`get_usage_status`, the reset-count
   read/write helpers, the recording path :func:`record_cost_usage`) keep
   fail-open / best-effort semantics — losing a usage gauge or a single
@@ -55,7 +56,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
@@ -63,10 +64,20 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.copilot.trial_cost_context import record_attributed_trial_cost
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.copilot.trial_reads import shared_trial_read
+from backend.copilot.usage_activation import (
+    UsageActivationUnavailable,
+    get_ready_usage_state,
+    usage_keys,
+)
+from backend.copilot.usage_state import (
+    LimitWindow,
+    UsageState,
+    WindowReading,
+    usage_verdict,
+)
 from backend.data.db_accessors import credit_db, user_db
-from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
@@ -76,6 +87,8 @@ from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_e
 
 if TYPE_CHECKING:
     import stripe
+
+    from backend.data.subscription_trial import TrialState
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +385,12 @@ class CoPilotUsageStatus(BaseModel):
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
     )
+    # A lifetime trial already shows a spent allowance as a full weekly
+    # window; a trial whose period caps are tighter than its allowance doesn't.
+    trial_spent: bool = False
+    # The weekly window holds the trial's lifetime allowance rather than a
+    # weekly cap: it doesn't refill, and ``resets_at`` is the trial's end.
+    weekly_is_trial_allowance: bool = False
 
 
 class UsageWindowPublic(BaseModel):
@@ -406,6 +425,24 @@ class CoPilotUsagePublic(BaseModel):
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
     )
+    state: UsageState = Field(
+        default="ok",
+        description="'exhausted' when a turn can't start now (a capped window "
+        "or the trial allowance is used up), 'low' from 80% of the tightest "
+        "window (where the meters turn amber), otherwise 'ok'.",
+    )
+    limiting_window: LimitWindow | None = Field(
+        default=None,
+        description="The limit behind a 'low' or 'exhausted' state: the "
+        "used-up window that refills last, 'trial' for the trial allowance, "
+        "or the fullest window when 'low'. Null when 'ok'.",
+    )
+    resets_at: datetime | None = Field(
+        default=None,
+        description="When the limiting window refills. Null when 'ok', for "
+        "the trial allowance, and for a window that allows nothing (no plan), "
+        "none of which refill.",
+    )
 
     @classmethod
     def from_status(cls, status: CoPilotUsageStatus) -> "CoPilotUsagePublic":
@@ -435,24 +472,60 @@ class CoPilotUsagePublic(BaseModel):
                 pct = 100.0
             else:
                 pct = round(100.0 * w.used / w.limit, 1)
+                if status.tier == SubscriptionTier.TRIAL:
+                    pct = min(pct, 99.9)
             return UsageWindowPublic(
                 percent_used=pct,
                 resets_at=w.resets_at,
             )
 
+        daily, weekly = window(status.daily), window(status.weekly)
+        readings = [
+            reading
+            for reading in (
+                _reading("daily", status.daily, daily),
+                _reading("weekly", status.weekly, weekly),
+            )
+            if reading is not None
+        ]
+        verdict = usage_verdict(
+            readings,
+            weekly_is_trial_allowance=status.weekly_is_trial_allowance,
+            trial_spent=status.trial_spent,
+        )
         return cls(
-            daily=window(status.daily),
-            weekly=window(status.weekly),
+            daily=daily,
+            weekly=weekly,
             tier=status.tier,
             reset_cost=status.reset_cost,
+            state=verdict.state,
+            limiting_window=verdict.limiting_window,
+            resets_at=verdict.resets_at,
         )
+
+
+def _reading(
+    name: Literal["daily", "weekly"],
+    window: UsageWindow,
+    public: UsageWindowPublic | None,
+) -> WindowReading | None:
+    """A capped window as its meter shows it; None when it has no cap."""
+    if public is None:
+        return None
+    return WindowReading(
+        window=name,
+        percent_used=public.percent_used,
+        exhausted=window.used >= window.limit,
+        resets_at=window.resets_at,
+        refills=window.limit > 0,
+    )
 
 
 class RateLimitExceeded(Exception):
     """Raised when a user exceeds their CoPilot usage limit."""
 
-    def __init__(self, window: str, resets_at: datetime):
-        self.window = window
+    def __init__(self, window: LimitWindow, resets_at: datetime):
+        self.window: LimitWindow = window
         self.resets_at = resets_at
         delta = resets_at - datetime.now(UTC)
         total_secs = delta.total_seconds()
@@ -467,16 +540,7 @@ class RateLimitExceeded(Exception):
         )
 
 
-class RateLimitUnavailable(Exception):
-    """Rate limit state is currently unreachable — request rejected to
-    prevent USD-cap bypass. Maps to HTTP 503 in the API layer.
-
-    Distinct from :class:`RateLimitExceeded` (HTTP 429): the user is not
-    over their cap, but Redis is down so we cannot prove they are under it
-    either. Failing closed avoids the brown-out bypass where a user could
-    blast the LLM during a Redis outage and exceed their daily/weekly USD
-    allowance by hundreds of dollars.
-    """
+RateLimitUnavailable = UsageActivationUnavailable
 
 
 async def get_usage_status(
@@ -485,6 +549,7 @@ async def get_usage_status(
     weekly_cost_limit: int,
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
+    fail_closed: bool = False,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -496,25 +561,62 @@ async def get_usage_status(
             spend allowed (over-cap immediately).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
         tier: The user's rate-limit tier (included in the response).
+        fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
+            read, instead of reporting no usage. For callers that act on the
+            figures rather than show them.
 
     Returns:
         CoPilotUsageStatus with current usage and limits in microdollars.
     """
     now = datetime.now(UTC)
+    state = await get_ready_usage_state(user_id)
+    if daily_cost_limit == 0 and weekly_cost_limit == 0:
+        # No plan, or the trial is over: nothing can be spent, so the
+        # counters don't matter. An ended trial still has its stale TRIAL
+        # state here, which reports it as a spent trial rather than no plan.
+        return _no_allowance_status(
+            now, tier, trial_ended=state.tier == SubscriptionTier.TRIAL
+        )
+    if await _effective_usage_tier(user_id, state.tier) != tier:
+        raise RateLimitUnavailable("Subscription changed while resolving usage limits")
+    d_key, w_key = usage_keys(user_id, state.generation, now)
     daily_used = 0
     weekly_used = 0
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
+            redis.get(d_key),
+            redis.get(w_key),
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
-    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
-        # ValueError: corrupt non-numeric counter (partial write / wrong-type
-        # SET) — same fail-open semantics, returns zeros.
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        ValueError,
+    ) as exc:
+        if state.generation is not None or fail_closed:
+            raise RateLimitUnavailable("Paid usage state is unavailable") from exc
         logger.warning("Redis unavailable for usage status, returning zeros")
+
+    weekly_reset = _weekly_reset_time(now=now)
+    trial_spent = False
+    weekly_is_trial_allowance = False
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        trial_spent = _trial_spent(trial)
+        if trial and _trial_uses_total_budget(
+            trial, daily_cost_limit, weekly_cost_limit
+        ):
+            # The client's weekly gauge also gates sending: it must retain
+            # lifetime exhaustion after calendar resets and exclude beta spend.
+            daily_used = min(daily_used, trial.cost_microdollars)
+            weekly_used = trial.cost_microdollars
+            weekly_cost_limit = trial.offer.total_cost_limit
+            weekly_reset = trial.ends_at or now
+            weekly_is_trial_allowance = True
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -525,10 +627,36 @@ async def get_usage_status(
         weekly=UsageWindow(
             used=weekly_used,
             limit=weekly_cost_limit,
-            resets_at=_weekly_reset_time(now=now),
+            resets_at=weekly_reset,
         ),
         tier=tier,
         reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
+        trial_spent=trial_spent,
+        weekly_is_trial_allowance=weekly_is_trial_allowance,
+    )
+
+
+def _no_allowance_status(
+    now: datetime, tier: SubscriptionTier, *, trial_ended: bool
+) -> CoPilotUsageStatus:
+    return CoPilotUsageStatus(
+        daily=UsageWindow(used=0, limit=0, resets_at=_daily_reset_time(now=now)),
+        weekly=UsageWindow(used=0, limit=0, resets_at=_weekly_reset_time(now=now)),
+        tier=tier,
+        reset_cost=0,
+        trial_spent=trial_ended,
+    )
+
+
+def _trial_spent(trial: "TrialState | None") -> bool:
+    """No trial turn may start: the trial is over or its allowance is used.
+
+    The same conditions :func:`check_rate_limit` refuses a trial turn on.
+    """
+    return (
+        trial is None
+        or not trial.active
+        or trial.cost_microdollars >= trial.offer.total_cost_limit
     )
 
 
@@ -537,6 +665,8 @@ async def get_remaining_usd_budget(
     daily_cost_limit: int,
     weekly_cost_limit: int,
     floor_usd: float = 0.5,
+    *,
+    expected_tier: SubscriptionTier | str | None = None,
 ) -> float:
     """Return the user's remaining USD spend cap for the current windows.
 
@@ -546,14 +676,17 @@ async def get_remaining_usd_budget(
     user is close to their actual cap, and to feed the baseline path's
     per-turn budget hint via :func:`build_budget_ctx`.
 
+    Trials whose daily and weekly caps are at least their total cap use
+    the durable lifetime remainder directly, independent of Redis windows.
+
     A limit of ``0`` is treated as "no spend allowed" — remaining = 0
     on that window; callers should not pass 0 expecting it to mean "no
     cap". A negative limit means that window has no cap (the self-hosted
     default); when both windows are uncapped the result is ``inf``.
 
     Failure modes:
-        * Redis brown-out → ``floor_usd``, on every tier (so callers using
-          the value as a soft hint don't pretend the user has full budget;
+        * Redis brown-out → ``floor_usd`` for Redis-backed windows (so callers
+          using the value as a soft hint don't pretend the user has full budget;
           the pre-turn gate has already failed closed at 503 in this case,
           so we only land here from observability paths).  A caller that
           must tell "unknown" from "$0.00 left" passes a negative floor.
@@ -569,17 +702,29 @@ async def get_remaining_usd_budget(
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
     """
+    state = await get_ready_usage_state(user_id)
+    if (
+        expected_tier is not None
+        and await _effective_usage_tier(user_id, state.tier) != expected_tier
+    ):
+        raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     trial = None
-    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+    if state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0.0
+        if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
+            return (
+                max(0, trial.offer.total_cost_limit - trial.cost_microdollars)
+                / 1_000_000
+            )
     now = datetime.now(UTC)
+    d_key, w_key = usage_keys(user_id, state.generation, now)
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
+            redis.get(d_key),
+            redis.get(w_key),
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
@@ -649,6 +794,7 @@ async def build_budget_ctx(
         # we map it back to "" below so the model doesn't see a
         # misleading $0.00 hint when our metrics are degraded.
         floor_usd=0.0,
+        expected_tier=_tier,
     )
     if remaining == float("inf") or remaining <= 0.0:
         return ""
@@ -665,6 +811,7 @@ async def check_rate_limit(
     weekly_cost_limit: int,
     *,
     skip_daily: bool = False,
+    expected_tier: SubscriptionTier | str | None = None,
 ) -> None:
     """Check if user is within rate limits.
 
@@ -672,6 +819,10 @@ async def check_rate_limit(
     and :class:`RateLimitUnavailable` when Redis is unreachable so the
     caller must fail closed (HTTP 503) — the daily/weekly USD caps are
     real money and cannot be bypassed by a Redis brown-out.
+
+    Trials whose period caps are at least their lifetime cap use the durable
+    trial counter alone. Their remaining allowance survives Redis outages,
+    and resetting Redis cannot replenish their lifetime budget.
 
     A limit of ``0`` means "no spend allowed", not "unlimited". A negative
     limit disables that window's check entirely — the explicit "no cap"
@@ -694,19 +845,28 @@ async def check_rate_limit(
     (the exact cost is unknown until after generation).
     """
     now = datetime.now(UTC)
-    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+    state = await get_ready_usage_state(user_id)
+    if (
+        expected_tier is not None
+        and await _effective_usage_tier(user_id, state.tier) != expected_tier
+    ):
+        raise RateLimitUnavailable("Subscription changed while resolving usage limits")
+    d_key, w_key = usage_keys(user_id, state.generation, now)
+    if state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             raise RateLimitExceeded("trial", now)
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
             raise RateLimitExceeded("trial", trial.ends_at or now)
+        if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
+            return
     if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
         return
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
+            redis.get(d_key),
+            redis.get(w_key),
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
@@ -733,11 +893,25 @@ async def check_rate_limit(
     # collapse semantics of :func:`get_global_rate_limits` and produced
     # the autopilot paywall bypass. Only an explicitly negative limit — the
     # self-hosted "no cap" sentinel — skips a window.
+    #
+    # Weekly first: with both windows used up, the user is blocked until the
+    # one that refills last, and the weekly window never refills before the
+    # daily one (on Sundays they refill together).
+    if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
+        raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
     if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
-    if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
-        raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+def _trial_uses_total_budget(
+    trial: "TrialState", daily_cost_limit: int, weekly_cost_limit: int
+) -> bool:
+    """Redundant window caps must not count spending from before the trial."""
+    return (
+        daily_cost_limit >= trial.offer.total_cost_limit
+        and weekly_cost_limit >= trial.offer.total_cost_limit
+    )
 
 
 async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
@@ -761,20 +935,26 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
     try:
         redis = await get_redis_async()
 
-        d_key = _daily_key(user_id, now=now)
-        w_key = _weekly_key(user_id, now=now) if daily_cost_limit > 0 else None
+        state = await get_ready_usage_state(user_id)
+        d_key, w_key = usage_keys(user_id, state.generation, now)
 
         # Daily and weekly keys hash to different cluster slots, so cross-key
         # MULTI/EXEC is not available. Issue the writes sequentially — the
         # failure mode (daily deleted, weekly not decremented) is a
         # best-effort refund budget that the read path already tolerates.
         await redis.delete(d_key)
-        if w_key is not None:
+        if daily_cost_limit > 0:
             await _decr_counter_floor_zero(redis, w_key, daily_cost_limit)
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
-    except (RedisError, RedisClusterException, ConnectionError, OSError):
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        UsageActivationUnavailable,
+    ):
         logger.warning("Redis unavailable for resetting daily usage")
         return False
 
@@ -865,11 +1045,11 @@ async def record_cost_usage(
     cost_microdollars = max(0, cost_microdollars)
     if cost_microdollars <= 0:
         return
-    if (
-        not await record_attributed_trial_cost(user_id, cost_microdollars)
-        and await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL
-    ):
-        await credit_db().record_subscription_trial_cost(user_id, cost_microdollars)
+    context = await capture_cost_context(user_id)
+    if context.trial_id is not None:
+        await credit_db().record_subscription_trial_cost(
+            user_id, cost_microdollars, trial_id=context.trial_id
+        )
 
     logger.info(
         "Recording copilot spend: %d microdollars (skip_daily=%s)",
@@ -878,8 +1058,7 @@ async def record_cost_usage(
     )
 
     now = datetime.now(UTC)
-    d_key = _daily_key(user_id, now=now)
-    w_key = _weekly_key(user_id, now=now)
+    d_key, w_key = usage_keys(user_id, context.generation, now)
     daily_ttl = max(int((_daily_reset_time(now=now) - now).total_seconds()), 1)
     weekly_ttl = max(int((_weekly_reset_time(now=now) - now).total_seconds()), 1)
     try:
@@ -937,7 +1116,7 @@ class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
     Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
-    from persisting the fallback, which would otherwise keep serving FREE
+    from persisting the fallback, which would otherwise keep serving NO_TIER
     for up to the TTL after the user's real tier is set.
     """
 
@@ -1013,51 +1192,23 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
 
 
 async def get_user_tier(user_id: str) -> SubscriptionTier:
-    """Look up the user's rate-limit tier from the database.
+    """Read tier and activation readiness together, without the tier cache."""
+    state = await get_ready_usage_state(user_id)
+    tier = SubscriptionTier(state.tier)
+    if tier == SubscriptionTier.TRIAL:
+        return await _effective_usage_tier(user_id, tier)
+    if tier == SubscriptionTier.NO_TIER and await _maybe_reconcile_stripe_tier(user_id):
+        return SubscriptionTier((await get_ready_usage_state(user_id)).tier)
+    return tier
 
-    Successful results are cached for 5 minutes (via ``_fetch_user_tier``)
-    to avoid a DB round-trip on every rate-limit check.
 
-    Falls back to ``DEFAULT_TIER`` **without caching** when the DB is
-    unreachable or returns an unrecognised value, so the next call retries
-    the query instead of serving a stale fallback for up to 5 minutes.
-
-    When the resolved tier is NO_TIER and the user has a Stripe customer
-    record, a lazy reconciliation check is attempted (gated to once per 5
-    minutes via a Redis key) to recover from missed webhooks.
-    """
-    tier_from_db = True
-    try:
-        tier = await _fetch_user_tier(user_id)
-    except _UserNotFoundError:
-        # Row missing or tier is NULL — DB-confirmed NO_TIER, eligible for reconciliation.
-        tier = SubscriptionTier.NO_TIER
-    except Exception as exc:
-        logger.warning(
-            "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
-            user_id[:8],
-            DEFAULT_TIER.value,
-            exc,
-        )
-        tier = DEFAULT_TIER
-        tier_from_db = False
-
+async def _effective_usage_tier(
+    user_id: str, tier: SubscriptionTier
+) -> SubscriptionTier:
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
-        return tier if trial and trial.active else SubscriptionTier.NO_TIER
-    if tier != SubscriptionTier.NO_TIER:
-        return tier
-
-    if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
-        try:
-            return await _fetch_user_tier(user_id)
-        except Exception as exc:
-            logger.warning(
-                "get_user_tier: tier re-read failed after reconciliation for %s: %s",
-                user_id[:8],
-                exc,
-            )
-
+        if trial is None or not trial.active:
+            return SubscriptionTier.NO_TIER
     return tier
 
 
@@ -1097,7 +1248,6 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
-    schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
@@ -1337,14 +1487,14 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
     the admin believing the counters were zeroed when they were not.
     """
     now = datetime.now(UTC)
-    d_key = _daily_key(user_id, now=now)
-    w_key = _weekly_key(user_id, now=now) if reset_weekly else None
+    state = await get_ready_usage_state(user_id)
+    d_key, w_key = usage_keys(user_id, state.generation, now)
     try:
         redis = await get_redis_async()
         # Daily and weekly keys hash to different cluster slots — multi-key
         # DELETE would raise CROSSSLOT, so issue separate calls.
         await redis.delete(d_key)
-        if w_key is not None:
+        if reset_weekly:
             await redis.delete(w_key)
     except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting user usage")
@@ -1411,28 +1561,12 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 async def is_user_paywalled(user_id: str) -> bool:
     """Return ``True`` if the user has no entitlement to paywalled features.
 
-    A user with no DB tier record (``_UserNotFoundError`` — fresh signup
-    that hasn't been provisioned yet, or row missing) is treated as
-    ``NO_TIER`` here: paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
-    Without this branch the missing-tier case would propagate as a 500
-    in any caller that doesn't already have a generic ``except`` (e.g.
-    the external API ``execute_graph_block`` route).
-
-    Other tier-lookup errors propagate — callers decide (route → 503,
-    background job → fail-open).
+    Missing users, incomplete activations, and lookup errors propagate:
+    HTTP gates return 503, and background work fails or retries without
+    spending while entitlement is unknown. A confirmed ``NO_TIER`` user
+    is paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
     """
-    try:
-        tier = await _fetch_user_tier(user_id)
-    except _UserNotFoundError:
-        # No DB row / no subscription_tier set — fresh signup that hasn't
-        # been provisioned yet, or row missing entirely. Logged at debug
-        # so ops can correlate "402s on fresh signups" with provisioning
-        # gaps without spamming the warning level.
-        logger.debug(
-            "is_user_paywalled: tier lookup empty for %s, treating as NO_TIER",
-            user_id[:8],
-        )
-        tier = SubscriptionTier.NO_TIER
+    tier = SubscriptionTier((await get_ready_usage_state(user_id)).tier)
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         return trial is None or not trial.active
