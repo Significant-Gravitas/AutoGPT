@@ -336,7 +336,7 @@ def test_a_builtin_tool_is_timed_from_its_hooks(capture: MagicMock):
     _in_a_turn()
     timer = ToolSpanTimer()
 
-    timer.start("tu-1")
+    timer.start("tu-1", "WebSearch")
     timer.finish(
         "tu-1", "WebSearch", user_id=USER_ID, session_id=SESSION_ID, is_error=False
     )
@@ -354,7 +354,7 @@ def test_a_failed_builtin_tool_is_an_error(capture: MagicMock):
     _in_a_turn()
     timer = ToolSpanTimer()
 
-    timer.start("tu-1")
+    timer.start("tu-1", "Bash")
     timer.finish("tu-1", "Bash", user_id=USER_ID, session_id=SESSION_ID, is_error=True)
 
     assert capture.call_args.args[2]["$ai_is_error"] is True
@@ -372,8 +372,46 @@ def test_a_builtin_tool_that_never_started_sends_nothing(capture: MagicMock):
 def test_a_builtin_tool_outside_a_turn_sends_nothing(capture: MagicMock):
     timer = ToolSpanTimer()
 
-    timer.start("tu-1")
+    timer.start("tu-1", "Bash")
     timer.finish("tu-1", "Bash", user_id=USER_ID, session_id=SESSION_ID, is_error=False)
+
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize("tool_name", ["TodoWrite", "Read", "Glob", "Grep", "LS"])
+def test_a_high_volume_builtin_tool_sends_no_span(capture: MagicMock, tool_name: str):
+    """The CLI calls these tens of times a turn, sub-agents included, and a
+    span of a file read or a checklist update says little."""
+    _in_a_turn()
+    timer = ToolSpanTimer()
+
+    timer.start("tu-1", tool_name)
+    timer.finish(
+        "tu-1", tool_name, user_id=USER_ID, session_id=SESSION_ID, is_error=False
+    )
+
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize("tool_name", ["Task", "Agent", "Bash", "Edit", "Write"])
+def test_a_builtin_tool_that_acts_keeps_its_span(capture: MagicMock, tool_name: str):
+    _in_a_turn()
+    timer = ToolSpanTimer()
+
+    timer.start("tu-1", tool_name)
+    timer.finish(
+        "tu-1", tool_name, user_id=USER_ID, session_id=SESSION_ID, is_error=False
+    )
+
+    assert capture.call_args.args[2]["$ai_span_name"] == tool_name
+
+
+def test_builtin_tool_spans_can_be_turned_off(capture: MagicMock):
+    _in_a_turn()
+    timer = ToolSpanTimer(enabled=False)
+
+    timer.start("tu-1", "Task")
+    timer.finish("tu-1", "Task", user_id=USER_ID, session_id=SESSION_ID, is_error=False)
 
     capture.assert_not_called()
 

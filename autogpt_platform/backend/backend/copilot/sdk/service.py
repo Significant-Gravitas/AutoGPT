@@ -5311,6 +5311,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             on_compact=compaction.on_compact,
             tool_display_bridge=tool_display_bridge,
             governor=governor,
+            builtin_tool_spans=config.posthog_builtin_tool_spans,
         )
 
         if permissions is not None:

@@ -171,15 +171,32 @@ class _Started(BaseModel):
     parent_id: str
 
 
+# Built-in tools the CLI calls often and cheaply, sub-agents included: tens
+# a turn, each a lookup or a checklist update whose span says little. They
+# get no span, which keeps the span volume to the calls that act or spend.
+UNTRACED_BUILTIN_TOOLS: frozenset[str] = frozenset(
+    {"TodoWrite", "Read", "Glob", "Grep", "LS", "NotebookRead"}
+)
+
+
 class ToolSpanTimer:
     """Times tool calls whose start and end arrive in separate callbacks: the
     Claude Agent SDK's Pre/PostToolUse hooks for the CLI's built-in tools
-    (Bash, Task, WebSearch, ...), which never pass through ``BaseTool``."""
+    (Bash, Task, WebSearch, ...), which never pass through ``BaseTool``.
 
-    def __init__(self) -> None:
+    One timer serves one turn's hooks and goes with them, so a call whose
+    end never arrives is dropped at the end of its turn.
+
+    *enabled* off (``ChatConfig.posthog_builtin_tool_spans``) sends no span
+    at all; on, every built-in but ``UNTRACED_BUILTIN_TOOLS`` gets one."""
+
+    def __init__(self, *, enabled: bool = True) -> None:
+        self._enabled = enabled
         self._started: dict[str, _Started] = {}
 
-    def start(self, tool_use_id: str) -> None:
+    def start(self, tool_use_id: str, tool_name: str) -> None:
+        if not self._enabled or tool_name in UNTRACED_BUILTIN_TOOLS:
+            return
         trace_id = turn_trace_id()
         if not trace_id:
             return

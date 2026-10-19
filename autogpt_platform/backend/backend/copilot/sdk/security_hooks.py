@@ -213,6 +213,7 @@ def create_security_hooks(
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
     governor: TurnGovernor | None = None,
+    builtin_tool_spans: bool = True,
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -233,6 +234,8 @@ def create_security_hooks(
         governor: The turn's spend and step governor. Once it is landing the
             turn, every tool call -- the main agent's and its sub-agents' --
             is refused with a reason that asks for a checkpoint.
+        builtin_tool_spans: Send a PostHog span for each call of the CLI's
+            built-in tools (``ChatConfig.posthog_builtin_tool_spans``).
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -251,7 +254,7 @@ def create_security_hooks(
         # The CLI runs its built-in tools (Bash, Task, WebSearch, ...) itself,
         # so they never pass through ``BaseTool``; their PostHog spans are
         # timed from these hooks. Our MCP tools get theirs in ``BaseTool``.
-        builtin_spans = ToolSpanTimer()
+        builtin_spans = ToolSpanTimer(enabled=builtin_tool_spans)
 
         def _finish_builtin_span(
             tool_name: str, tool_use_id: str | None, *, is_error: bool
@@ -324,7 +327,7 @@ def create_security_hooks(
             if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
             if not is_copilot_tool and tool_use_id is not None:
-                builtin_spans.start(tool_use_id)
+                builtin_spans.start(tool_use_id, tool_name)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (

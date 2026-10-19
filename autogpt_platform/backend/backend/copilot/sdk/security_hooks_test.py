@@ -958,3 +958,41 @@ async def test_a_platform_tool_gets_its_span_from_basetool_not_the_hooks(
     )
 
     _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_high_volume_builtin_tool_sends_no_span(_hooks, _spans):
+    """The CLI's checklist and file lookups run tens of times a turn."""
+    pre, post, _ = _hooks
+    todos = {"todos": [{"content": "x", "status": "pending", "activeForm": "x"}]}
+
+    result = await pre({"tool_name": "TodoWrite", "tool_input": todos}, "tu-1", {})
+    await post(
+        {"tool_name": "TodoWrite", "tool_input": todos, "tool_response": "ok"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    assert not _is_denied(result)
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_builtin_tool_spans_turned_off_send_none(_spans):
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, builtin_tool_spans=False
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    post = hooks["PostToolUse"][0].hooks[0]
+    task = {"prompt": "x"}
+
+    await pre({"tool_name": "Task", "tool_input": task}, "tu-1", {})
+    await post(
+        {"tool_name": "Task", "tool_input": task, "tool_response": "results"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    _spans.assert_not_called()
