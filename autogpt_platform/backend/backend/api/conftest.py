@@ -21,6 +21,7 @@ _PAYWALL_CHECK_SITES = (
     "backend.copilot.rate_limit.is_user_paywalled",
     "backend.executor.utils.is_user_paywalled",
     "backend.api.features.integrations.router.is_user_paywalled",
+    "backend.copilot.gate.workflow.is_user_paywalled",
 )
 
 

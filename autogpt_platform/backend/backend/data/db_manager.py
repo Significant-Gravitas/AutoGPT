@@ -155,6 +155,8 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
+    record_gate_approval,
+    reopen_review,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -435,6 +437,8 @@ class DatabaseManager(AppService):
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
+    record_gate_approval = _(record_gate_approval)
+    reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -944,6 +948,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
+    record_gate_approval = d.record_gate_approval
+    reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #

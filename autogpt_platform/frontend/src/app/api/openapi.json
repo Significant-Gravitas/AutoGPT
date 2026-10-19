@@ -2747,6 +2747,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
@@ -6781,7 +6823,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -18769,7 +18819,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",

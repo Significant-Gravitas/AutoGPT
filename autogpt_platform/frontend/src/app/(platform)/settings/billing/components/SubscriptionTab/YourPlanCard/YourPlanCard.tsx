@@ -35,6 +35,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
     retry,
     isLoading,
     isUpdatingTier,
+    isRedirecting,
     canManagePortal,
     canUpgrade,
     canDowngrade,
@@ -115,7 +116,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               <CycleToggle
                 value={selectedCycle}
                 onChange={onCycleChange}
-                disabled={isUpdatingTier}
+                disabled={isUpdatingTier || isRedirecting}
               />
             ) : null}
           </div>
@@ -166,7 +167,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               variant="primary"
               size="small"
               onClick={onResume}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier}
             >
               {plan.isPendingCancel
@@ -181,7 +182,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               variant="outline"
               size="small"
               onClick={onDowngrade}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier}
             >
               Downgrade to {plan.previousTierLabel}
@@ -206,7 +207,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               variant="primary"
               size="small"
               onClick={onUpgrade}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
               data-fast-goal="subscription_upgrade_click"
               data-fast-goal-from={plan.label}
