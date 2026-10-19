@@ -12,6 +12,7 @@ if typing.TYPE_CHECKING:
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -78,6 +79,7 @@ class VideoDownloadBlock(Block):
                 ),
                 "_store_output_video": lambda *args, **kwargs: "video.mp4",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def validate_url(self, url: str) -> None:

@@ -3,12 +3,17 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { formatDistanceToNow } from "date-fns";
 import React from "react";
+import {
+  describeFailedSteps,
+  getFailedStepCount,
+  isCompletedWithErrors,
+} from "@/lib/run-health";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TaskActionsDropdown } from "./TaskActionsDropdown";
 import {
+  Alert02Icon,
   AlertCircleIcon,
   CancelCircleIcon,
   CheckmarkCircle02Icon,
@@ -18,6 +23,7 @@ import {
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
@@ -66,6 +72,12 @@ interface Props {
   onDeleted?: () => void;
 }
 
+const completedWithErrorsIcon = (
+  <IconWrapper className="border-amber-50 bg-amber-50">
+    <Icon icon={Alert02Icon} size={16} className="text-amber-700" />
+  </IconWrapper>
+);
+
 export function TaskListItem({
   run,
   title,
@@ -74,12 +86,20 @@ export function TaskListItem({
   onClick,
   onDeleted,
 }: Props) {
+  const withErrors = isCompletedWithErrors(run);
   const icon = run.is_dry_run ? (
     <IconWrapper className="border-amber-50 bg-amber-50">
       <Icon icon={FlaskConicalIcon} size={16} className="text-amber-700" />
     </IconWrapper>
+  ) : withErrors ? (
+    completedWithErrorsIcon
   ) : (
     statusIconMap[run.status]
+  );
+  const startedAgo = run.started_at ? (
+    <RelativeTime date={run.started_at} />
+  ) : (
+    "—"
   );
 
   return (
@@ -87,9 +107,13 @@ export function TaskListItem({
       icon={icon}
       title={run.is_dry_run ? `${title} (Simulated)` : title}
       description={
-        run.started_at
-          ? formatDistanceToNow(run.started_at, { addSuffix: true })
-          : "—"
+        withErrors ? (
+          <>
+            {describeFailedSteps(getFailedStepCount(run))} · {startedAgo}
+          </>
+        ) : (
+          startedAgo
+        )
       }
       descriptionTitle={
         run.started_at ? new Date(run.started_at).toString() : undefined

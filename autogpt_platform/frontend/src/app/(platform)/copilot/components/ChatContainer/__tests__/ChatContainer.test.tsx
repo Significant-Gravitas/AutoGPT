@@ -2,6 +2,7 @@ import React from "react";
 import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { getUsageExperience } from "@/services/usageExperience/helpers";
 import {
   act,
   render,
@@ -111,8 +112,18 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: ({ disabled }: { disabled?: boolean }) => (
-    <input data-testid="chat-input" disabled={disabled} />
+  ChatInput: ({
+    disabled,
+    sendDisabled,
+  }: {
+    disabled?: boolean;
+    sendDisabled?: boolean;
+  }) => (
+    <input
+      data-testid="chat-input"
+      disabled={disabled}
+      data-send-disabled={String(!!sendDisabled)}
+    />
   ),
 }));
 
@@ -195,6 +206,22 @@ const baseProps = {
   historicalDurations: new Map<string, number>(),
 };
 
+// A platform chat whose daily budget is out and resets: the composer offers
+// Send at reset in place of the paused notice.
+const sendAtResetProps = {
+  chatAuthProvider: "platform",
+  usage: {
+    budget: {
+      state: "exhausted" as const,
+      window: "daily" as const,
+      resetsAt: new Date("2026-10-16T00:00:00Z"),
+      percentUsed: 100,
+    },
+    usage: undefined,
+    experience: getUsageExperience(),
+  },
+};
+
 describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
@@ -214,9 +241,22 @@ describe("ChatContainer", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
+  // Radix opens a tooltip on a timer and arms its Escape handler a render
+  // after the tooltip appears. Run the delay on a fake clock inside act() so
+  // the tooltip is fully mounted before the next interaction, however slow
+  // the machine.
+  async function hoverUsageTooltipTrigger(trigger: HTMLElement) {
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+  }
+
   it("keeps usage tooltips hoverable and dismissible as the limit changes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { rerender } = render(<ChatContainer {...baseProps} />);
     const input = screen.getByTestId("chat-input");
@@ -229,11 +269,10 @@ describe("ChatContainer", () => {
     expect((input as HTMLInputElement).value).toBe("Unsent draft");
     expect(screen.queryByRole("tooltip")).toBeNull();
 
-    fireEvent.pointerMove(input.parentElement!, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toBeDefined();
-    await act(async () => {});
+    await hoverUsageTooltipTrigger(input.parentElement!);
+    expect(screen.getByRole("tooltip")).toBeDefined();
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(screen.queryByRole("tooltip")).toBeNull();
 
     mockIsUsageLimitReached.mockReturnValue(false);
     rerender(<ChatContainer {...baseProps} />);
@@ -244,17 +283,101 @@ describe("ChatContainer", () => {
     consoleWarn.mockRestore();
   });
 
-  it("renders the blurred usage-limit backdrop only when the limit is reached", () => {
+  it("opens the usage tooltip only for a hover made while the limit is reached", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    // Hovering the composer before the limit is reached.
+    await hoverUsageTooltipTrigger(trigger);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
     mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
 
+    // The limit lifting while the tooltip shows.
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't pop the usage tooltip open when a turn starts after Send at reset hid it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    const { rerender } = render(<ChatContainer {...atReset} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    // A running turn ends Send at reset while the limit still holds.
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't reopen a usage tooltip Send at reset closed once a turn starts", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    rerender(<ChatContainer {...atReset} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("keeps the draft editable while the usage notice pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
     render(<ChatContainer {...baseProps} />);
-
-    const backdrop = screen.getByTestId("usage-limit-backdrop");
-
     expect(screen.getByRole("alert")).toBeDefined();
-    expect(backdrop.className).toContain("backdrop-blur-lg");
-    expect(backdrop.className).toContain("[mask-image:linear-gradient");
-    expect(backdrop.className).toContain("radial-gradient");
+    const input = screen.getByTestId("chat-input") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    expect(input.getAttribute("data-send-disabled")).toBe("true");
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    expect(input.value).toBe("Keep this draft");
+    expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
+  });
+
+  it("still sends a retry while the limit pauses the composer, so the server can refuse it", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "question",
+            role: "user",
+            parts: [{ type: "text", text: "Summarize the launch notes" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Summarize the launch notes",
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {

@@ -147,6 +147,15 @@ describe("kickoff message identification", () => {
     expect(visible.map((message) => message.id)).toEqual(["m2"]);
   });
 
+  it("returns the same array when there is no kickoff message to hide", () => {
+    const messages = [
+      userMessage("m1", "Plan my week"),
+      assistantMessage("m2", "Here's a plan."),
+    ];
+
+    expect(hideKickoffMessages(messages)).toBe(messages);
+  });
+
   it("keeps a user message that merely repeats the kickoff wording", () => {
     const kickoff = buildKickoffMessage(EXPERT_ID);
 

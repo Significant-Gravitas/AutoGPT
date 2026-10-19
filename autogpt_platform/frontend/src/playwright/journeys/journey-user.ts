@@ -50,6 +50,21 @@ export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
   return user;
 }
 
+/**
+ * Signs up a brand-new user who has finished onboarding but not the account
+ * setup (POST /auth/user) that the app's sign-up runs before the first page.
+ * A Google or email-link sign-in is in this state until /auth/callback has
+ * run, and stays in it if that redirect is lost.
+ */
+export async function signUpBeforeAccountSetup(
+  page: Page,
+): Promise<JourneyUser> {
+  const user = await signUp(page, newJourneyUser());
+  if (user.id) await grantSubscriptionTier(user.id);
+  await completeOnboarding(page);
+  return user;
+}
+
 function newJourneyUser(): JourneyUser {
   const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
   return {
@@ -94,8 +109,8 @@ async function signIn(page: Page, user: JourneyUser) {
   return { ...user, id: body.user?.id };
 }
 
-// The app does this on a user's first page load; among other things it
-// creates their marketplace profile. Done here so a journey doesn't race it.
+// The app's sign-up, sign-in and /auth/callback do this before the user's
+// first page; among other things it creates their personal org.
 async function finishAccountSetup(page: Page) {
   const response = await page.request.post("/api/proxy/api/auth/user");
   expect(

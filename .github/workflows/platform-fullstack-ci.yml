@@ -101,6 +101,7 @@ jobs:
             ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
+            ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
@@ -191,6 +192,7 @@ jobs:
             embeddings: true
             seed: true
             hosted: false
+            scripted_model: false
             known_failures: false
           # Holistic *-journey.spec.ts flows on the hosted configuration:
           # hosted feature flags, credits on. Advisory until proven stable
@@ -201,11 +203,15 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 4
+            min_tests: 11
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
             hosted: true
+            # AutoPilot answers from scripts (autogpt_platform/scripted_model)
+            # instead of CHAT_TEST_MODE's canned reply, so journeys run the
+            # real copilot pipeline: tools, persistence, streaming, cost.
+            scripted_model: true
             # Journeys may pin a known bug with test.fail(); it must still fail.
             known_failures: true
     permissions:
@@ -253,7 +259,11 @@ jobs:
           if [[ "${{ matrix.embeddings }}" == "true" ]]; then
             echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
           fi
-          echo "CHAT_TEST_MODE=true" >> ../backend/.env
+          # The journeys leg's AutoPilot talks to the scripted model instead
+          # (docker-compose.journeys.yml).
+          if [[ "${{ matrix.scripted_model }}" != "true" ]]; then
+            echo "CHAT_TEST_MODE=true" >> ../backend/.env
+          fi
           echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
@@ -287,7 +297,11 @@ jobs:
 
           # Resolve extends and generate a flat compose file that bake can understand
           export NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST
-          docker compose -f docker-compose.yml config > docker-compose.resolved.yml
+          compose_files=(-f docker-compose.yml)
+          if [[ "${{ matrix.scripted_model }}" == "true" ]]; then
+            compose_files+=(-f docker-compose.journeys.yml)
+          fi
+          docker compose "${compose_files[@]}" config > docker-compose.resolved.yml
 
           # Ensure NEXT_PUBLIC_SOURCEMAPS is in resolved compose
           # (docker compose config on some versions drops this arg)
@@ -356,7 +370,10 @@ jobs:
         run: |
           targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
           echo "Baking: $targets"
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load $targets
+          # The UTC date re-runs the backend's package installs once a day
+          # (APT_REFRESH), so E2E tests the OS packages that ship.
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+            --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
 
       - name: Set up Platform - Build frontend Docker image
         id: platform-build-frontend
@@ -478,6 +495,7 @@ jobs:
             pg_dump -U postgres --data-only --column-inserts \
             --schema=platform \
             --exclude-table='platform._prisma_migrations' \
+            --exclude-table='platform."PaidUsageActivationPolicy"' \
             --exclude-table='platform.apscheduler_jobs' \
             --exclude-table='platform.apscheduler_jobs_batched_notifications' \
             postgres > /tmp/e2e_test_data.sql

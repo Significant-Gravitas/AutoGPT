@@ -386,11 +386,20 @@ export class TurnRuntime {
 
   /** An answered approval starts the chat's next turn on the server; attach to it. */
   followBackendTurn() {
+    // Like a send, it asks for a turn, so an earlier Stop no longer holds. A
+    // stopped turn may still run; the approval's starts after it ends.
+    if (this.stopped) this.followPending = true;
+    this.stopped = false;
+    this.suppressAttach = false;
+    this.queueDeclined = false;
     if (this.runningTurn() || this.isPostPending()) {
       this.followPending = true;
       return;
     }
-    void this.probe(null, CONTINUATION_PROBES, true);
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
+    void this.probe(last?.log.turnId ?? null, CONTINUATION_PROBES, true);
   }
 
   dispose() {
@@ -1495,7 +1504,8 @@ export function isUnexpectedRefusal(status: number) {
   return status >= 400 && status < 500 && !EXPECTED_4XX.has(status);
 }
 
-const EXPECTED_4XX = new Set([401, 404, 408, 409, 425, 429]);
+// 402: the account has no plan, a state the app expects and offers plans for.
+const EXPECTED_4XX = new Set([401, 402, 404, 408, 409, 425, 429]);
 
 /** A send the server refused; its status says whether a resend can help. */
 export class SendRefusedError extends Error {
