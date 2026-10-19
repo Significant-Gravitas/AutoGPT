@@ -610,3 +610,63 @@ def test_before_send_transaction_keeps_only_the_user_id() -> None:
 
 def test_sentry_init_sends_no_default_pii(monkeypatch) -> None:
     assert _sentry_init_options(monkeypatch)["send_default_pii"] is False
+
+
+def test_before_send_drops_a_user_left_with_no_id() -> None:
+    event = _before_send(
+        {"level": "error", "user": {"email": "ada@example.com"}}, hint={}
+    )
+
+    assert event is not None
+    assert "user" not in event
+
+
+def test_before_send_transaction_drops_a_user_left_with_no_id() -> None:
+    event = metrics._before_send_transaction(
+        {"user": {"ip_address": "203.0.113.7"}}, hint={}
+    )
+
+    assert "user" not in event
+
+
+def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None:
+    def notify_user():
+        email = "ada@example.com"
+        user_email = "ada.lovelace@example.com"
+        ip = "203.0.113.7"
+        ip_address = "198.51.100.4"
+        email_count = 1
+        if email and user_email and ip and ip_address and email_count:
+            raise RuntimeError("could not send the notification")
+
+    try:
+        notify_user()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["extra"] = {
+        "Email": "ada@example.com",
+        "context": {"user_email": "ada.lovelace@example.com", "ip": "203.0.113.7"},
+        "ip_address": "198.51.100.4",
+        "email_verified": True,
+        "ip_allowlist_enabled": True,
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    assert body["extra"]["Email"] == "[Filtered]"
+    assert body["extra"]["context"] == {
+        "user_email": "[Filtered]",
+        "ip": "[Filtered]",
+    }
+    assert body["extra"]["ip_address"] == "[Filtered]"
+    frame_vars = body["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
+    for name in ("email", "user_email", "ip", "ip_address"):
+        assert frame_vars[name] == "[Filtered]", name
+    # Keys that only mention an email or IP stay readable for debugging.
+    assert frame_vars["email_count"] == "1"
+    assert body["extra"]["email_verified"] is True
+    assert body["extra"]["ip_allowlist_enabled"] is True
