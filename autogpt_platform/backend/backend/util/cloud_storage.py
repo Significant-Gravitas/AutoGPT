@@ -22,6 +22,10 @@ from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
+# What ``store_file`` writes for the expiry; the cleanup deletes on
+# ``expires_at`` in custom metadata.
+_EXPIRY_METADATA_KEYS = ("uploaded_at", "expires_at", "expiration_hours")
+
 
 class CloudStorageConfig:
     """Configuration for cloud storage providers."""
@@ -201,6 +205,14 @@ class CloudStorageHandler:
         # Validate that only one scope is provided
         if user_id and graph_exec_id:
             raise ValueError("Provide either user_id OR graph_exec_id, not both")
+
+        # Only ``delete_when_expired`` may make a file deletable, at its own
+        # ``expiration_hours``.
+        reserved = sorted(set(custom_metadata or {}) & set(_EXPIRY_METADATA_KEYS))
+        if reserved:
+            raise ValueError(
+                f"custom_metadata must not set the expiry: {', '.join(reserved)}"
+            )
 
         async_client = await self._get_async_gcs_client()
 

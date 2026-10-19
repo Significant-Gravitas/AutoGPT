@@ -129,9 +129,11 @@ class TestCloudStorageHandler:
 
     @patch.object(CloudStorageHandler, "_get_async_gcs_client")
     @pytest.mark.asyncio
-    async def test_store_file_keeps_custom_metadata_with_or_without_expiry(
+    async def test_store_file_keeps_custom_metadata_whether_or_not_it_may_be_deleted(
         self, mock_get_async_client, handler
     ):
+        """Every file carries an expiry; ``delete_when_expired`` only decides
+        whether the cleanup can read it. Custom metadata is kept either way."""
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
         marker = {"brain_dump_recording": "true"}
@@ -152,6 +154,30 @@ class TestCloudStorageHandler:
         )
         upload_metadata = mock_async_client.upload.call_args.kwargs["metadata"]
         assert upload_metadata["metadata"] == marker
+
+    @pytest.mark.parametrize("delete_when_expired", [False, True])
+    @pytest.mark.parametrize("key", ["expires_at", "uploaded_at", "expiration_hours"])
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_store_file_refuses_custom_metadata_that_sets_the_expiry(
+        self, mock_get_async_client, handler, key, delete_when_expired
+    ):
+        """Only ``delete_when_expired`` may make a file deletable, and then
+        only at its own ``expiration_hours``: an ``expires_at`` slipped in
+        through custom metadata would switch the cleanup on for files saved
+        schedules and presets still use."""
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+
+        with pytest.raises(ValueError, match=key):
+            await handler.store_file(
+                b"audio",
+                "a.webm",
+                user_id="user-1",
+                delete_when_expired=delete_when_expired,
+                custom_metadata={key: "2020-01-01T00:00:00+00:00"},
+            )
+        mock_async_client.upload.assert_not_awaited()
 
     @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
