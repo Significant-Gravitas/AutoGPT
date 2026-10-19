@@ -1194,6 +1194,11 @@ class UserCredit(UserCreditBase):
                     f"decline_code={e.error.decline_code if e.error else None}"
                 )
                 declined = e
+                # An automatic top-up runs with nobody there and nothing
+                # backing off, so trying every card would multiply declined
+                # off-session charges, which issuers and Radar hold against us.
+                if top_up_type == TopUpType.AUTO:
+                    break
 
         if not successful_transaction:
             if declined is not None:
@@ -1862,8 +1867,9 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
 
 
 class CardDeclinedError(Exception):
-    """Every saved card was declined. The message is Stripe's own reason, which
-    is written for the cardholder and carries no request id."""
+    """Every saved card was declined, or the first one on an automatic top-up.
+    The message is Stripe's own reason, which is written for the cardholder and
+    carries no request id."""
 
     def __init__(self, message: str, needs_authentication: bool = False):
         super().__init__(message)
