@@ -105,6 +105,14 @@ def _large_page_pdf() -> bytes:
     return bytes(pdf.output())
 
 
+def _oversized_page_pdf() -> bytes:
+    # A compact PDF declaring a page so large that even the minimum render scale
+    # would exceed the budget; the preview is declined before rendering.
+    pdf = FPDF(unit="pt", format=(1_000_000, 1_000_000))
+    pdf.add_page()
+    return bytes(pdf.output())
+
+
 def _mock_lookups(mocker, file: WorkspaceFile) -> None:
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace",
@@ -357,6 +365,16 @@ def test_pdf_preview_renders_a_large_page_as_a_thumbnail(mocker):
     assert response.headers["content-type"] == "image/webp"
     with Image.open(io.BytesIO(response.content)) as rendered:
         assert max(rendered.size) <= 200 * 4
+
+
+def test_pdf_preview_declines_a_page_too_large_for_the_budget(mocker):
+    _mock_lookups(mocker, _make_file(mime_type="application/pdf"))
+    _mock_storage(mocker, _oversized_page_pdf())
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?w=400")
+
+    assert response.status_code == 413
 
 
 def test_image_preview_declines_an_oversized_source(mocker):

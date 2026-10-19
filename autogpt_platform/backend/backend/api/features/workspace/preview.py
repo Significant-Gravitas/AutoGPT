@@ -19,6 +19,7 @@ import asyncio
 import base64
 import io
 import logging
+import math
 import zipfile
 from typing import Awaitable, Callable, Optional, cast
 
@@ -280,7 +281,14 @@ def _pdfium_first_page(content: bytes, width: int) -> bytes:
     pdf = pypdfium2.PdfDocument(content)
     try:
         page = pdf[0]
-        scale = _render_scale(page.get_width(), page.get_height(), width)
+        page_width, page_height = page.get_width(), page.get_height()
+        scale = _render_scale(page_width, page_height, width)
+        # A page can declare dimensions so large that even the minimum scale
+        # exceeds the budget; pypdfium2 rounds each side up, so check the bitmap
+        # it would allocate rather than the scaled area, and decline if over.
+        _ensure_within_render_budget(
+            (math.ceil(page_width * scale), math.ceil(page_height * scale))
+        )
         # pypdfium2's ``scale`` is documented as a float but defaults to ``1``,
         # so the inferred type is ``int``; a sub-unit scale is what shrinks a
         # large page to thumbnail size.
