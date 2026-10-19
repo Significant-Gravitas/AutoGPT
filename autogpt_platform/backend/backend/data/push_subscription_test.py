@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.errors import UniqueViolationError
 
 from backend.data import push_subscription
 
@@ -39,10 +40,7 @@ class TestUpsertPushSubscription:
         mock_prisma.upsert.assert_awaited_once()
         call_kwargs = mock_prisma.upsert.call_args.kwargs
         assert call_kwargs["where"] == {
-            "userId_endpoint": {
-                "userId": "user-1",
-                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
-            }
+            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1"
         }
         assert call_kwargs["data"]["create"] == {
             "userId": "user-1",
@@ -52,6 +50,7 @@ class TestUpsertPushSubscription:
             "userAgent": "Mozilla/5.0",
         }
         assert call_kwargs["data"]["update"] == {
+            "User": {"connect": {"id": "user-1"}},
             "p256dh": "test-p256dh",
             "auth": "test-auth",
             "userAgent": "Mozilla/5.0",
@@ -140,9 +139,10 @@ class TestUpsertPushSubscription:
         mock_prisma.upsert.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_claims_endpoint_from_other_users(self, mock_prisma):
+    async def test_moves_the_endpoint_to_the_subscribing_user(self, mock_prisma):
         # A browser has one push endpoint: after switching accounts on it, the
-        # previous account must stop receiving pushes there.
+        # previous account must stop receiving pushes there. The row is keyed
+        # by endpoint alone, so the upsert hands it to the new user.
         mock_prisma.upsert.return_value = MagicMock()
 
         await push_subscription.upsert_push_subscription(
@@ -152,30 +152,32 @@ class TestUpsertPushSubscription:
             auth="test-auth",
         )
 
-        mock_prisma.delete_many.assert_awaited_once_with(
-            where={
-                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
-                "userId": {"not": "user-2"},
-            }
-        )
-        mock_prisma.upsert.assert_awaited_once()
+        call_kwargs = mock_prisma.upsert.call_args.kwargs
+        assert call_kwargs["where"] == {
+            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1"
+        }
+        assert call_kwargs["data"]["update"]["User"] == {"connect": {"id": "user-2"}}
+        mock_prisma.delete_many.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_does_not_claim_endpoint_when_over_cap(self, mock_prisma):
-        mock_prisma.find_many.return_value = [
-            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
-            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+    async def test_retries_once_when_a_concurrent_subscribe_created_the_row(
+        self, mock_prisma
+    ):
+        expected = MagicMock()
+        mock_prisma.upsert.side_effect = [
+            UniqueViolationError(MagicMock()),
+            expected,
         ]
 
-        with pytest.raises(ValueError, match="Subscription limit"):
-            await push_subscription.upsert_push_subscription(
-                user_id="user-2",
-                endpoint="https://fcm.googleapis.com/fcm/send/sub/NEW",
-                p256dh="test-p256dh",
-                auth="test-auth",
-            )
+        result = await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
 
-        mock_prisma.delete_many.assert_not_awaited()
+        assert result is expected
+        assert mock_prisma.upsert.await_count == 2
 
 
 class TestGetUserPushSubscriptions:

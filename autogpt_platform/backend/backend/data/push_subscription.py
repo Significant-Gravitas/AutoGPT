@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
+from prisma.errors import UniqueViolationError
 from prisma.models import PushSubscription
 from pydantic import BaseModel
 
@@ -96,14 +97,29 @@ async def upsert_push_subscription(
         raise ValueError(
             f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
         )
-    # An endpoint belongs to one browser profile, so whoever subscribed it
-    # last owns it. Without this, signing into a second account on the same
-    # browser keeps delivering the first account's notifications there.
-    await PushSubscription.prisma().delete_many(
-        where={"endpoint": endpoint, "userId": {"not": user_id}}
-    )
+    try:
+        return await _claim_endpoint(user_id, endpoint, p256dh, auth, user_agent)
+    except UniqueViolationError:
+        # A concurrent subscribe created this endpoint's row between Prisma's
+        # read and write; it exists now, so a second try updates it.
+        return await _claim_endpoint(user_id, endpoint, p256dh, auth, user_agent)
+
+
+async def _claim_endpoint(
+    user_id: str,
+    endpoint: str,
+    p256dh: str,
+    auth: str,
+    user_agent: str | None,
+) -> PushSubscription:
+    """Write the endpoint's single row, moving it to ``user_id``.
+
+    An endpoint belongs to one browser profile (``endpoint`` is unique), so
+    whoever subscribed it last owns it. Signing into a second account on the
+    same browser then stops the first account's notifications arriving there.
+    """
     return await PushSubscription.prisma().upsert(
-        where={"userId_endpoint": {"userId": user_id, "endpoint": endpoint}},
+        where={"endpoint": endpoint},
         data={
             "create": {
                 "userId": user_id,
@@ -113,6 +129,7 @@ async def upsert_push_subscription(
                 "userAgent": user_agent,
             },
             "update": {
+                "User": {"connect": {"id": user_id}},
                 "p256dh": p256dh,
                 "auth": auth,
                 "userAgent": user_agent,
