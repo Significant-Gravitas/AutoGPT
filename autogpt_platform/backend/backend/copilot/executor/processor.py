@@ -266,13 +266,18 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
 
 
 async def _refuse_turn(
-    entry: CoPilotExecutionEntry, session: "ChatSession", pause: TurnPause
+    entry: CoPilotExecutionEntry,
+    session: "ChatSession",
+    pause: TurnPause,
+    scheduled_watch: ScheduledTurnWatch | None,
 ) -> None:
     """End a turn the allowance can't cover without running it.
 
     The chat keeps the turn's message, as a turn that ran would, followed by
     a not-started marker; the live stream carries the same pause part the
-    engines end a landed turn with.
+    engines end a landed turn with. A scheduled turn's watch sees it too, so
+    its streak counts the run as not run rather than as one that tried
+    nothing.
     """
     maybe_append_user_message(
         session, entry.message or None, entry.is_user_message, entry.message_metadata
@@ -285,6 +290,8 @@ async def _refuse_turn(
         await stream_registry.publish_chunk(
             entry.turn_id, chunk, session_id=entry.session_id
         )
+        if scheduled_watch is not None:
+            scheduled_watch.observe(chunk)
 
 
 def execute_copilot_turn(
@@ -674,7 +681,7 @@ class CoPilotProcessor:
                     return
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
-                    await _refuse_turn(entry, session, pause)
+                    await _refuse_turn(entry, session, pause, scheduled_watch)
                     return
                 if credit_turn is not None:
                     log.info(
