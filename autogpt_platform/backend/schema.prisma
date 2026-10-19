@@ -1777,8 +1777,7 @@ model ExpertPod {
 // nightly dream and weekly community-rebuild crons serve. It is the source of
 // truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
 // crons may run, the timezone they were registered in, and their APScheduler
-// job ids. The Redis registration markers are diagnostic only;
-// nothing reads them.
+// job ids. Replaces the Redis registration markers.
 model MemoryScopeSchedule {
   // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
   // for an expert. Also the suffix of both job ids.
