@@ -550,6 +550,37 @@ describe("ConnectToolsPanel — without a plan", () => {
   });
 });
 
+describe("ConnectToolsPanel — OAuth without a plan", () => {
+  it("points to the plans before any sign-in window opens", async () => {
+    stubPanel();
+    server.use(
+      http.get(OAUTH_LOGIN_URL, () =>
+        HttpResponse.json(
+          { detail: "A subscription is required." },
+          { status: 402 },
+        ),
+      ),
+    );
+
+    renderPanel();
+    const user = await openGithub();
+    await user.click(screen.getByRole("button", { name: /OAuth/ }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Connecting a service needs an active plan",
+        }),
+      ),
+    );
+    expect(openOAuthPopup).not.toHaveBeenCalled();
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "OAuth connection failed" }),
+    );
+  });
+});
+
 describe("ConnectToolsPanel — inline OAuth flow", () => {
   it("runs the whole OAuth exchange without leaving the panel", async () => {
     stubPanel();
