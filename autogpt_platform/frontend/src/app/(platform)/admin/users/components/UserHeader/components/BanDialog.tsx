@@ -57,9 +57,9 @@ export function BanDialog({ user }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <Text variant="body" className="text-zinc-600">
-            They&apos;re signed out everywhere and can&apos;t sign in again
-            until the ban ends. A token they already hold keeps working for up
-            to an hour.
+            They&apos;re signed out and can&apos;t sign in again until the ban
+            ends, but for up to 5 minutes they can still get a token that works
+            for an hour. Their API keys, schedules and triggers keep running.
           </Text>
           {user.role === "admin" ? (
             <Alert variant="warning">
@@ -68,7 +68,7 @@ export function BanDialog({ user }: Props) {
           ) : null}
           <Input
             id="ban-reason"
-            label="Reason"
+            label="Reason (required)"
             type="textarea"
             rows={3}
             placeholder="What they did"

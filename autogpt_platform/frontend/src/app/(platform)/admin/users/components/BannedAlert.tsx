@@ -14,7 +14,7 @@ export function BannedAlert({ user }: Props) {
 
   return (
     <Alert variant="error" icon={BannedIcon}>
-      <AlertDescription>
+      <AlertDescription className="break-words">
         <strong className="font-medium">Banned</strong> · {until}
         {user.banReason ? <> · &ldquo;{user.banReason}&rdquo;</> : null}
       </AlertDescription>

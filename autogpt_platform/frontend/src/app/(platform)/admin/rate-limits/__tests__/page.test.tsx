@@ -20,6 +20,7 @@ describe("/admin/rate-limits", () => {
     ],
     [{ email: "first_last@example.com" }, "first_last%40example.com"],
     [{ user: "first_last@example.com" }, "first_last%40example.com"],
+    [{ user_id: ["first-id", "second-id"] }, "first-id"],
   ])("carries the user in %o", async (searchParams, expected) => {
     await RateLimitsPage({ searchParams: Promise.resolve(searchParams) });
 

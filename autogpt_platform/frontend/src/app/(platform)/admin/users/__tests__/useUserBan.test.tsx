@@ -41,7 +41,7 @@ describe("useUserBan", () => {
             ...RECORD,
             banned: true,
             banReason: "spam",
-            banExpires: "2026-01-09T03:04:05.000Z",
+            banExpires: new Date(Date.now() + 7 * 24 * 3600 * 1000),
           },
         });
       }),

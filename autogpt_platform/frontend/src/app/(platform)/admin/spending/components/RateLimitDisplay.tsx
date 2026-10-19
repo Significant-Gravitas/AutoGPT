@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { UsageBar } from "../../components/UsageBar";
 
 const TIERS = [
@@ -25,44 +24,20 @@ const TIER_COLORS: Record<Tier, string> = {
   ENTERPRISE: "bg-amber-100 text-amber-700",
 };
 
-// Derives the per-tier label from the live, LaunchDarkly-driven multiplier map.
-// NO_TIER is paywalled (0 / absent), and tiers missing from the map fall back
-// to a generic label rather than a fabricated number.
-function tierLabel(
-  tier: Tier,
-  tierMultipliers?: Record<string, number>,
-): string {
-  if (tier === "NO_TIER") return "no access (paywalled)";
-
-  const multiplier = tierMultipliers?.[tier];
-  if (multiplier === undefined || multiplier <= 0) return "tier limits";
-
-  // Round to at most 2 decimals (5 → "5", 42.664 → "42.66").
-  const rounded = Math.round(multiplier * 100) / 100;
-  return `${rounded}× base limits`;
+function tierLabel(tier: Tier): string {
+  return tier === "NO_TIER" ? "no access (paywalled)" : "tier limits";
 }
 
 interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
-  onTierChange?: (newTier: string) => Promise<string | null>;
-  /** Full per-tier multiplier map (incl. admin-managed tiers) from the admin rate-limit endpoint. */
-  tierMultipliers?: Record<string, number>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;
 }
 
-export function RateLimitDisplay({
-  data,
-  onReset,
-  onTierChange,
-  tierMultipliers,
-  className,
-}: Props) {
+export function RateLimitDisplay({ data, onReset, className }: Props) {
   const [isResetting, setIsResetting] = useState(false);
   const [resetWeekly, setResetWeekly] = useState(false);
-  const [isChangingTier, setIsChangingTier] = useState(false);
-  const { toast } = useToast();
 
   const currentTier = TIERS.includes(data.tier as Tier)
     ? (data.tier as Tier)
@@ -79,41 +54,6 @@ export function RateLimitDisplay({
       await onReset(resetWeekly);
     } finally {
       setIsResetting(false);
-    }
-  }
-
-  async function handleTierChange(newTier: string) {
-    if (newTier === currentTier || !onTierChange) return;
-    if (
-      !window.confirm(
-        `Change tier from ${currentTier} to ${newTier}? This will change the user's rate limits.`,
-      )
-    )
-      return;
-
-    setIsChangingTier(true);
-    try {
-      const warning = await onTierChange(newTier);
-      if (warning) {
-        toast({
-          title: `Tier set to ${newTier}, but Stripe will revert it`,
-          description: warning,
-          variant: "destructive",
-        });
-        return;
-      }
-      toast({
-        title: "Tier updated",
-        description: `Changed to ${newTier} (${tierLabel(newTier as Tier, tierMultipliers)}).`,
-      });
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to update tier.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsChangingTier(false);
     }
   }
 
@@ -147,19 +87,15 @@ export function RateLimitDisplay({
         <select
           aria-label="Subscription tier"
           value={currentTier}
-          onChange={(e) => handleTierChange(e.target.value)}
           className="rounded-md border bg-white px-3 py-1.5 text-sm"
-          disabled={isChangingTier || !onTierChange}
+          disabled
         >
           {TIERS.map((tier) => (
             <option key={tier} value={tier}>
-              {tier} — {tierLabel(tier, tierMultipliers)}
+              {tier} — {tierLabel(tier)}
             </option>
           ))}
         </select>
-        {isChangingTier && (
-          <span className="text-xs text-gray-500">Updating...</span>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-6">

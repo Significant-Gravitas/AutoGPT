@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -38,7 +38,7 @@ def test_get_user_organizations_returns_the_target_users_orgs(
         description=None,
         is_personal=False,
         member_count=0,
-        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
     list_user_orgs = mocker.patch(
         f"{_MOCK_MODULE}.org_db.list_user_orgs",

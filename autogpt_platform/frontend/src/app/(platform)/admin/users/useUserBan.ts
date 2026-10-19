@@ -49,7 +49,7 @@ export function useUserBan(user: AdminUser) {
       toast({
         title: `Banned ${updated.email}`,
         description:
-          "Their sessions are signed out. A token they already hold keeps working for up to an hour.",
+          "Their sessions are signed out. Tokens they hold or get in the next 5 minutes work for up to an hour, and their API keys, schedules and triggers keep running.",
         variant: "success",
       });
     },

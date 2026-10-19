@@ -100,6 +100,23 @@ describe("/admin/users", () => {
     expect(screen.getByRole("button", { name: "Unban" })).toBeDefined();
   });
 
+  it("treats a temporary ban that has run out as no ban", async () => {
+    mockUserRoutes({
+      ...ALEX,
+      banned: true,
+      banReason: "Spam",
+      banExpires: "2026-01-01T00:00:00.000Z",
+    } as unknown as typeof ALEX);
+    renderPage(`?user=${ALEX.id}`);
+
+    expect(
+      await screen.findByRole("button", { name: /ban user/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Unban" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Active")).toBeDefined();
+  });
+
   it("warns before banning another admin", async () => {
     mockUserRoutes({ ...ALEX, role: "admin" });
     renderPage(`?user=${ALEX.id}`);

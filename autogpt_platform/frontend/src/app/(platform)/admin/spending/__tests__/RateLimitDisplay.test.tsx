@@ -9,17 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitDisplay } from "../components/RateLimitDisplay";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
-const toastSpy = vi.hoisted(() => vi.fn());
-
-vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  useToast: () => ({ toast: toastSpy }),
-}));
-
 const mockConfirm = vi.fn();
 
 beforeEach(() => {
   mockConfirm.mockReset();
-  toastSpy.mockClear();
   window.confirm = mockConfirm;
 });
 
@@ -112,26 +105,12 @@ describe("RateLimitDisplay", () => {
     expect(select.querySelectorAll("option").length).toBe(6);
   });
 
-  it("disables tier dropdown when onTierChange is not provided", () => {
+  it("shows the tier read-only", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText(
       "Subscription tier",
     ) as HTMLSelectElement;
     expect(select.disabled).toBe(true);
-  });
-
-  it("enables tier dropdown when onTierChange is provided", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData()}
-        onReset={vi.fn()}
-        onTierChange={vi.fn()}
-      />,
-    );
-    const select = screen.getByLabelText(
-      "Subscription tier",
-    ) as HTMLSelectElement;
-    expect(select.disabled).toBe(false);
   });
 
   it("renders daily and weekly usage sections", () => {
@@ -212,218 +191,10 @@ describe("RateLimitDisplay", () => {
     });
   });
 
-  it("calls onTierChange when tier is changed and confirmed", async () => {
-    const onTierChange = vi.fn().mockResolvedValue(undefined);
-    mockConfirm.mockReturnValue(true);
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "PRO" },
-    });
-
-    await waitFor(() => {
-      expect(onTierChange).toHaveBeenCalledWith("PRO");
-    });
-  });
-
-  it("shows a success toast when the tier change carries no warning", async () => {
-    const onTierChange = vi.fn().mockResolvedValue(null);
-    mockConfirm.mockReturnValue(true);
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "PRO" },
-    });
-
-    await waitFor(() => {
-      expect(toastSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Tier updated" }),
-      );
-    });
-  });
-
-  it("shows the backend warning when the Stripe sweep will revert the grant", async () => {
-    const warning =
-      "This user already has a Stripe customer with no active subscription.";
-    const onTierChange = vi.fn().mockResolvedValue(warning);
-    mockConfirm.mockReturnValue(true);
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "PRO" },
-    });
-
-    await waitFor(() => {
-      expect(toastSpy).toHaveBeenCalledWith({
-        title: "Tier set to PRO, but Stripe will revert it",
-        description: warning,
-        variant: "destructive",
-      });
-    });
-    expect(toastSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Tier updated" }),
-    );
-  });
-
-  it("does not call onTierChange when selecting the same tier", () => {
-    const onTierChange = vi.fn();
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "BASIC" },
-    });
-
-    expect(onTierChange).not.toHaveBeenCalled();
-  });
-
-  it("does not call onTierChange when confirm is cancelled", () => {
-    const onTierChange = vi.fn();
-    mockConfirm.mockReturnValue(false);
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "PRO" },
-    });
-
-    expect(onTierChange).not.toHaveBeenCalled();
-  });
-
-  it("catches error when onTierChange rejects", async () => {
-    const onTierChange = vi.fn().mockRejectedValue(new Error("fail"));
-    mockConfirm.mockReturnValue(true);
-
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "BASIC" })}
-        onReset={vi.fn()}
-        onTierChange={onTierChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "PRO" },
-    });
-
-    await waitFor(() => {
-      expect(onTierChange).toHaveBeenCalledWith("PRO");
-    });
-  });
-
-  it("shows live multiplier label for PRO from the tierMultipliers map", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "PRO" })}
-        onReset={vi.fn()}
-        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
-      />,
-    );
-    const select = screen.getByLabelText("Subscription tier");
-    expect(select.textContent).toContain("PRO — 5× base limits");
-  });
-
-  it("renders a non-default fractional multiplier (MAX 42.66) from the map", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData()}
-        onReset={vi.fn()}
-        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
-      />,
-    );
-    const select = screen.getByLabelText("Subscription tier");
-    expect(select.textContent).toContain("MAX — 42.66× base limits");
-    // The old hardcoded "20x" value must not appear.
-    expect(select.textContent).not.toContain("20x");
-  });
-
-  it("keeps NO_TIER paywalled label even with a multipliers map present", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData({ tier: "NO_TIER" })}
-        onReset={vi.fn()}
-        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
-      />,
-    );
-    expect(screen.getByText(/no access \(paywalled\)/)).toBeDefined();
-    const select = screen.getByLabelText("Subscription tier");
-    expect(select.textContent).not.toContain("NO_TIER — 0");
-  });
-
-  it("does not fabricate a number for a tier missing from the map", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData()}
-        onReset={vi.fn()}
-        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
-      />,
-    );
-    const select = screen.getByLabelText("Subscription tier");
-    // ENTERPRISE has no entry -> generic label, never a hardcoded multiplier.
-    expect(select.textContent).toContain("ENTERPRISE — tier limits");
-    expect(select.textContent).not.toContain("ENTERPRISE — 60");
-  });
-
-  it("shows the multiplier for ENTERPRISE when present in the full map", () => {
-    render(
-      <RateLimitDisplay
-        data={makeData()}
-        onReset={vi.fn()}
-        tierMultipliers={{
-          NO_TIER: 0,
-          BASIC: 1,
-          PRO: 5,
-          BUSINESS: 20,
-          ENTERPRISE: 60,
-        }}
-      />,
-    );
-    const select = screen.getByLabelText("Subscription tier");
-    expect(select.textContent).toContain("ENTERPRISE — 60× base limits");
-    expect(select.textContent).toContain("BUSINESS — 20× base limits");
-    expect(select.textContent).not.toContain("ENTERPRISE — tier limits");
-    // NO_TIER's 0 short-circuits to the paywalled label, not "0× base limits".
-    expect(select.textContent).toContain("NO_TIER — no access (paywalled)");
-  });
-
-  it("falls back to generic labels when no multipliers map is provided", () => {
+  it("labels every paid tier generically", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");
     expect(select.textContent).toContain("PRO — tier limits");
-    expect(select.textContent).not.toContain("5x");
   });
 
   it("applies custom className when provided", () => {

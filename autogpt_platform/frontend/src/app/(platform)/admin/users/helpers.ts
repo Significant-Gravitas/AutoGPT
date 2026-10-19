@@ -54,7 +54,13 @@ export function parseLookupQuery(
   return { kind: "id", value };
 }
 
-export function toAdminUser(record: AuthUserRecord): AdminUser {
+export function toAdminUser(
+  record: AuthUserRecord,
+  now = new Date(),
+): AdminUser {
+  const banExpires = record.banExpires ? new Date(record.banExpires) : null;
+  // Better Auth clears a lapsed ban only at the user's next sign-in.
+  const banned = Boolean(record.banned) && !(banExpires && banExpires <= now);
   return {
     id: record.id,
     email: record.email,
@@ -63,9 +69,9 @@ export function toAdminUser(record: AuthUserRecord): AdminUser {
     role: record.role ?? null,
     emailVerified: record.emailVerified,
     createdAt: new Date(record.createdAt),
-    banned: Boolean(record.banned),
-    banReason: record.banReason ?? null,
-    banExpires: record.banExpires ? new Date(record.banExpires) : null,
+    banned,
+    banReason: banned ? (record.banReason ?? null) : null,
+    banExpires: banned ? banExpires : null,
   };
 }
 
@@ -73,8 +79,9 @@ export function getBanDurationSeconds(duration: BanDuration) {
   return BAN_DURATIONS.find((option) => option.value === duration)?.seconds;
 }
 
-export function getAdminUsersHref(user?: string | null) {
-  const value = user?.trim();
+// A repeated query param (`?user=a&user=b`) reaches a page as an array.
+export function getAdminUsersHref(user?: string | string[] | null) {
+  const value = (Array.isArray(user) ? user[0] : user)?.trim();
   if (!value) return "/admin/users";
   return `/admin/users?${new URLSearchParams({ [USER_QUERY_PARAM]: value })}`;
 }

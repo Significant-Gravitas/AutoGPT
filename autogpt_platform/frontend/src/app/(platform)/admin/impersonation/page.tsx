@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { getAdminUsersHref } from "../users/helpers";
 
 interface SearchParams {
-  user?: string;
-  user_id?: string;
+  user?: string | string[];
+  user_id?: string | string[];
 }
 
 export default async function ImpersonationPage({
