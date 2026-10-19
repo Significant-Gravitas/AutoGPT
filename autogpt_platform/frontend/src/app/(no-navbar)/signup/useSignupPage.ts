@@ -31,13 +31,16 @@ export function useSignupPage() {
   );
   const isCloudEnv = environment.isCloud();
   const loadingResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = sanitizeAuthNext(searchParams.get("next"));
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
+      isMounted.current = false;
       if (loadingResetTimer.current) clearTimeout(loadingResetTimer.current);
     };
   }, []);
@@ -198,9 +201,12 @@ export function useSignupPage() {
       });
     } finally {
       if (loadingResetTimer.current) clearTimeout(loadingResetTimer.current);
-      loadingResetTimer.current = setTimeout(() => {
-        setIsLoading(false);
-      }, 3000);
+      // A signup that settles after unmount must not leave a timer behind.
+      if (isMounted.current) {
+        loadingResetTimer.current = setTimeout(() => {
+          setIsLoading(false);
+        }, 3000);
+      }
     }
   }
 
