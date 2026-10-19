@@ -72,6 +72,17 @@ If `window.__renderCounter` is missing, the script stops and tells you to restar
 
 Leave out `--scenario` to compare every scenario that has runs under both labels.
 
+When the change adds the scenario it is measured with (as `copilot-tool-wait` was), the commit before it has no such scenario. Stay on the branch, so `scripts/perf/` keeps the scenario and its fixture, and swap only the app files back to the base for the `before` runs:
+
+```bash
+git checkout origin/dev -- <app files the change touches>   # e.g. the files under src/
+pnpm perf --scenario copilot-tool-wait --label before
+git checkout HEAD -- <the same files>
+pnpm perf --scenario copilot-tool-wait --label after
+```
+
+The dev server hot-reloads each swap, and the default warm-up run absorbs the recompile. Swap only files under `src/`, never `scripts/perf/`.
+
 The output has three tables (metrics, top components and top render causes), each with `before`, `after` and `Δ` columns, followed by the raw runs in a collapsed block. Every value is the median of the runs, not the average.
 
 Tips for numbers you can trust:
