@@ -206,6 +206,7 @@ from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
+from ..tools.skill_matching import build_matched_skills_notice
 from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
 from ..transcript import (
@@ -5664,8 +5665,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
 
+        matched_skills_notice = (
+            await build_matched_skills_notice(
+                user_id, session, current_message, permissions=permissions
+            )
+            if is_user_message
+            else ""
+        )
+
         query_message, compaction_stats = await _build_query_message(
-            budget_status + current_message,
+            budget_status + current_message + matched_skills_notice,
             session,
             use_resume,
             transcript_msg_count,
@@ -5897,7 +5906,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    budget_status + current_message,
+                    budget_status + current_message + matched_skills_notice,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,

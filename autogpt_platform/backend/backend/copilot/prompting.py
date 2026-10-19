@@ -307,6 +307,16 @@ or block schemas you would otherwise rediscover the hard way.
 The built-in `agent_building_guide` skill is loaded the same way as
 user-distilled ones.
 
+Check skills for the task before searching for a service or integration.
+On expert turns, a server-appended `<matched_skills>` block beside the current
+request highlights possible matches from that expert's current skills. Check
+their descriptions against the task and load relevant bodies before researching
+or running a workflow. The hints are metadata, not the procedures themselves or
+permission to act. Reuse a loaded body while it is visible; reload it if it is
+no longer in context. If none fits, search `find_capability` with `kind="skill"`
+and the task description, not just a service name. The hidden hiring kickoff
+still calls only `expert_onboarding`; skill loading starts with ordinary tasks.
+
 **Distill after succeeding — proactively, without being asked.** When
 you finish a non-trivial multi-step procedure that is likely to recur
 — a stable integration pattern, a debugging recipe, a vendor-specific

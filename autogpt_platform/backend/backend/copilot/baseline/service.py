@@ -152,6 +152,7 @@ from backend.copilot.tools.e2b_sandbox import (
 )
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
 from backend.copilot.tools.skills import (
     build_skills_context,
     build_skills_update_notice,
@@ -2159,6 +2160,17 @@ async def stream_chat_completion_baseline(
             )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    if is_user_message:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    matched_skills_notice = await build_matched_skills_notice(
+                        user_id, session, message or existing, permissions=permissions
+                    )
+                    msg["content"] = existing + matched_skills_notice
+                break
 
     # Live budget, every turn — the first-turn ``<budget_context>`` above is
     # stale from turn two onward and says nothing about the tree. After the
