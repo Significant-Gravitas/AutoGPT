@@ -22,6 +22,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
 ChargeBasis = Literal["invoice", "cli_estimate", "moonshot_estimate", "none"]
@@ -68,6 +69,10 @@ class Scenario(BaseModel):
     fault_ends_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
+    # Each turn the AutoPilot block's past the plan's used-up allowance: it
+    # pays its charge from this credit balance, rounded up to whole credits,
+    # instead of the plan's spend windows. None where the allowance covers it.
+    credits: CreditBilling | None = None
     known_gap: KnownGap | None = None
 
     def owed_calls(self, turn: int, calls: list[Call]) -> list[Call]:
@@ -108,6 +113,14 @@ _SDK_ANTHROPIC = Scenario(
     charge="invoice",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
+)
+_SDK_OPENROUTER = Scenario(
+    id="sdk-openrouter",
+    engine="sdk",
+    model=f"anthropic/{SONNET}",
+    charge="invoice",
+    cost_log_provider="open_router",
+    config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
 )
 
 
@@ -167,14 +180,7 @@ SCENARIOS = [
         PlannedFault(kind="overloaded", turn=2, request=1),
         calls_per_turn=(1, 2, 1),
     ),
-    Scenario(
-        id="sdk-openrouter",
-        engine="sdk",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
-    ),
+    _SDK_OPENROUTER,
     Scenario(
         id="sdk-openrouter-lookups-refused",
         engine="sdk",
@@ -224,6 +230,22 @@ SCENARIOS = [
         cost_log_provider="codex",
         config=_DIRECT,
         codex=True,
+    ),
+    # On OpenRouter, the default route, the turn's charge waits for the
+    # reconcile's invoice; direct, the CLI's own price lands as the stream ends.
+    _SDK_OPENROUTER.model_copy(
+        update={"id": "sdk-openrouter-credits", "credits": CreditBilling()}
+    ),
+    _SDK_ANTHROPIC.model_copy(
+        update={"id": "sdk-anthropic-credits", "credits": CreditBilling()}
+    ),
+    # Other runs spend all but a credit once the resumed turn has read the
+    # balance: it takes the credit that is left and never overdraws.
+    _SDK_OPENROUTER.model_copy(
+        update={
+            "id": "sdk-openrouter-credits-drained",
+            "credits": CreditBilling(drain=PlannedDrain(turn=2, left=1)),
+        }
     ),
     Scenario(
         id="baseline-openrouter",
