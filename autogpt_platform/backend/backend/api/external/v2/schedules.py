@@ -23,7 +23,7 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 from .library.helpers import assert_inputs_match
 from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, require_permission
+from .tenancy import TenantContext, require_paid_permission, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,9 @@ async def delete_schedule(
 async def create_schedule(
     request: AgentRunScheduleCreateRequest,
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.WRITE_SCHEDULE, APIKeyPermission.RUN_AGENT)
+        require_paid_permission(
+            APIKeyPermission.WRITE_SCHEDULE, APIKeyPermission.RUN_AGENT
+        )
     ),
 ) -> AgentRunSchedule:
     """Create a new execution schedule for a graph."""

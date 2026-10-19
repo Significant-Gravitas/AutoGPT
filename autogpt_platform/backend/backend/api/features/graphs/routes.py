@@ -98,6 +98,7 @@ async def get_graph_all_versions(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs",
     summary="Create new graph",
 )
@@ -151,6 +152,7 @@ async def delete_graph(
 
 
 @router.put(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}",
     summary="Update graph version",
 )
@@ -224,6 +226,7 @@ async def update_graph(
 
 
 @router.put(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/versions/active",
     summary="Set active graph version",
 )

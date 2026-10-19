@@ -24,7 +24,7 @@ from backend.util.workspace import WorkspaceManager
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import enforce, file_upload_limiter
-from .tenancy import TenantContext, require_permission
+from .tenancy import TenantContext, require_paid_permission, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,9 @@ async def upload_file(
     overwrite: bool = Query(
         default=False, description="Replace an existing file with the same path"
     ),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_FILES)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_FILES)
+    ),
 ) -> UploadWorkspaceFileResponse:
     """
     Upload a file to the user's workspace.

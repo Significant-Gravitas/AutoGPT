@@ -11,7 +11,7 @@ from urllib.parse import quote
 import aiohttp
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
-from fastapi import Query, UploadFile
+from fastapi import Depends, Query, UploadFile
 from fastapi.responses import Response
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, Field, field_validator
@@ -19,7 +19,10 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.workspace.preview import build_preview_response
 from backend.api.features.workspace.service import store_workspace_upload
 from backend.copilot.db import get_chat_session_expert_ids
-from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
+from backend.copilot.rate_limit import (
+    enforce_payment_paywall,
+    get_workspace_storage_limit_bytes,
+)
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
@@ -249,6 +252,7 @@ async def download_file(
 
 @router.get(
     "/files/{file_id}/preview",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Preview file by ID",
     operation_id="getWorkspaceFilePreview",
 )
@@ -336,6 +340,7 @@ async def rename_workspace_file_route(
 
 @router.post(
     "/files/upload",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Upload file to workspace",
     operation_id="uploadWorkspaceFile",
 )

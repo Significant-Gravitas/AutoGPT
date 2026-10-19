@@ -30,7 +30,12 @@ from ..models import (
 )
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import enforce, graph_exec_limiter
-from ..tenancy import TenantContext, in_tenant, require_permission
+from ..tenancy import (
+    TenantContext,
+    in_tenant,
+    require_paid_permission,
+    require_permission,
+)
 from .helpers import assert_can_pay, assert_inputs_match
 
 logger = logging.getLogger(__name__)
@@ -164,7 +169,9 @@ async def delete_library_agent(
 )
 async def fork_library_agent(
     agent_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> LibraryAgent:
     """Fork (clone) a library agent.
 
@@ -213,7 +220,7 @@ async def execute_agent(
     request: AgentRunRequest,
     agent_id: str,
     idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
+    auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
     Execute an agent from the library.

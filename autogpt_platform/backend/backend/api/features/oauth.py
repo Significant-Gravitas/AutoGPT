@@ -22,12 +22,22 @@ from typing import Literal, Optional
 from urllib.parse import unquote, urlencode, urlparse
 
 from autogpt_libs.auth import get_user_id
-from fastapi import APIRouter, Body, HTTPException, Query, Security, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Security,
+    UploadFile,
+    status,
+)
 from gcloud.aio import storage as async_storage
 from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -677,7 +687,9 @@ LOGO_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 LOGO_MAX_FILE_SIZE = 3 * 1024 * 1024  # 3MB
 
 
-@router.post("/apps/{app_id}/logo/upload")
+@router.post(
+    "/apps/{app_id}/logo/upload", dependencies=[Depends(enforce_payment_paywall)]
+)
 async def upload_app_logo(
     app_id: str,
     file: UploadFile,

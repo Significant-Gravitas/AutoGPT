@@ -70,4 +70,30 @@ describe("useAtResetJobs", () => {
       vi.useRealTimers();
     }
   });
+
+  it("looks at a turn hours away only now and then", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(JOB.run_at.getTime() - 3 * 60 * 60_000);
+    let reads = 0;
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+        reads += 1;
+        return HttpResponse.json({ jobs: [JOB] });
+      }),
+    );
+    try {
+      renderHook(() => useAtResetJobs("session-1"), {
+        wrapper: withQueryClient(),
+      });
+      await vi.waitFor(() => expect(reads).toBe(1));
+
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+      expect(reads).toBe(1);
+
+      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+      expect(reads).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

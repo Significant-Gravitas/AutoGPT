@@ -38,6 +38,7 @@ from backend.api.external.middleware import VerifiedCredential, verified_credent
 from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.mcp_calls import (
     check_arguments,
+    check_plan,
     check_spend_allowance,
     check_tool_limits,
     input_schema,
@@ -409,8 +410,8 @@ def _create_tool_handler(
     Before the tool runs, the call is held to the caller's credential: its
     arguments to the advertised schema, its scopes to ``required_scopes`` plus
     whatever the arguments add, the ids it names to the credential's
-    organization, and a tool that spends platform money to the caller's
-    allowance.
+    organization, the caller to an active plan, and a tool that spends platform
+    money to the caller's allowance.
     """
 
     async def handler(ctx: Context, **kwargs: Any) -> str:
@@ -431,6 +432,7 @@ def _create_tool_handler(
             tool.name, kwargs, user_id, access_token.organization_id
         )
         await check_tool_limits(tool, kwargs, user_id, access_token.organization_id)
+        await check_plan(user_id)
         if tool.spends_platform_money:
             await check_spend_allowance(user_id)
 

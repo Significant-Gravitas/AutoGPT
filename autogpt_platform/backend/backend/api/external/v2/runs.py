@@ -31,7 +31,13 @@ from .models import (
     RunStatus,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, in_tenant, owned_by_caller, require_permission
+from .tenancy import (
+    TenantContext,
+    in_tenant,
+    owned_by_caller,
+    require_paid_permission,
+    require_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +102,7 @@ async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
     run_id: str = Path(description="Graph Execution ID"),
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
+        require_paid_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),
 ) -> AgentRunReviewsSubmitResponse:
     """

@@ -136,12 +136,8 @@ def _starts_a_paid_run(args: dict[str, Any]) -> bool:
     return not (params.dry_run or params.schedule_name or params.cron)
 
 
-async def check_spend_allowance(user_id: str) -> None:
-    """The pre-flight a chat turn runs, for a tool that spends what a turn does.
-
-    Metering after the call only slows the next one down; without this a key
-    on an unpaid account, or past its usage cap, keeps spending.
-    """
+async def check_plan(user_id: str) -> None:
+    """Every tool call needs an active plan, as every chat turn does."""
     try:
         paywalled = await is_user_paywalled(user_id)
     except Exception as exc:
@@ -150,6 +146,13 @@ async def check_spend_allowance(user_id: str) -> None:
     if paywalled:
         raise ToolError("This tool needs an active subscription")
 
+
+async def check_spend_allowance(user_id: str) -> None:
+    """The usage caps a chat turn checks, for a tool that spends what a turn does.
+
+    Metering after the call only slows the next one down; without this a key
+    past its usage cap keeps spending.
+    """
     try:
         daily_limit, weekly_limit, _ = await get_global_rate_limits(
             user_id,
