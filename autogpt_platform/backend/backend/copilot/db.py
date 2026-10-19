@@ -29,6 +29,7 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
+    CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
     ChatMessage,
     ChatSessionInfo,
@@ -946,9 +947,10 @@ async def set_chat_sessions_archived(
 ) -> int:
     """Archive or restore the user's sessions among *session_ids*.
 
-    Ids the user does not own are skipped. ``updatedAt`` is left alone so a
-    restored chat keeps its place in recency order. Returns the number of
-    sessions changed.
+    Ids the user does not own are skipped, and so are running or queued
+    chats when archiving: nothing would bring them back once their turn ends.
+    ``updatedAt`` is left alone so a restored chat keeps its place in recency
+    order. Returns the number of sessions changed.
     """
     if not session_ids:
         return 0
@@ -956,7 +958,8 @@ async def set_chat_sessions_archived(
         'UPDATE {schema_prefix}"ChatSession" SET "archivedAt" = '
         + ("now()" if archived else "NULL")
         + ' WHERE "id" = ANY($1::text[]) AND "userId" = $2 AND "archivedAt" IS '
-        + ("NULL" if archived else "NOT NULL"),
+        + ("NULL" if archived else "NOT NULL")
+        + (f" AND \"chatStatus\" = '{CHAT_STATUS_IDLE}'" if archived else ""),
         session_ids,
         user_id,
     )

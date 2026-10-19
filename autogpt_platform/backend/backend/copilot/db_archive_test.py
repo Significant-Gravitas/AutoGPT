@@ -66,6 +66,8 @@ async def test_archive_preserves_history_and_resumes_on_next_turn(setup_test_use
     assert session.session_id in {
         s.session_id for s in await get_user_chat_sessions(user_id, limit=10_000)
     }
+    # A running chat stays out of the archive.
+    assert await set_chat_sessions_archived([session.session_id], user_id, True) == 0
 
 
 @pytest.mark.asyncio(loop_scope="session")
