@@ -5,7 +5,7 @@ import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPane
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
-import { MouseEvent, useCallback, useMemo } from "react";
+import { MouseEvent, ReactNode, useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -50,6 +50,90 @@ export const Flow = () => {
     },
   );
 
+  // for loading purpose
+  const {
+    onDragOver,
+    onDrop,
+    isFlowContentLoading,
+    isInitialLoadComplete,
+    isLocked,
+    setIsLocked,
+    isReadOnly,
+  } = useFlow();
+
+  // This hook is used for websocket realtime updates.
+  useFlowRealtime();
+
+  // Copy/paste functionality
+  useCopyPaste(isReadOnly);
+
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
+
+  return (
+    <div className="flex h-full w-full dark:bg-slate-900">
+      <div className="relative flex-1">
+        <FlowCanvas
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          isFlowContentLoading={isFlowContentLoading}
+          isLocked={isLocked}
+          setIsLocked={setIsLocked}
+          isReadOnly={isReadOnly}
+          isGraphRunning={isGraphRunning}
+        >
+          {/* Created here, not in FlowCanvas, so a node or edge change re-renders
+              the canvas but hands these panels the same elements and skips them. */}
+          {graph && !isReadOnly && (
+            <FloatingSafeModeToggle
+              graph={graph}
+              className="right-2 top-32 p-2"
+            />
+          )}
+          <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />
+        </FlowCanvas>
+      </div>
+      {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+      />
+      <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+        <BuilderChatPanel />
+      </ErrorBoundary>
+    </div>
+  );
+};
+
+interface FlowCanvasProps
+  extends Pick<
+    ReturnType<typeof useFlow>,
+    | "onDragOver"
+    | "onDrop"
+    | "isFlowContentLoading"
+    | "isLocked"
+    | "setIsLocked"
+    | "isReadOnly"
+  > {
+  isGraphRunning: boolean;
+  children: ReactNode;
+}
+
+/**
+ * The only part of the builder that subscribes to `nodes` and `edges`, which
+ * change on every drag frame and every field edit.
+ */
+function FlowCanvas({
+  onDragOver,
+  onDrop,
+  isFlowContentLoading,
+  isLocked,
+  setIsLocked,
+  isReadOnly,
+  isGraphRunning,
+  children,
+}: FlowCanvasProps) {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const setNodes = useNodeStore(useShallow((state) => state.setNodes));
 
@@ -81,78 +165,39 @@ export const Flow = () => {
 
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
-  // for loading purpose
-  const {
-    onDragOver,
-    onDrop,
-    isFlowContentLoading,
-    isInitialLoadComplete,
-    isLocked,
-    setIsLocked,
-    isReadOnly,
-  } = useFlow();
-
-  // This hook is used for websocket realtime updates.
-  useFlowRealtime();
-
-  // Copy/paste functionality
-  useCopyPaste(isReadOnly);
-
-  const isGraphRunning = useGraphStore(
-    useShallow((state) => state.isGraphRunning),
-  );
-
   return (
-    <div className="flex h-full w-full dark:bg-slate-900">
-      <div className="relative flex-1">
-        <ReactFlow
-          nodes={nodes}
-          onNodesChange={onNodesChange}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          edges={edges}
-          onConnect={onConnect}
-          onEdgesChange={onEdgesChange}
-          onNodeDragStop={onNodeDragStop}
-          onNodeContextMenu={onNodeContextMenu}
-          maxZoom={2}
-          minZoom={0.05}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          nodesDraggable={!isLocked}
-          nodesConnectable={!isLocked}
-          elementsSelectable={!isLocked}
-          deleteKeyCode={DELETE_KEY_CODES}
-        >
-          <Background />
-          <CustomControls
-            setIsLocked={setIsLocked}
-            isLocked={isLocked}
-            isReadOnly={isReadOnly}
-          />
-          <NewControlPanel isReadOnly={isReadOnly} />
-          {isReadOnly && <ReadOnlyBanner />}
-          {!isReadOnly &&
-            (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
-          {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
-          {isGraphRunning && <RunningBackground />}
-          {graph && !isReadOnly && (
-            <FloatingSafeModeToggle
-              graph={graph}
-              className="right-2 top-32 p-2"
-            />
-          )}
-          <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />
-        </ReactFlow>
-      </div>
-      {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
-      <FloatingReviewsPanel
-        executionId={flowExecutionID || undefined}
-        graphId={flowID || undefined}
+    <ReactFlow
+      nodes={nodes}
+      onNodesChange={onNodesChange}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      edges={edges}
+      onConnect={onConnect}
+      onEdgesChange={onEdgesChange}
+      onNodeDragStop={onNodeDragStop}
+      onNodeContextMenu={onNodeContextMenu}
+      maxZoom={2}
+      minZoom={0.05}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      nodesDraggable={!isLocked}
+      nodesConnectable={!isLocked}
+      elementsSelectable={!isLocked}
+      deleteKeyCode={DELETE_KEY_CODES}
+    >
+      <Background />
+      <CustomControls
+        setIsLocked={setIsLocked}
+        isLocked={isLocked}
+        isReadOnly={isReadOnly}
       />
-      <ErrorBoundary context="BuilderChatPanel" fallback={null}>
-        <BuilderChatPanel />
-      </ErrorBoundary>
-    </div>
+      <NewControlPanel isReadOnly={isReadOnly} />
+      {isReadOnly && <ReadOnlyBanner />}
+      {!isReadOnly &&
+        (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
+      {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
+      {isGraphRunning && <RunningBackground />}
+      {children}
+    </ReactFlow>
   );
-};
+}
