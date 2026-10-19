@@ -25,7 +25,7 @@ export const options = {
 };
 
 export default function () {
-  if (!stripeTestKey("cleanup")) {
+  if (!stripeTestKey(null)) {
     throw new Error(
       "STRIPE_TEST_SECRET_KEY is not set; nothing to cancel with",
     );

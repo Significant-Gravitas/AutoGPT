@@ -7,8 +7,9 @@
 // then fetch the session to see the reply was saved.
 import exec from "k6/execution";
 
-import { currentPhase } from "../configs/profiles.js";
+import { iterationPhase } from "../configs/profiles.js";
 import { streamTurn } from "../lib/copilot.js";
+import { COVERED } from "../lib/coverage.js";
 import { api } from "../lib/http.js";
 import { iterationRandom, pick } from "../lib/random.js";
 
@@ -23,7 +24,7 @@ export const MESSAGES = [
 ];
 
 export function copilotReads(data, profile) {
-  const phase = currentPhase(profile);
+  const phase = iterationPhase(profile);
   const random = iterationRandom(
     exec.scenario.name,
     exec.scenario.iterationInTest,
@@ -62,6 +63,7 @@ export function copilotReads(data, profile) {
 }
 
 export function copilotTurn(data, profile) {
+  const phase = iterationPhase(profile);
   if (!data.copilot.enabled) {
     // Once per run: the scenario's first iteration, whichever VU runs it.
     if (exec.scenario.iterationInTest === 0) {
@@ -69,12 +71,14 @@ export function copilotTurn(data, profile) {
     }
     return;
   }
-  const phase = currentPhase(profile);
+  const account = data.accounts[(__VU - 1) % data.accounts.length];
+  // An account the seed could not create a chat session for sits the
+  // journey out; the summary's coverage says how many accounts ran it.
+  if (account.chat !== COVERED) return;
   const random = iterationRandom(
     exec.scenario.name,
     exec.scenario.iterationInTest,
   );
-  const account = data.accounts[(__VU - 1) % data.accounts.length];
 
   // Most turns start a new chat, as most do in production; the rest continue
   // one of the account's seeded sessions.

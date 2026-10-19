@@ -8,7 +8,7 @@
 // to a handful per run.
 import exec from "k6/execution";
 
-import { currentPhase } from "../configs/profiles.js";
+import { iterationPhase } from "../configs/profiles.js";
 import { api } from "../lib/http.js";
 import { iterationRandom, pick } from "../lib/random.js";
 
@@ -22,7 +22,7 @@ const SEARCH_QUERIES = [
 ];
 
 export function storeBrowse(data, profile) {
-  const phase = currentPhase(profile);
+  const phase = iterationPhase(profile);
   const random = iterationRandom(
     exec.scenario.name,
     exec.scenario.iterationInTest,

@@ -9,11 +9,14 @@
 //
 // setup() signs the run's accounts in, seeds each with graphs, runs and chat
 // sessions (lib/seed.js), and confirms the copilot engine before any turn is
-// sent. The summary goes to results/<RUN_ID>.json.
+// sent. teardown() deletes what the run created where the API allows it
+// (lib/cleanup.js) and cancels its Stripe test-mode subscriptions. The
+// summary goes to results/<RUN_ID>.json.
 import { Trend } from "k6/metrics";
 
 import {
   buildScenarios,
+  durationMs,
   enabledJourneys,
   journeyRate,
   JOURNEYS,
@@ -21,6 +24,7 @@ import {
 } from "../configs/profiles.js";
 import { buildThresholds, customMetricNames } from "../configs/thresholds.js";
 import { authSetupTimeout, setupAuth } from "../lib/auth.js";
+import { cleanupTimeout, removeRunData } from "../lib/cleanup.js";
 import { coverageReport } from "../lib/coverage.js";
 import { runSeed } from "../lib/random.js";
 import {
@@ -51,7 +55,7 @@ export const options = {
     Number.parseInt(authSetupTimeout(), 10) +
     Number.parseInt(seedSetupTimeout(), 10)
   }s`,
-  teardownTimeout: "120s",
+  teardownTimeout: cleanupTimeout(),
   summaryTrendStats: [
     "count",
     "avg",
@@ -84,7 +88,9 @@ export function setup() {
   return data;
 }
 
+// Deletes first, while the accounts are still subscribed.
 export function teardown(data) {
+  removeRunData(data);
   cancelRunSubscriptions(data);
 }
 
@@ -124,6 +130,10 @@ export function handleSummary(data) {
   return summaryOutputs(data, {
     profile: profile.name,
     seed: runSeed(),
+    phases: {
+      warmupMs: durationMs(profile.warmup),
+      steadyMs: durationMs(profile.duration),
+    },
     scenarios,
     customMetrics: customMetricNames().concat([
       "copilot_chunks_per_turn",

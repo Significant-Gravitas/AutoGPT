@@ -28,8 +28,9 @@ export const subscriptionsCancelled = new Counter(
 );
 
 // The key, or null when unset. Anything but a test-mode key is refused, and
-// so is production as a target.
-export function stripeTestKey(targetName) {
+// so is a target with any URL at production (configs/environment.js); the
+// cleanup script, which has no target, passes null.
+export function stripeTestKey(target) {
   const key = __ENV.STRIPE_TEST_SECRET_KEY || "";
   if (key === "") return null;
   if (!/^(sk|rk)_test_/.test(key)) {
@@ -37,9 +38,9 @@ export function stripeTestKey(targetName) {
       "STRIPE_TEST_SECRET_KEY is not a Stripe test-mode key (sk_test_ or rk_test_); refusing to use it",
     );
   }
-  if (targetName === "PROD") {
+  if (target && target.PRODUCTION) {
     throw new Error(
-      "STRIPE_TEST_SECRET_KEY is not used against PROD; unset it",
+      "STRIPE_TEST_SECRET_KEY is not used against production; unset it",
     );
   }
   return key;

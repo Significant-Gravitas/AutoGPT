@@ -3,12 +3,18 @@
 // up. Everything is scoped to the run's accounts: graphs named after the
 // run, runs of them, chat sessions, and one marketplace agent added to each
 // library. The target's own store listings are discovered, not created.
+// teardown() removes what the API lets it remove (lib/cleanup.js).
 //
 // A new account on a target with credits enabled has none, and a graph run
 // needs some; the one-time onboarding rewards fund each account first. On a
 // target that paywalls new accounts, STRIPE_TEST_SECRET_KEY lets the seed
 // subscribe each account in Stripe test mode before anything else
 // (lib/stripe.js); teardown cancels those subscriptions.
+//
+// What one account cannot get (a paywall, no credits, a failed request)
+// keeps that account out of the journey that needs it; the other accounts
+// still run it, and the summary's coverage says how many could
+// (lib/coverage.js).
 import { sleep } from "k6";
 import http from "k6/http";
 import { Counter, Gauge, Trend } from "k6/metrics";
@@ -24,11 +30,16 @@ import {
   MARKETPLACE_EMPTY,
   NO_CREDITS,
   NO_GRAPHS,
+  NO_LIBRARY_AGENTS,
   NO_SEED_RUN_COMPLETED,
   NO_SESSIONS,
+  NOT_SEEDED,
   PAYWALLED,
   SKILLS_UNAVAILABLE,
   SUBSCRIBE_FAILED,
+  combine,
+  isFailure,
+  reasonFor,
   recordCoverage,
 } from "./coverage.js";
 import { seedGraph } from "./graphs.js";
@@ -41,9 +52,10 @@ import {
 const config = getEnvironmentConfig();
 const API = config.API_BASE_URL;
 
-const SEED_GRAPHS = whole(__ENV.SEED_GRAPHS, 4, 0, 20);
-const SEED_RUNS = whole(__ENV.SEED_RUNS, 2, 0, 10);
-const SEED_SESSIONS = whole(__ENV.SEED_SESSIONS, 6, 0, 50);
+export const SEED_GRAPHS = whole("SEED_GRAPHS", 4, 0, 20);
+// At least one: the graph journey runs only once a seed run has completed.
+export const SEED_RUNS = whole("SEED_RUNS", 2, 1, 10);
+export const SEED_SESSIONS = whole("SEED_SESSIONS", 6, 0, 50);
 const SEED_TURNS_PER_ACCOUNT = 3;
 const SEED_RUN_WAIT_MS = 90000;
 const PROBE_TIMEOUT = "60s";
@@ -58,12 +70,13 @@ const seedCredits = new Trend("seed_credits_per_account");
 const storeAgentsFound = new Gauge("seed_store_agents_found");
 const storeSkillsFound = new Gauge("seed_store_skills_found");
 
-function whole(raw, fallback, min, max) {
+function whole(variable, fallback, min, max) {
+  const raw = __ENV[variable];
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < min || n > max) {
     throw new Error(
-      `Expected a whole number from ${min} to ${max}, got "${raw}"`,
+      `${variable} must be a whole number from ${min} to ${max}, got "${raw}"`,
     );
   }
   return n;
@@ -119,8 +132,12 @@ function detail(result) {
   return `HTTP ${result.status}${text ? ` ${String(text).slice(0, 120)}` : ""}`;
 }
 
-function isPaywall(result) {
-  return result.status === 402 && /subscription/i.test(detail(result));
+// A 402 is the paywall when it asks for a subscription, and a lack of
+// credits otherwise. A paywall that holds although the run has a Stripe key
+// means subscribing that account failed.
+function refusal(result, data) {
+  if (!/subscription/i.test(detail(result))) return NO_CREDITS;
+  return data.stripe.enabled ? SUBSCRIBE_FAILED : PAYWALLED;
 }
 
 export function seedRun(auth, journeys) {
@@ -128,17 +145,20 @@ export function seedRun(auth, journeys) {
   const runId = __ENV.RUN_ID || "manual";
   const data = {
     auth: auth.auth,
+    // Teardown deletes the chat sessions the turn journey created, which it
+    // finds by their creation after this.
+    startedAt: new Date().toISOString(),
     accounts: [],
-    store: discoverStore(accountHeaders(auth, 0)),
-    graphs: { enabled: wants("graph_run"), reason: null, code: COVERED },
+    store: discoverStore(),
+    graphs: { enabled: false, code: COVERED, reason: "not in SCENARIOS" },
     copilot: {
       enabled: false,
-      reason: null,
       code: COVERED,
+      reason: "not in SCENARIOS",
       turnTimeout: __ENV.COPILOT_TURN_TIMEOUT || "120s",
     },
     stripe: {
-      enabled: stripeTestKey(config.NAME) !== null,
+      enabled: stripeTestKey(config) !== null,
       subscribed: 0,
       failed: 0,
       tier: null,
@@ -154,6 +174,10 @@ export function seedRun(auth, journeys) {
       graphs: [],
       libraryAgentIds: [],
       sessionIds: [],
+      // COVERED, or why this account cannot run graphs or chat: a code from
+      // lib/coverage.js.
+      graphRuns: COVERED,
+      chat: COVERED,
     };
     data.accounts.push(account);
 
@@ -175,134 +199,20 @@ export function seedRun(auth, journeys) {
     }
 
     if (wants("graph_run") || wants("library_browse")) {
-      fundAccount(headers);
-      for (let g = 0; g < SEED_GRAPHS; g++) {
-        const spec = seedGraph(runId, i + 1, g);
-        const created = request("POST", "/graphs", headers, spec.body);
-        if (!created.ok) {
-          console.warn(
-            `seed: creating graph ${g + 1} for account ${i + 1} failed: ${detail(created)}`,
-          );
-          continue;
-        }
-        seedGraphs.add(1);
-        const graph = {
-          graphId: created.json.id,
-          version: created.json.version,
-          inputs: spec.inputs,
-          libraryAgentId: null,
-        };
-        const library = request(
-          "GET",
-          `/library/agents/by-graph/${graph.graphId}`,
-          headers,
-        );
-        if (library.ok && library.json && library.json.id) {
-          graph.libraryAgentId = library.json.id;
-          account.libraryAgentIds.push(library.json.id);
-        } else {
-          console.warn(
-            `seed: graph ${graph.graphId} has no library agent (${detail(library)})`,
-          );
-        }
-        account.graphs.push(graph);
-      }
-      if (data.store.listingVersionId) {
-        const added = request(
-          "POST",
-          "/library/agents",
-          headers,
-          {
-            store_listing_version_id: data.store.listingVersionId,
-            source: "marketplace",
-          },
-          [200, 201],
-        );
-        if (added.ok && added.json && added.json.id) {
-          seedLibraryAdds.add(1);
-          account.libraryAgentIds.push(added.json.id);
-        }
-      }
-      const credits = request("GET", "/credits", headers);
-      if (credits.ok && credits.json)
-        seedCredits.add(Number(credits.json.credits) || 0);
+      seedGraphsAndLibrary(account, headers, data, runId);
     }
-
-    if (wants("graph_run") && data.graphs.enabled) {
-      for (const graph of account.graphs) {
-        for (let r = 0; r < SEED_RUNS; r++) {
-          const started = request(
-            "POST",
-            `/graphs/${graph.graphId}/execute/${graph.version}`,
-            headers,
-            { inputs: graph.inputs, credentials_inputs: {}, source: "library" },
-            [200, 402],
-          );
-          if (started.status === 402) {
-            data.graphs.enabled = false;
-            if (isPaywall(started)) {
-              data.graphs.code = PAYWALLED;
-              data.graphs.reason = `the target paywalls new accounts (${detail(started)}); graph runs need an account past the paywall`;
-            } else {
-              data.graphs.code = NO_CREDITS;
-              data.graphs.reason = `the account has no credits for a run (${detail(started)})`;
-            }
-            break;
-          }
-          if (!started.ok || !started.json || !started.json.id) {
-            console.warn(
-              `seed: starting a run of ${graph.graphId} failed: ${detail(started)}`,
-            );
-            continue;
-          }
-          seedRuns.add(1);
-          pendingRuns.push({
-            headers,
-            graphId: graph.graphId,
-            execId: started.json.id,
-          });
-        }
-        if (!data.graphs.enabled) break;
-      }
+    if (wants("graph_run")) {
+      startSeedRuns(account, headers, data, pendingRuns);
     }
-
     if (wants("copilot_reads") || wants("copilot_turn")) {
-      for (let s = 0; s < SEED_SESSIONS; s++) {
-        const created = request(
-          "POST",
-          "/chat/sessions",
-          headers,
-          {},
-          [200, 402],
-        );
-        if (created.status === 402) {
-          data.copilot.code = PAYWALLED;
-          data.copilot.reason = `the target paywalls new accounts (${detail(created)})`;
-          console.warn(
-            `seed: creating chat sessions for account ${i + 1} refused: ${detail(created)}`,
-          );
-          break;
-        }
-        if (!created.ok || !created.json || !created.json.id) {
-          console.warn(
-            `seed: creating a chat session for account ${i + 1} failed: ${detail(created)}`,
-          );
-          continue;
-        }
-        seedSessions.add(1);
-        account.sessionIds.push(created.json.id);
-      }
+      seedChatSessions(account, headers, data);
     }
   }
 
-  if (wants("graph_run") && data.graphs.enabled) {
-    waitForRuns(pendingRuns, data);
-  }
-  if (wants("copilot_turn")) {
-    decideCopilot(auth, data);
-  }
+  if (wants("graph_run")) decideGraphRuns(data, pendingRuns);
+  if (wants("copilot_turn")) decideCopilot(auth, data);
 
-  const off = recordRunCoverage(data, journeys);
+  const { off, failed } = recordRunCoverage(data, journeys);
   const subscriptions = data.stripe.enabled
     ? `${data.stripe.subscribed} of ${data.accounts.length} subscribed in Stripe test mode${
         data.stripe.tier ? ` (${data.stripe.tier})` : ""
@@ -310,12 +220,20 @@ export function seedRun(auth, journeys) {
     : "none (STRIPE_TEST_SECRET_KEY is not set)";
   const line = `seed: ${data.accounts.length} accounts; subscriptions ${subscriptions}; store agents ${data.store.agents.length}, skills ${
     data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
-  }; graph runs ${data.graphs.enabled ? "on" : `off (${data.graphs.reason})`}; copilot turns ${
+  }; graph runs ${
+    data.graphs.enabled
+      ? `on for ${able(data, "graphRuns")} of ${data.accounts.length} accounts`
+      : `off (${data.graphs.reason})`
+  }; copilot turns ${
     data.copilot.enabled
-      ? "on (dummy engine confirmed)"
+      ? `on for ${able(data, "chat")} of ${data.accounts.length} accounts (dummy engine confirmed)`
       : `off (${data.copilot.reason})`
   }`;
-  if (off.length > 0) {
+  if (failed.length > 0) {
+    console.error(
+      `${line}. FAILED ON THE TARGET: ${failed.join(", ")}, which fails the run; NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
+    );
+  } else if (off.length > 0) {
     console.warn(
       `${line}. NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
     );
@@ -325,50 +243,215 @@ export function seedRun(auth, journeys) {
   return data;
 }
 
+function able(data, field) {
+  return data.accounts.filter((account) => account[field] === COVERED).length;
+}
+
+// Graphs from deterministic blocks, each also a library agent, plus one
+// marketplace agent in the library when the store has one.
+function seedGraphsAndLibrary(account, headers, data, runId) {
+  const number = account.index + 1;
+  fundAccount(headers);
+  for (let g = 0; g < SEED_GRAPHS; g++) {
+    const spec = seedGraph(runId, number, g);
+    const created = request("POST", "/graphs", headers, spec.body);
+    if (!created.ok) {
+      console.warn(
+        `seed: creating graph ${g + 1} for account ${number} failed: ${detail(created)}`,
+      );
+      continue;
+    }
+    seedGraphs.add(1);
+    const graph = {
+      graphId: created.json.id,
+      version: created.json.version,
+      inputs: spec.inputs,
+      libraryAgentId: null,
+    };
+    const library = request(
+      "GET",
+      `/library/agents/by-graph/${graph.graphId}`,
+      headers,
+    );
+    if (library.ok && library.json && library.json.id) {
+      graph.libraryAgentId = library.json.id;
+      account.libraryAgentIds.push(library.json.id);
+    } else {
+      console.warn(
+        `seed: graph ${graph.graphId} has no library agent (${detail(library)})`,
+      );
+    }
+    account.graphs.push(graph);
+  }
+  if (data.store.listingVersionId) {
+    const added = request(
+      "POST",
+      "/library/agents",
+      headers,
+      {
+        store_listing_version_id: data.store.listingVersionId,
+        source: "marketplace",
+      },
+      [200, 201],
+    );
+    if (added.ok && added.json && added.json.id) {
+      seedLibraryAdds.add(1);
+      account.libraryAgentIds.push(added.json.id);
+    }
+  }
+  const credits = request("GET", "/credits", headers);
+  if (credits.ok && credits.json)
+    seedCredits.add(Number(credits.json.credits) || 0);
+}
+
+// SEED_RUNS runs of each of the account's graphs. A 402 keeps this account
+// out of the graph journey and leaves the other accounts to try theirs.
+function startSeedRuns(account, headers, data, pendingRuns) {
+  const number = account.index + 1;
+  if (account.graphs.length === 0) {
+    account.graphRuns = SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
+    return;
+  }
+  for (const graph of account.graphs) {
+    for (let r = 0; r < SEED_RUNS; r++) {
+      const started = request(
+        "POST",
+        `/graphs/${graph.graphId}/execute/${graph.version}`,
+        headers,
+        { inputs: graph.inputs, credentials_inputs: {}, source: "library" },
+        [200, 402],
+      );
+      if (started.status === 402) {
+        account.graphRuns = refusal(started, data);
+        console.warn(
+          `seed: account ${number} cannot start a run: ${detail(started)}`,
+        );
+        return;
+      }
+      if (!started.ok || !started.json || !started.json.id) {
+        console.warn(
+          `seed: starting a run of ${graph.graphId} failed: ${detail(started)}`,
+        );
+        continue;
+      }
+      seedRuns.add(1);
+      pendingRuns.push({
+        headers,
+        graphId: graph.graphId,
+        execId: started.json.id,
+      });
+    }
+  }
+}
+
+function seedChatSessions(account, headers, data) {
+  const number = account.index + 1;
+  if (SEED_SESSIONS === 0) {
+    account.chat = NOT_SEEDED;
+    return;
+  }
+  for (let s = 0; s < SEED_SESSIONS; s++) {
+    const created = request("POST", "/chat/sessions", headers, {}, [200, 402]);
+    if (created.status === 402) {
+      if (account.sessionIds.length === 0) {
+        account.chat = refusal(created, data);
+      }
+      console.warn(
+        `seed: creating chat sessions for account ${number} refused: ${detail(created)}`,
+      );
+      break;
+    }
+    if (!created.ok || !created.json || !created.json.id) {
+      console.warn(
+        `seed: creating a chat session for account ${number} failed: ${detail(created)}`,
+      );
+      continue;
+    }
+    seedSessions.add(1);
+    account.sessionIds.push(created.json.id);
+  }
+  if (account.sessionIds.length === 0 && account.chat === COVERED) {
+    account.chat = NO_SESSIONS;
+  }
+}
+
+// The graph journey runs on the accounts that could start their seed runs,
+// once one of those runs has completed: a target whose executor completes
+// none cannot serve it, and that fails the run.
+function decideGraphRuns(data, pendingRuns) {
+  if (able(data, "graphRuns") === 0) {
+    data.graphs.code = combine(data.accounts.map((a) => a.graphRuns));
+    data.graphs.reason = `no account can start a run: ${reasonFor(data.graphs.code)}`;
+    return;
+  }
+  const outcome = waitForRuns(pendingRuns);
+  seedRunsCompleted.add(outcome.completed);
+  if (outcome.completed === 0) {
+    data.graphs.code = NO_SEED_RUN_COMPLETED;
+    data.graphs.reason = `none of ${pendingRuns.length} seed runs completed within ${
+      SEED_RUN_WAIT_MS / 1000
+    }s (${outcome.failed} failed, ${outcome.open} still open): is the executor running?`;
+    return;
+  }
+  if (outcome.failed > 0 || outcome.open > 0) {
+    console.warn(
+      `seed: ${outcome.completed} of ${pendingRuns.length} seed runs completed, ${outcome.failed} failed, ${outcome.open} still open`,
+    );
+  }
+  data.graphs.enabled = true;
+  data.graphs.code = combine(data.accounts.map((a) => a.graphRuns));
+  data.graphs.reason = null;
+}
+
 // What each enabled journey can exercise, from what the seed found and
-// created. Returns the journeys that cannot run in full.
+// created. Returns the journeys that cannot run in full and those of them
+// that failed on the target.
 function recordRunCoverage(data, journeys) {
-  const graphsSeeded = data.accounts.reduce(
-    (n, account) => n + account.graphs.length,
-    0,
-  );
-  const sessionsSeeded = data.accounts.reduce(
-    (n, account) => n + account.sessionIds.length,
-    0,
-  );
-  const codes = {
-    account_reads: COVERED,
-    store_browse:
-      data.store.agents.length === 0
-        ? MARKETPLACE_EMPTY
-        : !data.store.skillsAvailable || data.store.skillSlugs.length === 0
-          ? SKILLS_UNAVAILABLE
-          : COVERED,
-    library_browse: graphsSeeded === 0 ? NO_GRAPHS : COVERED,
-    graph_run: data.graphs.enabled
-      ? COVERED
-      : graphsSeeded === 0
-        ? NO_GRAPHS
-        : data.graphs.code,
-    copilot_reads:
-      sessionsSeeded > 0
-        ? COVERED
-        : data.copilot.code === PAYWALLED
-          ? PAYWALLED
-          : NO_SESSIONS,
-    copilot_turn: data.copilot.enabled ? COVERED : data.copilot.code,
+  const library = data.accounts.map(libraryCoverage);
+  const entries = {
+    account_reads: [COVERED],
+    store_browse: [storeCoverage(data.store)],
+    library_browse: [
+      combine(library),
+      library.filter((code) => code === COVERED).length,
+    ],
+    graph_run: [
+      data.graphs.code,
+      data.graphs.enabled ? able(data, "graphRuns") : 0,
+    ],
+    copilot_reads: [
+      combine(data.accounts.map((a) => a.chat)),
+      able(data, "chat"),
+    ],
+    copilot_turn: [
+      data.copilot.code,
+      data.copilot.enabled ? able(data, "chat") : 0,
+    ],
   };
   const off = [];
+  const failed = [];
   for (const name of journeys) {
-    // A paywall that held although a key was given means the subscription
-    // step failed for an account; the log has the account and the reason.
-    if (codes[name] === PAYWALLED && data.stripe.enabled) {
-      codes[name] = SUBSCRIBE_FAILED;
-    }
-    recordCoverage(name, codes[name]);
-    if (codes[name] !== COVERED) off.push(name);
+    const [code, accounts] = entries[name];
+    recordCoverage(name, code, accounts);
+    if (code !== COVERED) off.push(name);
+    if (isFailure(code)) failed.push(name);
   }
-  return off;
+  return { off, failed };
+}
+
+function storeCoverage(store) {
+  if (store.agents.length === 0) return MARKETPLACE_EMPTY;
+  if (!store.skillsAvailable || store.skillSlugs.length === 0) {
+    return SKILLS_UNAVAILABLE;
+  }
+  return COVERED;
+}
+
+// The library journey opens one of the account's library agents.
+function libraryCoverage(account) {
+  if (account.libraryAgentIds.length > 0) return COVERED;
+  if (account.graphs.length > 0) return NO_LIBRARY_AGENTS;
+  return SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
 }
 
 // For teardown(): cancels the subscriptions the run created.
@@ -401,9 +484,12 @@ function fundAccount(headers) {
   }
 }
 
-// The target's own marketplace: the first page of agents and skills, and
-// one listing version to add to libraries.
-function discoverStore(headers) {
+// The target's own marketplace, as a visitor sees it, since that is how the
+// store journey reads it: the first page of agents and skills, and one
+// listing version to add to libraries. The skills catalogue sits behind a
+// feature flag that the backend evaluates for anonymous visitors apart from
+// signed-in users.
+function discoverStore() {
   const store = {
     agents: [],
     skillSlugs: [],
@@ -437,11 +523,10 @@ function discoverStore(headers) {
     );
   }
   storeAgentsFound.add(store.agents.length);
-  // The skills catalogue sits behind a feature flag evaluated per user.
   const skills = request(
     "GET",
     "/store/skills?page=1&page_size=50",
-    headers,
+    {},
     undefined,
     [200, 404],
   );
@@ -459,16 +544,15 @@ function discoverStore(headers) {
     }
   } else {
     console.warn(
-      `seed: skills are not available on the target (${detail(skills)}); the store journey skips them`,
+      `seed: skills are not available to visitors on the target (${detail(skills)}); the store journey skips them`,
     );
   }
   storeSkillsFound.add(store.skillSlugs.length);
   return store;
 }
 
-// Polls the seed runs until they finish or the wait runs out. A target
-// whose executor completes none of them cannot serve the graph journey.
-function waitForRuns(pending, data) {
+// Polls the seed runs until they finish or the wait runs out.
+function waitForRuns(pending) {
   const deadline = Date.now() + SEED_RUN_WAIT_MS;
   let open = pending.slice();
   let completed = 0;
@@ -489,25 +573,14 @@ function waitForRuns(pending, data) {
     }
     open = still;
   }
-  seedRunsCompleted.add(completed);
-  if (pending.length > 0 && completed === 0) {
-    data.graphs.enabled = false;
-    data.graphs.code = NO_SEED_RUN_COMPLETED;
-    data.graphs.reason = `none of ${pending.length} seed runs completed within ${
-      SEED_RUN_WAIT_MS / 1000
-    }s (${failed} failed, ${open.length} still open): is the executor running?`;
-  } else if (failed > 0 || open.length > 0) {
-    console.warn(
-      `seed: ${completed} of ${pending.length} seed runs completed, ${failed} failed, ${open.length} still open`,
-    );
-  }
+  return { completed, failed, open: open.length };
 }
 
 // Copilot turns are sent only when the operator says the target runs the
-// dummy engine, and after one probe turn confirms it.
+// dummy engine, and after one probe turn confirms it. A probe that fails
+// then is a failure of the target, not a limit.
 function decideCopilot(auth, data) {
   const engine = __ENV.LOAD_TEST_COPILOT_ENGINE || "";
-  if (data.copilot.reason) return;
   if (engine === "") {
     data.copilot.code = ENGINE_UNSET;
     data.copilot.reason =
@@ -519,11 +592,10 @@ function decideCopilot(auth, data) {
       `LOAD_TEST_COPILOT_ENGINE=${engine}: the workload sends turns only at the dummy engine; tests/copilot-real-model.js is the opt-in real-model test`,
     );
   }
-  const first = data.accounts.find((a) => a.sessionIds.length > 0);
+  const first = data.accounts.find((a) => a.chat === COVERED);
   if (!first) {
-    data.copilot.code = NO_SESSIONS;
-    data.copilot.reason =
-      "no chat session could be created to probe the engine";
+    data.copilot.code = combine(data.accounts.map((a) => a.chat));
+    data.copilot.reason = `no account has a chat session to probe the engine with: ${reasonFor(data.copilot.code)}`;
     return;
   }
   const probe = streamTurn(first.sessionIds[0], "Reply with one word.", {
@@ -544,9 +616,12 @@ function decideCopilot(auth, data) {
     return;
   }
   data.copilot.enabled = true;
+  data.copilot.code = combine(data.accounts.map((a) => a.chat));
+  data.copilot.reason = null;
 
   // A little history in the seeded sessions, so session reads carry messages.
   for (const account of data.accounts) {
+    if (account.chat !== COVERED) continue;
     const headers = accountHeaders(auth, account.index);
     for (const sessionId of account.sessionIds.slice(
       0,
@@ -563,7 +638,8 @@ function decideCopilot(auth, data) {
   }
 }
 
-// For handleSummary: what the seed created, from k6's metrics.
+// For handleSummary: what the seed created and teardown removed, from k6's
+// metrics.
 export function seedingReport(summaryData) {
   const count = (name) => {
     const metric = summaryData.metrics[name];
@@ -589,5 +665,9 @@ export function seedingReport(summaryData) {
     store_skills_found: gauge("seed_store_skills_found"),
     credits_per_account_avg:
       credits && credits.values ? Math.round(credits.values.avg) : null,
+    executions_deleted: count("cleanup_executions"),
+    library_agents_deleted: count("cleanup_library_agents"),
+    sessions_deleted: count("cleanup_sessions"),
+    deletes_failed: count("cleanup_failures"),
   };
 }

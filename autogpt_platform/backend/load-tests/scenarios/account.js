@@ -3,11 +3,11 @@
 // credentials and providers, organisations and the timezone. These are the
 // second-largest family of user-facing requests in production and they sit
 // in front of every other journey.
-import { currentPhase } from "../configs/profiles.js";
+import { iterationPhase } from "../configs/profiles.js";
 import { api } from "../lib/http.js";
 
 export function accountReads(data, profile) {
-  const phase = currentPhase(profile);
+  const phase = iterationPhase(profile);
   const reads = [
     ["/credits", "account.credits"],
     ["/credits/subscription", "account.subscription"],

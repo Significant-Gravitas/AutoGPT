@@ -39,6 +39,7 @@ const THROWAWAY_EMAIL_DOMAIN = "previews.agpt.co";
 const REFRESH_MARGIN_MS = 10 * 60 * 1000;
 const REFRESH_SPREAD_MS = 10 * 60 * 1000;
 const REFRESH_RETRY_MS = 60 * 1000;
+const ACCOUNT_TOKEN_MARGIN_MS = 5 * 60 * 1000;
 
 const ACCOUNTS_FORMAT = 'a JSON array of {"email": "...", "password": "..."}';
 
@@ -84,16 +85,41 @@ export function accountCount() {
 }
 
 // Headers for one account by index, for setup() and teardown(), which run
-// outside any VU. The tokens are fresh there, so no refresh is needed.
+// outside any VU. A token within five minutes of expiring is renewed with
+// the account's session first, so the teardown of a long run gets through.
 export function accountHeaders(data, index) {
   const sessions = data && data.auth;
   if (!sessions || sessions.length === 0) {
     throw new Error("No sessions: setupAuth() must run first");
   }
+  const session = sessions[index % sessions.length];
+  if (
+    !session.renewFailed &&
+    session.expiresAt - Date.now() < ACCOUNT_TOKEN_MARGIN_MS
+  ) {
+    renewAccountToken(session, `account ${(index % sessions.length) + 1}`);
+  }
   return {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${sessions[index % sessions.length].token}`,
+    Authorization: `Bearer ${session.token}`,
   };
+}
+
+function renewAccountToken(session, label) {
+  const res = requestToken(session.cookies);
+  if (res.status === 200) {
+    try {
+      session.token = readToken(res);
+      session.expiresAt = tokenExpiry(session.token);
+      return;
+    } catch (e) {
+      // Reported below, like any other failed renewal.
+    }
+  }
+  session.renewFailed = true;
+  console.warn(
+    `Renewing the token of ${label} failed (HTTP ${res.status}); its requests use the old one`,
+  );
 }
 
 // Headers for the current VU's account, from setupAuth()'s data.

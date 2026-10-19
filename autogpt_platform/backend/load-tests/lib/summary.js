@@ -1,6 +1,6 @@
 // The end-of-run summary: a JSON file under results/ that names the run, the
-// target, the build it was running and the UTC window of the load, so
-// perf-compare can select the same window in Sentry; plus a short text
+// target, the build it was running and the UTC windows of the load, so
+// perf-compare can select the steady phase in Sentry; plus a short text
 // report for the terminal.
 //
 // handleSummary runs after teardown in its own context, so what it knows
@@ -101,11 +101,36 @@ function targetBuild() {
   }
 }
 
-export function buildSummary(data, meta) {
+// The load starts when setup() ends. With phase lengths, the steady phase
+// starts after the warm-up and ends when its stage does: the window the
+// thresholds judge and perf-compare should query, without the warm-up and
+// without teardown's deletes. Without them the load window stands in.
+function windows(data, meta) {
   const endedAt = new Date();
   const startedAt = new Date(endedAt.getTime() - data.state.testRunDurationMs);
   const setupMs = metricValue(data, "setup_duration_ms", "avg") || 0;
   const loadStartedAt = new Date(startedAt.getTime() + setupMs);
+  const phases = meta.phases;
+  const steadyStartedAt = phases
+    ? new Date(loadStartedAt.getTime() + phases.warmupMs)
+    : loadStartedAt;
+  const steadyEndedAt = phases
+    ? new Date(steadyStartedAt.getTime() + phases.steadyMs)
+    : endedAt;
+  return {
+    started_at: startedAt.toISOString(),
+    load_started_at: loadStartedAt.toISOString(),
+    steady_started_at: steadyStartedAt.toISOString(),
+    steady_ended_at: steadyEndedAt.toISOString(),
+    ended_at: endedAt.toISOString(),
+    setup_ms: round(setupMs, 0),
+    total_ms: data.state.testRunDurationMs,
+  };
+}
+
+export function buildSummary(data, meta) {
+  // Before the request to the target, which takes time of its own.
+  const window = windows(data, meta);
   const { results, failed } = thresholdResults(data);
 
   const byEndpoint = {};
@@ -159,13 +184,7 @@ export function buildSummary(data, meta) {
       sentry: config.SENTRY || null,
       build: targetBuild(),
     },
-    window: {
-      started_at: startedAt.toISOString(),
-      load_started_at: loadStartedAt.toISOString(),
-      ended_at: endedAt.toISOString(),
-      setup_ms: round(setupMs, 0),
-      total_ms: data.state.testRunDurationMs,
-    },
+    window,
     scenarios: meta.scenarios,
     totals: {
       http_reqs: metricValue(data, "http_reqs", "count"),
@@ -204,9 +223,9 @@ export function textReport(summary) {
     }`,
   );
   lines.push(
-    `window ${summary.window.load_started_at} / ${summary.window.ended_at} (setup ${Math.round(
+    `steady window ${summary.window.steady_started_at} / ${summary.window.steady_ended_at} (setup ${Math.round(
       summary.window.setup_ms / 1000,
-    )}s)`,
+    )}s, load from ${summary.window.load_started_at})`,
   );
   lines.push(
     `requests ${num(summary.totals.http_reqs)}  failed ${pct(
@@ -266,7 +285,8 @@ export function textReport(summary) {
       );
       for (const name of off) {
         const entry = summary.coverage[name];
-        lines.push(`  ${name}: ${entry.status}: ${entry.reason}`);
+        const accounts = entry.accounts ? ` (${entry.accounts} accounts)` : "";
+        lines.push(`  ${name}: ${entry.status}${accounts}: ${entry.reason}`);
       }
     }
   }

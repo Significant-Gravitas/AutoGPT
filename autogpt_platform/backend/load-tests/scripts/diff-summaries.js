@@ -72,15 +72,36 @@ function table(title, left, right) {
   }
 }
 
+// The steady phase; summaries from before it was recorded have the load.
+function steadyWindow(summary) {
+  const w = summary.window;
+  return `${w.steady_started_at || w.load_started_at} / ${w.steady_ended_at || w.ended_at}`;
+}
+
+function coverageLine(summary) {
+  const coverage = summary.coverage || {};
+  return Object.keys(coverage)
+    .sort()
+    .map((name) => `${name}=${coverage[name].status}`)
+    .join(" ");
+}
+
 console.log(
-  `control   ${control.run_id}  ${control.target.name}  profile ${control.profile}  ${control.window.load_started_at} / ${control.window.ended_at}`,
+  `control   ${control.run_id}  ${control.target.name}  profile ${control.profile}  ${steadyWindow(control)}`,
 );
 console.log(
-  `candidate ${candidate.run_id}  ${candidate.target.name}  profile ${candidate.profile}  ${candidate.window.load_started_at} / ${candidate.window.ended_at}`,
+  `candidate ${candidate.run_id}  ${candidate.target.name}  profile ${candidate.profile}  ${steadyWindow(candidate)}`,
 );
 if (control.profile !== candidate.profile || control.seed !== candidate.seed) {
   console.log(
     "note: the runs differ in profile or seed, so they did not send the same load",
+  );
+}
+if (coverageLine(control) !== coverageLine(candidate)) {
+  console.log(
+    `note: the runs covered different journeys, so they did not send the same load:\n  control   ${coverageLine(
+      control,
+    )}\n  candidate ${coverageLine(candidate)}`,
   );
 }
 console.log(

@@ -13,6 +13,14 @@
 // are rare but slow, so they get more than their share to reach a usable
 // sample size in a ten-minute run. Copilot turns are the product's core and
 // its cost, so they get a sample-size floor rather than their raw share.
+//
+// Graph runs are also bounded by the executor. A preview's executor is at
+// capacity at about ten runs a minute of the seeded graphs: at that rate a
+// small slowdown queues runs without bound, and the queue slows every other
+// journey with it. The baseline holds graph runs at three a minute, about
+// thirty in the steady phase, so it measures a run rather than the queue;
+// the stress profile's multiple of that rate approaches the capacity, to
+// find where it breaks.
 import exec from "k6/execution";
 
 // Iterations per minute at the baseline profile, with the requests each
@@ -49,10 +57,10 @@ export const JOURNEYS = {
     why: "library list and agent detail: under 1% of requests, but p50 of 11 s and 39 s in production",
   },
   graph_run: {
-    rate: 10,
+    rate: 3,
     exec: "graphRun",
     requests: 4,
-    why: "a deterministic graph run through the executor, watched over the WebSocket: 130 to 210 runs a day in production",
+    why: "a deterministic graph run through the executor, watched over the WebSocket: 130 to 210 runs a day in production; held well under a preview executor's capacity of about ten a minute",
   },
 };
 
@@ -171,8 +179,13 @@ export function buildScenarios(profile, names) {
   return scenarios;
 }
 
-// Warm-up or steady, for the running iteration.
-export function currentPhase(profile) {
+// Warm-up or steady, for the iteration that is starting. Every journey calls
+// it first. The VU carries the phase as a tag until its next iteration, so
+// k6's own per-iteration metrics, iteration_duration among them, split by
+// phase as the requests do.
+export function iterationPhase(profile) {
   const elapsed = Date.now() - exec.scenario.startTime;
-  return elapsed < durationMs(profile.warmup) ? "warmup" : "steady";
+  const phase = elapsed < durationMs(profile.warmup) ? "warmup" : "steady";
+  exec.vu.metrics.tags.phase = phase;
+  return phase;
 }
