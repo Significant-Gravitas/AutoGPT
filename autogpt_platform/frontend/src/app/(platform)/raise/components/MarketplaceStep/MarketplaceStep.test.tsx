@@ -116,25 +116,29 @@ describe("MarketplaceStep", () => {
   });
 
   test("searches marketplace and library workflows, then attaches both", async () => {
+    // Rows only for the typed query: the debounced search replaces the empty
+    // query's list, and a click on a row it replaced is lost.
     server.use(
-      getGetV2ListStoreAgentsMockHandler({
-        agents: [storeAgent],
+      getGetV2ListStoreAgentsMockHandler(({ request }) => ({
+        agents: searchesFor(request, "search_query", "seo") ? [storeAgent] : [],
         pagination: {
           total_items: 1,
           total_pages: 1,
           current_page: 1,
           page_size: 3,
         },
-      }),
-      getGetV2ListLibraryAgentsMockHandler({
-        agents: [{ id: "lib-agent-1", name: "Local SEO" } as LibraryAgent],
+      })),
+      getGetV2ListLibraryAgentsMockHandler(({ request }) => ({
+        agents: searchesFor(request, "search_term", "seo")
+          ? [{ id: "lib-agent-1", name: "Local SEO" } as LibraryAgent]
+          : [],
         pagination: {
           total_items: 1,
           total_pages: 1,
           current_page: 1,
           page_size: 3,
         },
-      }),
+      })),
       getGetV2GetSpecificAgentMockHandler({
         store_listing_version_id: "listing-version-42",
         slug: "seo-writer",
@@ -186,3 +190,7 @@ describe("MarketplaceStep", () => {
     ]);
   });
 });
+
+function searchesFor(request: Request, param: string, query: string) {
+  return new URL(request.url).searchParams.get(param) === query;
+}

@@ -38,6 +38,11 @@ _OMITTED = "\n[… part of the user's message omitted by the system …]\n"
 _PARTIAL_LAST_WORD = re.compile(r"(?<=\s)\S{1,40}\Z")
 _PARTIAL_FIRST_WORD = re.compile(r"\A\S{1,40}(?=\s)")
 _FALLBACK_REASON = "Could not verify this action automatically."
+# How many of the user's latest messages a call is first judged against.
+_REQUEST_MESSAGES = 3
+_REQUEST_SEPARATOR = "\n\n---\n\n"
+# Jev's rubric question 1: the call goes beyond what the user asked for.
+_BEYOND_REQUEST = 1
 
 DecidedBy = Literal["llm", "jev", "jev+llm"]
 
@@ -54,10 +59,15 @@ async def supervise(
     *,
     tool_name: str,
     args: dict[str, Any],
-    user_message: str,
+    user_messages: list[str],
 ) -> Judgement:
     """Jev decides when it can; the LLM then only writes an ask's reason and
-    cannot turn it into an allow. Without Jev the LLM decides, as before."""
+    cannot turn it into an allow. Without Jev the LLM decides, as before.
+
+    ``user_messages`` is everything the user typed, oldest first. The call is
+    judged against the last few; Jev's ask for going beyond the request is
+    judged once more against the whole chat, since the request may sit earlier.
+    """
     call = json.dumps(
         {"tool": tool_name, "arguments": args},
         indent=1,
@@ -68,7 +78,9 @@ async def supervise(
     # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
     # 10 past it (40k chars), and caught it every time within it.
     try:
-        prompt, over = _fit(_utf8(user_message), fence("PROPOSED CALL", _utf8(call)))
+        proposed = fence("PROPOSED CALL", _utf8(call))
+        recent = _request(user_messages[-_REQUEST_MESSAGES:])
+        prompt, over = _fit(recent, proposed)
     except Exception:
         logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
         return Judgement(allowed=False, reason=_FALLBACK_REASON)
@@ -82,6 +94,15 @@ async def supervise(
         f"Gate first stage {'ask' if first.ask else 'allow'} for {tool_name}: "
         f"{first.probabilities}"
     )
+    beyond_request = first.ask and first.flagged == _BEYOND_REQUEST
+    if beyond_request and (whole := _whole_chat(user_messages, proposed, tool_name)):
+        again = await jev.judge(whole)
+        if again is not None:
+            logger.info(
+                f"Gate first stage {'ask' if again.ask else 'allow'} for "
+                f"{tool_name} on the whole chat: {again.probabilities}"
+            )
+            prompt, first = whole, again
     if not first.ask:
         return Judgement(
             allowed=True,
@@ -139,6 +160,29 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
     if verdict is None:
         logger.warning(f"Gate supervisor returned an unusable body for {tool_name}")
     return verdict
+
+
+def _whole_chat(messages: list[str], proposed: str, tool_name: str) -> str | None:
+    """The prompt with as many of the newest messages as Jev reads whole, oldest
+    dropped first; None when that is no more than the first judgement read."""
+    low, high = _REQUEST_MESSAGES, len(messages)
+    try:
+        while low < high:
+            middle = (low + high + 1) // 2
+            if jev.overflow(_prompt(_request(messages[-middle:]), proposed)):
+                high = middle - 1
+            else:
+                low = middle
+    except Exception:
+        logger.warning(f"Gate could not size the chat for {tool_name}", exc_info=True)
+        return None
+    if low <= _REQUEST_MESSAGES:
+        return None
+    return _prompt(_request(messages[-low:]), proposed)
+
+
+def _request(messages: list[str]) -> str:
+    return _utf8(_REQUEST_SEPARATOR.join(messages))
 
 
 def too_long_reason(over: int) -> str:
