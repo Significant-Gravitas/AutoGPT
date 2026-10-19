@@ -156,6 +156,12 @@ interface HandleStreamErrorArgs {
     origin?: UsageLimitOrigin,
   ) => void;
   onReconnect: () => void;
+  /**
+   * The account has no plan (HTTP 402). The backend refuses before saving the
+   * prompt, so the caller puts it back in the composer; the chat's error
+   * banner is the one message and carries the upgrade path, so no toast.
+   */
+  onPaywall?: () => void;
   isUserStoppingRef: React.MutableRefObject<boolean>;
   /**
    * The typed envelope, when this turn sent one. It is the only source here
@@ -170,6 +176,7 @@ interface HandleStreamErrorArgs {
  * (or rate-limit UI), and decides whether to retry via reconnect.
  *
  * Dispatch order (exclusive branches):
+ *  -. HTTP 402 (no plan) → `onPaywall`; the error banner says the rest.
  *  0. A typed provider-failure envelope → its own copy.
  *  1. `[code:<id>]` backend prefix → curated or generic backend toast.
  *  2. Legacy `usage limit` substring → rate-limit UI via `onRateLimit`.
@@ -183,9 +190,14 @@ export function handleStreamError({
   error,
   onRateLimit,
   onReconnect,
+  onPaywall,
   isUserStoppingRef,
   providerFailure: streamedProviderFailure,
 }: HandleStreamErrorArgs): void {
+  if ((error as { status?: unknown }).status === 402) {
+    onPaywall?.();
+    return;
+  }
   const errorDetail = extractErrorDetail(error);
   // The live stream's typed envelope wins when present; otherwise recover
   // one from a structured 429/etc. body raised before streaming started.

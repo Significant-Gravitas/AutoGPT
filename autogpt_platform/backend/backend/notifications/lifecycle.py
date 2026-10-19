@@ -6,6 +6,17 @@ the false→true flip rather than every subscription update — live here rather
 than in the webhook router, so the webhook stays a dispatcher.
 
 Trial enrollment and conversion notices are handled separately in `trial.py`.
+
+A customer who opted out of marketing still gets every one of these emails;
+only the MailerLite audience changes that ride along are skipped for them
+(`consent.py`). So does one a signal places in Iran or Russia, the checkout's
+billing address included.
+
+The group changes carry no status or dates: those come from the lifecycle
+sync that every subscription webhook triggers (`lifecycle_audience.py`), by
+the same rules as PostHog's, so a free (100% coupon) subscription is not
+written as `subscribed` here. Joining a group can create the subscriber after
+that sync found nobody to write, so a join asks for one more sync.
 """
 
 import logging
@@ -27,8 +38,10 @@ from backend.data.notifications import (
 )
 from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
-from backend.notifications import subscriber_fields
+from backend.notifications.audience_enrichment import billing_country
+from backend.notifications.consent import audience_change_allowed
 from backend.notifications.dedupe import claim_once, release_claim
+from backend.notifications.lifecycle_audience import resync_after_group_change
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
     format_amount,
@@ -110,14 +123,14 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     user = await _user_for(session.get("customer"))
     if user is None:
         return
-    fields = subscriber_fields.subscribed(subscription.get("start_date"))
+    countries = (billing_country(session),)
 
     if user.welcome_email_sent_at is not None:
-        event = audience_event(
-            AudienceAction.ADD_CHANGELOG, user.email, user.id, fields
-        )
-        if event is not None:
-            await queue_audience_change(event)
+        if not audience_change_allowed(user, AudienceAction.ADD_CHANGELOG, countries):
+            return
+        event = audience_event(AudienceAction.ADD_CHANGELOG, user.email, user.id)
+        if event is not None and (await queue_audience_change(event)).success:
+            await resync_after_group_change(user.id)
         return
 
     # Claim before queueing: Stripe retries webhooks, and two welcomes is worse
@@ -151,10 +164,12 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         await _release_welcome(user)
         raise
 
+    if not audience_change_allowed(user, AudienceAction.ENROLL_TOUR, countries):
+        return
     # Must not propagate: the welcome is already out and the claim is durable,
     # so a Stripe retry would take the returning-customer branch and enrol them
     # in the changelog instead of the tour. Report it rather than fail.
-    event = audience_event(AudienceAction.ENROLL_TOUR, user.email, user.id, fields)
+    event = audience_event(AudienceAction.ENROLL_TOUR, user.email, user.id)
     if event is None:
         return
     enrolled = await queue_audience_change(event)
@@ -163,6 +178,8 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
             f"Welcomed user {user.id} but could not queue the onboarding tour: "
             f"{enrolled.message}"
         )
+        return
+    await resync_after_group_change(user.id)
 
 
 async def on_payment_failed(invoice: dict) -> None:
@@ -266,11 +283,6 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
             ),
             claim_key,
         )
-        await subscriber_fields.queue_fields(
-            user.id,
-            user.email,
-            subscriber_fields.subscription_canceled(subscription.get("canceled_at")),
-        )
         return
 
     claim_key = f"resumed:{sub_id}:{episode}"
@@ -287,9 +299,6 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
             ),
         ),
         claim_key,
-    )
-    await subscriber_fields.queue_fields(
-        user.id, user.email, subscriber_fields.subscription_resumed()
     )
 
 
@@ -329,12 +338,9 @@ async def on_subscription_deleted(subscription: dict) -> None:
         user_id=user.id, subscription_tier=tier, billing_cycle=cycle, reason=reason
     )
     # Churned users get win-back only, never the monthly update.
-    event = audience_event(
-        AudienceAction.REMOVE_CHANGELOG,
-        user.email,
-        user.id,
-        subscriber_fields.subscription_ended(subscription.get("ended_at")),
-    )
+    if not audience_change_allowed(user, AudienceAction.REMOVE_CHANGELOG):
+        return
+    event = audience_event(AudienceAction.REMOVE_CHANGELOG, user.email, user.id)
     if event is not None:
         await queue_audience_change(event)
 

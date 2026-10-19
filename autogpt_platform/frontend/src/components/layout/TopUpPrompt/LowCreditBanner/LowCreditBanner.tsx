@@ -19,7 +19,7 @@ export function LowCreditBanner({ className }: Props) {
     <Alert variant="warning" aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          You&apos;re out of automation credits. Top up to keep your agents
+          You&apos;re out of automation credits. Top up to keep your workflows
           running.
         </AlertDescription>
         <Button variant="primary" size="small" onClick={openTopUp}>

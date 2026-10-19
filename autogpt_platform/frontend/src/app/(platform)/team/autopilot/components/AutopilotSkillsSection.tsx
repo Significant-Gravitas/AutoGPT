@@ -2,10 +2,10 @@
 
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { useState } from "react";
 import { ExpertSkillListItem } from "../../[expertId]/components/ExpertSkillListItem";
 import { AUTOPILOT_PILL_CLASS } from "../../helpers";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
 
 interface Props {
   skills: CopilotSkillInfo[];
@@ -28,12 +28,11 @@ export function AutopilotSkillsSection({ skills }: Props) {
         <Text variant="large-medium" tone="primary">
           Otto&apos;s Skills
         </Text>
-        <SearchInput
-          size="small"
+        <ToolbarSearch
+          id="otto-skills-search"
+          label="Search skills"
           value={query}
           onChange={setQuery}
-          placeholder="Search skills"
-          className="w-48"
         />
       </div>
       {skills.length === 0 ? (

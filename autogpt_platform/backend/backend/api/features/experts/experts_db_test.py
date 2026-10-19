@@ -58,6 +58,7 @@ from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
+from backend.util.posthog_events import PostHogEvent
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
@@ -2039,6 +2040,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
         "role",
         "jobTitle",
         "isArchived",
+        "autopilotMode",
     } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
@@ -5197,7 +5199,7 @@ def test_to_expert_run_falls_back_when_workflow_unresolved():
     run = experts_db._to_expert_run(
         _run_execution(), None, "unknown", None, needs_review=False
     )
-    assert run.agent_name == "Agent task"
+    assert run.agent_name == "Workflow task"
     assert run.library_agent_id is None
     assert run.output_key is None
     assert run.link is None
@@ -6035,12 +6037,15 @@ async def test_list_templates_without_a_category_keeps_uncategorised_experts(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_list_templates_searches_name_role_tagline_and_bio(
+async def test_list_templates_searches_name_role_job_title_tagline_and_bio(
     server: SpinTestServer,
 ):
     suffix = uuid.uuid4().hex[:8]
     by_name = await _template(f"Marigold {suffix}")
     by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_job_title = await _template(
+        f"Titled {suffix}", jobTitle=f"Social Media Manager {suffix}"
+    )
     by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
     by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
 
@@ -6049,13 +6054,16 @@ async def test_list_templates_searches_name_role_tagline_and_bio(
 
     assert by_name.id in await ids_for("marigold")
     assert by_role.id in await ids_for(f"podcaster {suffix}")
+    # The title line the card shows ("Jules · Social Media Manager").
+    assert by_job_title.id in await ids_for("social media")
     assert by_tagline.id in await ids_for(f"books {suffix}")
     assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
 
-    # One term, four templates: the OR spans the four searchable columns.
+    # One term, five templates: the OR spans the five searchable columns.
     assert await ids_for(suffix) >= {
         by_name.id,
         by_role.id,
+        by_job_title.id,
         by_tagline.id,
         by_bio.id,
     }
@@ -7235,3 +7243,98 @@ async def test_a_routine_proposal_nobody_answered_still_refuses(
 
     with pytest.raises(routines.RoutineUnansweredAsksError):
         await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)
+
+
+# ─── Approval mode ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_autopilot_mode_persists_per_expert(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert hired.expert.autopilot_mode is None
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        updated = await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "ask_first"
+        )
+
+    assert updated.autopilot_mode == "ask_first"
+    emit.assert_not_called()
+    reloaded = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert reloaded is not None
+    assert reloaded.autopilot_mode == "ask_first"
+    assert (
+        await experts_db.get_autopilot_mode(test_user.id, hired.expert.id)
+        == "ask_first"
+    )
+    identities = await experts_db.list_expert_identities(test_user.id)
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.autopilot_mode == "ask_first"
+
+    cleared = await experts_db.update_autopilot_mode(
+        test_user.id, hired.expert.id, None
+    )
+    assert cleared.autopilot_mode is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_setting_unsupervised_at_expert_level_is_audited(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "unsupervised"
+        )
+
+    emit.assert_called_once_with(
+        test_user.id,
+        PostHogEvent.EXPERT_MODE_SET_UNSUPERVISED,
+        {"expert_id": hired.expert.id},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_autopilot_mode_is_owner_only_and_hire_only(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(other_user.id, hired.expert.id, "auto")
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(test_user.id, template.id, "auto")
+    assert await experts_db.get_autopilot_mode(other_user.id, hired.expert.id) is None
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.update_autopilot_mode(
+            test_user.id, hired.expert.id, "ask_first"
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"autopilotMode": "unsupervised"}
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.autopilot_mode is None
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"autopilotMode": "not-a-mode"}
+    )
+    assert await experts_db.get_autopilot_mode(test_user.id, hired.expert.id) is None
+    identities = await experts_db.list_expert_identities(test_user.id)
+    identity = next(item for item in identities if item.id == hired.expert.id)
+    assert identity.autopilot_mode is None

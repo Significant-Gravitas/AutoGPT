@@ -87,7 +87,15 @@ def test_tear_down_takes_its_own_stack_down():
         run_tests.tear_down_stack()
 
     run_command.assert_called_once_with(
-        ["docker", "compose", "-f", "docker-compose.test.yaml", "down"]
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.test.yaml",
+            "--env-file",
+            "../.env",
+            "down",
+        ]
     )
 
 
