@@ -26,6 +26,7 @@ async def _get_cached_store_agents(
     category: str | None,
     page: int,
     page_size: int,
+    public_search: bool = False,
 ):
     """Cached helper to get store agents."""
     return await store_db.get_store_agents(
@@ -36,6 +37,7 @@ async def _get_cached_store_agents(
         category=category,
         page=page,
         page_size=page_size,
+        public_search=public_search,
     )
 
 

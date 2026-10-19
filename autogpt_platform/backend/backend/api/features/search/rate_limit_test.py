@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -116,3 +118,68 @@ async def test_over_limit_records_a_rate_limit_hit(fake_redis):
     assert (
         _counter("autogpt_rate_limit_hits_total", endpoint="/api/search") == before + 1
     )
+
+
+# The store search limits below run against the real Redis: the window and its
+# expiry are Redis's to keep, so a double would only restate the code.
+
+
+@pytest.fixture
+def frozen_minute(monkeypatch):
+    """Pin every call to 30 s into one minute, so no test straddles a window."""
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+
+    monkeypatch.setattr(rate_limit, "datetime", _Frozen)
+
+
+@pytest.mark.asyncio
+async def test_a_store_search_client_past_its_limit_gets_429_with_retry_after(
+    frozen_minute, monkeypatch
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_requests_per_minute", 2
+    )
+    client = f"client-{uuid.uuid4().hex}"
+    await rate_limit.enforce_public_search_rate_limit(client)
+    await rate_limit.enforce_public_search_rate_limit(client)
+
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        await rate_limit.enforce_public_search_rate_limit(client)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers == {"Retry-After": "30"}
+    await rate_limit.enforce_public_search_rate_limit(f"other-{uuid.uuid4().hex}")
+
+
+@pytest.mark.asyncio
+async def test_store_search_embeds_only_its_budget_per_minute(
+    frozen_minute, monkeypatch
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 2
+    )
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX",
+        f"test:store:search:embeddings:{uuid.uuid4().hex}",
+    )
+
+    slots = [await rate_limit.take_public_search_embedding_slot() for _ in range(3)]
+
+    assert slots == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_without_redis_store_search_is_not_limited_but_embeds_nothing(mocker):
+    mocker.patch.object(
+        rate_limit,
+        "get_redis_async",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+
+    await rate_limit.enforce_public_search_rate_limit("203.0.113.9")
+    assert await rate_limit.take_public_search_embedding_slot() is False

@@ -1,5 +1,6 @@
 import datetime
 import json
+import uuid
 
 import fastapi
 import fastapi.testclient
@@ -95,6 +96,7 @@ def test_get_agents_defaults(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -141,6 +143,7 @@ def test_get_agents_featured(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -187,6 +190,7 @@ def test_get_agents_by_creator(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -233,6 +237,7 @@ def test_get_agents_sorted(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -279,6 +284,7 @@ def test_get_agents_search(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -324,6 +330,7 @@ def test_get_agents_category(
         category="test-category",
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -372,6 +379,7 @@ def test_get_agents_pagination(
         category=None,
         page=2,
         page_size=5,
+        public_search=True,
     )
 
 
@@ -391,6 +399,78 @@ def test_get_agents_malformed_request(mocker: pytest_mock.MockFixture):
     # Verify no DB calls were made
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agents")
     mock_db_call.assert_not_called()
+
+
+@pytest.fixture
+def one_search_a_minute(monkeypatch):
+    from backend.api.features.search import rate_limit
+
+    class _Frozen(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.datetime(2026, 1, 1, 12, 0, 30, tzinfo=datetime.UTC)
+
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_requests_per_minute", 1
+    )
+    monkeypatch.setattr(rate_limit, "datetime", _Frozen)
+
+
+@pytest.mark.parametrize(
+    "path", ["/search?query=sheets", "/agents?search_query=sheets"]
+)
+def test_a_client_past_the_search_limit_gets_429(
+    mocker: pytest_mock.MockFixture, one_search_a_minute, path: str
+) -> None:
+    _mock_search_backends(mocker)
+    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
+
+    assert client.get(path, headers=headers).status_code == 200
+    blocked = client.get(path, headers=headers)
+
+    assert blocked.status_code == 429
+    assert blocked.headers["Retry-After"] == "30"
+
+
+def test_listing_agents_without_a_search_is_not_limited(
+    mocker: pytest_mock.MockFixture, one_search_a_minute
+) -> None:
+    _mock_search_backends(mocker)
+    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
+
+    statuses = [client.get("/agents", headers=headers).status_code for _ in range(3)]
+
+    assert statuses == [200, 200, 200]
+
+
+def test_store_search_counts_against_the_public_embedding_budget(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    engine = _mock_search_backends(mocker)
+    headers = {"CF-Connecting-IP": f"client-{uuid.uuid4().hex}"}
+
+    response = client.get("/search?query=sheets", headers=headers)
+
+    assert response.status_code == 200
+    assert engine.await_args.kwargs["public_search"] is True
+
+
+def _mock_search_backends(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.api.features.store.db.get_store_agents",
+        return_value=store_model.StoreAgentsResponse(
+            agents=[],
+            pagination=store_model.Pagination(
+                current_page=1, total_items=0, total_pages=0, page_size=20
+            ),
+        ),
+    )
+    return mocker.patch.object(
+        store_routes.search_engine,
+        "unified_hybrid_search",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
 
 
 def test_get_agent_details(

@@ -16277,7 +16277,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "anyOf": [
+                { "type": "string", "maxLength": 512 },
+                { "type": "null" }
+              ],
               "description": "Literal + semantic search on names and descriptions",
               "title": "Search Query"
             },
@@ -16909,7 +16912,7 @@
             "name": "query",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "title": "Query" }
+            "schema": { "type": "string", "maxLength": 512, "title": "Query" }
           },
           {
             "name": "content_types",
