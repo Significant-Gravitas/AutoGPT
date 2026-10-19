@@ -3111,47 +3111,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/auth/user/email": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Update user email",
-        "operationId": "postV1Update user email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "type": "string", "title": "Email" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": { "type": "string" },
-                  "type": "object",
-                  "title": "Response Postv1Update User Email"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/auth/user/preferences": {
       "get": {
         "tags": ["v1", "auth"],
