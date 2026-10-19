@@ -16,14 +16,17 @@ from backend.util.test import SpinTestServer
 logger = logging.getLogger(__name__)
 
 
-def _day(days_ago: int) -> datetime:
-    """Midday UTC `days_ago` days back, so DATE() never straddles a boundary."""
-    today = datetime.now(timezone.utc).replace(
-        hour=12, minute=0, second=0, microsecond=0
-    )
-    if today > datetime.now(timezone.utc):
+@pytest.fixture
+def day_anchor() -> datetime:
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    if today > now:
         today -= timedelta(days=1)
-    return today - timedelta(days=days_ago)
+    return today
+
+
+def _day(days_ago: int, anchor: datetime) -> datetime:
+    return anchor - timedelta(days=days_ago)
 
 
 async def _setup() -> tuple[str, str]:
@@ -84,25 +87,26 @@ _SCORED_DAYS = {5: 0.9, 4: 0.8, 3: 0.7, 2: 0.6, 1: 0.5}
 
 
 async def _seed_falling_series(
-    user_id: str, graph_id: str, *, unscored_today: bool
+    user_id: str, graph_id: str, anchor: datetime, *, unscored_today: bool
 ) -> None:
     for days_ago, score in _SCORED_DAYS.items():
-        await _run(user_id, graph_id, _day(days_ago), score)
+        await _run(user_id, graph_id, _day(days_ago, anchor), score)
         # An unscored run on a scored day must not dilute that day's score.
-        await _run(user_id, graph_id, _day(days_ago) + timedelta(hours=1), None)
+        await _run(user_id, graph_id, _day(days_ago, anchor) + timedelta(hours=1), None)
     if unscored_today:
         # A day with only unscored runs must not become a row.
-        await _run(user_id, graph_id, _day(0), None)
-        await _run(user_id, graph_id, _day(0) + timedelta(minutes=5), None)
+        await _run(user_id, graph_id, _day(0, anchor), None)
+        await _run(user_id, graph_id, _day(0, anchor) + timedelta(minutes=5), None)
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_historical_data_is_oldest_first_and_scored_days_only(
     server: SpinTestServer,
+    day_anchor: datetime,
 ):
     user_id, graph_id = await _setup()
     try:
-        await _seed_falling_series(user_id, graph_id, unscored_today=True)
+        await _seed_falling_series(user_id, graph_id, day_anchor, unscored_today=True)
 
         result = await get_accuracy_trends_and_alerts(
             graph_id=graph_id,
@@ -136,12 +140,13 @@ async def test_historical_data_is_oldest_first_and_scored_days_only(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_latest_and_alert_match_with_and_without_history(
     server: SpinTestServer,
+    day_anchor: datetime,
 ):
     """The monitor calls without history (LIMIT 1); it must see the same
     latest row and alert as the chart's call."""
     user_id, graph_id = await _setup()
     try:
-        await _seed_falling_series(user_id, graph_id, unscored_today=False)
+        await _seed_falling_series(user_id, graph_id, day_anchor, unscored_today=False)
 
         with_history = await get_accuracy_trends_and_alerts(
             graph_id=graph_id, days_back=30, include_historical=True
@@ -170,12 +175,13 @@ async def test_latest_and_alert_match_with_and_without_history(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_flat_series_with_unscored_today_has_no_alert(
     server: SpinTestServer,
+    day_anchor: datetime,
 ):
     user_id, graph_id = await _setup()
     try:
         for days_ago in range(1, 8):
-            await _run(user_id, graph_id, _day(days_ago), 0.8)
-        await _run(user_id, graph_id, _day(0), None)
+            await _run(user_id, graph_id, _day(days_ago, day_anchor), 0.8)
+        await _run(user_id, graph_id, _day(0, day_anchor), None)
 
         result = await get_accuracy_trends_and_alerts(
             graph_id=graph_id, days_back=30, drop_threshold=10.0
@@ -183,17 +189,19 @@ async def test_flat_series_with_unscored_today_has_no_alert(
 
         assert result.alert is None
         assert result.latest_data.daily_score == pytest.approx(80.0)
-        assert result.latest_data.date.date() == _day(1).date()
+        assert result.latest_data.date.date() == _day(1, day_anchor).date()
     finally:
         await _cleanup(user_id, graph_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_only_unscored_runs_returns_empty_latest(server: SpinTestServer):
+async def test_only_unscored_runs_returns_empty_latest(
+    server: SpinTestServer, day_anchor: datetime
+):
     user_id, graph_id = await _setup()
     try:
-        await _run(user_id, graph_id, _day(1), None)
-        await _run(user_id, graph_id, _day(0), None)
+        await _run(user_id, graph_id, _day(1, day_anchor), None)
+        await _run(user_id, graph_id, _day(0, day_anchor), None)
 
         result = await get_accuracy_trends_and_alerts(
             graph_id=graph_id, days_back=30, include_historical=True

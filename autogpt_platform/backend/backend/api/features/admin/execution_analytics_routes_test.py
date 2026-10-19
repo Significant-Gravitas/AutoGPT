@@ -2,14 +2,19 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import fastapi
+import fastapi.testclient
 import pytest
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.admin.execution_analytics_routes import (
     ExecutionAnalyticsRequest,
     ExecutionAnalyticsResult,
     _process_batch,
     generate_execution_analytics,
+    router,
 )
+from backend.data.analytics import AccuracyLatestData, AccuracyTrendsResponse
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.executor.activity_status_generator import INSUFFICIENT_BALANCE_SUMMARY
 from backend.util.exceptions import ExecutionFailureReason
@@ -30,7 +35,7 @@ async def test_process_batch_allows_credit_failure_without_openai_key():
         started_at=None,
         ended_at=None,
     )
-    request = ExecutionAnalyticsRequest(graph_id="graph-1")
+    request = ExecutionAnalyticsRequest.model_validate({"graph_id": "graph-1"})
     with (
         patch(
             "backend.api.features.admin.execution_analytics_routes.update_graph_execution_stats",
@@ -45,6 +50,7 @@ async def test_process_batch_allows_credit_failure_without_openai_key():
     assert results[0].status == "success"
     assert results[0].score == 0.0
     mock_update.assert_awaited_once()
+    assert mock_update.await_args is not None
     update_call = mock_update.await_args.kwargs
     assert update_call["graph_exec_id"] == "exec-1"
     updated_stats = update_call["stats"]
@@ -67,7 +73,7 @@ async def test_process_batch_skips_non_credit_failure_without_llm_client():
         ended_at=None,
     )
     db_client = AsyncMock()
-    request = ExecutionAnalyticsRequest(graph_id="graph-1")
+    request = ExecutionAnalyticsRequest.model_validate({"graph_id": "graph-1"})
 
     with (
         patch(
@@ -121,7 +127,7 @@ async def test_generate_analytics_only_skips_complete_existing_analysis():
         started_at=None,
         ended_at=None,
     )
-    request = ExecutionAnalyticsRequest(graph_id="graph-1")
+    request = ExecutionAnalyticsRequest.model_validate({"graph_id": "graph-1"})
     processed_result = ExecutionAnalyticsResult(
         agent_id="graph-1",
         version_id=1,
@@ -203,7 +209,7 @@ async def test_generate_analytics_counts_processed_rows_skipped():
         ),
     ):
         response = await generate_execution_analytics(
-            ExecutionAnalyticsRequest(graph_id="graph-1"),
+            ExecutionAnalyticsRequest.model_validate({"graph_id": "graph-1"}),
             admin_user_id="admin-1",
         )
 
@@ -219,12 +225,6 @@ async def test_generate_analytics_counts_processed_rows_skipped():
 
 @pytest.fixture
 def accuracy_client(mock_jwt_admin):
-    import fastapi
-    import fastapi.testclient
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
-    from backend.api.features.admin.execution_analytics_routes import router
-
     app = fastapi.FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
@@ -249,8 +249,6 @@ def test_accuracy_trends_rejects_out_of_range_days_back(accuracy_client, days_ba
 
 @pytest.mark.parametrize("days_back", [None, 7, 90])
 def test_accuracy_trends_accepts_in_range_days_back(accuracy_client, days_back):
-    from backend.data.analytics import AccuracyLatestData, AccuracyTrendsResponse
-
     params: dict[str, object] = {"graph_id": "graph-1"}
     if days_back is not None:
         params["days_back"] = days_back
@@ -273,4 +271,5 @@ def test_accuracy_trends_accepts_in_range_days_back(accuracy_client, days_back):
         )
 
     assert response.status_code == 200
+    assert mock_trends.await_args is not None
     assert mock_trends.await_args.kwargs["days_back"] == (days_back or 30)
