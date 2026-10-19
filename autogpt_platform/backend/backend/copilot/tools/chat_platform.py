@@ -128,9 +128,13 @@ _ERROR_MESSAGES: dict[str, str] = {
 }
 
 
-@lru_cache(maxsize=1)
 def _any_chat_platform_configured() -> bool:
-    """Whether any chat-platform bot is configured, gating tool availability.
+    return bool(_configured_chat_platforms())
+
+
+@lru_cache(maxsize=1)
+def _configured_chat_platforms() -> frozenset[str]:
+    """The chat platforms this deployment can deliver to.
 
     Cached because ``get_available_tools`` reads ``is_available`` for every tool
     on every request, and constructing ``Settings()`` re-parses the env each
@@ -164,11 +168,15 @@ def _any_chat_platform_configured() -> bool:
         and secrets.microsoft_client_secret
         and secrets.microsoft_tenant_id
     )
-    return bool(
-        secrets.autopilot_bot_discord_token
-        or slack_configured
-        or telegram_configured
-        or teams_configured
+    return frozenset(
+        platform
+        for platform, configured in {
+            "discord": bool(secrets.autopilot_bot_discord_token),
+            "slack": slack_configured,
+            "telegram": telegram_configured,
+            "teams": teams_configured,
+        }.items()
+        if configured
     )
 
 

@@ -95,7 +95,14 @@ async def _prepare(
             "backend.copilot.tools.helpers.is_unattended_turn",
             return_value=unattended,
         ),
-        patch(f"{_HINT}._any_chat_platform_configured", return_value=bot_configured),
+        patch(
+            f"{_HINT}._configured_chat_platforms",
+            return_value=(
+                frozenset({"discord", "slack", "telegram"})
+                if bot_configured
+                else frozenset()
+            ),
+        ),
         patch(
             "backend.copilot.tools.helpers.turn_credential_pins",
             return_value=pins or {},
@@ -251,9 +258,6 @@ async def test_a_private_discord_thread_gets_no_bot_hint():
         "W0MEMBER01",
         "D0DIRECT01",
         "@someone",
-        "u0member01",
-        "w0member01",
-        "d0direct01",
     ],
 )
 async def test_a_slack_dm_to_another_member_gets_no_bot_hint(channel):
@@ -267,7 +271,20 @@ async def test_a_slack_dm_to_another_member_gets_no_bot_hint(channel):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("channel", ["C0CHANNEL1", "#general"])
+@pytest.mark.parametrize(
+    "channel",
+    [
+        "C0CHANNEL1",
+        "#general",
+        "deployments",
+        "upcoming",
+        "watercooler",
+        "deployments2026",
+        "u0member01",
+        "w0member01",
+        "d0direct01",
+    ],
+)
 async def test_a_slack_channel_still_gets_a_bot_hint(channel):
     result = await _prepare(
         "SendSlackMessageBlock", input_data={"channel": channel, "text": "hi"}

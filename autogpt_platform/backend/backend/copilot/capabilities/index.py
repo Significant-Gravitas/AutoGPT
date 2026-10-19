@@ -19,7 +19,8 @@ from pydantic import BaseModel
 from rank_bm25 import BM25Okapi
 
 from .models import SKILL_TOOL, CapabilityContext, CapabilityEntry, CapabilityKindName
-from .ranking import ConnectionState, class_weight, resolve_connected, tier
+from .ordering import rank_hits
+from .ranking import ConnectionState, class_weight, resolve_connected
 from .text import normalize_name, query_groups, tokenize
 
 if TYPE_CHECKING:
@@ -37,9 +38,6 @@ DEFAULT_LIMIT = 8
 DEFAULT_FALLBACK_LIMIT = 3
 # Entries of other kinds a ``kind`` filter hid that are listed beside it.
 OTHER_KINDS_LIMIT = 3
-# How far below the best coverage a connected MCP server the query names
-# still counts as covering the query; one whole concept.
-CONNECTED_COVERAGE_MARGIN = 1.0
 # Platform tools that help connect an account and never do a service's job,
 # so a query naming a service does not pull them into its list.
 CONNECTION_HELPER_TOOLS = frozenset({"connect_integration"})
@@ -50,7 +48,7 @@ class SearchHit(BaseModel):
     score: float
     # Query concepts the entry matched: 1 per token matched as written, 0.5
     # when only a synonym matched.  Ranking is coverage first, then
-    # connection and platform tools (see ``_ranked``), then BM25: two entries
+    # connection and platform tools (see ``rank_hits``), then BM25: two entries
     # that both match "create" and "issue" are ordered by whether the user has
     # connected them, not by which description happens to be shorter.
     coverage: float = 0.0
@@ -234,7 +232,7 @@ class CapabilityIndex:
             ]
             chosen = set(main)
             others = [idx for idx in rest if idx not in chosen]
-            fallback = _ranked(
+            fallback = rank_hits(
                 [
                     to_hit(idx, "search")
                     for idx in others
@@ -249,7 +247,7 @@ class CapabilityIndex:
                 main += unpinned
         else:
             main = rest
-        hits += _ranked(
+        hits += rank_hits(
             [to_hit(idx, "search") for idx in main],
             lift=service_indices is not None,
             mcp_first=prefer_mcp
@@ -533,100 +531,3 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
             else len(entry.tags)
         )
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
-
-
-def _ranked(
-    hits: list[SearchHit], *, lift: bool = False, mcp_first: bool = False
-) -> list[SearchHit]:
-    """Coverage first, then a connected capability, then a platform tool,
-    then the class-weighted BM25 score (``score`` already carries the weight).
-
-    With *lift* a platform tool comes before connection.  The list is then
-    the named service's own entries plus the tools that name it, so a tool
-    tying on coverage is the first-party way to do that service's job
-    (post_to_chat_platform for Discord).  On a query that names no service a
-    tool that ties has only shared a word with it ("email" and
-    create_feature_request), so the user's connected blocks keep precedence.
-
-    With *lift*, a connected MCP server within
-    :data:`CONNECTED_COVERAGE_MARGIN` of the best coverage is read as covering
-    the query as well as the best match.  One catalog entry stands for a whole
-    server, so its text describes the service rather than each action it
-    offers, and it can never match an action verb the way a block named for
-    that one action does — "LinearCreateIssueBlock" tokenises to the whole of
-    "create linear issue".  Without the lift the block always won on coverage
-    and the connection signal was never reached.
-
-    The caller lifts only on a query that names a service.  The main list is
-    then restricted to that service, so the server has already matched the
-    service's name and the concept it lacks is the action.  On a query that
-    names no service the server matched some other word — "updates" in
-    Linear's description for "update spreadsheet" — and lifting it put Linear
-    over the Sheets block that matched both words, for any server the user
-    happened to have connected.
-
-    Only MCP servers are lifted, because only they have that problem: a block
-    is named for its action and competes on coverage honestly. Lifting every
-    connected entry carried whole families of connected blocks over a
-    first-party tool that matched the query better. Nothing is pushed down, so
-    a job with no connected server ranks exactly as it did before.
-
-    ``mcp_first`` is for an expert chat that named a service and found its
-    MCP server: connection leads, and within a tier the service's MCP server
-    comes before its blocks, which stay listed for what the server cannot do.
-    It replaces the order above, *lift* included.
-    """
-    if mcp_first:
-        ranked = sorted(
-            hits,
-            key=lambda h: (
-                tier(h.entry, h.connected),
-                -h.coverage,
-                h.entry.kind != "tool",
-                -h.score,
-                h.entry.name.lower(),
-            ),
-        )
-        service_hits: dict[str, list[SearchHit]] = defaultdict(list)
-        for hit in ranked:
-            if hit.entry.service:
-                service_hits[hit.entry.service].append(hit)
-        for service, entries in service_hits.items():
-            service_hits[service] = sorted(
-                entries,
-                key=lambda h: (
-                    tier(h.entry, h.connected),
-                    h.entry.kind != "mcp_server",
-                    -h.coverage,
-                    h.entry.kind != "tool",
-                    -h.score,
-                    h.entry.name.lower(),
-                ),
-            )
-        offsets: dict[str, int] = defaultdict(int)
-        result: list[SearchHit] = []
-        for hit in ranked:
-            service = hit.entry.service
-            if not service:
-                result.append(hit)
-                continue
-            result.append(service_hits[service][offsets[service]])
-            offsets[service] += 1
-        return result
-    best = max((h.coverage for h in hits), default=0.0)
-
-    def key(hit: SearchHit) -> tuple[float, int, int, float, str]:
-        rank = tier(hit.entry, hit.connected)
-        not_tool = int(hit.entry.kind != "tool")
-        coverage = hit.coverage
-        if (
-            lift
-            and hit.entry.kind == "mcp_server"
-            and rank == 0
-            and coverage >= best - CONNECTED_COVERAGE_MARGIN
-        ):
-            coverage = best
-        first, second = (not_tool, rank) if lift else (rank, not_tool)
-        return (-coverage, first, second, -hit.score, hit.entry.name.lower())
-
-    return sorted(hits, key=key)

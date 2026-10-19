@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from backend.copilot.context import get_current_permissions
 from backend.data.db_accessors import platform_linking_db
 
-from .chat_platform import _any_chat_platform_configured
+from .chat_platform import _configured_chat_platforms
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,7 @@ def _beyond_the_bot(block_name: str, input_data: dict[str, Any]) -> bool:
     or not: a DM to someone else, a reply into a thread, a private thread."""
     if block_name == "SendSlackMessageBlock":
         channel = str(input_data.get("channel") or "").strip()
-        return bool(input_data.get("thread_ts")) or bool(
-            _SLACK_DM.match(channel.upper())
-        )
+        return bool(input_data.get("thread_ts")) or bool(_SLACK_DM.match(channel))
     if block_name == "CreateDiscordThreadBlock":
         return bool(input_data.get("is_private"))
     if block_name == "SendTelegramMessageBlock":
@@ -90,7 +88,7 @@ def _bot_platform(block_name: str) -> str | None:
     """The platform the bot could post to in this block's place, when this
     deployment runs the bot and this turn may call the tool."""
     platform = BOT_TOKEN_SEND_BLOCKS.get(block_name)
-    if platform is None or not _any_chat_platform_configured():
+    if platform is None or platform not in _configured_chat_platforms():
         return None
     permissions = get_current_permissions()
     if permissions is not None and POST_TOOL not in (
