@@ -8,7 +8,6 @@ has to import the helper and pass an emit closure.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -32,13 +31,6 @@ from backend.copilot.response_model import ResponseType, StreamBaseResponse
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     return None
-
-
-@pytest_asyncio.fixture(
-    scope="session", loop_scope="session", autouse=True, name="graph_cleanup"
-)
-async def _graph_cleanup_noop() -> AsyncIterator[None]:
-    yield
 
 
 def _sample_snapshot() -> DreamOperationsSnapshot:

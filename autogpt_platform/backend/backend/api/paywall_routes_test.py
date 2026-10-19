@@ -43,7 +43,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/api-keys/{key_id}/suspend",
     "POST /api/auth/user",
     "POST /api/auth/user/consent",
-    "POST /api/auth/user/email",
     "GET /api/auth/user/preferences",
     "POST /api/auth/user/preferences",
     "GET /api/auth/user/timezone",

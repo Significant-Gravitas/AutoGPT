@@ -341,3 +341,195 @@ What stands out:
 | `Primitive.div props:children` | 12 |
 | `r$ props:state,children` | 12 |
 | `rV props:state,children` | 12 |
+
+## builder-connect-edge · baseline — median of 10 runs
+
+Added later than the other tables: app code is `dev` at `a1578ad9a` (2026-10-19); build, browser and machine are the same as above. Ten saved runs instead of three. A few runs have extra commits in the window; total renders hardly move.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 20 | 20 – 36 | 80.0% |
+| total renders | 9,197 | 9,197 – 9,457 | 2.8% |
+| renders per commit | 459.9 | 262.7 – 459.9 | 42.9% |
+| max renders in one commit | 8,682 | 8,682 – 8,682 | 0.0% |
+| script time (ms) | 516 | 489 – 633 | 27.9% |
+| task time (ms) | 673 | 641 – 863 | 33.0% |
+| layout time (ms) | 3 | 2 – 4 | 48.4% |
+| style recalc time (ms) | 7 | 6 – 10 | 59.1% |
+| long tasks (≥ 50 ms) | 1 | 1 – 2 | 100.0% |
+| long task total (ms) | 412 | 396 – 571 | 42.6% |
+| heap used after GC (MB) | 85.4 | 84.0 – 85.8 | 2.0% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Text` | 491 |
+| `HugeiconsIcon` | 417 |
+| `Icon` | 417 |
+| `Primitive.div` | 401 |
+| `Tooltip` | 370 |
+| `TooltipContent` | 370 |
+| `HandleComponent` | 346 |
+| `SelectItem` | 296 |
+| `TooltipProvider` | 295 |
+| `Presence` | 240 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 370 |
+| `HugeiconsIcon parent-same-props<-Icon` | 362 |
+| `HandleComponent state#8` | 344 |
+| `SelectItem props:onMouseDown,children` | 296 |
+| `TooltipProvider props:children` | 295 |
+| `Presence props:children` | 240 |
+| `Primitive.div props:children` | 231 |
+| `Primitive.div.Slot props:children` | 231 |
+| `Primitive.div.SlotClone props:children` | 231 |
+| `Text props:children` | 224 |
+
+## library-running-events · baseline — median of 3 runs
+
+Added after the table above, so it was measured on `dev` at `a1578ad9a` (2026-10-19), on the same machine. The websocket is mocked; each run prints what it saw, and all three printed the same: 80 events in 20 s, counted until 2 s after the last one, caused 1,600 `subscribe_graph_executions` frames (all 20 workflows on every event) and 80 `GET /executions` refetches. Each refetch re-renders the whole card grid.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 242 | 242 – 242 | 0.0% |
+| total renders | 143,052 | 143,052 – 143,052 | 0.0% |
+| renders per commit | 591.1 | 591.1 – 591.1 | 0.0% |
+| max renders in one commit | 1,768 | 1,768 – 1,768 | 0.0% |
+| script time (ms) | 8,442 | 8,191 – 8,797 | 7.2% |
+| task time (ms) | 10,585 | 10,338 – 10,975 | 6.0% |
+| layout time (ms) | 55 | 55 – 58 | 6.5% |
+| style recalc time (ms) | 160 | 139 – 175 | 22.7% |
+| long tasks (≥ 50 ms) | 80 | 80 – 80 | 0.0% |
+| long task total (ms) | 8,288 | 8,053 – 8,635 | 7.0% |
+| heap used after GC (MB) | 43.5 | 43.5 – 43.5 | 0.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon` | 9,760 |
+| `Icon` | 9,760 |
+| `Presence` | 8,642 |
+| `Dialog` | 6,881 |
+| `Text` | 5,440 |
+| `motion.div` | 4,880 |
+| `DialogPortal` | 3,441 |
+| `DialogPortalProvider` | 3,441 |
+| `DialogProvider` | 3,441 |
+| `BaseContent` | 3,440 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon parent-same-props<-Icon` | 9,760 |
+| `Presence props:children` | 8,642 |
+| `Icon parent-same-props<-motion.div` | 4,800 |
+| `Dialog props:onOpenChange,children` | 3,441 |
+| `DialogPortal props:children` | 3,441 |
+| `DialogPortalProvider props:children` | 3,441 |
+| `DialogProvider props:children` | 3,441 |
+| `BaseContent props:children` | 3,440 |
+| `DialogWrap props:styling,handleOpen,handleClose,children` | 3,440 |
+| `LinkComponent props:children` | 3,200 |
+
+## builder-run-events · baseline — median of 3 runs
+
+Added with SECRT-3003: measured on `dev` app code at `a1578ad9a` on a similar 16 GB cloud sandbox.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 158 | 157 – 159 | 1.3% |
+| total renders | 58,440 | 58,438 – 58,440 | 0.0% |
+| renders per commit | 369.9 | 367.5 – 372.2 | 1.3% |
+| max renders in one commit | 10,628 | 10,628 – 10,628 | 0.0% |
+| script time (ms) | 2,528 | 2,367 – 2,774 | 16.1% |
+| task time (ms) | 3,038 | 2,766 – 3,207 | 14.5% |
+| layout time (ms) | 17 | 15 – 17 | 7.6% |
+| style recalc time (ms) | 27 | 22 – 28 | 19.4% |
+| long tasks (≥ 50 ms) | 6 | 6 – 10 | 66.7% |
+| long task total (ms) | 1,868 | 1,588 – 2,065 | 25.5% |
+| heap used after GC (MB) | 107.9 | 107.4 – 110.7 | 3.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Presence` | 3,032 |
+| `Text` | 2,667 |
+| `HugeiconsIcon` | 2,438 |
+| `Icon` | 2,438 |
+| `Tooltip` | 2,266 |
+| `TooltipContent` | 2,266 |
+| `TooltipProvider` | 2,214 |
+| `Primitive.div` | 1,962 |
+| `Primitive.button` | 1,636 |
+| `Popper` | 1,605 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Presence props:children` | 2,932 |
+| `HugeiconsIcon parent-same-props<-Icon` | 2,398 |
+| `Tooltip props:children` | 2,226 |
+| `TooltipProvider props:children` | 2,174 |
+| `Primitive.div props:children` | 1,554 |
+| `Primitive.div.Slot props:children` | 1,375 |
+| `Primitive.div.SlotClone props:children` | 1,375 |
+| `TooltipContent props:children` | 1,344 |
+| `Primitive.button.Slot props:children,onPointerMove,onPointerLeave,onPointerDown,+4` | 1,217 |
+| `Primitive.button.SlotClone props:onPointerMove,onPointerLeave,onPointerDown,onFocus,+4` | 1,217 |
+
+## copilot-stream-code · baseline — median of 5 runs
+
+Added after the table above was saved: `dev` at `a1578ad9a`, same machine type, 1 warm-up and 5 saved runs. The reply is one 130-line code block, so most of the time is the transcript re-rendering on every streamed word, plus Shiki highlighting the open block on each flush.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 2,573 | 2,565 – 2,588 | 0.9% |
+| total renders | 579,560 | 576,640 – 580,000 | 0.6% |
+| renders per commit | 224.5 | 224.1 – 226.1 | 0.9% |
+| max renders in one commit | 1,010 | 1,010 – 1,010 | 0.0% |
+| script time (ms) | 46,940 | 46,115 – 50,794 | 10.0% |
+| task time (ms) | 55,268 | 54,101 – 58,986 | 8.8% |
+| layout time (ms) | 461 | 428 – 486 | 12.8% |
+| style recalc time (ms) | 1,616 | 1,523 – 1,690 | 10.3% |
+| long tasks (≥ 50 ms) | 377 | 350 – 407 | 15.1% |
+| long task total (ms) | 33,039 | 31,008 – 37,272 | 19.0% |
+| heap used after GC (MB) | 70.8 | 70.4 – 73.5 | 4.3% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 35,872 |
+| `TooltipContent` | 35,871 |
+| `Presence` | 24,642 |
+| `Popper` | 20,406 |
+| `PopperAnchor` | 20,406 |
+| `PopperProvider` | 20,406 |
+| `Primitive.button` | 20,406 |
+| `Primitive.button.Slot` | 20,406 |
+| `Primitive.button.SlotClone` | 20,406 |
+| `Primitive.div` | 20,406 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 34,456 |
+| `Presence props:children` | 24,631 |
+| `Primitive.div props:children` | 20,397 |
+| `Primitive.div.Slot props:children` | 20,397 |
+| `Primitive.div.SlotClone props:children` | 20,397 |
+| `TooltipProvider props:children` | 20,388 |
+| `HugeiconsIcon parent-same-props<-Icon` | 19,744 |
+| `PopperAnchor props:children` | 19,676 |
+| `Popper props:children` | 19,667 |
+| `PopperProvider props:children` | 19,667 |

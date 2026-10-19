@@ -25,6 +25,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -425,6 +426,11 @@ app.include_router(
 app.include_router(
     backend.api.features.admin.memory_admin_routes.router,
     tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
     prefix="/api",
 )
 # Dev-only surface: the test-data seeder is never mounted outside a local
