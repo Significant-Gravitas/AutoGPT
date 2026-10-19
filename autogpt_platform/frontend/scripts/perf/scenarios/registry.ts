@@ -1,4 +1,5 @@
 import type { Scenario } from "../lib/scenario";
+import { builderConnectEdge } from "./builder-connect-edge";
 import { builderDragRunning } from "./builder-drag-running";
 import { builderRunEvents } from "./builder-run-events";
 import { copilotBackgroundStream } from "./copilot-background-stream";
@@ -16,6 +17,7 @@ export const SCENARIOS: Scenario[] = [
   copilotSwitchThreads,
   builderDragRunning,
   libraryRunning,
+  builderConnectEdge,
   builderRunEvents,
 ];
 

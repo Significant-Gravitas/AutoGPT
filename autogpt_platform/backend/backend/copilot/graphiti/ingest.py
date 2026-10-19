@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.dream.registry import ensure_scope_scheduled
+from backend.util.background import spawn_background_task
+
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .scope import MemoryScope
@@ -27,11 +30,14 @@ logger = logging.getLogger(__name__)
 # different loop". Scope the registry per running loop so each loop has its
 # own queues, workers, and lock. Entries auto-clean when the loop is GC'd.
 class _LoopIngestState:
-    __slots__ = ("group_queues", "group_workers", "workers_lock")
+    __slots__ = ("group_queues", "group_workers", "registrations", "workers_lock")
 
     def __init__(self) -> None:
         self.group_queues: dict[str, asyncio.Queue] = {}
         self.group_workers: dict[str, asyncio.Task] = {}
+        # The in-flight dream-schedule registration of each memory group,
+        # dropped when it finishes; see ``_register_dream_schedules``.
+        self.registrations: dict[str, asyncio.Task] = {}
         self.workers_lock = asyncio.Lock()
 
 
@@ -386,10 +392,11 @@ async def enqueue_conversation_turn(
         return
 
     try:
-        group_id = MemoryScope.build(user_id, expert_id).group_id
+        scope = MemoryScope.build(user_id, expert_id)
     except ValueError:
         logger.warning("Invalid memory scope for ingestion: %s", user_id[:12])
         return
+    group_id = scope.group_id
 
     user_display_name = await resolve_user_name(user_id)
 
@@ -403,8 +410,7 @@ async def enqueue_conversation_turn(
     source_description = f"User message in session {session_id}"
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": episode_name,
             "episode_body": episode_body_for_graphiti,
@@ -437,8 +443,7 @@ async def enqueue_conversation_turn(
                 provenance=f"session:{session_id}",
             )
             await _enqueue_payload(
-                user_id,
-                group_id,
+                scope,
                 {
                     "name": f"finding_{session_id}",
                     "episode_body": envelope.model_dump_json(),
@@ -504,8 +509,7 @@ async def enqueue_episode(
     source = EpisodeType.json if is_json else EpisodeType.text
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": name,
             "episode_body": episode_body,
@@ -555,21 +559,22 @@ async def wait_for_ingestion(
     return await completion.wait(timeout_seconds)
 
 
-async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
+async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     """Atomically select a group worker and enqueue one payload.
 
     Queue selection, worker creation, and ``put_nowait`` share
     ``workers_lock`` with idle retirement. A caller can therefore never put
     work onto a queue after its worker has unregistered it.
 
-    Also fires the auto-registration of the user's dream-system
-    schedules (community rebuild + dream pass + ratification pass) the
-    first time we see them in this process — lazy on first memory write,
-    per-job flag-gated, per-job idempotent. See
-    ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
-    Fire-and-forget; failures are swallowed inside the helper so
-    ingestion is never affected.
+    Creating a group's queue also registers the scope's own dream-system
+    crons (community rebuild + nightly batch): an expert group registers the
+    expert's scope, not the account's. That happens on the group's first
+    write in this process and again each time its queue comes back after
+    retiring (``_WORKER_IDLE_TIMEOUT`` idle). Fire-and-forget, flag-gated
+    and idempotent; see ``_register_dream_schedules``.
     """
+    user_id = scope.owner_user_id
+    group_id = scope.group_id
     state = _get_loop_state()
     is_new_group_for_this_process = False
     async with state.workers_lock:
@@ -591,18 +596,34 @@ async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
             return False
 
     if is_new_group_for_this_process:
-        # Fire-and-forget; per-job Redis SETNX inside the helper
-        # provides cross-process / cross-restart idempotency. Done
-        # outside the workers_lock so the scheduler RPC can't
-        # deadlock ingestion.
-        from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
-
-        asyncio.create_task(
-            ensure_dream_system_scheduled(user_id),
-            name=f"dream-system-register-{user_id[:12]}",
-        )
+        # Outside the workers_lock so the registry's RPCs can't hold up
+        # ingestion.
+        _register_dream_schedules(state, scope)
 
     return True
+
+
+def _register_dream_schedules(state: _LoopIngestState, scope: MemoryScope) -> None:
+    """Register the scope's dream-system crons in the background, at most
+    one registration in flight per group: a queue that retires and comes
+    back while the last one is still running does not start another. The
+    scope's registry row makes a repeat registration a no-op; every call it
+    makes is bounded (``copilot/dream/deadline.py``)."""
+    group_id = scope.group_id
+    running = state.registrations.get(group_id)
+    if running is not None and not running.done():
+        return
+    task = spawn_background_task(
+        ensure_scope_scheduled(scope),
+        name=f"dream-system-register-{scope.scope_key[:12]}",
+    )
+    state.registrations[group_id] = task
+
+    def _drop(done: asyncio.Task) -> None:
+        if state.registrations.get(group_id) is done:
+            del state.registrations[group_id]
+
+    task.add_done_callback(_drop)
 
 
 async def resolve_user_name(user_id: str) -> str:

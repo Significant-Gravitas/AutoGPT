@@ -304,4 +304,30 @@ describe("useScheduledSend", () => {
       });
     });
   });
+
+  // The client throws on error statuses, so this answer is the only way the
+  // server can leave a send unset without an error; the composer has already
+  // cleared the message by then.
+  it("puts the message back when the server answers without the send", async () => {
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+        HttpResponse.json({ jobs: [] }),
+      ),
+      http.post("*/api/chat/sessions/:sessionId/at-reset", () =>
+        HttpResponse.json(null, { status: 202 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useScheduledSend({ sessionId: "chat-unset" }),
+      { wrapper: withQueryClient() },
+    );
+    const composer = renderHook(() =>
+      useChatDraft(sessionDraftKey("chat-unset")),
+    );
+
+    await expect(result.current.schedule("Draft the post")).rejects.toThrow();
+    await act(() => result.current.scheduleQuietly("Draft the post"));
+
+    expect(composer.result.current[0]).toBe("Draft the post");
+  });
 });
