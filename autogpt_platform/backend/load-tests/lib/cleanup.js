@@ -9,6 +9,11 @@
 // not delete while a library entry refers to them, deleted or not; the
 // onboarding steps the seed completed and the credits they granted; the
 // Stripe test-mode customers; and the throwaway accounts.
+//
+// A target that is briefly unavailable (no answer, or 502 to 504 from its
+// ingress while a pod restarts) gets each request again, a few times and
+// a little later each time, before the delete counts as failed.
+import { sleep } from "k6";
 import http from "k6/http";
 import { Counter } from "k6/metrics";
 
@@ -20,6 +25,9 @@ const API = config.API_BASE_URL;
 const BATCH = 10;
 const PAGE_SIZE = 100;
 const MAX_PAGES = 50;
+const TRANSIENT = [0, 502, 503, 504];
+const RETRIES = 4;
+const RETRY_PAUSE_SECONDS = 5;
 
 const executionsDeleted = new Counter("cleanup_executions");
 const libraryAgentsDeleted = new Counter("cleanup_library_agents");
@@ -133,13 +141,22 @@ function timestamp(text) {
   return Date.parse(`${match[1]}${fraction}${match[3] || "Z"}`);
 }
 
-function read(path, route, headers) {
-  const res = http.get(`${API}${path}`, {
+function params(route, headers, expected) {
+  return {
     headers,
     tags: { name: `/api${route}`, phase: "teardown" },
-    responseCallback: http.expectedStatuses(200),
+    responseCallback: http.expectedStatuses(...expected),
     timeout: "60s",
-  });
+  };
+}
+
+function read(path, route, headers) {
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    res = http.get(`${API}${path}`, params(route, headers, [200]));
+    if (!TRANSIENT.includes(res.status) || attempt >= RETRIES) break;
+    sleep(RETRY_PAUSE_SECONDS * (attempt + 1));
+  }
   if (res.status !== 200) {
     console.warn(`teardown: GET /api${route} answered HTTP ${res.status}`);
     return null;
@@ -153,29 +170,33 @@ function read(path, route, headers) {
 
 function deleteAll(paths, route, headers) {
   const result = { deleted: 0, failed: 0 };
-  for (let i = 0; i < paths.length; i += BATCH) {
-    const responses = http.batch(
-      paths.slice(i, i + BATCH).map((path) => ({
-        method: "DELETE",
-        url: `${API}${path}`,
-        params: {
-          headers,
-          tags: { name: `/api${route}`, phase: "teardown" },
-          responseCallback: http.expectedStatuses(200, 204),
-          timeout: "60s",
-        },
-      })),
-    );
-    for (const res of responses) {
-      if (res.status === 200 || res.status === 204) {
-        result.deleted++;
-      } else {
-        result.failed++;
-        console.warn(
-          `teardown: DELETE /api${route} answered HTTP ${res.status}`,
-        );
-      }
+  let pending = paths;
+  for (let attempt = 0; pending.length > 0; attempt++) {
+    if (attempt > 0) sleep(RETRY_PAUSE_SECONDS * attempt);
+    const again = [];
+    for (let i = 0; i < pending.length; i += BATCH) {
+      const batch = pending.slice(i, i + BATCH);
+      const responses = http.batch(
+        batch.map((path) => ({
+          method: "DELETE",
+          url: `${API}${path}`,
+          params: params(route, headers, [200, 204]),
+        })),
+      );
+      responses.forEach((res, j) => {
+        if (res.status === 200 || res.status === 204) {
+          result.deleted++;
+        } else if (TRANSIENT.includes(res.status) && attempt < RETRIES) {
+          again.push(batch[j]);
+        } else {
+          result.failed++;
+          console.warn(
+            `teardown: DELETE /api${route} answered HTTP ${res.status}`,
+          );
+        }
+      });
     }
+    pending = again;
   }
   return result;
 }

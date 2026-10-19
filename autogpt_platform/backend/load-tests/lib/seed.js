@@ -172,11 +172,11 @@ export function seedRun(auth, journeys) {
     seedAccounts(auth, wants, data, runId);
   } catch (e) {
     // k6 skips teardown() when setup() throws, so what the seed made so far
-    // is removed here.
+    // is removed here, the subscriptions first, as teardown() does.
     try {
-      removeRunData(data, "setup failed");
-    } finally {
       cancelRunSubscriptions(data, "setup failed");
+    } finally {
+      removeRunData(data, "setup failed");
     }
     throw e;
   }

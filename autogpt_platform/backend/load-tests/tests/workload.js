@@ -88,12 +88,13 @@ export function setup() {
   return data;
 }
 
-// Deletes first, while the accounts are still subscribed.
+// The subscriptions first: the deletes need none, and a teardown that runs
+// out of time on a struggling target must not leave them active.
 export function teardown(data) {
   try {
-    removeRunData(data, "teardown");
-  } finally {
     cancelRunSubscriptions(data, "teardown");
+  } finally {
+    removeRunData(data, "teardown");
   }
 }
 

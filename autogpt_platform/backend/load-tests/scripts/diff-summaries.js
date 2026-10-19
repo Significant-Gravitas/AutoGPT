@@ -72,6 +72,52 @@ function table(title, left, right) {
   }
 }
 
+// Rate metrics (copilot_turn_errors, graph_run_errors, ws_errors) carry a
+// rate and the samples behind it (passes and fails), not a count of
+// timings, so they get a table of their own: the rate on each side, its
+// samples, and the change in percentage points. A counter's rate is per
+// second, and it has no passes or fails.
+function rateTable(title, left, right) {
+  const isRate = (row) =>
+    Boolean(row) &&
+    typeof row.rate === "number" &&
+    (typeof row.passes === "number" || typeof row.fails === "number");
+  const names = Array.from(
+    new Set(Object.keys(left || {}).concat(Object.keys(right || {}))),
+  )
+    .filter((name) => isRate((left || {})[name]) || isRate((right || {})[name]))
+    .sort();
+  if (names.length === 0) return;
+  const percent = (row) =>
+    isRate(row) ? `${(row.rate * 100).toFixed(2)}%` : "-";
+  const samples = (row) =>
+    isRate(row) ? (row.passes || 0) + (row.fails || 0) : 0;
+  console.log("");
+  console.log(title);
+  console.log(
+    `${pad("", 34)} ${pad("n", 11, true)} ${pad("ctl", 8, true)} ${pad(
+      "cand",
+      9,
+      true,
+    )} ${pad("chg", 8, true)}`,
+  );
+  for (const name of names) {
+    const a = (left || {})[name];
+    const b = (right || {})[name];
+    const points =
+      isRate(a) && isRate(b)
+        ? `${b.rate >= a.rate ? "+" : ""}${((b.rate - a.rate) * 100).toFixed(2)}pp`
+        : "-";
+    console.log(
+      `${pad(name, 34)} ${pad(`${samples(a)}/${samples(b)}`, 11, true)} ${pad(
+        percent(a),
+        8,
+        true,
+      )} ${pad(percent(b), 9, true)} ${pad(points, 8, true)}`,
+    );
+  }
+}
+
 // The steady phase; summaries from before it was recorded have the load.
 function steadyWindow(summary) {
   const w = summary.window;
@@ -121,6 +167,11 @@ table(
 );
 table(
   "User-facing metrics (ms, steady phase)",
+  control.custom_metrics,
+  candidate.custom_metrics,
+);
+rateTable(
+  "Failure rates (steady phase)",
   control.custom_metrics,
   candidate.custom_metrics,
 );
