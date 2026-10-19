@@ -27,6 +27,14 @@ export function readFixture(name: string) {
   return fs.readFileSync(path.join(FIXTURES_DIR, name), "utf8");
 }
 
+const DEFAULT_PACE_MS = 30;
+const MAX_PACE_MS = 5_000;
+
+export function clampPace(value: number) {
+  if (!Number.isFinite(value) || value < 1) return DEFAULT_PACE_MS;
+  return Math.min(Math.round(value), MAX_PACE_MS);
+}
+
 function corsHeaders(request: http.IncomingMessage) {
   return {
     "Access-Control-Allow-Origin": request.headers.origin ?? "*",
@@ -54,7 +62,7 @@ export async function startStreamServer(): Promise<StreamServer> {
     }
     const params = new URL(request.url ?? "/", "http://localhost").searchParams;
     const tag = params.get("tag") ?? "";
-    const paceMs = Number(params.get("pace") ?? 30);
+    const paceMs = clampPace(Number(params.get("pace")));
     let frames: string[];
     try {
       frames = splitFrames(readFixture(params.get("fixture") ?? ""));
