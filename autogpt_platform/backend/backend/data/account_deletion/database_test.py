@@ -79,6 +79,20 @@ def test_invitations_match_the_email_only_when_it_is_known():
     assert "$2" not in without["org_invitations"].condition
 
 
+def test_auth_verifications_match_the_email_only_when_it_is_known():
+    """Reset links store the user ID as the value; the sign-up and
+    verification email cooldowns name the address in the identifier."""
+    with_email = {d.label: d for d in database.planned_deletions(SUBJECT)}
+    without = {
+        d.label: d
+        for d in database.planned_deletions(SUBJECT.model_copy(update={"email": None}))
+    }
+    assert with_email["auth_verifications"].args == [USER_ID, "sam@example.com"]
+    assert '"identifier"' in with_email["auth_verifications"].condition
+    assert without["auth_verifications"].args == [USER_ID]
+    assert "$2" not in without["auth_verifications"].condition
+
+
 def test_every_deletion_is_scoped_by_a_parameter():
     for deletion in database.planned_deletions(SUBJECT):
         assert "$1" in deletion.condition

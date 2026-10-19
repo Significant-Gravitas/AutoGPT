@@ -265,3 +265,35 @@ async def test_an_unknown_account_is_not_locked_or_unlocked(
 
     assert steps.calls == []
     assert raised.value.report.blockers[0].name == "account_not_found"
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_id_runs_no_step(monkeypatch):
+    """The ID check is in the preflight, so not even the stop steps (which
+    reach Stripe and the scheduler) see a malformed ID."""
+    bad = Subject(user_id="../everyone")
+    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=bad))
+    monkeypatch.setattr(
+        routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
+    )
+    steps = Steps(monkeypatch)
+
+    with pytest.raises(AccountDeletionBlocked) as raised:
+        await routine.delete_account("../everyone", dry_run=False, force=True)
+
+    assert steps.calls == []
+    assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["lock_account", "unlock_account"])
+async def test_a_malformed_id_is_not_locked_or_unlocked(monkeypatch, action):
+    bad = Subject(user_id="../everyone", has_user_row=True)
+    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=bad))
+    steps = Steps(monkeypatch)
+
+    with pytest.raises(AccountDeletionBlocked) as raised:
+        await getattr(routine, action)("../everyone", dry_run=False)
+
+    assert steps.calls == []
+    assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]

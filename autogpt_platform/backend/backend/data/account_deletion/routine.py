@@ -10,7 +10,8 @@ Two phases, with an undo window between them:
   account's rows (marketplace, files, memory, PostHog, MailerLite), and its
   rows last. The rows go last because they are how every earlier step finds
   its data, so a step that fails leaves the account in place for a rerun to
-  finish. A rerun of a finished deletion finds nothing and changes nothing.
+  finish. An ID with no account left is refused unless `force`; with it, a
+  rerun of a finished deletion finds nothing and changes nothing.
 """
 
 import logging
@@ -36,6 +37,7 @@ from backend.data.account_deletion.models import (
 )
 from backend.data.account_deletion.preflight import (
     find_blockers,
+    invalid_id,
     load_subject,
     system_account,
 )
@@ -83,7 +85,8 @@ async def delete_account(
     """Delete the account, or with `dry_run` (the default) only count what
     would go. `email` finds the MailerLite subscriber of an account whose rows
     are already gone. `force` skips the undo window (no lock, or a lock less
-    than `UNDO_WINDOW` old); other blockers still stop it.
+    than `UNDO_WINDOW` old), and lets an ID with no account left through, to
+    finish what a deletion left; other blockers still stop it.
 
     Raises `AccountDeletionBlocked` before deleting anything when a blocker
     needs a decision; a dry run reports blockers instead. Returns the report;
@@ -123,6 +126,8 @@ async def _run(
 
 
 def _lockable(subject: Subject) -> list[Blocker]:
+    if refused := invalid_id(subject.user_id):
+        return refused
     if subject.has_user_row or subject.has_auth_identity:
         return system_account(subject.user_id)
     return [

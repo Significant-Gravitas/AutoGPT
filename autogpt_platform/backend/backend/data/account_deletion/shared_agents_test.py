@@ -173,6 +173,10 @@ async def test_the_plan_reads_shared_graphs_then_their_listings(monkeypatch):
     assert plan.listing_ids == ["listing-1"]
     graphs_sql, *graph_args = query.await_args_list[0].args
     assert "WITH RECURSIVE" in graphs_sql
+    # Org-home and team agents in an org someone else is active in are seen
+    # by that org's members (`tenancy.visibility_filter`), so they count.
+    assert '"OrgMember"' in graphs_sql and "'ACTIVE'" in graphs_sql
+    assert 'g."teamId"' in graphs_sql
     assert graph_args[0] == USER_ID
     assert query.await_args_list[1].args[1:] == (
         USER_ID,

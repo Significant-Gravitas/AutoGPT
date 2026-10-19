@@ -86,6 +86,8 @@ def planned_deletions(subject: Subject) -> list[Deletion]:
         *_invitation_deletions(subject),
         *_sole_org_deletions(subject.sole_org_ids),
         *_by_user(subject.user_id, _AFTER_ORGS),
+        _verification_deletion(subject),
+        *_by_user(subject.user_id, _LAST),
     ]
 
 
@@ -109,7 +111,8 @@ _AFTER_ORGS = [
     ("library_agents", "LibraryAgent", '"userId" = $1'),
     ("presets", "AgentPreset", '"userId" = $1'),
     ("webhooks", "IntegrationWebhook", '"userId" = $1'),
-    ("auth_verifications", "UserAuthVerification", '"value" = $1'),
+]
+_LAST = [
     # Cascades to its sessions and linked sign-in accounts.
     ("auth_identity", "UserAuthIdentity", '"id" = $1'),
     ("user", "User", '"id" = $1'),
@@ -138,6 +141,28 @@ def _invitation_deletions(subject: Subject) -> list[Deletion]:
             ("team_invitations", "TeamInvite"),
         )
     ]
+
+
+def _verification_deletion(subject: Subject) -> Deletion:
+    """Better Auth's verification rows of the account: reset links hold its
+    ID as the value, and the sign-up and verification email cooldowns
+    (`auth-email-cooldown.ts`) name its address after the kind, as
+    `verify-email:<email>`. The cooldowns expire within minutes, but carry
+    the email until Better Auth clears them."""
+    condition = '"value" = $1'
+    args: list[SqlArg] = [subject.user_id]
+    if subject.email:
+        condition += (
+            ' OR RIGHT(LOWER("identifier"), LENGTH($2::text) + 1) '
+            "= ':' || LOWER($2::text)"
+        )
+        args.append(subject.email)
+    return Deletion(
+        label="auth_verifications",
+        table="UserAuthVerification",
+        condition=condition,
+        args=args,
+    )
 
 
 def _sole_org_deletions(org_ids: list[str]) -> list[Deletion]:

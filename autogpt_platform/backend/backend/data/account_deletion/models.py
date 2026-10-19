@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -6,6 +7,11 @@ from pydantic import BaseModel
 # How long a locked account waits before the full deletion may run, so a
 # request can still be undone (`delete-account --unlock`).
 UNDO_WINDOW = timedelta(days=14)
+
+# Account IDs are UUIDs. Anything else is refused before a step runs
+# (`preflight.invalid_id`) and never turned into a storage prefix
+# (`storage.py`), so a malformed ID can never widen a sweep.
+SAFE_ID = re.compile(r"[0-9A-Za-z-]{8,64}")
 
 
 class StepStatus(str, Enum):

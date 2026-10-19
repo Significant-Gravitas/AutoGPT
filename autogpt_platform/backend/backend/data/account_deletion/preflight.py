@@ -6,6 +6,7 @@ exactly as it was.
 
 from datetime import datetime, timedelta, timezone
 
+from prisma.enums import OrgMemberStatus
 from prisma.models import (
     AuthUser,
     Expert,
@@ -18,7 +19,7 @@ from prisma.models import (
 )
 
 from backend.data.account_deletion.deleted_user import DELETED_USER_ID
-from backend.data.account_deletion.models import UNDO_WINDOW, Blocker, Subject
+from backend.data.account_deletion.models import SAFE_ID, UNDO_WINDOW, Blocker, Subject
 
 
 async def load_subject(user_id: str, email: str | None = None) -> Subject:
@@ -45,13 +46,28 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
 async def find_blockers(
     subject: Subject, *, force: bool = False, now: datetime | None = None
 ) -> list[Blocker]:
-    """What stops the full deletion. `force` skips the undo window only."""
-    if system := system_account(subject.user_id):
-        return system
-    _, solely_owned_shared_orgs = await _orgs(subject.user_id)
+    """What stops the full deletion. `force` skips the undo window, and lets
+    an ID with no account left through to finish a deletion that stopped
+    part way; nothing else."""
+    if refused := invalid_id(subject.user_id) or system_account(subject.user_id):
+        return refused
     blockers: list[Blocker] = []
-    if not force and subject.has_user_row:
-        blockers += _undo_window(subject.locked_at, now or datetime.now(timezone.utc))
+    if not force:
+        if not (subject.has_user_row or subject.has_auth_identity):
+            blockers.append(
+                Blocker(
+                    name="account_not_found",
+                    count=0,
+                    resolution="No platform account or auth identity has this "
+                    "ID: it is deleted already, or the ID is wrong. To finish a "
+                    "deletion that stopped part way, run it again with --force.",
+                )
+            )
+        elif subject.has_user_row:
+            blockers += _undo_window(
+                subject.locked_at, now or datetime.now(timezone.utc)
+            )
+    _, solely_owned_shared_orgs = await _orgs(subject.user_id)
     if solely_owned_shared_orgs:
         blockers.append(
             Blocker(
@@ -62,6 +78,21 @@ async def find_blockers(
             )
         )
     return blockers
+
+
+def invalid_id(user_id: str) -> list[Blocker]:
+    """An ID that cannot be an account's. Refused before any step runs, so
+    nothing (Stripe, the scheduler, a storage prefix) is ever asked about it."""
+    if SAFE_ID.fullmatch(user_id):
+        return []
+    return [
+        Blocker(
+            name="invalid_account_id",
+            count=1,
+            resolution="This is not an account ID. Pass the user ID or the "
+            "account's email.",
+        )
+    ]
 
 
 def system_account(user_id: str) -> list[Blocker]:
@@ -106,8 +137,11 @@ def _undo_window(locked_at: datetime | None, now: datetime) -> list[Blocker]:
 
 
 async def _orgs(user_id: str) -> tuple[list[Organization], list[Organization]]:
-    """The orgs only this account is in, and the shared orgs it alone owns.
-    A personal org whose membership row is gone still counts as its own."""
+    """The orgs no one else is an active member of, and the shared orgs no
+    one else actively owns. Invited, suspended and removed members count for
+    neither: an org only they are left in goes with the account, its
+    subscription cancelled. A personal org whose membership row is gone still
+    counts as its own."""
     memberships = await OrgMember.prisma().find_many(
         where={"userId": user_id}, include={"Org": True}
     )
@@ -121,7 +155,11 @@ async def _orgs(user_id: str) -> tuple[list[Organization], list[Organization]]:
     solely_owned_shared: list[Organization] = []
     for org in orgs.values():
         others = await OrgMember.prisma().find_many(
-            where={"orgId": org.id, "userId": {"not": user_id}}
+            where={
+                "orgId": org.id,
+                "userId": {"not": user_id},
+                "status": OrgMemberStatus.ACTIVE,
+            }
         )
         if not others:
             sole.append(org)

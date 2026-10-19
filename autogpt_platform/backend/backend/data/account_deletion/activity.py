@@ -32,22 +32,37 @@ async def disable_sign_in(subject: Subject, *, dry_run: bool) -> StepReport:
     end its sessions. An access token already issued stays valid until it
     expires (an hour).
 
+    A ban already in force (for abuse, say) is kept as it is, reason and
+    expiry, so the unlock, which lifts only a ban with `BAN_REASON`, can never
+    lift it. A ban that has expired no longer stops a sign-in, so it is
+    replaced.
+
     Also opts the account out of marketing, so a MailerLite write queued by a
     webhook (the subscription cancellation below, say) is dropped instead of
     re-creating the subscriber this deletion forgets."""
     sessions_where = {"userId": subject.user_id}
+    note = ""
     if dry_run:
         sessions = await AuthSession.prisma().count(where=sessions_where)
     else:
         if subject.has_auth_identity:
-            await AuthUser.prisma().update(
-                where={"id": subject.user_id},
+            banned = await AuthUser.prisma().update_many(
+                where={
+                    "id": subject.user_id,
+                    "OR": [
+                        {"banned": None},
+                        {"banned": False},
+                        {"banExpires": {"lt": _now()}},
+                    ],
+                },
                 data={"banned": True, "banReason": BAN_REASON, "banExpires": None},
             )
+            if not banned:
+                note = "existing ban kept, with its reason and expiry"
         await User.prisma().update_many(
             where={"id": subject.user_id, "marketingOptOutAt": None},
             data={
-                "marketingOptOutAt": datetime.now(timezone.utc),
+                "marketingOptOutAt": _now(),
                 "marketingOptOutSource": OPT_OUT_SOURCE,
             },
         )
@@ -56,7 +71,12 @@ async def disable_sign_in(subject: Subject, *, dry_run: bool) -> StepReport:
         name="sign_in",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"sessions": sessions},
+        note=note,
     )
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 async def stop_schedules(subject: Subject, *, dry_run: bool) -> StepReport:

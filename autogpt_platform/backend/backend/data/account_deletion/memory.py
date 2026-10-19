@@ -11,7 +11,17 @@ from backend.data.account_deletion.models import StepReport, StepStatus, Subject
 
 async def delete_memory(subject: Subject, *, dry_run: bool) -> StepReport:
     """Delete the account's memory graphs that exist. A graph is only ever
-    created for an account the memory flag was on for, so most have none."""
+    created for an account the memory flag was on for, so most have none.
+
+    Skipped only on a stack with no FalkorDB host configured. A configured
+    one that cannot be reached fails the step, so the deletion stops before
+    the account's rows go rather than leave its memory behind unnoticed."""
+    if not graphiti_config.falkordb_host.strip():
+        return StepReport(
+            name="memory",
+            status=StepStatus.SKIPPED,
+            note="no FalkorDB on this stack (GRAPHITI_FALKORDB_HOST is empty)",
+        )
     wanted = memory_graph_names(subject)
     db = FalkorDB(
         host=graphiti_config.falkordb_host,

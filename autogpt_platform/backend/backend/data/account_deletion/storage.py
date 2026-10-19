@@ -19,7 +19,12 @@ from urllib.parse import unquote
 from gcloud.aio import storage as async_storage
 
 from backend.api.features.store.local_media import media_root
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_deletion.models import (
+    SAFE_ID,
+    StepReport,
+    StepStatus,
+    Subject,
+)
 from backend.data.db import query_raw_with_schema
 from backend.util.data import get_data_path
 from backend.util.gcs_utils import is_not_found_error
@@ -27,16 +32,13 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# User, workspace and app IDs are UUIDs. Anything else is refused rather than
-# turned into a prefix, so a malformed ID can never widen a sweep.
-_SAFE_ID = re.compile(r"[0-9A-Za-z-]{8,64}")
 # `copilot/transcript.py` strips everything but hex and hyphens from the user
 # ID in transcript paths, so only such an ID maps onto its own folder there.
 _TRANSCRIPT_ID = re.compile(r"[0-9a-fA-F-]{8,36}")
 _CONCURRENT_DELETES = 16
 # URLs of the account's media that a listing staying in the marketplace, or
 # another account's library entry, still shows. $1 = the account (an ID
-# `_SAFE_ID` allows, so no LIKE wildcard); `_HANDED_OVER` adds $2, the
+# `SAFE_ID` allows, so no LIKE wildcard); `_HANDED_OVER` adds $2, the
 # listings handed over, when there are any.
 _KEPT_MEDIA_URLS = """
     SELECT DISTINCT url FROM (
@@ -81,7 +83,7 @@ def _require_safe_ids(subject: Subject) -> None:
     ids = [subject.user_id, *subject.oauth_app_ids]
     if subject.workspace_id:
         ids.append(subject.workspace_id)
-    unsafe = [i for i in ids if not _SAFE_ID.fullmatch(i)]
+    unsafe = [i for i in ids if not SAFE_ID.fullmatch(i)]
     if unsafe:
         raise ValueError(f"{len(unsafe)} IDs are not safe as storage prefixes")
 

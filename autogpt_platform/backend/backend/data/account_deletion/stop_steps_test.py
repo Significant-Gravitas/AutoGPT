@@ -2,6 +2,7 @@
 integrations) and remove its memory: dry runs only read, applies reuse the
 platform's own functions, and an account with nothing left is a no-op."""
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,6 +12,7 @@ from backend.data.account_deletion import activity, integrations, memory, subscr
 from backend.data.account_deletion.models import StepStatus, Subject
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
+NOW = datetime(2026, 10, 15, 9, 30, tzinfo=timezone.utc)
 SUBJECT = Subject(user_id=USER_ID, has_user_row=True, has_auth_identity=True)
 
 
@@ -24,7 +26,7 @@ def _table(**actions) -> MagicMock:
 @pytest.mark.asyncio
 async def test_sign_in_dry_run_counts_sessions_only(monkeypatch):
     sessions = _table(count=2, delete_many=2)
-    identity = _table(update=None)
+    identity = _table(update_many=1)
     monkeypatch.setattr(activity, "AuthSession", sessions)
     monkeypatch.setattr(activity, "AuthUser", identity)
 
@@ -32,38 +34,76 @@ async def test_sign_in_dry_run_counts_sessions_only(monkeypatch):
 
     assert report.counts == {"sessions": 2}
     sessions.prisma.return_value.delete_many.assert_not_awaited()
-    identity.prisma.return_value.update.assert_not_awaited()
+    identity.prisma.return_value.update_many.assert_not_awaited()
+
+
+@pytest.fixture
+def sign_in_tables(monkeypatch):
+    def install(*, banned_now: int):
+        tables = SimpleNamespace(
+            sessions=_table(delete_many=2),
+            identity=_table(update_many=banned_now),
+            user=_table(update_many=1),
+        )
+        monkeypatch.setattr(activity, "AuthSession", tables.sessions)
+        monkeypatch.setattr(activity, "AuthUser", tables.identity)
+        monkeypatch.setattr(activity, "User", tables.user)
+        monkeypatch.setattr(activity, "_now", lambda: NOW)
+        return tables
+
+    return install
 
 
 @pytest.mark.asyncio
-async def test_sign_in_is_disabled_and_marketing_refused(monkeypatch):
-    sessions = _table(delete_many=2)
-    identity = _table(update=None)
-    user = _table(update_many=1)
-    monkeypatch.setattr(activity, "AuthSession", sessions)
-    monkeypatch.setattr(activity, "AuthUser", identity)
-    monkeypatch.setattr(activity, "User", user)
+async def test_sign_in_is_disabled_and_marketing_refused(sign_in_tables):
+    tables = sign_in_tables(banned_now=1)
 
     report = await activity.disable_sign_in(SUBJECT, dry_run=False)
 
-    ban = identity.prisma.return_value.update.await_args.kwargs["data"]
-    assert ban["banned"] is True
-    opt_out = user.prisma.return_value.update_many.await_args.kwargs
+    ban = tables.identity.prisma.return_value.update_many.await_args.kwargs
+    assert ban["data"] == {
+        "banned": True,
+        "banReason": activity.BAN_REASON,
+        "banExpires": None,
+    }
+    opt_out = tables.user.prisma.return_value.update_many.await_args.kwargs
     assert opt_out["where"] == {"id": USER_ID, "marketingOptOutAt": None}
     assert opt_out["data"]["marketingOptOutSource"] == activity.OPT_OUT_SOURCE
     assert report.counts == {"sessions": 2}
+    assert report.note == ""
 
 
 @pytest.mark.asyncio
-async def test_without_an_identity_nothing_is_banned(monkeypatch):
-    identity = _table(update=None)
-    monkeypatch.setattr(activity, "AuthSession", _table(delete_many=0))
-    monkeypatch.setattr(activity, "AuthUser", identity)
-    monkeypatch.setattr(activity, "User", _table(update_many=0))
+async def test_a_ban_already_in_force_is_kept_as_it_is(sign_in_tables):
+    """An account banned for abuse keeps that ban, its reason and its
+    expiry, so lifting the lock later cannot lift it."""
+    tables = sign_in_tables(banned_now=0)
 
-    await activity.disable_sign_in(Subject(user_id=USER_ID), dry_run=False)
+    report = await activity.disable_sign_in(SUBJECT, dry_run=False)
 
-    identity.prisma.return_value.update.assert_not_awaited()
+    where = tables.identity.prisma.return_value.update_many.await_args.kwargs["where"]
+    # Only an identity without a ban in force: never banned, or a ban that
+    # has expired (Better Auth lets those sign in).
+    assert where == {
+        "id": USER_ID,
+        "OR": [
+            {"banned": None},
+            {"banned": False},
+            {"banExpires": {"lt": NOW}},
+        ],
+    }
+    assert "existing ban kept" in report.note
+    tables.sessions.prisma.return_value.delete_many.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_without_an_identity_nothing_is_banned(sign_in_tables):
+    tables = sign_in_tables(banned_now=0)
+
+    report = await activity.disable_sign_in(Subject(user_id=USER_ID), dry_run=False)
+
+    tables.identity.prisma.return_value.update_many.assert_not_awaited()
+    assert report.note == ""
 
 
 @pytest.fixture
@@ -144,7 +184,9 @@ async def test_subscriptions_of_every_customer_are_cancelled_now(
 
     assert [c.args[0] for c in cancel.await_args_list] == ["cus_a", "cus_b"]
     for call in cancel.await_args_list:
-        assert call.kwargs.get("at_period_end", False) is False
+        # Passed explicitly, so a change to the helper's default can't turn
+        # this into a cancellation at period end.
+        assert call.kwargs["at_period_end"] is False
         assert call.kwargs["cancellation_comment"] == "autogpt:account_deleted"
     assert report.counts == {"subscriptions": 2}
 
@@ -239,3 +281,48 @@ async def test_only_the_accounts_memory_graphs_are_deleted(monkeypatch):
     assert sorted(falkor.deleted) == sorted([f"user_{USER_ID}", expert_graph])
     assert falkor.closed
     assert report.status == StepStatus.DONE
+
+
+@pytest.fixture
+def falkordb_at(monkeypatch):
+    def configure(host: str):
+        monkeypatch.setattr(
+            memory,
+            "graphiti_config",
+            SimpleNamespace(
+                falkordb_host=host, falkordb_port=6379, falkordb_password=""
+            ),
+        )
+
+    return configure
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ["", "  "])
+async def test_memory_is_skipped_on_a_stack_without_falkordb(
+    monkeypatch, falkordb_at, host
+):
+    falkordb_at(host)
+    connect = MagicMock()
+    monkeypatch.setattr(memory, "FalkorDB", connect)
+
+    report = await memory.delete_memory(SUBJECT, dry_run=False)
+
+    assert report.status == StepStatus.SKIPPED
+    assert "GRAPHITI_FALKORDB_HOST" in report.note
+    connect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_falkordb_fails_the_step(monkeypatch, falkordb_at):
+    """Configured but down is not "not configured": the step raises, so the
+    routine reports it failed and stops before the account's rows go."""
+    falkordb_at("falkordb.internal")
+    falkor = FakeFalkor([])
+    falkor.list_graphs = AsyncMock(side_effect=ConnectionError("refused"))
+    monkeypatch.setattr(memory, "FalkorDB", lambda **kwargs: falkor)
+
+    with pytest.raises(ConnectionError):
+        await memory.delete_memory(SUBJECT, dry_run=False)
+
+    assert falkor.closed

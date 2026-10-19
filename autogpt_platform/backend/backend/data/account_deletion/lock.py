@@ -2,7 +2,8 @@
 of the deletion) and records when; the full deletion waits `UNDO_WINDOW` from
 then (`preflight.find_blockers`); `--unlock` lets the account back in.
 
-The unlock lifts only what the deletion did: its own ban, and the marketing
+The unlock lifts only what the deletion did: its own ban (a ban already in
+force when the account was locked was kept, and stays), and the marketing
 opt-out it set (one the account had chosen itself stays). Cancelled
 subscriptions and deleted schedules are not restored.
 """
@@ -21,7 +22,7 @@ from backend.data.account_deletion.models import (
 
 NOT_RESTORED = (
     "Subscriptions stay cancelled and deleted schedules are not restored; the "
-    "account sets them up again."
+    "requester sets them up again."
 )
 
 
@@ -50,7 +51,9 @@ async def record_lock(subject: Subject, *, dry_run: bool) -> StepReport:
 
 async def lift_lock(subject: Subject, *, dry_run: bool) -> StepReport:
     uid = subject.user_id
-    banned = {"id": uid, "banned": True, "banReason": BAN_REASON}
+    # The ban the lock wrote: never one with an expiry, and never one that was
+    # in force before (`activity.disable_sign_in` keeps those as they are).
+    banned = {"id": uid, "banned": True, "banReason": BAN_REASON, "banExpires": None}
     opted_out = {"id": uid, "marketingOptOutSource": OPT_OUT_SOURCE}
     locked = {"id": uid, "deletionLockedAt": {"not": None}}
     if dry_run:

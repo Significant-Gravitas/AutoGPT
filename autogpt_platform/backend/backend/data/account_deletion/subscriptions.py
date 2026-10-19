@@ -32,7 +32,9 @@ async def cancel_subscriptions(subject: Subject, *, dry_run: bool) -> StepReport
         return _report(sum(counts), dry_run)
     cancelled = [
         await _cancel_customer_subscriptions(
-            customer_id, cancellation_comment=ACCOUNT_DELETED_COMMENT
+            customer_id,
+            at_period_end=False,
+            cancellation_comment=ACCOUNT_DELETED_COMMENT,
         )
         for customer_id in subject.stripe_customer_ids
     ]

@@ -10,8 +10,14 @@ listing, reviews both ways, a credit ledger and a personal org is deleted:
 - the ledger stays, stripped of the block inputs and personal Stripe details;
 - a rerun is a no-op.
 
+An account whose agents live in an org another member is active in: the
+org-home and team agents (which every member, or the team, can open, though
+nobody has added or run them) go to the placeholder with their org and team,
+while an org whose only other member is suspended goes with the account.
+
 And the lock and unlock: a lock bans sign-in and records the date, an unlock
-lifts only what the lock did.
+lifts only what the lock did, and an account banned before the lock stays
+banned, for its own reason, after the unlock.
 """
 
 import uuid
@@ -210,6 +216,29 @@ async def _holdings(user_id: str) -> None:
     )
 
 
+async def _verifications(user_id: str, email: str) -> list[str]:
+    """A reset link (value = the user ID) and an email cooldown (identifier
+    names the address, in any case) of the account; and a cooldown of an
+    address that only ends like its own, which stays. The ID of the one that
+    stays."""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+    rows = {
+        f"{user_id}-reset": (f"reset-password:{uuid.uuid4()}", user_id),
+        f"{user_id}-cooldown": (f"verify-email:{email.upper()}", "sent"),
+        f"{user_id}-other": (f"verify-email:x.{email}", "sent"),
+    }
+    for row_id, (identifier, value) in rows.items():
+        await prisma.models.AuthVerification.prisma().create(
+            data={
+                "id": row_id,
+                "identifier": identifier,
+                "value": value,
+                "expiresAt": expires,
+            }
+        )
+    return [f"{user_id}-other"]
+
+
 async def _delete(user_id: str) -> Subject:
     subject = await load_subject(user_id)
     plan = await plan_transfer(user_id)
@@ -261,6 +290,8 @@ async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
     await _review(own_version, other_id)
     await _uses(other_id, published, creator_id=user_id)
     await _holdings(user_id)
+    email = f"deletion-{user_id[:8]}@example.com"
+    kept_verification = await _verifications(user_id, email)
 
     plan = await plan_transfer(user_id)
     assert sorted(plan.graph_ids) == sorted([published.id, sub_agent.id])
@@ -272,6 +303,10 @@ async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
     subject = await _delete(user_id)
 
     assert set((await _left_of(user_id)).values()) == {0}
+    verifications = await prisma.models.AuthVerification.prisma().find_many(
+        where={"id": {"startswith": user_id}}
+    )
+    assert [row.id for row in verifications] == kept_verification
     # The published agent, its sub-agent and its listing now belong to the
     # placeholder, and the listing stays live with the other's review on it.
     for graph in (published, sub_agent):
@@ -379,5 +414,115 @@ async def test_a_lock_bans_sign_in_and_an_unlock_lifts_only_that(
     assert not identity.banned
     assert user.deletionLockedAt is None
     assert user.marketingOptOutAt is None
+
+    await _delete(user_id)
+
+
+async def _org(*members: tuple[str, str]) -> str:
+    """An org with these (user ID, status) members, all owners."""
+    org = await prisma.models.Organization.prisma().create(
+        data={"name": "Deletion test org", "slug": f"deletion-{uuid.uuid4()}"}
+    )
+    for user_id, status in members:
+        await prisma.models.OrgMember.prisma().create(
+            data={
+                "orgId": org.id,
+                "userId": user_id,
+                "isOwner": True,
+                "status": prisma.enums.OrgMemberStatus(status),
+            }
+        )
+    return org.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agents_another_org_member_can_open_go_to_the_placeholder(
+    server: SpinTestServer,
+):
+    user_id = await _account()
+    colleague = await _account()
+    shared_org = await _org((user_id, "ACTIVE"), (colleague, "ACTIVE"))
+    team = await prisma.models.Team.prisma().create(
+        data={"name": "Deletion test team", "orgId": shared_org}
+    )
+    org_home = await prisma.models.AgentGraph.prisma().create(
+        data={"userId": user_id, "name": "Org agent", "organizationId": shared_org}
+    )
+    team_agent = await prisma.models.AgentGraph.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "Team agent",
+            "organizationId": shared_org,
+            "teamId": team.id,
+        }
+    )
+    # Only suspended members besides the account: nobody else can open it.
+    lapsed_org = await _org((user_id, "ACTIVE"), (colleague, "SUSPENDED"))
+    lapsed = await prisma.models.AgentGraph.prisma().create(
+        data={"userId": user_id, "name": "Lapsed", "organizationId": lapsed_org}
+    )
+    personal = await prisma.models.AgentGraph.prisma().create(
+        data={"userId": user_id, "name": "Personal agent"}
+    )
+    # Before: the colleague sees the org agent without any row of its own.
+    assert await get_graph(org_home.id, None, colleague, organization_id=shared_org)
+
+    subject = await load_subject(user_id)
+    assert shared_org not in subject.sole_org_ids
+    assert lapsed_org in subject.sole_org_ids
+    assert sorted((await plan_transfer(user_id)).graph_ids) == sorted(
+        [org_home.id, team_agent.id]
+    )
+
+    await _delete(user_id)
+
+    for graph, team_id in ((org_home, None), (team_agent, team.id)):
+        kept = await prisma.models.AgentGraph.prisma().find_first_or_raise(
+            where={"id": graph.id}
+        )
+        assert kept.userId == DELETED_USER_ID
+        assert kept.organizationId == shared_org
+        assert kept.teamId == team_id
+    opened = await get_graph(org_home.id, None, colleague, organization_id=shared_org)
+    assert opened is not None
+    for gone in (lapsed, personal):
+        assert not await prisma.models.AgentGraph.prisma().count(where={"id": gone.id})
+    assert await prisma.models.Organization.prisma().count(where={"id": shared_org})
+    assert not await prisma.models.Organization.prisma().count(where={"id": lapsed_org})
+    assert await prisma.models.OrgMember.prisma().count(
+        where={"orgId": shared_org, "userId": colleague}
+    )
+
+    await _delete(colleague)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_ban_in_force_before_the_lock_survives_the_unlock(
+    server: SpinTestServer,
+):
+    user_id = await _account()
+    await prisma.models.AuthUser.prisma().update(
+        where={"id": user_id},
+        data={"banned": True, "banReason": "Abuse", "banExpires": None},
+    )
+    subject = await load_subject(user_id)
+
+    await disable_sign_in(subject, dry_run=False)
+    await record_lock(subject, dry_run=False)
+
+    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
+        where={"id": user_id}
+    )
+    assert (identity.banned, identity.banReason) == (True, "Abuse")
+    assert not await prisma.models.AuthSession.prisma().count(where={"userId": user_id})
+
+    unlocked = await lift_lock(await load_subject(user_id), dry_run=False)
+
+    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
+        where={"id": user_id}
+    )
+    assert (identity.banned, identity.banReason) == (True, "Abuse")
+    assert unlocked.counts["ban_lifted"] == 0
+    assert unlocked.counts["lock_cleared"] == 1
 
     await _delete(user_id)

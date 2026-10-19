@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 @click.option(
     "--force",
     is_flag=True,
-    help="Delete without waiting out the undo window (or without a lock).",
+    help="Delete without waiting out the undo window (or without a lock), "
+    "or finish a deletion whose account rows are gone already.",
 )
 def delete_account_command(
     account: str, lock: bool, unlock: bool, apply: bool, yes: bool, force: bool
@@ -44,11 +45,13 @@ def delete_account_command(
     deletes the rest of its marketplace presence, its files in every bucket,
     its AutoPilot memory, its PostHog person and MailerLite subscriber, and
     its rows and auth identity last. The credit ledger and Stripe's billing
-    records stay. It refuses until 14 days after the lock, unless --force.
+    records stay. It refuses until 14 days after the lock, and an ID with no
+    account left, unless --force.
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
     with the account in place, and running it again resumes. Run the dry run
-    again afterwards to confirm nothing is left. The runbook is
+    again afterwards to confirm nothing is left (it reports the account not
+    found, with every count 0). The runbook is
     docs/engineering/account-deletion.md.
     """
     if lock and unlock:

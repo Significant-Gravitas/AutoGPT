@@ -4,14 +4,20 @@ theirs.
 
 An agent is shared when another account has it in its library or presets, has
 run it, lists it, or an expert of theirs (or a roster template) installed its
-listing, or when it is live in the marketplace. Deleting it would take their
-library entries, presets and runs with it, and the database refuses while one
-of their rows still points at it. Every version of a shared agent goes over,
-since their library entries and runs pin versions; and so does every agent
-one of those runs as a sub-agent, because a sub-agent must have the same
-owner as its parent (`get_sub_graphs`). The listings of shared agents go over
-with them, renamed to a free slug if the placeholder already has one, and
-stay live. Agents nobody else uses are deleted with the account.
+listing, or when it is live in the marketplace. So is an agent in an org
+another member is active in, at the org's home or in one of its teams: every
+member of the org (or of the team) can open it (`tenancy.visibility_filter`)
+without a row of their own pointing at it. It keeps its org and team.
+
+Deleting a shared agent would take their library entries, presets and runs
+with it, and the database refuses while one of their rows still points at
+it. Every version of a shared agent goes over, since their library entries
+and runs pin versions; and so does every agent one of those runs as a
+sub-agent, at any depth, because `get_sub_graphs` only loads sub-agents
+owned by the owner of the agent it was asked for, the top one. The listings
+of shared agents go over with them, renamed to a free slug if the placeholder
+already has one, and stay live. Agents nobody else uses are deleted with the
+account.
 """
 
 import logging
@@ -57,6 +63,17 @@ _SHARED_GRAPHS = """
                           JOIN {schema_prefix}"Expert" x ON x."id" = w."expertId"
                          WHERE v."agentGraphId" = g."id"
                            AND x."ownerUserId" IS DISTINCT FROM $1)
+             -- Org-home and team agents: seen by the org's (or team's)
+             -- members, so shared while anyone else is active in the org.
+             -- Orgs nobody else is active in go with the account
+             -- (`preflight._orgs`), and their agents with them.
+             OR EXISTS (SELECT 1 FROM {schema_prefix}"OrgMember" m
+                         WHERE m."orgId" = g."organizationId"
+                           AND m."userId" <> $1 AND m."status" = 'ACTIVE')
+             OR EXISTS (SELECT 1 FROM {schema_prefix}"Team" t
+                          JOIN {schema_prefix}"OrgMember" m ON m."orgId" = t."orgId"
+                         WHERE t."id" = g."teamId"
+                           AND m."userId" <> $1 AND m."status" = 'ACTIVE')
            )
         UNION
         SELECT sub."id"

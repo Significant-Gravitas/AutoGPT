@@ -84,10 +84,14 @@ async def test_unlock_lifts_only_what_the_deletion_did(tables):
     report = await lock.lift_lock(Subject(user_id=USER_ID), dry_run=False)
 
     (ban,) = tables.ids.update_many.await_args_list
+    # Only the ban the lock wrote: its reason, and no expiry. The lock never
+    # overwrites a ban already in force (`activity.disable_sign_in`), so any
+    # other ban, such as one for abuse, stays.
     assert ban.kwargs["where"] == {
         "id": USER_ID,
         "banned": True,
         "banReason": BAN_REASON,
+        "banExpires": None,
     }
     assert ban.kwargs["data"] == {
         "banned": False,
@@ -110,6 +114,7 @@ async def test_unlock_lifts_only_what_the_deletion_did(tables):
         "lock_cleared": 1,
     }
     assert "stay cancelled" in report.note
+    assert "the requester sets them up again" in report.note
 
 
 @pytest.mark.asyncio
