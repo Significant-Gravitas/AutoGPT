@@ -160,7 +160,7 @@ export function useAgentRunModal(
       onSuccess: (response, variables) => {
         if (response.status === 200) {
           toast({
-            title: "Agent execution started",
+            title: "Workflow execution started",
           });
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),

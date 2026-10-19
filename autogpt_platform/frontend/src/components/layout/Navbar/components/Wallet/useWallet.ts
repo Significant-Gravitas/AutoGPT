@@ -57,6 +57,7 @@ export function useWallet() {
 
   function onTopUpClose() {
     setTopUpOpen(false);
+    requestAnimationFrame(() => walletRef.current?.focus());
   }
 
   // React to onboarding notifications emitted by the provider

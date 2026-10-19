@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
@@ -18,18 +19,21 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
-import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
+import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
+import {
+  answeredLabel,
+  countHeldCalls,
+  getHeldCallRowKind,
+} from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  parseSpecialMarkers,
 } from "./helpers";
 import {
   isMidTurnSegmentRow,
@@ -37,11 +41,11 @@ import {
   turnMessagesForRow,
 } from "./midTurnSplit";
 import {
-  getLatestAssistantStatusMessage,
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
@@ -53,8 +57,9 @@ import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { QueueBadge } from "./components/QueueBadge";
-import { ThreadHeader } from "./components/ThreadHeader";
+import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
   PendingUploadMessage,
@@ -75,6 +80,7 @@ import {
 } from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -133,9 +139,9 @@ interface Props {
    *  metadata). Shown on the row that opened the thread (DB sequence 0) when
    *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports (see ThreadHeader). */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports (see ThreadHeader). */
+  floatingControls?: FloatingControls;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -299,7 +305,7 @@ export function ChatMessagesContainer({
   expertIdentity,
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
-  hasFloatingControls = false,
+  floatingControls,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -393,6 +399,9 @@ export function ChatMessagesContainer({
     // into the next part without flashing back to "Thinking...".
     if (lastPart.type === "step-start") return true;
 
+    // A pause is how the turn ends, so nothing more is coming to wait on.
+    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
+
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
       "state" in lastPart &&
@@ -404,11 +413,6 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  // Surface the latest `data-status` message from the live assistant when
-  // the Thinking indicator is up — but only if it wasn't invalidated by a
-  // more recent content part (in which case the model has moved on and the
-  // status is stale).
-  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
 
   // A live compaction narrates itself via CompactionCard — the generic
@@ -428,15 +432,16 @@ export function ChatMessagesContainer({
     !isRestoringActiveSession &&
     liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
-  const { elapsedSeconds } = useElapsedTimer(
+  // Only the start time lives here: the indicator ticks its own label, so
+  // the transcript does not re-render every second for the whole turn.
+  const streamClock = useElapsedAnchor(
     isActivelyStreaming,
     activeStreamStartedAt,
   );
   const indicator = (
     <ThinkingIndicator
       active={showThinking}
-      elapsedSeconds={elapsedSeconds}
-      statusMessage={latestStatusMessage}
+      startedAtMs={streamClock.startedAtMs}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
@@ -454,32 +459,15 @@ export function ChatMessagesContainer({
     );
     return () => clearTimeout(timer);
   }, [isRestoringActiveSession]);
-  const { elapsedSeconds: restoreElapsedSeconds } =
-    useElapsedTimer(showRestoreFallback);
+  const restoreClock = useElapsedAnchor(showRestoreFallback);
 
-  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
-  // Reset when a new streaming turn begins.
-  const frozenElapsedRef = useRef(0);
-  const wasStreamingRef = useRef(false);
-  useEffect(() => {
-    if (isActivelyStreaming) {
-      if (!wasStreamingRef.current) {
-        frozenElapsedRef.current = 0;
-      }
-      if (elapsedSeconds > 0) {
-        frozenElapsedRef.current = elapsedSeconds;
-      }
-    }
-    wasStreamingRef.current = isActivelyStreaming;
-  });
-
-  return (
+  const thread = (
     <>
       {showThreadHeader && (
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -497,6 +485,7 @@ export function ChatMessagesContainer({
           className={cn(
             "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
+            showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
           )}
           style={
@@ -559,7 +548,7 @@ export function ChatMessagesContainer({
                   variant="small"
                   className="py-1 text-center text-zinc-500"
                 >
-                  Approval answered
+                  {answeredLabel(renderRows, rowIndex)}
                 </Text>
               );
             }
@@ -655,7 +644,10 @@ export function ChatMessagesContainer({
                     isCompact
                       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                       : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+                    // Streamdown's links (buttons, `text-primary`) and light
+                    // code chips would sink into the dark bubble.
+                    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
@@ -701,7 +693,7 @@ export function ChatMessagesContainer({
                       turnMessages={turnMessagesForRow(messages, message)}
                       elapsedSeconds={
                         rowIndex === renderRows.length - 1
-                          ? frozenElapsedRef.current
+                          ? streamClock.frozenSeconds
                           : undefined
                       }
                       stats={turnStats?.get(message.id)}
@@ -805,10 +797,8 @@ export function ChatMessagesContainer({
                   <div className="flex flex-col gap-1 text-sm text-slate-500">
                     <ThinkingIndicator
                       active
-                      elapsedSeconds={restoreElapsedSeconds}
-                      statusMessage={
-                        restoreStatusMessage ?? "Reconnecting to live stream..."
-                      }
+                      startedAtMs={restoreClock.startedAtMs}
+                      statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.
@@ -859,15 +849,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              <summary className="cursor-pointer font-medium">
-                The assistant encountered an error. Please try sending your
-                message again.
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
+            <ChatErrorBanner error={error} />
           )}
           <TailSpacer
             messageID={lastUserMessageID}
@@ -877,5 +859,15 @@ export function ChatMessagesContainer({
         <ConversationScrollButton />
       </Conversation>
     </>
+  );
+
+  // Every chat surface renders through here, so the pending-answer state
+  // (clarifying questions, a hire's onboarding, held calls) lives here too
+  // instead of in each host. A read-only viewer answers nothing.
+  if (readOnly) return thread;
+  return (
+    <PendingAnswerContexts messages={allMessages}>
+      {thread}
+    </PendingAnswerContexts>
   );
 }

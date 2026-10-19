@@ -13,15 +13,20 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
-import { createMathPlugin } from "@streamdown/math";
+import { createMathPlugin, type MathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
-import { mermaid } from "@streamdown/mermaid";
+import { mermaid } from "@/lib/streamdown-mermaid-plugin";
+import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import type { LinkSafetyModalProps } from "streamdown";
 import { Streamdown } from "streamdown";
+import {
+  createComponentsMerger,
+  type StreamdownComponents,
+} from "./streamdown-components";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -354,7 +359,54 @@ function ExternalLinkModal({
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
 // reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
-const math = createMathPlugin({ singleDollarTextMath: true });
+// KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
+// its default strict mode console.warns each time, and console capture filed
+// every warning as a Sentry issue (BUILDER-94S). The plugin has no option for
+// strict mode, so its rehype step is rebuilt with it off.
+const math: MathPlugin = {
+  ...createMathPlugin({ singleDollarTextMath: true }),
+  rehypePlugin: [
+    rehypeKatex,
+    { errorColor: "var(--color-muted-foreground)", strict: "ignore" },
+  ],
+};
+
+// Streamdown re-parses every block of a message when the identity of a
+// component in `components` changes, and React remounts any element whose
+// component type changes, so everything handed to Streamdown is built once.
+function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
+  // Tables can be wider than the chat column (long URLs, many columns).
+  // Wrap in an overflow-x-auto div so the page never grows past the
+  // chat container — the table scrolls internally instead.
+  return (
+    <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
+      <table {...tableProps}>{children}</table>
+    </div>
+  );
+}
+
+function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
+  return <ExternalLinkModal {...modalProps} />;
+}
+
+const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+
+const LINK_SAFETY = {
+  enabled: true,
+  onLinkCheck: isSameOriginLink,
+  renderModal: renderExternalLinkModal,
+};
+
+const TABLE_COMPONENT: StreamdownComponents = { table: MessageTable };
+
+const mergeTableComponent = createComponentsMerger((components) => ({
+  ...TABLE_COMPONENT,
+  ...components,
+}));
+
+function withTableComponent(components: StreamdownComponents | undefined) {
+  return components ? mergeTableComponent(components) : TABLE_COMPONENT;
+}
 
 export const MessageResponse = memo(
   ({ className, children, components, ...props }: MessageResponseProps) => (
@@ -362,33 +414,22 @@ export const MessageResponse = memo(
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
-        // Raycast/Linear-style markdown tables — clean borders, subtle row
-        // separators, light header, no outer-corner artifacts.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border [&_table]:border-zinc-200 [&_table]:text-sm",
-        "[&_thead]:bg-zinc-50",
-        "[&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:text-zinc-600",
-        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:text-zinc-800",
+        // Raycast-style markdown tables: a rounded card with a quiet small-caps
+        // header, hairline row separators and tabular figures.
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-[13px] [&_table]:tabular-nums",
+        "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/70",
+        "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
+        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-5 [&_td]:text-zinc-700 [&_td]:transition-colors",
+        "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-[12px] [&_td_code]:text-zinc-700",
         "[&_tbody_tr:last-child_td]:border-b-0",
-        "[&_tbody_tr:hover_td]:bg-zinc-50/60",
+        "[&_tbody_tr:hover_td]:bg-zinc-50",
         className,
       )}
-      components={{
-        // Tables can be wider than the chat column (long URLs, many columns).
-        // Wrap in an overflow-x-auto div so the page never grows past the
-        // chat container — the table scrolls internally instead.
-        table: ({ children, ...tableProps }) => (
-          <div className="my-4 max-w-full overflow-x-auto">
-            <table {...tableProps}>{children}</table>
-          </div>
-        ),
-        ...components,
-      }}
-      plugins={{ code, mermaid, math, cjk }}
-      linkSafety={{
-        enabled: true,
-        onLinkCheck: isSameOriginLink,
-        renderModal: (modalProps) => <ExternalLinkModal {...modalProps} />,
-      }}
+      components={withTableComponent(components)}
+      plugins={STREAMDOWN_PLUGINS}
+      linkSafety={LINK_SAFETY}
       {...props}
     >
       {typeof children === "string"

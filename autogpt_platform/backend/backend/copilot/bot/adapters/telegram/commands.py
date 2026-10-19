@@ -8,17 +8,26 @@ URL button.
 
 import html
 import logging
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from backend.copilot.bot import sessions
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
+from backend.copilot.bot.command_core import (
+    CommandReply,
+    dm_link_reply,
+    setup_reply,
+    unlink_reply,
+)
 
 from .api_client import TelegramClient
 from .targets import encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
+
+# The adapter's send_link(channel_id, text, link_label, link_url): it renders a
+# login_url button, so the /link page can verify who tapped it.
+SendLink = Callable[[str, str, str, str], Awaitable[None]]
 
 # Published to Telegram's command menu via setMyCommands on startup.
 COMMAND_MENU = [
@@ -30,9 +39,9 @@ COMMAND_MENU = [
 
 _HELP_TEXT = (
     "**AutoGPT for Telegram**\n"
+    "• Message me directly to chat with your personal AutoGPT account.\n"
     "• Add me to a group and run /setup to link it to an AutoGPT account.\n"
     "• Mention me (or reply to my messages) in a group to chat.\n"
-    "• Message me directly to chat with your personal AutoGPT account.\n"
     "• Run /new to start a fresh conversation.\n"
     "• Run /unlink to manage your linked groups and DM."
 )
@@ -58,7 +67,11 @@ def parse_command(message: dict[str, Any], bot_username: str) -> Optional[str]:
 
 
 async def handle(
-    api: BotBackend, client: TelegramClient, message: dict[str, Any], command: str
+    api: BotBackend,
+    client: TelegramClient,
+    message: dict[str, Any],
+    command: str,
+    send_link: SendLink,
 ) -> None:
     chat = message.get("chat") or {}
     sender = message.get("from") or {}
@@ -106,17 +119,26 @@ async def handle(
         return
     if command in ("setup", "start"):
         if is_private:
-            await _send(
-                client,
-                chat_id,
-                CommandReply(
-                    text=(
-                        "/setup links a group. To link your own DMs, just send "
-                        "me a message and I'll walk you through it."
-                    )
-                ),
-                message,
+            # A private chat has no group to link, so both commands link the
+            # DM. /start is what the Bots page's "Message bot" link sends.
+            reply = await dm_link_reply(
+                api,
+                platform="telegram",
+                platform_display="Telegram",
+                platform_user_id=str(sender.get("id", "")),
+                platform_username=sender.get("username")
+                or sender.get("first_name")
+                or "unknown",
             )
+            if reply.button_label and reply.button_url:
+                await send_link(
+                    encode_target(chat_id, message.get("message_thread_id")),
+                    reply.text,
+                    reply.button_label,
+                    reply.button_url,
+                )
+            else:
+                await _send(client, chat_id, reply, message)
             return
         reply = await setup_reply(
             api,

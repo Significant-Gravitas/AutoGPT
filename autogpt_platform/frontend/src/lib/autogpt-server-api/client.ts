@@ -7,8 +7,6 @@ import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
-  AnalyticsDetails,
-  AnalyticsMetrics,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -126,10 +124,6 @@ export default class BackendAPI {
 
   createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
-  }
-
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
   }
 
   ////////////////////////////////////////
@@ -456,14 +450,6 @@ export default class BackendAPI {
    */
   async pingWebhook(webhook_id: string): Promise<boolean> {
     return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
-  }
-
-  logMetric(metric: AnalyticsMetrics) {
-    return this._request("POST", "/analytics/log_raw_metric", metric);
-  }
-
-  logAnalytic(analytic: AnalyticsDetails) {
-    return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
   async uploadFile(
@@ -1101,7 +1087,16 @@ export default class BackendAPI {
               this.wsUrl,
               phase,
             );
-            if (phase == "connecting") {
+            // A logout in this tab or another closes the socket on purpose,
+            // and one still connecting then reports a 1006: not a failure.
+            if (
+              this.isIntentionallyDisconnected ||
+              this._hasDisconnectIntent()
+            ) {
+              console.debug(
+                `[BackendAPI] WebSocket closed on purpose: ${summary}`,
+              );
+            } else if (phase == "connecting") {
               logWebSocketIssue(
                 "error",
                 `[BackendAPI] WebSocket failed to connect: ${summary}`,

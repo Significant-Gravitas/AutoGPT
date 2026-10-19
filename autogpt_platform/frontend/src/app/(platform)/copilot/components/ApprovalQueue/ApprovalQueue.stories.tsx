@@ -199,6 +199,18 @@ export const UnresolvedId: Story = {
   args: queueOf([referenceCard("Unresolved id")]),
 };
 
+export const FollowUpInTwoDays: Story = {
+  args: queueOf([referenceCard("Follow-up in two days")]),
+};
+
+export const WeeklyFollowUp: Story = {
+  args: queueOf([referenceCard("Weekly follow-up")]),
+};
+
+export const DelegateAndWait: Story = {
+  args: queueOf([referenceCard("Delegate and wait")]),
+};
+
 export const FiveWaiting: Story = {
   args: queueOf([
     heldReview({
@@ -448,3 +460,7 @@ export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");
+// A step of a workflow Otto started, parked on its own review: its card in the chat.
+export const RealWorkflowStep = realStory("Workflow Step");

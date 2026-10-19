@@ -14,6 +14,9 @@ interface Props {
    *  sits on its baseline. */
   nameAlign?: "center" | "baseline";
   areaClassName?: string;
+  /** Category colour for the title on the name line: a gradient fill with
+   *  a soft glow in that colour (card and page sizes only). */
+  areaColor?: string;
 }
 
 export function ExpertIdentityDetails({
@@ -25,6 +28,7 @@ export function ExpertIdentityDetails({
   nameAccessory,
   nameAlign = "center",
   areaClassName,
+  areaColor,
 }: Props) {
   const compact = size === "compact";
   const Container = compact ? "span" : "div";
@@ -45,6 +49,7 @@ export function ExpertIdentityDetails({
       <Container
         className={cn(
           "flex min-w-0 gap-2",
+          size === "page" && "flex-wrap gap-y-0",
           nameAlign === "baseline" ? "items-baseline" : "items-center",
         )}
       >
@@ -54,7 +59,8 @@ export function ExpertIdentityDetails({
           tone="primary"
           unmask={false}
           className={cn(
-            "min-w-0 truncate",
+            "min-w-0",
+            size === "page" ? "max-w-full break-words" : "truncate",
             compact && "leading-[1.125rem]",
             size === "page" && "text-2xl leading-8",
           )}
@@ -68,13 +74,35 @@ export function ExpertIdentityDetails({
             tone="secondary"
             unmask={false}
             className={cn(
-              "min-w-0 truncate",
+              "min-w-0",
+              size === "page" ? "max-w-full break-words" : "truncate",
               size === "card" && "text-[13px]",
               areaClassName,
             )}
             title={titleOnNameLine}
           >
-            {"•"} {titleOnNameLine}
+            {areaColor ? (
+              <>
+                {"• "}
+                <span
+                  className={cn(
+                    "bg-clip-text font-medium text-transparent",
+                    size === "card" && "text-[15px]",
+                    size === "page" && "text-lg",
+                  )}
+                  style={{
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, #18181b), color-mix(in srgb, ${areaColor} 85%, #18181b))`,
+                    filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
+                  }}
+                >
+                  {titleOnNameLine}
+                </span>
+              </>
+            ) : (
+              <>
+                {"•"} {titleOnNameLine}
+              </>
+            )}
           </Text>
         ) : null}
         {nameAccessory}

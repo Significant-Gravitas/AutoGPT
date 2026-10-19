@@ -7,10 +7,11 @@ import { TrialTitle } from "./TrialTitle/TrialTitle";
 interface Props {
   trial: TrialStatusResponse;
   isStarting: boolean;
+  isBlocked: boolean;
   onStart: () => void;
 }
 
-export function TrialOffer({ trial, isStarting, onStart }: Props) {
+export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
   const offer = trial.offer;
   if (!offer) return null;
   return (
@@ -31,8 +32,8 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
           before the trial ends.
         </Text>
         <Text variant="small" className="!text-zinc-500">
-          Trial usage is limited. Canceling ends trial access immediately. You
-          can manage your plan in billing.
+          Trial usage is limited. If you cancel, you keep access until the trial
+          ends. You can manage your plan in billing.
         </Text>
       </div>
       <Button
@@ -40,7 +41,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
         size="large"
         onClick={onStart}
         loading={isStarting}
-        disabled={isStarting}
+        disabled={isStarting || isBlocked}
         className="w-full shrink-0 md:w-auto md:min-w-[11rem]"
       >
         Start {offer.duration_days}-day trial

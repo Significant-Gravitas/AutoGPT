@@ -61,7 +61,7 @@ export const RunInputDialog = ({
   return (
     <>
       <Dialog
-        title={purpose === "run" ? "Run Agent" : "Schedule Run"}
+        title={purpose === "run" ? "Run Workflow" : "Schedule Run"}
         controlled={{
           isOpen,
           set: setIsOpen,

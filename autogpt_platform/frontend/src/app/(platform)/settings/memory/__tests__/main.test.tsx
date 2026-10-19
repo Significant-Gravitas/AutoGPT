@@ -54,16 +54,17 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     GRAPHITI_MEMORY: "graphiti-memory",
+    DREAM_SKILL_LEARNING_ENABLED: "dream-skill-learning-enabled",
     HIRE_EXPERTS: "hire-experts",
     CHAT_MODE_OPTION: "chat-mode-option",
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
   useGetFlag: (flag: string) =>
     flag === "graphiti-memory" || flag === "hire-experts",
-}));
-
-vi.mock("@/services/feature-flags/with-feature-flag", () => ({
-  withFeatureFlag: (Component: React.ComponentType) => Component,
+  useFlagStatus: (flag: string) => ({
+    enabled: flag === "graphiti-memory",
+    answered: true,
+  }),
 }));
 
 import SettingsMemoryPage from "../page";
