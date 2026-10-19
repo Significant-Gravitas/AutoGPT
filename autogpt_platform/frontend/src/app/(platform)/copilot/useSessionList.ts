@@ -67,6 +67,10 @@ export function useSessionList({ enabled = true }: Args = {}) {
       hasOlderPages(listQuery.state.data)
         ? false
         : SESSION_LIST_REFETCH_INTERVAL_MS,
+    // With older pages loaded the poll only covers page 0, so a focus always
+    // refreshes every page, however recently page 0 was patched.
+    refetchOnWindowFocus: (listQuery) =>
+      hasOlderPages(listQuery.state.data) ? "always" : true,
     enabled,
   });
   const isPollingFirstPage = enabled && hasOlderPages(query.data);
@@ -252,7 +256,12 @@ async function refreshFirstPage(queryClient: QueryClient) {
     firstPage,
   );
   if (next) {
-    queryClient.setQueryData(SESSION_LIST_QUERY_KEY, next);
+    // Keeps the list's own timestamp: the older pages were not fetched, so
+    // they must not start counting as fresh.
+    queryClient.setQueryData(SESSION_LIST_QUERY_KEY, next, {
+      updatedAt: queryClient.getQueryState(SESSION_LIST_QUERY_KEY)
+        ?.dataUpdatedAt,
+    });
   } else {
     await queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
   }

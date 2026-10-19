@@ -1,0 +1,119 @@
+import { server } from "@/mocks/mock-server";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SESSION_LIST_QUERY_KEY,
+  SESSION_LIST_REFETCH_INTERVAL_MS,
+  useSessionList,
+} from "../useSessionList";
+
+// The app's query client marks data fresh for 60 s (`lib/react-query`), which
+// is what decides whether a window focus refetches the older pages.
+const APP_STALE_TIME_MS = 60_000;
+
+let listed: { id: string; title: string }[] = [];
+let listRequests: string[] = [];
+
+function makeClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: APP_STALE_TIME_MS },
+    },
+  });
+}
+
+function renderSessionList(client: QueryClient) {
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+  }
+  return renderHook(() => useSessionList(), { wrapper: Wrapper });
+}
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+}
+
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  listed = Array.from({ length: 75 }, (_, i) => ({
+    id: `s${i}`,
+    title: `Chat ${i}`,
+  }));
+  listRequests = [];
+  server.use(
+    http.get("*/api/chat/sessions", ({ request }) => {
+      const url = new URL(request.url);
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      const limit = Number(url.searchParams.get("limit") ?? "50");
+      listRequests.push(String(offset));
+      return HttpResponse.json({
+        sessions: listed.slice(offset, offset + limit).map((s) => ({
+          ...s,
+          is_processing: false,
+          created_at: "2026-01-05T09:00:00Z",
+          updated_at: "2026-01-05T09:00:00Z",
+        })),
+        total: listed.length,
+      });
+    }),
+  );
+});
+
+afterEach(() => {
+  focusManager.setFocused(undefined);
+  vi.useRealTimers();
+  server.resetHandlers();
+});
+
+describe("useSessionList — older pages", () => {
+  it("still refreshes the older pages on focus after first-page polls", async () => {
+    const client = makeClient();
+    const { result } = renderSessionList(client);
+    await waitFor(() => expect(result.current.sessions).toHaveLength(50));
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(75));
+    await settle();
+    const loadedAt = client.getQueryState(
+      SESSION_LIST_QUERY_KEY,
+    )?.dataUpdatedAt;
+
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
+    });
+    await waitFor(() => expect(listRequests.at(-1)).toBe("0"));
+    await settle();
+    // Patching page 0 must not mark the pages it never fetched as fresh.
+    expect(client.getQueryState(SESSION_LIST_QUERY_KEY)?.dataUpdatedAt).toBe(
+      loadedAt,
+    );
+
+    // An older chat is renamed; page 0 is unchanged, so the poll alone
+    // would never pick it up.
+    listed[60] = { ...listed[60], title: "Renamed older chat" };
+    listRequests = [];
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() =>
+      expect(result.current.sessions.find((s) => s.id === "s60")?.title).toBe(
+        "Renamed older chat",
+      ),
+    );
+    expect(listRequests).toEqual(["0", "50"]);
+  });
+});
