@@ -63,6 +63,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
@@ -596,6 +597,20 @@ class DatabaseManager(AppService):
     upsert_bot_install = _(bot_installs_db.upsert_bot_install)
     revoke_bot_install = _(bot_installs_db.revoke_bot_install)
 
+    # ============ Memory Scope Schedules ============ #
+    # Exposed so the Prisma-less scheduler (cron bodies) and copilot-executor
+    # (lazy registration on the first memory write) reach the registry via
+    # db_accessors.memory_schedule_db().
+    get_scope_schedule = _(memory_schedule_db.get_scope_schedule)
+    claim_scope_schedule = _(memory_schedule_db.claim_scope_schedule)
+    record_scope_jobs = _(memory_schedule_db.record_scope_jobs)
+    set_scope_state = _(memory_schedule_db.set_scope_state)
+    forget_scope_job = _(memory_schedule_db.forget_scope_job)
+    record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
+    list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
+    existing_user_ids = _(memory_schedule_db.existing_user_ids)
+
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
     record_guild_joined = _(bot_analytics_db.record_guild_joined)
@@ -1103,6 +1118,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     is_install_revoked = d.is_install_revoked
     upsert_bot_install = d.upsert_bot_install
     revoke_bot_install = d.revoke_bot_install
+
+    # ============ Memory Scope Schedules ============ #
+    get_scope_schedule = d.get_scope_schedule
+    claim_scope_schedule = d.claim_scope_schedule
+    record_scope_jobs = d.record_scope_jobs
+    set_scope_state = d.set_scope_state
+    forget_scope_job = d.forget_scope_job
+    record_scope_run = d.record_scope_run
+    list_user_scope_schedules = d.list_user_scope_schedules
+    list_scope_schedules = d.list_scope_schedules
+    existing_user_ids = d.existing_user_ids
 
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event

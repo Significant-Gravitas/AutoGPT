@@ -33,7 +33,11 @@ def _bypass_paywall(mocker):
 def _no_bans(mocker):
     """No owner is banned unless a test says so. Without this the lookup goes
     to a DatabaseManager these tests don't run, and waits out its retries."""
-    for module in ("backend.executor.utils", "backend.executor.scheduler"):
+    for module in (
+        "backend.executor.utils",
+        "backend.executor.scheduler",
+        "backend.copilot.turn_queue",
+    ):
         mocker.patch(
             f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
         )
