@@ -41,6 +41,13 @@ function makeWrapper() {
   };
 }
 
+function setVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+}
+
 beforeEach(() => {
   capturedHandler = null;
   NotificationCtor.mockClear();
@@ -112,6 +119,7 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
 
 describe("useCopilotNotifications — opening a finished chat", () => {
   it("takes the open chat off the finished list", async () => {
+    setVisibility("visible");
     useCopilotUIStore.setState({
       completedSessionIDs: new Set(["sess-1", "sess-2"]),
     });
@@ -145,14 +153,40 @@ describe("useCopilotNotifications — opening a finished chat", () => {
     act(() => capturedHandler!(completion));
     await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
 
+    setVisibility("visible");
     rerender({ active: "sess-1" });
     await waitFor(() => {
       expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
     });
     rerender({ active: null });
+    setVisibility("hidden");
 
     act(() => capturedHandler!(completion));
     await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useCopilotNotifications — background tabs", () => {
+  it("keeps the open chat on the finished list until its tab is visible", async () => {
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
+
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {});
+
+    expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
+      "sess-1",
+    );
+
+    setVisibility("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    });
   });
 });
 

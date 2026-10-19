@@ -59,11 +59,20 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const windowFocusedRef = useRef(true);
   const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
 
-  // Opening a finished chat takes it off the list. The handler below skips
-  // chats already on it, so a chat left there never notifies again.
+  // Seeing a finished chat takes it off the list. The handler below skips
+  // chats already on it, so a chat left there never notifies again. Only a
+  // visible tab counts: the list is shared across tabs, so a background tab
+  // that happens to have the chat open must not mark it seen for the others.
   useEffect(() => {
-    if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
-    useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+    function clearIfSeen() {
+      if (document.visibilityState !== "visible") return;
+      if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
+      useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+    }
+
+    clearIfSeen();
+    document.addEventListener("visibilitychange", clearIfSeen);
+    return () => document.removeEventListener("visibilitychange", clearIfSeen);
   }, [activeSessionID, completedSessionIDs]);
 
   useEffect(() => {
