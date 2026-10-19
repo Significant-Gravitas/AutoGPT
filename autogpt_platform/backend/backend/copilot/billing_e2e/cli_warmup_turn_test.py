@@ -19,11 +19,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation
 from backend.copilot.executor import cli_warmup, processor
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatMessage
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
+from backend.copilot.turn_budget import TurnBudget
 from backend.data import db_accessors
 
 from .audit import audit_thread
@@ -32,6 +35,7 @@ from .ledger import PlatformLedger
 from .provider import FakeProvider
 from .scenarios import SCENARIOS
 from .thread_billing_test import PROMPTS, _config, _session
+from .trial_account import usage_state_of
 
 [SCENARIO] = [s for s in SCENARIOS if s.id == "sdk-openrouter"]
 # How long the stuck warm-up holds; a turn that waited for it would end after.
@@ -47,9 +51,19 @@ def _paying_user(monkeypatch: pytest.MonkeyPatch) -> None:
         pytest.skip("No Claude Code CLI binary available")
     store = MagicMock(get_subscription_trial=AsyncMock(return_value=None))
     monkeypatch.setattr(db_accessors, "credit_db", lambda: store)
+    usage = MagicMock(
+        get_usage_activation_state=AsyncMock(
+            side_effect=lambda user_id: usage_state_of(
+                user_id, SubscriptionTier.PRO, None
+            )
+        )
+    )
+    monkeypatch.setattr(usage_activation, "pro_activation_db", lambda: usage)
     monkeypatch.setattr(sdk_service, "get_user_tier", AsyncMock(return_value=None))
     monkeypatch.setattr(
-        sdk_service, "_resolve_dynamic_max_budget_usd", AsyncMock(return_value=100.0)
+        sdk_service,
+        "resolve_turn_budget",
+        AsyncMock(return_value=TurnBudget(usd=100.0, limiting="task")),
     )
 
 
