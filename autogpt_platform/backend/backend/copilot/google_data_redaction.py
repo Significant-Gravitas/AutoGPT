@@ -16,7 +16,10 @@ Data counts as Google's by the block that produced it, never by what it says:
 * a ``block_output`` response whose ``provider`` is ``google``;
 * a tool output this process built from such a response, remembered by hash,
   which covers outputs too large to hand the model whole (it then gets a
-  truncated preview that no longer parses).
+  truncated preview that no longer parses);
+* the late result of an approved held call (``gate.held``), which reaches the
+  model as a ``<held_call_result>`` user row rather than as a tool result,
+  when the output it wraps is any of the above or the row was remembered.
 
 Within a conversation, the result answering a Google call is redacted whatever
 it says, and so is the input of a call whose result was Google data, so the
@@ -33,6 +36,7 @@ import contextlib
 import functools
 import hashlib
 import json
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator
@@ -57,6 +61,10 @@ GOOGLE_DATA_METADATA_KEY = "google_data"
 # re-runs it with ``input_overrides`` merged in.
 _PAYLOAD_KEYS = ("input_data", "input", "input_overrides")
 _REMEMBERED_LIMIT = 4096
+
+# How ``gate.held`` wraps a held call's late result.
+_HELD_RESULT_OPEN = re.compile(r"<held_call_result\b[^>]*>\n")
+_HELD_RESULT_CLOSE = "\n</held_call_result>"
 
 _remembered: OrderedDict[str, None] = OrderedDict()
 _remembered_lock = threading.Lock()
@@ -125,6 +133,27 @@ def remember_cut_google_output(whole: str, cut: str) -> None:
     was Google data, so the text the model finally reads is redacted too."""
     if cut != whole and _is_google_text(whole):
         remember_google_output(cut)
+
+
+def is_google_output(text: str) -> bool:
+    """Whether the tool output *text* is Google data: a Google
+    ``block_output``, or an output remembered as built from one."""
+    digest = _digest(text)
+    with _remembered_lock:
+        if digest in _remembered:
+            _remembered.move_to_end(digest)
+            return True
+    if not text.startswith("{"):
+        return False
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return False
+    return (
+        isinstance(parsed, dict)
+        and parsed.get("type") == "block_output"
+        and parsed.get("provider") == ProviderName.GOOGLE.value
+    )
 
 
 def is_google_call(arguments: dict[str, Any] | None) -> bool:
@@ -252,20 +281,30 @@ def _holds_google_output(content: Any) -> bool:
 
 
 def _is_google_text(text: str) -> bool:
-    with _remembered_lock:
-        if _digest(text) in _remembered:
-            return True
-    if not text.startswith("{"):
+    return is_google_output(text) or _wraps_google_held_result(text)
+
+
+def _wraps_google_held_result(text: str) -> bool:
+    """Whether *text* carries a held call's late result that is Google data.
+
+    The row may be folded into a longer message (the SDK's turn opener), and
+    the output it wraps may itself quote the closing tag, so every closing
+    tag after an opening one is tried.
+    """
+    if "<held_call_result" not in text:
         return False
-    try:
-        parsed = json.loads(text)
-    except ValueError:
-        return False
-    return (
-        isinstance(parsed, dict)
-        and parsed.get("type") == "block_output"
-        and parsed.get("provider") == ProviderName.GOOGLE.value
-    )
+    closes = [
+        match.start() for match in re.finditer(re.escape(_HELD_RESULT_CLOSE), text)
+    ]
+    for opening in _HELD_RESULT_OPEN.finditer(text):
+        for close in closes:
+            if close < opening.end():
+                continue
+            row = text[opening.start() : close + len(_HELD_RESULT_CLOSE)]
+            inner = text[opening.end() : close]
+            if is_google_output(inner) or is_google_output(row):
+                return True
+    return False
 
 
 def _dicts(node: Any) -> Iterator[dict[str, Any]]:

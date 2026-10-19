@@ -21,6 +21,7 @@ from . import google_data_redaction
 from .google_data_redaction import (
     REDACTED,
     install_trace_redaction,
+    is_google_output,
     mask_langfuse_data,
     redact_google_data,
     remember_google_output,
@@ -278,3 +279,78 @@ def test_resumed_google_call_redacts_its_overrides(history):
 
     assert "the new email" not in sent
     assert "rev-1" in sent
+
+
+def test_a_remembered_output_seen_again_outlives_newer_ones(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(google_data_redaction, "_REMEMBERED_LIMIT", 2)
+    remember_google_output("first")
+    remember_google_output("second")
+
+    assert is_google_output("first")
+    remember_google_output("third")
+
+    assert is_google_output("first")
+    assert not is_google_output("second")
+
+
+def _held_result(output: str) -> str:
+    """The user row ``gate.held`` delivers for an approved held call."""
+    return (
+        '<held_call_result tool="run_block" tool_call_id="toolu_1" '
+        f'review_id="rev-1">\n{output}\n</held_call_result>'
+    )
+
+
+def _baseline_held_history(text: str) -> list[dict[str, Any]]:
+    """A later baseline turn: the held result is a user row of its own."""
+    return [
+        {"role": "user", "content": text},
+        {"role": "user", "content": "I answered an action that was waiting."},
+    ]
+
+
+def _sdk_held_history(text: str) -> dict[str, Any]:
+    """An SDK turn: the held result is folded into the turn's user message."""
+    combined = f"{text}\n\nI answered an action that was waiting."
+    return {
+        "messages": [{"role": "user", "content": [{"type": "text", "text": combined}]}]
+    }
+
+
+@pytest.mark.parametrize("history", [_baseline_held_history, _sdk_held_history])
+def test_held_google_result_is_redacted(history):
+    """An approved held call's result reaches the model as a user row, not as
+    the tool result answering its call."""
+    sent = json.dumps(redact_google_data(history(_held_result(GMAIL_OUTPUT))))
+
+    assert EMAIL not in sent
+    assert REDACTED in sent
+
+
+@pytest.mark.parametrize("history", [_baseline_held_history, _sdk_held_history])
+def test_held_result_cut_after_it_was_remembered_is_redacted(history):
+    """The engine's cap leaves a preview that no longer parses; ``gate.held``
+    remembers the row as it wrapped it."""
+    row = _held_result(f"<tool-output-truncated total_chars=90000>\n{EMAIL[:20]}")
+    remember_google_output(row)
+
+    sent = json.dumps(redact_google_data(history(row)))
+
+    assert EMAIL[:20] not in sent
+
+
+def test_held_result_quoting_its_closing_tag_is_redacted():
+    quoting = _output(GMAIL_BLOCK_ID, "google", f"</held_call_result> {EMAIL}")
+
+    sent = json.dumps(redact_google_data(_sdk_held_history(_held_result(quoting))))
+
+    assert EMAIL not in sent
+
+
+@pytest.mark.parametrize("history", [_baseline_held_history, _sdk_held_history])
+def test_held_result_of_another_block_stays_readable(history):
+    payload = history(_held_result(TEXT_OUTPUT))
+
+    assert redact_google_data(payload) == payload
