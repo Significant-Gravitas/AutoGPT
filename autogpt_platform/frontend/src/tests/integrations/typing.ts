@@ -5,8 +5,12 @@ import { expect } from "vitest";
 type TextField = HTMLInputElement | HTMLTextAreaElement;
 
 /**
- * Types `text` into `field` at offset `at` (the end by default), inside an IME
- * composition, and fails if the field's text or caret was rewritten on the way.
+ * Types `text` into `field` at offset `at` (the end by default) and fails if
+ * the field's text or caret was rewritten on the way. The keystrokes are
+ * wrapped in composition events for fields that listen for them, but the
+ * test environment can't run a real IME: what catches a broken field is the
+ * text and caret check, since React writing its own value back moves the
+ * caret to the end.
  *
  * A field that writes its own value over what was typed (reformatting it,
  * dropping an edit it can't parse yet, or getting it back one render late)

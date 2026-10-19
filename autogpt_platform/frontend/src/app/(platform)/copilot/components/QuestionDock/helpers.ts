@@ -1,4 +1,5 @@
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import type { Dispatch, SetStateAction } from "react";
 import {
   type ClarifyingQuestion,
   type QuestionAnswer,
@@ -83,7 +84,7 @@ interface QuestionsEntryArgs {
   questions: ClarifyingQuestion[];
   answers: Answers;
   register: (entry: ChainActionEntry) => void;
-  setAnswers: (answers: Answers) => void;
+  setAnswers: Dispatch<SetStateAction<Answers>>;
   dismiss: () => void;
 }
 
@@ -111,9 +112,16 @@ export function buildQuestionsEntry(
       questions,
       answers,
       onAnswer: (keyword, value) => {
-        const next = { ...answers, [keyword]: value };
-        setAnswers(next);
-        register(buildQuestionsEntry({ ...args, answers: next }));
+        // State takes the functional update so a second answer in the same
+        // event can't drop the first; the entry registered here is what the
+        // field shows this render, and the effect re-registers from state.
+        setAnswers((prev) => ({ ...prev, [keyword]: value }));
+        register(
+          buildQuestionsEntry({
+            ...args,
+            answers: { ...answers, [keyword]: value },
+          }),
+        );
       },
       onSkip: dismiss,
     },
