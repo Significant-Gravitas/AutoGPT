@@ -132,6 +132,31 @@ async def test_an_hourly_routine_runs_daily_from_now_on(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_that_keeps_one_thread_keeps_it_at_its_new_cadence(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """A THREAD routine's first fire mints the chat every later fire goes
+    to. Running it less often must not start that conversation over."""
+    user_id = await _owner()
+    try:
+        routine = await _hourly_routine(user_id)
+        await ExpertRoutine.prisma().update(
+            where={"id": routine.id}, data={"sessionId": "thread-1"}
+        )
+
+        await set_cadence(user_id, routine.id, "17 9 * * *")
+
+        row = await ExpertRoutine.prisma().find_unique(where={"id": routine.id})
+        assert row is not None and row.sessionId == "thread-1"
+        # Its jobs still name no chat: each fire reads the row's.
+        assert (
+            scheduler.add_copilot_turn_schedule.await_args.kwargs["session_id"] is None
+        )
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_follow_up_is_changed_in_place(
     server: SpinTestServer, scheduler: MagicMock
 ):
