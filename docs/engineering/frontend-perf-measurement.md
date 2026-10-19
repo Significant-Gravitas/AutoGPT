@@ -79,7 +79,7 @@ Tips for numbers you can trust:
 - Compare on the same machine and the same build type. Dev React is slower than production React, but a before/after delta on the same build type is still valid.
 - Alternate the two checkouts when you can (before, after, before, after) so a machine that slows down over time does not favour one side.
 - Keep the rest of the setup equal on both sides. `.env.default` turns on the React Query devtools and the token devtool, and they render too, so leave them as they are or change them for both runs.
-- Render counts and commits are deterministic; on the streaming scenario they match exactly from run to run. Timing metrics move by a few percent. Treat a timing change smaller than the spread the script prints as noise.
+- Read total renders and the per-component counts first: they are deterministic, and on the baseline most scenarios repeat them exactly from run to run. Commits, and so renders per commit, depend on how React batches updates into frames, so they can shift once a change makes rendering cheaper. Timing metrics move by a few percent. Treat any change smaller than the spread the script prints as noise.
 
 ## Reading the causes column
 
