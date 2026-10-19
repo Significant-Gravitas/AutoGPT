@@ -1768,9 +1768,7 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
 ):
     """The level-triggered backstop of the memory registry runs every
     ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
-    coalesced. It is registered once the scheduler has started, so an
-    unchanged persisted job, and its next run, can be left alone
-    (``scheduler_memory_reconcile_test.TestRegistration``)."""
+    coalesced. Each process gets an immediate pass in its own memory store."""
     calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
 
     names = [name for name, _, _ in calls]
@@ -1786,12 +1784,12 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
     assert kwargs["id"] == "reconcile_memory_scope_crons"
     assert kwargs["max_instances"] == 1
     assert kwargs["coalesce"] is True
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
+    assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
 
 
 def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):
-    """APScheduler runs a job that is overdue when it starts at once, on its
-    own thread: the memory cron reconcile after a restart that outlasted its
-    interval. The job reaches the service only through
+    """An immediately due system job reaches the service only through
     ``_scheduler_instance``, so that is published before ``start``; published
     after it, the pass was skipped as "scheduler not running" and the crons
     waited a whole interval more."""

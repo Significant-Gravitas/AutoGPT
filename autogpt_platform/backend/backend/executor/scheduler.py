@@ -1925,6 +1925,13 @@ _MEMORY_CRON_MISFIRE_GRACE: dict[str, int | None] = {
 }
 
 
+def execute_expert_memory_cron(
+    func: Callable[..., object], user_id: str, expert_id: str
+) -> object:
+    """A distinct reference so old binaries park expert-only job payloads."""
+    return func(user_id=user_id, expert_id=expert_id)
+
+
 def reconcile_memory_scope_crons() -> None:
     """System task, every ``RECONCILE_INTERVAL_MINUTES``: the dream-system
     crons back in step with the registry rows (``copilot/dream/
@@ -2210,6 +2217,7 @@ class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
     WEEKLY_NOTIFICATIONS = "weekly_notifications"
+    MEMORY_CRON_RECONCILE = "memory_cron_reconcile"
 
 
 class GraphExecutionJobArgs(BaseModel):
@@ -2670,6 +2678,7 @@ class Scheduler(AppService):
                 **self._persistent_jobstores,
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
+                Jobstores.MEMORY_CRON_RECONCILE.value: MemoryJobStore(),
             },
             logger=apscheduler_logger,
             timezone=ZoneInfo("UTC"),
@@ -2855,8 +2864,7 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
-        # Published before start: a system job overdue at start (the memory
-        # cron reconcile after a restart that outlasted its interval, the
+        # Published before start: a system job due at start (such as the
         # schedule index reconcile) runs at once, on the scheduler's thread,
         # and reaches this instance only through _scheduler_instance.
         global _scheduler_instance
@@ -3986,9 +3994,13 @@ class Scheduler(AppService):
         """Add, or replace, one dream-system cron of ``scope``; tagged as the
         reconcile's when it registers it (``RECONCILED_SUFFIX``)."""
         tag = RECONCILED_SUFFIX if reconciled else ""
+        kwargs: dict[str, object] = {**memory_job_kwargs(scope)}
+        if scope.expert_id is not None:
+            kwargs["func"] = func
+            func = execute_expert_memory_cron
         added = self.scheduler.add_job(
             func,
-            kwargs=memory_job_kwargs(scope),
+            kwargs=kwargs,
             trigger=CronTrigger.from_crontab(crontab, timezone=user_timezone),
             id=job.job_id(scope),
             name=f"{job.name} for {scope_label(scope)}{tag}",
@@ -4083,17 +4095,11 @@ class Scheduler(AppService):
         (``copilot/dream/scope_reconcile.py``), every
         ``RECONCILE_INTERVAL_MINUTES``.
 
-        Registered after start and left alone while unchanged, as the
-        PostHog sweep is: replacing it re-arms the interval from now, so
-        every scheduler that starts, a second one in a rolling deploy
-        included, would push the next pass back, an overdue one too.
+        Each process starts with an immediate pass. Keep the job in memory
+        so an old scheduler cannot park it during a rolling deploy.
+        Overlapping passes replay the same bounded, idempotent work.
         """
         trigger = IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
-        existing = self.scheduler.get_job(
-            _MEMORY_CRON_RECONCILE_JOB_ID, jobstore=Jobstores.EXECUTION.value
-        )
-        if existing is not None and str(existing.trigger) == str(trigger):
-            return
         self.scheduler.add_job(
             reconcile_memory_scope_crons,
             trigger,
@@ -4101,7 +4107,8 @@ class Scheduler(AppService):
             replace_existing=True,
             max_instances=1,
             coalesce=True,
-            jobstore=Jobstores.EXECUTION.value,
+            next_run_time=datetime.now(ZoneInfo("UTC")),
+            jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
         )
 
     # --- Morning briefing ---

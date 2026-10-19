@@ -620,7 +620,11 @@ class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
         kwargs = self._register(method, self.EXPERT)
 
         assert kwargs["id"] == f"{prefix}_{self.EXPERT.scope_key}"
-        assert kwargs["kwargs"] == {"user_id": "abc", "expert_id": "expert-1"}
+        assert kwargs["kwargs"] == {
+            "user_id": "abc",
+            "expert_id": "expert-1",
+            "func": scheduler_module._MEMORY_CRONS[prefix][0],
+        }
         assert "Asia/Tokyo" in repr(kwargs["trigger"])
 
     def test_scope_methods_are_reachable_over_rpc(self) -> None:
