@@ -9,7 +9,7 @@ from prisma.enums import ReviewStatus
 
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
-from backend.copilot.gate.policy import Effect, classified_tools, effect_for
+from backend.copilot.gate.policy import PARKABLE, classified_tools, effect_for
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
@@ -112,22 +112,22 @@ def test_the_headline_names_the_action_and_its_object():
 
 
 def test_every_tool_the_gate_can_hold_has_its_own_words():
-    held = {
-        tool
-        for tool in classified_tools()
-        if effect_for(tool) in (Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL)
-    }
+    held = {tool for tool in classified_tools() if effect_for(tool) in PARKABLE}
     assert gated_tools() == held
 
 
-def test_fields_follow_the_schema_required_first_with_labels():
+def test_fields_follow_the_schema_required_first_with_labels_and_formats():
     payload = review_payload(
-        "create_folder", {"parent_id": "p1", "name": "Q3", "extra": 1}
+        "schedule_followup", {"delay_seconds": 183_420, "message": "Ping", "extra": 1}
     )
-    keys = [field["key"] for field in payload["fields"]]
-    assert keys[0] == "name"
-    assert keys[-1] == "extra"
-    assert {"key": "extra", "label": "Extra"} in payload["fields"]
+    fields = payload["fields"]
+    assert [field["key"] for field in fields] == ["message", "delay_seconds", "extra"]
+    assert fields[1] == {
+        "key": "delay_seconds",
+        "label": "Runs in",
+        "format": "seconds",
+    }
+    assert fields[2] == {"key": "extra", "label": "Extra", "format": None}
 
 
 def test_a_clipped_argument_is_named_so_the_card_can_say_so():

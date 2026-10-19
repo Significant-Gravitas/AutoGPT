@@ -13,10 +13,20 @@ to Langfuse as a score named after the rating ("user-feedback": 1 = up,
 The score reuses the rating's id, so rating a reply again updates its score
 instead of adding one. A Langfuse failure is logged and shows in the
 response; the rating itself is already saved.
+
+Each rating also goes to PostHog LLM analytics as an ``$ai_metric`` event on
+the user (distinct id = user id), for every user regardless of cookie
+consent, like the generations OpenRouter Broadcast sends there.
+``$ai_session_id`` is the chat session id, the same value the chat's
+``$ai_generation`` events carry, which is what joins a rating to the
+generations of its chat; ``message_id`` names the reply. It carries no
+``$ai_trace_id``: Broadcast assigns the generations' trace ids, so we have
+none to match. Rating again sends another event; the latest per
+``feedback_id`` is the rating that stands.
 """
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from langfuse import get_client
 from langfuse.api import CreateScoreRequest, ScoreDataType
@@ -24,6 +34,8 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from pydantic import BaseModel, Field
 
 from backend.copilot import feedback_db
+from backend.util.posthog_client import capture
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -70,11 +82,14 @@ async def record_message_feedback(
     score_name: FeedbackScoreName,
     score_value: FeedbackScoreValue,
     comment: str | None,
+    impersonated: bool = False,
 ) -> MessageFeedbackResponse | None:
-    """Save a rating of one reply in *user_id*'s chat and score it in Langfuse.
+    """Save a rating of one reply in *user_id*'s chat and score it in Langfuse
+    and PostHog.
 
     *message_id* is the id the chat UI knows the reply by: ``<session>-seq-<N>``
     for a reply loaded from the chat history, or the message row's own id.
+    *impersonated* marks a rating an admin gave while acting as the user.
 
     Returns ``None`` when the session is not the caller's or *message_id* is
     not a reply in it.
@@ -90,6 +105,16 @@ async def record_message_feedback(
         score_value=score_value,
         comment=comment,
         langfuse_trace_id=message.langfuseTraceId,
+    )
+    _send_to_posthog(
+        user_id=user_id,
+        feedback_id=feedback_id,
+        session_id=session_id,
+        message=message,
+        score_name=score_name,
+        score_value=score_value,
+        comment=comment,
+        impersonated=impersonated,
     )
     target = await _score_in_langfuse(
         feedback_id=feedback_id,
@@ -174,3 +199,31 @@ async def _score_in_langfuse(
         )
         return None
     return "trace" if trace_id else "session"
+
+
+def _send_to_posthog(
+    *,
+    user_id: str,
+    feedback_id: str,
+    session_id: str,
+    message: PrismaChatMessage,
+    score_name: FeedbackScoreName,
+    score_value: FeedbackScoreValue,
+    comment: str | None,
+    impersonated: bool,
+) -> None:
+    """Queue the rating as an ``$ai_metric`` event. ``capture`` logs and
+    swallows a PostHog failure, so the rating is never lost to one."""
+    properties: dict[str, Any] = {
+        "$ai_metric_name": score_name,
+        "$ai_metric_value": score_value,
+        "$ai_session_id": session_id,
+        "chat_session_id": session_id,
+        "message_id": message.id,
+        "message_sequence": message.sequence,
+        "feedback_id": feedback_id,
+        "impersonated": impersonated,
+    }
+    if comment:
+        properties["$ai_feedback_text"] = comment
+    capture(user_id, PostHogEvent.AI_METRIC, properties)

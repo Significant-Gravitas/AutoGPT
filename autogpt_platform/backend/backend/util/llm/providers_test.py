@@ -27,8 +27,10 @@ from backend.util.llm.providers import (
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
+    anthropic_accepts_forced_tool_choice,
     call_provider,
     call_provider_openai_compat_sync,
+    is_forced_tool_choice_rejection,
     request_timeout,
 )
 from backend.util.settings import Config, Settings
@@ -469,6 +471,7 @@ class TestAnthropicMessages:
             )
         assert isinstance(result, ProviderResponse)
         assert result.content == expected
+        assert result.stop_reason == response.stop_reason
         assert result.reasoning == "reasoning"
         assert result.completion_tokens == 7
         if answer.type == "tool_use":
@@ -783,6 +786,14 @@ class TestAIMLAPI:
         # AI/ML expects branded headers on the client construction.
         ctor_kwargs = constructor.call_args.kwargs
         assert ctor_kwargs["default_headers"]["X-Project"] == "AutoGPT"
+        # AI/ML API is served under /v1 (the /v2 host does not exist).
+        assert ctor_kwargs["base_url"] == "https://api.aimlapi.com/v1"
+        # Attribution headers identify agent-originated traffic to the provider.
+        assert ctor_kwargs["default_headers"]["X-AIMLAPI-Source"] == "agent/autogpt"
+        assert (
+            ctor_kwargs["default_headers"]["X-AIMLAPI-Partner-ID"]
+            == "part_T70zDIEvQLKSMzMQ7asjdtKR"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1885,6 +1896,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason="end_turn",
                             content=[
                                 SimpleNamespace(type="text", text='{"facts": []}')
                             ],
@@ -1926,7 +1938,8 @@ class TestDownloadBatchResults:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("thinking_first", [False, True])
-    async def test_extracts_tool_use_input_as_json(self, thinking_first):
+    @pytest.mark.parametrize("stop_reason", ["tool_use", "max_tokens"])
+    async def test_extracts_tool_use_input_as_json(self, thinking_first, stop_reason):
         """Step 5 leans on this: when the dream pass uses
         ``tool_choice={"type":"tool","name":...}`` to force structured
         output, the result is one ``tool_use`` block whose ``input``
@@ -1949,6 +1962,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason=stop_reason,
                             content=thinking
                             + [
                                 anthropic.types.ToolUseBlock(
@@ -1982,6 +1996,54 @@ class TestDownloadBatchResults:
                 api_key="x",
             )
         assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
+        assert rows[0].error == ("max_tokens" if stop_reason == "max_tokens" else None)
+        assert rows[0].output_tokens == 1
+
+    @pytest.mark.asyncio
+    async def test_tool_use_after_a_text_block_is_still_the_result(self):
+        """Under ``tool_choice`` ``auto`` (a model that rejects a forced
+        tool) a short text block can come before the call. The tool input
+        is still the structured payload, not the text."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1_recombine",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            stop_reason="end_turn",
+                            content=[
+                                anthropic.types.TextBlock(
+                                    type="text", text="Recording the proposals."
+                                ),
+                                anthropic.types.ToolUseBlock(
+                                    type="tool_use",
+                                    id="tool-1",
+                                    name="emit_recombination",
+                                    input={"proposals": []},
+                                ),
+                            ],
+                            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].content == '{"proposals": []}'
 
     @pytest.mark.asyncio
     async def test_errored_row_carries_error_string_with_zero_tokens(self):
@@ -2018,6 +2080,28 @@ class TestDownloadBatchResults:
         assert "content moderation" in rows[0].error
         assert rows[0].input_tokens == 0
         assert rows[0].output_tokens == 0
+
+
+def test_batch_result_row_with_content_keeps_every_other_field():
+    row = BatchResultRow(
+        custom_id="passid-1_consolidate",
+        content='Here are the facts: {"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+        cache_read_tokens=3,
+        cache_creation_tokens=2,
+        error="kept as is",
+        raw_result=object(),
+    )
+
+    swapped = row.with_content('{"facts": []}')
+
+    assert swapped.content == '{"facts": []}'
+    assert row.content == 'Here are the facts: {"facts": []}'
+    # Every field the row has, so a field added later can't be dropped.
+    for name in getattr(BatchResultRow, "__pydantic_fields__"):
+        if name != "content":
+            assert getattr(swapped, name) == getattr(row, name), name
 
 
 def _fake_async_iter(items):
@@ -2408,6 +2492,7 @@ class TestClaude5TemperatureRejection:
             "claude-fable-5",
             "claude-mythos-5",
             "claude-opus-5",
+            "claude-haiku-5-5",
             "claude-opus-4-7",
             "claude-opus-4-8",
         ],
@@ -2466,3 +2551,82 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+class TestForcedToolChoiceCapability:
+    """Opus 5.5 and the Fable 5.1 / Mythos 5.1 line answer a forced
+    ``tool_choice`` with a 400. Exact slugs, not family prefixes: Sonnet 5
+    and Opus 5 still accept a forced tool."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic.claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5.5",
+            "anthropic.claude-sonnet-5-5",
+            "claude-sonnet-5-5-20260928",
+            "claude-fable-5-1",
+            "claude-mythos-5-1",
+        ],
+    )
+    def test_rejecting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5",
+            "anthropic/claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_accepting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is True
+
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
+        )
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    def test_rejection_matches_anthropics_400(self):
+        assert is_forced_tool_choice_rejection(
+            self._err(
+                'tool_choice: type "tool" and "any" are not supported for this model.'
+            )
+        )
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "temperature is not supported by this model",
+            "tool_choice.name: Field required",
+            "rate limited",
+        ],
+    )
+    def test_rejection_ignores_other_errors(self, message: str):
+        assert not is_forced_tool_choice_rejection(self._err(message))
+
+    def test_only_a_bad_request_counts_as_the_rejection(self):
+        """The documented text is not enough on its own: a 500 or an
+        exception of our own quoting it is not Anthropic's 400."""
+        text = 'tool_choice: type "tool" and "any" are not supported for this model.'
+        server_error = anthropic.InternalServerError(
+            text,
+            response=httpx.Response(
+                500, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body=None,
+        )
+        assert not is_forced_tool_choice_rejection(server_error)
+        assert not is_forced_tool_choice_rejection(RuntimeError(text))

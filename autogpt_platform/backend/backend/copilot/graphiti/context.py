@@ -11,8 +11,9 @@ from ._format import (
     extract_fact,
     extract_temporal_validity,
 )
-from .client import derive_memory_group_id, get_graphiti_client
+from .client import get_graphiti_client
 from .config import graphiti_config
+from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,9 @@ async def fetch_warm_context(
         return None
 
     try:
+        scope = MemoryScope.build(user_id, expert_id)
         return await asyncio.wait_for(
-            _fetch(user_id, message, expert_id),
+            _fetch(scope, message),
             timeout=graphiti_config.context_timeout,
         )
     except asyncio.TimeoutError:
@@ -48,16 +50,14 @@ async def fetch_warm_context(
         return None
 
 
-async def _fetch(
-    user_id: str, message: str, expert_id: str | None = None
-) -> str | None:
+async def _fetch(scope: MemoryScope, message: str) -> str | None:
     # Imported lazily so the module can be imported without graphiti-core
     # installed (matches the pattern in client.py).
     from graphiti_core.search.search_config_recipes import (
         EDGE_HYBRID_SEARCH_CROSS_ENCODER,
     )
 
-    group_id = derive_memory_group_id(user_id, expert_id)
+    group_id = scope.group_id
     client = await get_graphiti_client(group_id)
 
     # P-1.4: warm context is the single most-impactful retrieval per
@@ -91,7 +91,7 @@ async def _fetch(
     # warm-context hit counter. Fire-and-forget so the chat turn
     # never blocks on Redis or FalkorDB writes.
     if edges:
-        _spawn_ratification_hits(user_id, expert_id, edges)
+        _spawn_ratification_hits(scope, edges)
 
     if not edges and not episodes:
         return None
@@ -115,7 +115,7 @@ def _on_hit_task_done(task: asyncio.Task) -> None:
         logger.warning("Ratification hit task %s failed", task.get_name(), exc_info=exc)
 
 
-def _spawn_ratification_hits(user_id: str, expert_id: str | None, edges) -> None:
+def _spawn_ratification_hits(scope: MemoryScope, edges) -> None:
     """Fire-and-forget the ratification hit-hook for retrieved edges.
 
     Imports lazily so the dream/ratification module isn't pulled into
@@ -130,8 +130,8 @@ def _spawn_ratification_hits(user_id: str, expert_id: str | None, edges) -> None
     from backend.copilot.dream.ratification import try_ratify_on_hit
 
     task = asyncio.create_task(
-        try_ratify_on_hit(user_id, edge_uuids, expert_id=expert_id),
-        name=f"ratify-hits-{user_id[:12]}",
+        try_ratify_on_hit(scope, edge_uuids),
+        name=f"ratify-hits-{scope.owner_user_id[:12]}",
     )
     _pending_hit_tasks.add(task)
     task.add_done_callback(_on_hit_task_done)

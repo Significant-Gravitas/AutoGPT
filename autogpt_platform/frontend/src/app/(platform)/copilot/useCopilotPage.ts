@@ -6,7 +6,6 @@ import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import {
   forgetHeldFollowUp,
@@ -33,6 +32,7 @@ import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
+import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -134,6 +134,7 @@ export function useCopilotPage({
     sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -187,6 +188,7 @@ export function useCopilotPage({
     sessionAuthProvider: sessionLlmAuthProvider,
     sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
@@ -261,29 +263,11 @@ export function useCopilotPage({
   // turn — see onSend.
   const isLocalStreamSettled =
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
-  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
-  isLocalStreamSettledRef.current = isLocalStreamSettled;
-  // Each waiter learns whether the stream settled (send now) or the hook
-  // went away first (the chat host unmounts on a chat switch and on reload;
-  // the follow-up then stays in sessionStorage, see below).
-  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
-  useEffect(() => {
-    if (!isLocalStreamSettled) return;
-    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
-  }, [isLocalStreamSettled]);
-  useEffect(
-    () => () => {
-      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
-    },
-    [],
-  );
-
-  function waitForLocalSettle() {
-    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      settleWaitersRef.current.push(resolve);
-    });
-  }
+  // A held follow-up learns whether the stream settled (send now) or the
+  // hook went away first (the chat host unmounts on a chat switch and on
+  // reload; the follow-up then stays in sessionStorage, see below).
+  const { waitUntilSettled: waitForLocalSettle, markUnsettled } =
+    useSettleGate(isLocalStreamSettled);
 
   // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
   // the backend-buffered ones, since from the user's side they are the same
@@ -338,17 +322,8 @@ export function useCopilotPage({
     () => stripReplayPrefix(cachedRawMessages),
     [cachedRawMessages],
   );
-  const latestStatusMessage = useMemo(
-    () =>
-      isRestoringActiveSession
-        ? getLatestAssistantStatusMessage(messages)
-        : null,
-    [isRestoringActiveSession, messages],
-  );
   // The runtime's restore state is a passive notice; it never trims the list.
-  const restoreStatusMessage = runtimeStream
-    ? runtimeStream.restoreStatusMessage
-    : latestStatusMessage;
+  const restoreStatusMessage = runtimeStream?.restoreStatusMessage ?? null;
   const displayMessages = useMemo(() => {
     if (!isRestoringActiveSession || runtimeStream) return messages;
     if (hasAssistantTail(cachedMessages)) return cachedMessages;
@@ -464,7 +439,7 @@ export function useCopilotPage({
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
-      isLocalStreamSettledRef.current = false;
+      markUnsettled();
     }
     if (heldForLocalSettle && sessionId) {
       releaseFollowUp(sessionId, trimmed);
@@ -559,6 +534,7 @@ export function useCopilotPage({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
