@@ -152,6 +152,8 @@ describe.each([
           id: "user-1",
           email: "ada@example.com",
           ip_address: "203.0.113.7",
+          name: "Ada Lovelace",
+          segment: "pro",
         },
         request: {
           url: "https://platform.agpt.co/library",

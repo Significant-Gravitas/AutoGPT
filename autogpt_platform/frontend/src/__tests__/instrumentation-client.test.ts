@@ -22,7 +22,6 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
 });

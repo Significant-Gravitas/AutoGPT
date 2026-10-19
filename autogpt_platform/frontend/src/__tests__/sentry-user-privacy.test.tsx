@@ -93,8 +93,15 @@ describe("a signed-in user in Sentry", () => {
     }
   });
 
-  it("loses an email or IP address that other code puts on the scope", async () => {
-    Sentry.setUser({ id: "user-1", email: EMAIL, ip_address: IP });
+  it("keeps only the id and role of a user other code puts on the scope", async () => {
+    Sentry.setUser({
+      id: "user-1",
+      role: "admin",
+      email: EMAIL,
+      ip_address: IP,
+      username: "ada",
+      name: "Ada Lovelace",
+    });
 
     Sentry.captureException(new Error("boom"));
     Sentry.startSpan({ name: "load page", forceTransaction: true }, () => {});
@@ -102,9 +109,10 @@ describe("a signed-in user in Sentry", () => {
 
     expect(sent).toHaveLength(2);
     for (const payload of sent) {
-      expect(payload.user).toEqual({ id: "user-1" });
+      expect(payload.user).toEqual({ id: "user-1", role: "admin" });
       expect(JSON.stringify(payload)).not.toContain(EMAIL);
       expect(JSON.stringify(payload)).not.toContain(IP);
+      expect(JSON.stringify(payload)).not.toContain("Lovelace");
     }
   });
 });

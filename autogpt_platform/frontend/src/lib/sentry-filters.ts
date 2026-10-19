@@ -103,13 +103,17 @@ export function stripRequestCredentials<T extends Event>(event: T): T {
   return event;
 }
 
+const SENTRY_USER_FIELDS = new Set(["id", "role"]);
+
 // Error monitoring runs without consent (legitimate interest), so a user is
-// known to Sentry by their id and role only: never their email or IP address,
-// whichever code put them on the scope.
+// known to Sentry by their id and role only: never their email, name or IP
+// address, whichever code put them on the scope.
 export function stripUserPII<T extends Event>(event: T): T {
   if (!event.user) return event;
-  delete event.user.email;
-  delete event.user.ip_address;
-  delete event.user.username;
+  event.user = Object.fromEntries(
+    Object.entries(event.user).filter(([field]) =>
+      SENTRY_USER_FIELDS.has(field),
+    ),
+  );
   return event;
 }

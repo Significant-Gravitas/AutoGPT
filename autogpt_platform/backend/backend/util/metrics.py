@@ -298,15 +298,18 @@ def _before_send_transaction(event, hint):
     return event
 
 
-# Sentry knows a user by their id only: never their email or IP address,
-# whichever code put them on the scope.
-_USER_PII_FIELDS = ("email", "ip_address", "username")
+# Sentry knows a user by their id only: never their email, name or IP
+# address, whichever code put them on the scope.
+_SENTRY_USER_FIELDS = frozenset({"id"})
 
 
 def _strip_user_pii(event: dict) -> None:
-    user = event.get("user") or {}
-    for field in _USER_PII_FIELDS:
-        user.pop(field, None)
+    user = event.get("user")
+    if not user:
+        return
+    event["user"] = {
+        field: value for field, value in user.items() if field in _SENTRY_USER_FIELDS
+    }
 
 
 def _sentry_environment() -> str:
