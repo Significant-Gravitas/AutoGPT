@@ -95,6 +95,15 @@ def _oversized_png() -> bytes:
     return out.getvalue()
 
 
+def _decompression_bomb_png() -> bytes:
+    # Above 2x the budget, where Pillow raises its own error at open, before the
+    # explicit size check runs.
+    side = int((2 * preview_module.MAX_RENDER_PIXELS) ** 0.5) + 100
+    out = io.BytesIO()
+    Image.new("L", (side, side)).save(out, format="PNG")
+    return out.getvalue()
+
+
 def _large_page_pdf() -> bytes:
     # A page far larger than a thumbnail; a fixed render scale would rasterise it
     # to a bitmap many times the budget.
@@ -380,6 +389,18 @@ def test_pdf_preview_declines_a_page_too_large_for_the_budget(mocker):
 def test_image_preview_declines_an_oversized_source(mocker):
     _mock_lookups(mocker, _make_file(mime_type="image/png"))
     _mock_storage(mocker, _oversized_png())
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?w=100")
+
+    assert response.status_code == 413
+
+
+def test_image_preview_declines_a_decompression_bomb_source(mocker):
+    # Above 2x the budget Pillow raises before the size check; it must still be a
+    # 413 (too large), not a generic 415 render failure.
+    _mock_lookups(mocker, _make_file(mime_type="image/png"))
+    _mock_storage(mocker, _decompression_bomb_png())
     _mock_redis(mocker)
 
     response = client.get("/files/file-001/preview?w=100")

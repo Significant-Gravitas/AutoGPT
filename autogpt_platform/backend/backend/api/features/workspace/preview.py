@@ -259,16 +259,23 @@ async def _cached(
 
 def _resize_webp(content: bytes, width: int) -> bytes:
     Image.MAX_IMAGE_PIXELS = MAX_RENDER_PIXELS
-    with Image.open(io.BytesIO(content)) as img:
-        _ensure_within_render_budget(img.size)
-        # Image.open positions at the first frame, so animated GIFs/WebP already
-        # render their frame 0 without an explicit seek.
-        if img.mode not in ("RGB", "RGBA", "L"):
-            img = img.convert("RGB")
-        img.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
-        out = io.BytesIO()
-        img.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
-        return out.getvalue()
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            _ensure_within_render_budget(img.size)
+            # Image.open positions at the first frame, so animated GIFs/WebP
+            # already render their frame 0 without an explicit seek.
+            if img.mode not in ("RGB", "RGBA", "L"):
+                img = img.convert("RGB")
+            img.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            img.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
+            return out.getvalue()
+    except Image.DecompressionBombError as e:
+        # Pillow raises this above 2x the pixel limit, before the size check
+        # above runs; treat it as the same over-budget case, not a 415.
+        raise fastapi.HTTPException(
+            status_code=413, detail="File too large to preview"
+        ) from e
 
 
 def _ensure_within_render_budget(size: tuple[int, int]) -> None:
