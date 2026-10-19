@@ -379,25 +379,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     return [(u.id, u.email) for u in users]
 
 
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
-
-
 async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:

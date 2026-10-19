@@ -456,8 +456,7 @@ def _ranked(
     tying on coverage is the first-party way to do that service's job
     (post_to_chat_platform for Discord).  On a query that names no service a
     tool that ties has only shared a word with it ("email" and
-    create_feature_request), and putting it first moved 19 such queries off
-    the user's connected blocks.
+    create_feature_request), so the user's connected blocks keep precedence.
 
     With *lift*, a connected MCP server within
     :data:`CONNECTED_COVERAGE_MARGIN` of the best coverage is read as covering

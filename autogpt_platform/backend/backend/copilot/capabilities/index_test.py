@@ -234,7 +234,7 @@ def test_eager_tools_are_flagged_in_listing(index):
 
 # --- SECRT-2676: connected MCP and first-party tools must not lose to blocks ---
 
-DISCORD_ID = "55555555-5555-5555-5555-555555555555"
+DISCORD_ID = "55555555-5555-5555-5555-555555555556"
 DISCORD_READ_ID = "66666666-6666-6666-6666-666666666666"
 LINEAR_MCP_URL = "https://mcp.linear.app/mcp"
 SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp"

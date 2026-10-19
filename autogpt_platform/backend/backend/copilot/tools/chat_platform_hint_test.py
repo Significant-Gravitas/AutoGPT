@@ -244,14 +244,37 @@ async def test_a_private_discord_thread_gets_no_bot_hint():
 
 
 @pytest.mark.asyncio
-async def test_a_slack_dm_to_another_member_gets_no_bot_hint():
+@pytest.mark.parametrize(
+    "channel",
+    [
+        "U0MEMBER01",
+        "W0MEMBER01",
+        "D0DIRECT01",
+        "@someone",
+        "u0member01",
+        "w0member01",
+        "d0direct01",
+    ],
+)
+async def test_a_slack_dm_to_another_member_gets_no_bot_hint(channel):
     """The bot DMs only the user, never another member."""
     result = await _prepare(
-        "SendSlackMessageBlock", input_data={"channel": "U0MEMBER01", "text": "hi"}
+        "SendSlackMessageBlock", input_data={"channel": channel, "text": "hi"}
     )
 
     assert isinstance(result, SetupRequirementsResponse)
     assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel", ["C0CHANNEL1", "#general"])
+async def test_a_slack_channel_still_gets_a_bot_hint(channel):
+    result = await _prepare(
+        "SendSlackMessageBlock", input_data={"channel": channel, "text": "hi"}
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "links the Slack workspace" in result.message
 
 
 @pytest.mark.asyncio
