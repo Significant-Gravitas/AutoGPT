@@ -485,3 +485,51 @@ Added with SECRT-3003: measured on `dev` app code at `a1578ad9a` on a similar 16
 | `TooltipContent props:children` | 1,344 |
 | `Primitive.button.Slot props:children,onPointerMove,onPointerLeave,onPointerDown,+4` | 1,217 |
 | `Primitive.button.SlotClone props:onPointerMove,onPointerLeave,onPointerDown,onFocus,+4` | 1,217 |
+
+## copilot-stream-code · baseline — median of 5 runs
+
+Added after the table above was saved: `dev` at `a1578ad9a`, same machine type, 1 warm-up and 5 saved runs. The reply is one 130-line code block, so most of the time is the transcript re-rendering on every streamed word, plus Shiki highlighting the open block on each flush.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 2,573 | 2,565 – 2,588 | 0.9% |
+| total renders | 579,560 | 576,640 – 580,000 | 0.6% |
+| renders per commit | 224.5 | 224.1 – 226.1 | 0.9% |
+| max renders in one commit | 1,010 | 1,010 – 1,010 | 0.0% |
+| script time (ms) | 46,940 | 46,115 – 50,794 | 10.0% |
+| task time (ms) | 55,268 | 54,101 – 58,986 | 8.8% |
+| layout time (ms) | 461 | 428 – 486 | 12.8% |
+| style recalc time (ms) | 1,616 | 1,523 – 1,690 | 10.3% |
+| long tasks (≥ 50 ms) | 377 | 350 – 407 | 15.1% |
+| long task total (ms) | 33,039 | 31,008 – 37,272 | 19.0% |
+| heap used after GC (MB) | 70.8 | 70.4 – 73.5 | 4.3% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 35,872 |
+| `TooltipContent` | 35,871 |
+| `Presence` | 24,642 |
+| `Popper` | 20,406 |
+| `PopperAnchor` | 20,406 |
+| `PopperProvider` | 20,406 |
+| `Primitive.button` | 20,406 |
+| `Primitive.button.Slot` | 20,406 |
+| `Primitive.button.SlotClone` | 20,406 |
+| `Primitive.div` | 20,406 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 34,456 |
+| `Presence props:children` | 24,631 |
+| `Primitive.div props:children` | 20,397 |
+| `Primitive.div.Slot props:children` | 20,397 |
+| `Primitive.div.SlotClone props:children` | 20,397 |
+| `TooltipProvider props:children` | 20,388 |
+| `HugeiconsIcon parent-same-props<-Icon` | 19,744 |
+| `PopperAnchor props:children` | 19,676 |
+| `Popper props:children` | 19,667 |
+| `PopperProvider props:children` | 19,667 |

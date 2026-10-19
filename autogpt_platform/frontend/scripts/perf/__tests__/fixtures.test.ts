@@ -11,6 +11,7 @@ import { FIXTURES_DIR } from "../lib/paths";
 import { splitFrames } from "../lib/stream-server";
 import {
   REPLY_20_LINES,
+  REPLY_LONG_CODE,
   buildReplyStream,
   buildSessionRows,
 } from "../fixtures/generate";
@@ -53,6 +54,9 @@ describe("copilot fixtures", () => {
     expect(
       fs.readFileSync(path.join(FIXTURES_DIR, "reply-20-lines.sse"), "utf8"),
     ).toBe(buildReplyStream(REPLY_20_LINES, "perf-reply-20-lines"));
+    expect(
+      fs.readFileSync(path.join(FIXTURES_DIR, "reply-long-code.sse"), "utf8"),
+    ).toBe(buildReplyStream(REPLY_LONG_CODE, "perf-reply-long-code"));
   });
 });
 
