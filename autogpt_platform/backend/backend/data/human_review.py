@@ -17,7 +17,7 @@ from prisma.models import (
     PendingHumanReview,
 )
 from prisma.types import PendingHumanReviewUpdateInput, PendingHumanReviewWhereInput
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.api.features.graph_executions.review.model import (
     PendingHumanReviewModel,
@@ -25,9 +25,11 @@ from backend.api.features.graph_executions.review.model import (
 )
 from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
+    COPILOT_STEP_CARD_PREFIX,
     is_copilot_synthetic_id,
     legacy_chat_session_id,
     parse_node_id_from_exec_id,
+    step_card_id,
 )
 from backend.data.execution import get_graph_execution_meta
 from backend.notifications.review_alerts import sync_awaiting_review
@@ -212,6 +214,7 @@ async def get_or_create_human_review(
     chat_session_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
+    alert: bool = True,
 ) -> Optional[ReviewResult]:
     """
     Get existing review or create a new pending review entry.
@@ -226,6 +229,7 @@ async def get_or_create_human_review(
         editable: Whether the data can be edited
         graph_exec_id, graph_id, graph_version: the graph execution asking, or
         chat_session_id: the chat asking — exactly one of the two
+        alert: False when the chat's approval card asks in its place
 
     Returns:
         ReviewResult if the review is complete, None if waiting for human input
@@ -274,7 +278,8 @@ async def get_or_create_human_review(
     if review.status == ReviewStatus.WAITING:
         # Nothing sends until a human acts, which is exactly the shape of an
         # Alert. The engine debounces and coalesces from here.
-        await _sync_awaiting_review_safely(user_id, graph_id, chat_session_id)
+        if alert:
+            await _sync_awaiting_review_safely(user_id, graph_id, chat_session_id)
         return None
     else:
         return ReviewResult(
@@ -284,6 +289,54 @@ async def get_or_create_human_review(
             processed=review.processed,
             node_exec_id=review.nodeExecId,
         )
+
+
+async def record_gate_approval(
+    user_id: str,
+    node_exec_id: str,
+    graph_exec_id: str,
+    graph_id: str,
+    graph_version: int,
+    input_data: SafeJsonData,
+    block_name: str,
+    message: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> Optional[ReviewResult]:
+    """The chat's approval gate let this workflow step run: an approved row is
+    its record on the run page, and a re-run of the step finds it.
+
+    A decision already on the row stands; None means it is still waiting.
+    """
+    review = await PendingHumanReview.prisma().upsert(
+        where={"nodeExecId": node_exec_id},
+        data={
+            "create": {
+                "userId": user_id,
+                "nodeExecId": node_exec_id,
+                **_scope_columns(graph_exec_id, graph_id, graph_version, None),
+                "payload": SafeJson(input_data),
+                "instructions": block_name,
+                "editable": False,
+                "status": ReviewStatus.APPROVED,
+                "reviewMessage": message,
+                "processed": True,
+                "reviewedAt": datetime.now(timezone.utc),
+                **({"organizationId": organization_id} if organization_id else {}),
+                **({"teamId": team_id} if team_id else {}),
+            },
+            "update": {},
+        },
+    )
+    if review.status == ReviewStatus.WAITING:
+        return None
+    return ReviewResult(
+        data=review.payload,
+        status=review.status,
+        message=review.reviewMessage or "",
+        processed=review.processed,
+        node_exec_id=review.nodeExecId,
+    )
 
 
 def _review_scope(
@@ -450,6 +503,7 @@ async def get_reviews(
     organization_id: Optional[str] = None,
     graph_runs_only: bool = False,
     oldest_first: bool = False,
+    steps_waiting_in_chat: bool = True,
 ) -> tuple[list[PendingHumanReviewModel], Pagination]:
     """
     Get reviews for a user with pagination, optionally filtered by execution and status.
@@ -463,6 +517,8 @@ async def get_reviews(
         organization_id: Optional org to scope to; also matches untagged rows
         graph_runs_only: Leave out the reviews an AutoPilot chat is waiting on
         oldest_first: Order by creation ascending instead of newest first
+        steps_waiting_in_chat: False leaves out a workflow step whose card waits
+            in a chat, where the card already stands for it
 
     Returns:
         List of reviews and pagination info
@@ -481,6 +537,9 @@ async def get_reviews(
         where["AND"] = [
             {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
         ]
+    # Left out before paging, so a page is never short of its size.
+    if not steps_waiting_in_chat and (in_chat := await _steps_waiting_in_chat(user_id)):
+        where["nodeExecId"] = {"not_in": in_chat}
 
     total_count = await PendingHumanReview.prisma().count(where=where)
 
@@ -514,7 +573,11 @@ async def get_pending_reviews_for_user(
 ) -> list[PendingHumanReviewModel]:
     """Get all pending reviews for a user with pagination."""
     reviews, _ = await get_reviews(
-        user_id=user_id, status=ReviewStatus.WAITING, page=page, page_size=page_size
+        user_id=user_id,
+        status=ReviewStatus.WAITING,
+        page=page,
+        page_size=page_size,
+        steps_waiting_in_chat=False,
     )
     return reviews
 
@@ -554,6 +617,38 @@ async def get_pending_reviews_for_chat_session(
     return await _enrich_pending_reviews(
         user_id, [PendingHumanReviewModel.from_db(r, node_id="") for r in reviews]
     )
+
+
+async def _steps_waiting_in_chat(user_id: str) -> list[str]:
+    """A workflow step whose card waits in the chat is one decision: Home shows
+    the card, not the step's row as well."""
+    cards = await PendingHumanReview.prisma().find_many(
+        where={
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+            "nodeExecId": {"startswith": COPILOT_STEP_CARD_PREFIX},
+        }
+    )
+    return [step for card in cards if (step := _step_of(user_id, card))]
+
+
+def _step_of(user_id: str, card: PendingHumanReview) -> str | None:
+    try:
+        step = _StepCard.model_validate(card.payload).workflow.node_exec_id
+    except ValidationError:
+        return None
+    # The id is derived from the step, so a payload naming another step is ignored.
+    return step if step_card_id(user_id, step) == card.nodeExecId else None
+
+
+class _Step(BaseModel):
+    node_exec_id: str
+
+
+class _StepCard(BaseModel):
+    """The part of a step card's payload that names its step."""
+
+    workflow: _Step
 
 
 async def _enrich_pending_reviews(
@@ -836,6 +931,13 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
 
+    waiting = await PendingHumanReview.prisma().find_many(
+        where={
+            "graphExecId": graph_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
     result = await PendingHumanReview.prisma().update_many(
         where={
             "graphExecId": graph_exec_id,
@@ -849,8 +951,31 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "reviewedAt": datetime.now(timezone.utc),
         },
     )
+    # The gate's cards for those steps would otherwise wait in the chat for nothing.
+    if waiting:
+        await PendingHumanReview.prisma().delete_many(
+            where={
+                "nodeExecId": {
+                    "in": [step_card_id(user_id, r.nodeExecId) for r in waiting]
+                },
+                "userId": user_id,
+            }
+        )
     await sync_awaiting_review(user_id, graph_exec.graph_id)
     return result
+
+
+async def reopen_review(node_exec_id: str, user_id: str) -> int:
+    """Put an answered review back to waiting, for an answer that never took effect."""
+    return await PendingHumanReview.prisma().update_many(
+        where={"nodeExecId": node_exec_id, "userId": user_id},
+        data={
+            "status": ReviewStatus.WAITING,
+            "reviewMessage": None,
+            "reviewedAt": None,
+            "processed": False,
+        },
+    )
 
 
 async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:

@@ -162,7 +162,7 @@ async def test_submitting_reviews_resumes_the_run(mocker: pytest_mock.MockFixtur
     """
     approved = _review("node-a", ReviewStatus.APPROVED)
     rejected = _review("node-b", ReviewStatus.REJECTED)
-    _mock_review_db(
+    close_step_cards = _mock_review_db(
         mocker,
         pending=[approved, rejected],
         processed={"node-a": approved, "node-b": rejected},
@@ -182,6 +182,8 @@ async def test_submitting_reviews_resumes_the_run(mocker: pytest_mock.MockFixtur
     )
     add_graph_execution.assert_awaited_once()
     assert add_graph_execution.await_args.kwargs["graph_exec_id"] == "run-1"
+    # Answered here, a step's approval card in a chat is closed, as on the run page.
+    assert set(close_step_cards.await_args.args[1]) == {"node-a", "node-b"}
 
 
 async def test_reviews_still_pending_leave_the_run_parked(
@@ -857,7 +859,8 @@ def _mock_review_db(
     pending: list[PendingHumanReviewModel],
     processed: dict[str, PendingHumanReviewModel],
     still_pending: bool,
-) -> None:
+) -> mock.AsyncMock:
+    """Stub the review rows; returns the step-card close to assert on."""
     from backend.api.features.graph_executions.review import service as review_service
     from backend.data import execution as execution_db
     from backend.data.execution import ExecutionStatus
@@ -892,6 +895,9 @@ def _mock_review_db(
         "has_pending_reviews_for_graph_exec",
         new=mock.AsyncMock(return_value=still_pending),
     )
+    close_step_cards = mock.AsyncMock()
+    mocker.patch.object(review_service, "close_step_cards", new=close_step_cards)
+    return close_step_cards
 
 
 def _mock_resume_path(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
