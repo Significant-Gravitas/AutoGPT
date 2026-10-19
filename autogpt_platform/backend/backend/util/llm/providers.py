@@ -177,10 +177,10 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
 # Opus 5 still honour one. Hence exact native slugs rather than family
 # prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
 # after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
-# Anthropic documents the restriction for Opus 5.5 and for the Fable 5.1 /
+# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
 # Mythos 5.1 line; add a model here when it documents the same for another.
 _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
-    {"claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
 )
 
 
