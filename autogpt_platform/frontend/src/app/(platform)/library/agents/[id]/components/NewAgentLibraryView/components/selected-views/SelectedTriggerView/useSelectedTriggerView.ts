@@ -11,7 +11,7 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
-import { mergePresetInputs, splitPresetInputs } from "./helpers";
+import { mergeTriggerPresetInputs, splitTriggerPresetInputs } from "./helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -45,7 +45,7 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      const split = splitPresetInputs(query.data.inputs);
+      const split = splitTriggerPresetInputs(query.data.inputs);
       setInputs(split.inputs);
       setTriggerConfig(split.triggerConfig);
       setMaskKey(split.maskKey);
@@ -81,15 +81,14 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
   function handleSaveChanges() {
     if (!query.data) return;
 
-    // Without a mask key there is nowhere to put the trigger config: the key
-    // carries the trigger node's id, which the API never sends to the client.
-    // Saving anyway would drop the edit and still report success.
-    if (!maskKey && Object.keys(triggerConfig).length > 0) {
+    // Without a mask key the backend reads every stored input as trigger config,
+    // so a graph input saved now would land inside it.
+    if (!maskKey && Object.keys(inputs).length > 0) {
       toast({
         title: "Failed to update trigger",
         description:
-          "This trigger's configuration is stored in an outdated format. " +
-          "Delete the trigger and set it up again.",
+          "This trigger was saved in an older format. " +
+          "Save its trigger settings first, then set its inputs.",
         variant: "destructive",
       });
       return;
@@ -104,9 +103,13 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
       updateData.description = description;
     }
 
-    // Send back the stored shape: regular inputs plus the trigger config under
-    // its original mask key, or update_triggered_preset drops the reconfiguration.
-    const mergedInputs = mergePresetInputs({ inputs, triggerConfig, maskKey });
+    // Send back the stored shape, so update_triggered_preset finds the trigger
+    // config where it keeps it.
+    const mergedInputs = mergeTriggerPresetInputs({
+      inputs,
+      triggerConfig,
+      maskKey,
+    });
 
     const inputsChanged =
       JSON.stringify(mergedInputs) !== JSON.stringify(query.data.inputs || {});
@@ -147,7 +150,7 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      const split = splitPresetInputs(query.data.inputs);
+      const split = splitTriggerPresetInputs(query.data.inputs);
       setInputs(split.inputs);
       setTriggerConfig(split.triggerConfig);
       setMaskKey(split.maskKey);

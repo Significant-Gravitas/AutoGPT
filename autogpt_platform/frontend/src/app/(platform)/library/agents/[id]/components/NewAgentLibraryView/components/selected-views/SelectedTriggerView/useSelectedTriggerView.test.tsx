@@ -122,39 +122,65 @@ test("does not send inputs when nothing changed", async () => {
   expect(patched).not.toHaveProperty("inputs");
 });
 
-test("refuses a trigger edit on a preset with no mask key", async () => {
-  // The cohort the SQL data migration skips: inputs are still flat, so there is
-  // no mask key to write the edited trigger config back into.
-  let patched = false;
-  server.use(
+// An attached preset the boot backfill has not nested yet: every stored input is
+// trigger config, which is how the backend reads it.
+const FLAT_INPUTS = { repo: "owner/repo" };
+
+function respondWithFlatPreset(onPatch: (body: Record<string, any>) => void) {
+  return [
     http.get(PRESET_PATH, () =>
       HttpResponse.json({
         id: "preset-1",
         name: "Watcher",
         description: "",
-        inputs: { repo: "owner/repo" },
+        inputs: FLAT_INPUTS,
         credentials: {},
       }),
     ),
-    http.patch(PRESET_PATH, () => {
-      patched = true;
+    http.patch(PRESET_PATH, async (info) => {
+      onPatch((await info.request.json()) as Record<string, any>);
       return HttpResponse.json({
         id: "preset-1",
         name: "Watcher",
         description: "",
-        inputs: { repo: "owner/repo" },
+        inputs: { _node_input_mask_abc123: { repo: "owner/other" } },
         credentials: {},
       });
     }),
-  );
+  ];
+}
+
+test("edits a preset with no mask key as trigger config", async () => {
+  let patched: Record<string, any> | null = null;
+  server.use(...respondWithFlatPreset((body) => (patched = body)));
 
   const { result } = renderTriggerView();
   await waitFor(() => expect(result.current.name).toBe("Watcher"));
+  expect(result.current.triggerConfig).toEqual({ repo: "owner/repo" });
+  expect(result.current.inputs).toEqual({});
 
   act(() => result.current.setTriggerConfigValue("repo", "owner/other"));
   act(() => result.current.handleSaveChanges());
 
-  // Saving used to drop the edit and still toast "Trigger updated".
+  // Sent flat, as stored: update_triggered_preset nests it.
+  await waitFor(() => expect(patched).not.toBeNull());
+  expect(patched!.inputs).toEqual({ repo: "owner/other" });
+  expect(toastMock).not.toHaveBeenCalledWith(
+    expect.objectContaining({ variant: "destructive" }),
+  );
+});
+
+test("refuses a graph input on a preset with no mask key", async () => {
+  let patched = false;
+  server.use(...respondWithFlatPreset(() => (patched = true)));
+
+  const { result } = renderTriggerView();
+  await waitFor(() => expect(result.current.name).toBe("Watcher"));
+
+  act(() => result.current.setInputValue("topic", "sports"));
+  act(() => result.current.handleSaveChanges());
+
+  // The backend would read a flat graph input as trigger config.
   await waitFor(() =>
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ variant: "destructive" }),

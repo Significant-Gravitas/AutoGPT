@@ -11,6 +11,22 @@ export type SplitPresetInputs = {
   maskKey: string | null;
 };
 
+// The backend reads an attached preset with no mask key, one the boot backfill
+// has not nested yet, as all trigger config, and nests it when it is saved.
+export function splitTriggerPresetInputs(
+  presetInputs: Record<string, unknown> | null | undefined,
+): SplitPresetInputs {
+  const split = splitPresetInputs(presetInputs);
+  if (split.maskKey) return split;
+  return { inputs: {}, triggerConfig: split.inputs, maskKey: null };
+}
+
+export function mergeTriggerPresetInputs(
+  split: SplitPresetInputs,
+): Record<string, unknown> {
+  return split.maskKey ? mergePresetInputs(split) : { ...split.triggerConfig };
+}
+
 export function splitPresetInputs(
   presetInputs: Record<string, unknown> | null | undefined,
 ): SplitPresetInputs {

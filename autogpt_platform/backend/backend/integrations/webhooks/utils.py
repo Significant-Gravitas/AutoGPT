@@ -266,9 +266,8 @@ async def migrate_flat_triggered_preset_inputs():
             }
         },
         "InputPresets": {"none": {"name": {"startswith": NODE_INPUT_MASK_PREFIX}}},
-        # A run-template preset sits on a trigger-bearing graph and is
-        # refused below on every boot; excluding it here keeps the converged
-        # scan empty. Attached = triggered; detached needs a trigger field.
+        # Keeps run-template presets out of the scan, except one with an input
+        # named like a trigger field, which is loaded and refused on every boot.
         "OR": [
             {"NOT": [{"webhookId": None}]},
             {"InputPresets": {"some": {"name": {"in": _trigger_config_field_names()}}}},
