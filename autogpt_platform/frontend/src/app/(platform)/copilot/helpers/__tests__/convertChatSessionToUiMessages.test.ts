@@ -362,12 +362,12 @@ function uiUser(
 describe("concatWithAssistantMerge", () => {
   it("returns b unchanged when a is empty", () => {
     const b = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge([], b)).toEqual(b);
+    expect(concatWithAssistantMerge([], b)).toBe(b);
   });
 
   it("returns a unchanged when b is empty", () => {
     const a = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge(a, [])).toEqual(a);
+    expect(concatWithAssistantMerge(a, [])).toBe(a);
   });
 
   it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {
