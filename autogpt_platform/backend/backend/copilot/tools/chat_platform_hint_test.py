@@ -95,7 +95,14 @@ async def _prepare(
             "backend.copilot.tools.helpers.is_unattended_turn",
             return_value=unattended,
         ),
-        patch(f"{_HINT}._any_chat_platform_configured", return_value=bot_configured),
+        patch(
+            f"{_HINT}._configured_chat_platforms",
+            return_value=(
+                frozenset({"discord", "slack", "telegram"})
+                if bot_configured
+                else frozenset()
+            ),
+        ),
         patch(
             "backend.copilot.tools.helpers.turn_credential_pins",
             return_value=pins or {},
