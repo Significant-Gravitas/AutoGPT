@@ -26,7 +26,11 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
-import { useIsExecutionSubscribed } from "./useFlowRealtime";
+import {
+  getWebsocketNodeExecutions,
+  hasGraphStatusFromWebsocket,
+  useIsExecutionSubscribed,
+} from "./useFlowRealtime";
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
@@ -194,21 +198,29 @@ export const useFlow = () => {
   // update node statuses, execution results and edge beads. Executions the
   // store already has are no-ops, so a poll that changed nothing writes
   // nothing. Re-runs when the nodes are rebuilt (customNodes), which drops them.
+  // What the websocket delivered is newer than any snapshot, so its copies
+  // replace the snapshot's and go last.
   useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
       executionDetails.node_executions
     ) {
+      const websocketNodeExecutions = getWebsocketNodeExecutions();
       executionDetails.node_executions.forEach((nodeExecution) => {
+        if (websocketNodeExecutions.has(nodeExecution.node_exec_id)) return;
+        applyNodeExecutionEvent(nodeExecution.node_id, nodeExecution);
+      });
+      websocketNodeExecutions.forEach((nodeExecution) => {
         applyNodeExecutionEvent(nodeExecution.node_id, nodeExecution);
       });
     }
   }, [executionDetails, applyNodeExecutionEvent, customNodes]);
 
-  // update graph execution status
+  // update graph execution status, unless the websocket has already sent a
+  // newer one
   useEffect(() => {
-    if (executionDetails) {
+    if (executionDetails && !hasGraphStatusFromWebsocket()) {
       setGraphExecutionStatus(executionDetails.status as AgentExecutionStatus);
     }
   }, [executionDetails]);

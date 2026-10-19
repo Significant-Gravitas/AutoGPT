@@ -113,8 +113,12 @@ function nodeExecution(nodeID: string, status: NodeStatus) {
 let run: {
   status: "RUNNING" | "COMPLETED";
   nodes: Partial<Record<string, NodeStatus>>;
+  earlierExecutions?: ReturnType<typeof nodeExecution>[];
 };
 let executionRequests: number;
+// While set, execution responses are held back after the backend has read
+// the run, so they arrive stale.
+let heldResponses: Promise<void> | null;
 
 function graphResponse() {
   return {
@@ -158,9 +162,12 @@ function executionResponse() {
     ended_at: run.status === "COMPLETED" ? "2026-01-05T09:00:03.000Z" : null,
     inputs: {},
     outputs: {},
-    node_executions: Object.entries(run.nodes).map(([nodeID, status]) =>
-      nodeExecution(nodeID, status!),
-    ),
+    node_executions: [
+      ...(run.earlierExecutions ?? []),
+      ...Object.entries(run.nodes).map(([nodeID, status]) =>
+        nodeExecution(nodeID, status!),
+      ),
+    ],
   };
 }
 
@@ -215,15 +222,18 @@ describe("builder execution updates", () => {
     socket.reset();
     run = { status: "RUNNING", nodes: { "node-1": "RUNNING" } };
     executionRequests = 0;
+    heldResponses = null;
     server.use(
       http.get(`/api/proxy/api/graphs/${GRAPH_ID}`, () =>
         HttpResponse.json(graphResponse()),
       ),
       http.get(
         `/api/proxy/api/graphs/${GRAPH_ID}/executions/${EXECUTION_ID}`,
-        () => {
+        async () => {
           executionRequests++;
-          return HttpResponse.json(executionResponse());
+          const snapshot = executionResponse();
+          if (heldResponses) await heldResponses;
+          return HttpResponse.json(snapshot);
         },
       ),
       http.get("/api/proxy/api/graphs", () => HttpResponse.json([])),
@@ -320,6 +330,76 @@ describe("builder execution updates", () => {
     await acknowledgeSubscribe();
     expect(await requestsDuring(POLL_INTERVAL_MS * 2.5)).toBe(0);
   }, 20_000);
+
+  it("keeps newer websocket updates when a refetch that was in flight lands after them", async () => {
+    renderBuilder();
+    await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("RUNNING"));
+    act(() => socket.connect());
+    await waitFor(() =>
+      expect(socket.state.subscribes).toEqual([EXECUTION_ID]),
+    );
+
+    let release: () => void = () => undefined;
+    heldResponses = new Promise((resolve) => {
+      release = resolve;
+    });
+    const requestsBefore = executionRequests;
+    act(() => socket.send("subscribe_graph_execution"));
+    await waitFor(() =>
+      expect(executionRequests).toBeGreaterThan(requestsBefore),
+    );
+
+    // The run finishes while the refetch, read as RUNNING, is on its way.
+    run = { status: "COMPLETED", nodes: { "node-1": "COMPLETED" } };
+    act(() => {
+      socket.send("node_execution_event", nodeExecution("node-1", "COMPLETED"));
+      socket.send("graph_execution_event", {
+        id: EXECUTION_ID,
+        status: "COMPLETED",
+      });
+    });
+    expect(nodeStatuses()["node-1"]).toBe("COMPLETED");
+
+    const requestsAtRelease = executionRequests;
+    act(() => release());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    expect(nodeStatuses()["node-1"]).toBe("COMPLETED");
+    expect(useGraphStore.getState().isGraphRunning).toBe(false);
+    expect(useNodeStore.getState().getLatestNodeOutputData("node-1")).toEqual({
+      output: ["node-1"],
+    });
+    expect(executionRequests).toBe(requestsAtRelease);
+  }, 15_000);
+
+  it("keeps the latest execution's status for a node that ran twice", async () => {
+    run = { status: "RUNNING", nodes: { "node-1": "COMPLETED" } };
+    renderBuilder();
+    await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("COMPLETED"));
+    act(() => socket.connect());
+    await acknowledgeSubscribe();
+
+    const secondRun = {
+      ...nodeExecution("node-1", "RUNNING"),
+      node_exec_id: "exec-node-1-again",
+    };
+    act(() => socket.send("node_execution_event", secondRun));
+    expect(nodeStatuses()["node-1"]).toBe("RUNNING");
+
+    // A later snapshot lists both executions, the finished one first.
+    run = {
+      status: "RUNNING",
+      nodes: {},
+      earlierExecutions: [nodeExecution("node-1", "COMPLETED"), secondRun],
+    };
+    await acknowledgeSubscribe();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    expect(nodeStatuses()["node-1"]).toBe("RUNNING");
+    expect(
+      useNodeStore.getState().getNodeExecutionResults("node-1"),
+    ).toHaveLength(2);
+  });
 
   it("ignores a repeated websocket event", async () => {
     renderBuilder();
