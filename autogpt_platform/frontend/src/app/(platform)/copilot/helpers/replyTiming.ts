@@ -12,6 +12,7 @@ import { buildChainSegments } from "../components/ToolChain/helpers";
 import { getVisiblePartKind, type VisiblePartKind } from "../helpers";
 import { isBookkeepingPart } from "../messageParts";
 import { isDrainedUserKey } from "../stream/turnLog";
+import { isChipKey } from "../stream/turnTail";
 import { parseSpecialMarkers } from "./messageMarkers";
 
 export type StreamClient = "ai-sdk" | "stream-runtime";
@@ -46,6 +47,9 @@ export interface ReplyTracking {
   hasReturned: boolean;
   /** The chat waited behind the user's other running turns. */
   wasQueued: boolean;
+  /** The Stop of the turn before still showed at the send, until the send
+   *  clears it: not a Stop of this reply. */
+  isEarlierStop: boolean;
   firstOutput: FirstOutput | null;
   /** The turn was seen over without text: when, and how it would end. */
   ending: ReplyEnding | null;
@@ -126,6 +130,7 @@ export function beginReplyTracking(
     wasActive: false,
     hasReturned: false,
     wasQueued: false,
+    isEarlierStop: view.isUserStopping,
     firstOutput: null,
     ending: null,
   };
@@ -136,7 +141,10 @@ export function advanceReply(
   view: ReplyView,
   now: number,
 ): ReplyStep {
-  if (view.isUserStopping || view.sessionId !== tracking.sessionId) {
+  // A send after a Stop can render before it clears the flag, as when its
+  // files upload first.
+  const isStopped = view.isUserStopping && !tracking.isEarlierStop;
+  if (isStopped || view.sessionId !== tracking.sessionId) {
     return abandonReply(tracking, now);
   }
   // The rows the page draws after what was on screen at the send: a
@@ -166,6 +174,7 @@ export function advanceReply(
       view.status === "submitted" ||
       view.status === "streaming",
     wasQueued: tracking.wasQueued || view.isQueued,
+    isEarlierStop: tracking.isEarlierStop && view.isUserStopping,
     firstOutput:
       tracking.firstOutput ??
       (reply.firstKind ? { ms: elapsed, kind: reply.firstKind } : null),
@@ -248,12 +257,14 @@ function isSentRow(row: UIMessage) {
 }
 
 /** A follow-up taken into a running turn, drawn at its drain point,
- *  promoted above the live reply, or logged in the turn by the stream
- *  runtime: part of that turn, not a new one. */
+ *  promoted above the live reply, or shown by the stream runtime as a chip
+ *  until it logs the follow-up in the turn: part of that turn, not a new
+ *  one. */
 function isFollowUpBubble(row: UIMessage) {
   return (
     isMidTurnFollowUpRow(row) ||
     isMidTurnFallbackRow(row) ||
+    isChipKey(row.id) ||
     isDrainedUserKey(row.id)
   );
 }

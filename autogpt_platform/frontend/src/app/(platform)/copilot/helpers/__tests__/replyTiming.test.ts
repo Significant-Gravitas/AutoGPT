@@ -345,6 +345,30 @@ describe("reply timing", () => {
     });
   });
 
+  it("follows a reply past the chip the stream runtime shows for a follow-up", () => {
+    const chip = text("pending-chip-q1", "user", "and also this");
+    const working = advanceReply(
+      tracked(),
+      streaming([...HISTORY, SENT, toolCall("turn:t1"), chip]),
+      1200,
+    );
+    const answer = assistant("turn:t1", [
+      { type: "step-start" },
+      toolPart("call-1"),
+      { type: "text", text: "Both done." },
+    ]);
+    const step = advanceReply(
+      stillFollowed(working),
+      streaming([...HISTORY, SENT, answer, chip]),
+      1400,
+    );
+
+    expect(step.record).toMatchObject({
+      outcome: "answered",
+      firstTextMs: 400,
+    });
+  });
+
   it("doesn't take an earlier same message for the sent one after a full rebuild", () => {
     const rebuilt = [
       text("seq-1", "user", "new question"),
@@ -467,6 +491,61 @@ describe("reply timing", () => {
     expect(step.record).toMatchObject({
       outcome: "answered",
       firstTextMs: 100,
+    });
+  });
+
+  it("follows a reply sent while the turn before's Stop still showed", () => {
+    const tracking = beginReplyTracking(
+      START,
+      view({ isUserStopping: true }),
+      "ai-sdk",
+    );
+    if (!tracking) throw new Error("the send was not tracked");
+    // Its files uploaded first, so a render still shows that Stop.
+    const sending = advanceReply(
+      tracking,
+      view({
+        messages: [...HISTORY, SENT],
+        status: "submitted",
+        isSettled: false,
+        isUserStopping: true,
+      }),
+      1100,
+    );
+    const step = advanceReply(
+      stillFollowed(sending),
+      streaming([...HISTORY, SENT, text("a1", "assistant", "Done.")]),
+      1300,
+    );
+
+    expect(step.record).toMatchObject({
+      outcome: "answered",
+      firstTextMs: 300,
+    });
+  });
+
+  it("gives up a reply stopped once the turn before's Stop has cleared", () => {
+    const tracking = beginReplyTracking(
+      START,
+      view({ isUserStopping: true }),
+      "ai-sdk",
+    );
+    if (!tracking) throw new Error("the send was not tracked");
+    const working = advanceReply(tracking, streaming(WORKING), 1100);
+    const step = advanceReply(
+      stillFollowed(working),
+      view({
+        messages: WORKING,
+        status: "streaming",
+        isSettled: false,
+        isUserStopping: true,
+      }),
+      1200,
+    );
+
+    expect(step.record).toMatchObject({
+      outcome: "abandoned",
+      endedAt: 1200,
     });
   });
 
