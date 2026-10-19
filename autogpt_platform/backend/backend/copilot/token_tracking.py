@@ -250,7 +250,7 @@ async def persist_and_record_usage(
     # Include entries where cost_usd is set even if token count is 0
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
-    if user_id and (total_tokens > 0 or cost_float is not None):
+    if user_id and (not no_tokens or cost_float is not None):
         # A dream pass logs under its own id as graph_exec_id; only a chat's
         # usage names the chat.
         chat_session_id = chat_session_id_override or (
