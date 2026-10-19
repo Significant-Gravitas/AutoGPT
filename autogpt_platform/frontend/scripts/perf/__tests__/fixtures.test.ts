@@ -8,7 +8,7 @@ import {
   buildRunningExecutions,
 } from "../lib/library-fixture";
 import { FIXTURES_DIR } from "../lib/paths";
-import { clampPace, splitFrames } from "../lib/stream-server";
+import { splitFrames } from "../lib/stream-server";
 import {
   REPLY_20_LINES,
   buildReplyStream,
@@ -87,14 +87,5 @@ describe("library fixture", () => {
     expect(
       executions.every((execution) => execution.status === "RUNNING"),
     ).toBe(true);
-  });
-});
-
-describe("stream server pacing", () => {
-  it("keeps the frame interval between 1 ms and 5 s", () => {
-    expect(clampPace(30)).toBe(30);
-    expect(clampPace(Number.NaN)).toBe(30);
-    expect(clampPace(0)).toBe(30);
-    expect(clampPace(1e9)).toBe(5_000);
   });
 });

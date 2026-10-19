@@ -8,6 +8,8 @@ import { FIXTURES_DIR } from "./paths";
  * Replays a recorded `.sse` body one frame every `paceMs`, so a streamed
  * reply arrives at a steady, repeatable cadence instead of all at once.
  * The harness points the copilot stream request here with `route.continue`.
+ * The fixture and pace of each stream are registered in-process by `url()`;
+ * the request only carries the stream's tag.
  */
 export interface StreamServer {
   url(args: { fixture: string; paceMs: number; tag: string }): string;
@@ -27,14 +29,6 @@ export function readFixture(name: string) {
   return fs.readFileSync(path.join(FIXTURES_DIR, name), "utf8");
 }
 
-const DEFAULT_PACE_MS = 30;
-const MAX_PACE_MS = 5_000;
-
-export function clampPace(value: number) {
-  if (!Number.isFinite(value) || value < 1) return DEFAULT_PACE_MS;
-  return Math.min(Math.round(value), MAX_PACE_MS);
-}
-
 function corsHeaders(request: http.IncomingMessage) {
   return {
     "Access-Control-Allow-Origin": request.headers.origin ?? "*",
@@ -48,6 +42,7 @@ export async function startStreamServer(): Promise<StreamServer> {
   const finished = new Set<string>();
   const waiters = new Map<string, (() => void)[]>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  const streams = new Map<string, { frames: string[]; paceMs: number }>();
 
   function markDone(tag: string) {
     finished.add(tag);
@@ -62,14 +57,12 @@ export async function startStreamServer(): Promise<StreamServer> {
     }
     const params = new URL(request.url ?? "/", "http://localhost").searchParams;
     const tag = params.get("tag") ?? "";
-    const paceMs = clampPace(Number(params.get("pace")));
-    let frames: string[];
-    try {
-      frames = splitFrames(readFixture(params.get("fixture") ?? ""));
-    } catch (error) {
-      response.writeHead(500, corsHeaders(request)).end(String(error));
+    const stream = streams.get(tag);
+    if (!stream) {
+      response.writeHead(404, corsHeaders(request)).end();
       return;
     }
+    const { frames, paceMs } = stream;
     response.writeHead(200, {
       ...corsHeaders(request),
       "Content-Type": "text/event-stream",
@@ -94,8 +87,8 @@ export async function startStreamServer(): Promise<StreamServer> {
 
   return {
     url({ fixture, paceMs, tag }) {
-      const query = new URLSearchParams({ fixture, pace: String(paceMs), tag });
-      return `http://127.0.0.1:${port}/stream?${query}`;
+      streams.set(tag, { frames: splitFrames(readFixture(fixture)), paceMs });
+      return `http://127.0.0.1:${port}/stream?${new URLSearchParams({ tag })}`;
     },
     waitForDone(tag, timeoutMs) {
       if (finished.has(tag)) return Promise.resolve();
