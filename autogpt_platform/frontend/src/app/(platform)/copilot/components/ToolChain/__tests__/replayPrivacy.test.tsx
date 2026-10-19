@@ -27,6 +27,20 @@ function gmailOutput() {
   };
 }
 
+function savedOutput() {
+  return {
+    type: "workspace_file_metadata",
+    message: "Read call-1.json",
+    file_id: "file-1",
+    name: "call-1.json",
+    path: "tool-outputs/call-1.json",
+    mime_type: "application/json",
+    size_bytes: 90000,
+    download_url: "/api/workspace/files/file-1/download",
+    preview: EMAIL,
+  };
+}
+
 function expectHiddenFromReplay(text: string) {
   const element = screen.getByText(text, { exact: false });
   expect(element.closest(".ph-no-capture")).not.toBeNull();
@@ -57,6 +71,52 @@ describe("ChainRowView - session replay privacy", () => {
           tool: "run_capability",
           input: { id: "block:gmail", input: {} },
           output: preview,
+        })}
+        isLast
+      />,
+    );
+
+    expectHiddenFromReplay(EMAIL);
+  });
+
+  it.each([
+    ["by its path", { path: "tool-outputs/call-1.json" }, savedOutput()],
+    // A large read reaches the row as a truncated preview, without a path.
+    [
+      "by its file id",
+      { file_id: "file-1" },
+      `<tool-output-truncated total_chars=90000>\n${EMAIL}`,
+    ],
+  ])(
+    "keeps a workspace file read %s out of session replays",
+    (_label, input, output) => {
+      render(
+        <ChainRowView
+          row={row({
+            tool: "read_workspace_file",
+            text: "Read call-1.json",
+            input,
+            output,
+          })}
+          isLast
+        />,
+      );
+
+      expectHiddenFromReplay(EMAIL);
+    },
+  );
+
+  it("keeps a workspace file read through run_capability out of session replays", () => {
+    render(
+      <ChainRowView
+        row={row({
+          tool: "run_capability",
+          text: "Read call-1.json",
+          input: {
+            id: "tool:read_workspace_file",
+            input: { path: "tool-outputs/call-1.json" },
+          },
+          output: savedOutput(),
         })}
         isLast
       />,
