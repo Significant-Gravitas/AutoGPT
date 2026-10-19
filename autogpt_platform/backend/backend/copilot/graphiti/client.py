@@ -224,7 +224,7 @@ def _build_graphiti(
     # Runs concurrent boolean-classifier prompts (one per candidate
     # edge) and uses log-probabilities to rank. Costs one small call per
     # candidate (up to 2 * context_max_facts) on the reranker model
-    # (gpt-4.1-mini by default) per session-start search. The Compat subclass
+    # (gpt-6-luna by default) per session-start search. The Compat subclass
     # fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
     if cross_encoder is None:
@@ -261,7 +261,7 @@ async def get_graphiti_client(group_id: str):
 
     Returns a ``graphiti_core.Graphiti`` instance.
     """
-    from graphiti_core.llm_client import OpenAIClient
+    from .llm_client import GraphitiOpenAIClient
 
     state = _get_loop_state()
     cache = state.cache
@@ -270,7 +270,7 @@ async def get_graphiti_client(group_id: str):
         if group_id in cache:
             return cache[group_id]
 
-        llm_client = OpenAIClient(config=_build_llm_config())
+        llm_client = GraphitiOpenAIClient(config=_build_llm_config())
         client = _build_graphiti(group_id, llm_client)
         cache[group_id] = client
         return client
@@ -337,14 +337,14 @@ async def make_flex_graphiti_client(group_id: str):
     from .flex_client import FlexOpenAIClient
 
     if not chat_cfg.transport.supports_flex_tier:
-        from graphiti_core.llm_client import OpenAIClient
+        from .llm_client import GraphitiOpenAIClient
 
         logger.info(
             "Graphiti community rebuild: flex tier not available on "
             "transport=%s; falling back to sync OpenAIClient.",
             chat_cfg.transport.name,
         )
-        llm_client = OpenAIClient(config=_build_llm_config())
+        llm_client = GraphitiOpenAIClient(config=_build_llm_config())
     else:
         llm_client = FlexOpenAIClient(config=_build_llm_config())
     return _build_graphiti(group_id, llm_client)

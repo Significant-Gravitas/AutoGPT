@@ -26,7 +26,7 @@ import {
   resolveSessionDryRun,
   retryLostCreateResponse,
 } from "./helpers";
-import { isPaywallError } from "./helpers/sendFailureToast";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
