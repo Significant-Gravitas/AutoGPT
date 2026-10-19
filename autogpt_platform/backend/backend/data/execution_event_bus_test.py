@@ -179,7 +179,7 @@ async def test_async_listen_uses_exec_channel():
 
     captured: list[str] = []
 
-    async def _listen_events(self, channel_key):
+    async def _listen_events(self, channel_key, on_subscribed=None):
         captured.append(channel_key)
         # Return an empty async-generator so the ``async for`` exits cleanly.
         if False:

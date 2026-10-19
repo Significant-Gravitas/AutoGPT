@@ -7,6 +7,7 @@ from typing import (
     Annotated,
     Any,
     AsyncGenerator,
+    Callable,
     Generator,
     Generic,
     Literal,
@@ -1754,11 +1755,15 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
         await super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     async def listen(
-        self, user_id: str, graph_id: str, graph_exec_id: str
+        self,
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+        on_subscribed: Callable[[], None] | None = None,
     ) -> AsyncGenerator[ExecutionEvent, None]:
         """Stream events for a specific graph execution."""
         async for event in self.listen_events(
-            exec_channel(user_id, graph_id, graph_exec_id)
+            exec_channel(user_id, graph_id, graph_exec_id), on_subscribed
         ):
             yield event
 

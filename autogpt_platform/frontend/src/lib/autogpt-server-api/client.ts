@@ -106,6 +106,14 @@ export default class BackendAPI {
   heartbeatIntervalID: number | null = null;
   heartbeatTimeoutID: number | null = null;
 
+  private wsWanted = false;
+  private wsWatchingNetwork = false;
+  private wsReconnectAttempts = 0;
+  private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private wsReconnectWaiters: (() => void)[] = [];
+  private wsHealthyTimer: ReturnType<typeof setTimeout> | null = null;
+  private wsAckWaiters: SubscribeAckWaiter[] = [];
+
   constructor(
     baseUrl: string = environment.getAGPTServerApiUrl(),
     wsUrl: string = environment.getAGPTWsServerUrl(),
@@ -958,16 +966,81 @@ export default class BackendAPI {
   ////////////// WEBSOCKETS //////////////
   ////////////////////////////////////////
 
+  /** Resolves once the server confirms the subscription is live. */
   subscribeToGraphExecution(graphExecID: GraphExecutionID): Promise<void> {
-    return this.sendWebSocketMessage("subscribe_graph_execution", {
-      graph_exec_id: graphExecID,
+    return this._subscribe(
+      "subscribe_graph_execution",
+      { graph_exec_id: graphExecID },
+      `|graph_exec#${graphExecID}`,
+    );
+  }
+
+  /** Resolves once the server confirms the subscription is live. */
+  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
+    return this._subscribe(
+      "subscribe_graph_executions",
+      { graph_id: graphID },
+      `|graph#${graphID}|executions`,
+    );
+  }
+
+  // Sent is not subscribed: a refetch done before the server's ack can miss
+  // an event published in between, so callers wait for the ack.
+  private async _subscribe<M extends SubscribeMethod>(
+    method: M,
+    data: WebsocketMessageTypeMap[M],
+    channelSuffix: string,
+  ): Promise<void> {
+    let waiter: SubscribeAckWaiter | undefined;
+    const ack = new Promise<void>((resolve, reject) => {
+      const pending: SubscribeAckWaiter = {
+        method,
+        channelSuffix,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          this._removeAckWaiter(pending);
+          reject(new Error(`No confirmation for ${method} ${channelSuffix}`));
+        }, WS_SUBSCRIBE_ACK_TIMEOUT_MS),
+      };
+      waiter = pending;
+      this.wsAckWaiters.push(pending);
+    });
+    // A close can reject it while the send is still in flight, before the
+    // caller holds it; callers still see the rejection through the return.
+    ack.catch(() => undefined);
+    try {
+      await this.sendWebSocketMessage(method, data);
+    } catch (error) {
+      if (waiter) this._removeAckWaiter(waiter);
+      throw error;
+    }
+    return ack;
+  }
+
+  private _removeAckWaiter(waiter: SubscribeAckWaiter) {
+    clearTimeout(waiter.timer);
+    this.wsAckWaiters = this.wsAckWaiters.filter((w) => w !== waiter);
+  }
+
+  private _rejectAckWaiters(reason: unknown) {
+    const waiters = this.wsAckWaiters;
+    this.wsAckWaiters = [];
+    waiters.forEach((waiter) => {
+      clearTimeout(waiter.timer);
+      waiter.reject(reason);
     });
   }
 
-  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
-    return this.sendWebSocketMessage("subscribe_graph_executions", {
-      graph_id: graphID,
-    });
+  // The server handles a socket's messages in order, so an ack belongs to the
+  // oldest pending request for that channel, not to every one of them.
+  private _resolveAckWaiters(method: string, channel: string) {
+    const waiter = this.wsAckWaiters.find(
+      (w) => w.method === method && channel.endsWith(w.channelSuffix),
+    );
+    if (!waiter) return;
+    this._removeAckWaiter(waiter);
+    waiter.resolve();
   }
 
   async sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
@@ -1039,23 +1112,30 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     // Do not attempt to connect if a disconnect intent is present (e.g., during logout)
     if (this._hasDisconnectIntent()) {
+      console.info(
+        "[BackendAPI] Skipping WebSocket connect: a logout is in progress",
+      );
       return;
     }
 
     this.isIntentionallyDisconnected = false;
+    this.wsWanted = true;
+    this._watchNetworkForWS();
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
+        let tokenFetchFailed = false;
         try {
-          const { token: serverToken, error } = await getWebSocketToken();
-          if (serverToken && !error) {
-            token = serverToken;
-          } else if (error) {
-            console.warn("Failed to get WebSocket token from server:", error);
+          const result = await fetchWebSocketToken();
+          token = result.token ?? "";
+          tokenFetchFailed = result.transient;
+          if (result.transient) {
+            console.warn("Failed to get WebSocket token:", result.status);
           }
         } catch (error) {
+          // Typically the network is still down (e.g. just after waking up).
+          tokenFetchFailed = true;
           console.warn("Failed to get token for WebSocket connection:", error);
-          // Intentionally fall through; we'll bail out below if no token is available
         }
 
         // If we don't have a token, skip attempting a connection.
@@ -1067,6 +1147,9 @@ export default class BackendAPI {
           resolve();
           this.wsConnecting = null;
           this.webSocket = null;
+          // A signed-out user has no token and nothing to retry; a failed
+          // fetch must not leave live updates dead until the next reload.
+          if (tokenFetchFailed) void this._scheduleWSReconnect();
           return;
         }
 
@@ -1079,6 +1162,11 @@ export default class BackendAPI {
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this._clearDisconnectIntent(); // Clear disconnect intent when connected
+          // Only a socket that stays up resets the backoff; one that opens
+          // and drops at once (e.g. during a Redis outage) keeps backing off.
+          this.wsHealthyTimer = setTimeout(() => {
+            this.wsReconnectAttempts = 0;
+          }, WS_HEALTHY_AFTER_MS);
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1118,13 +1206,16 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
+          if (this.wsHealthyTimer !== null) clearTimeout(this.wsHealthyTimer);
+          this.wsHealthyTimer = null;
+          this._rejectAckWaiters(new WebSocketSubscriptionInterrupted());
 
           const wasIntentional =
             this.isIntentionallyDisconnected || this._hasDisconnectIntent();
 
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
-            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+            this._scheduleWSReconnect().then(resolve);
           } else {
             // Ensure pending connect calls settle on intentional close
             resolve();
@@ -1151,6 +1242,9 @@ export default class BackendAPI {
 
   disconnectWebSocket() {
     this.isIntentionallyDisconnected = true;
+    this.wsWanted = false;
+    this.wsReconnectAttempts = 0;
+    this._cancelWSReconnect();
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (
       this.webSocket &&
@@ -1160,6 +1254,49 @@ export default class BackendAPI {
       this.webSocket.close();
     }
     this.wsConnecting = null;
+  }
+
+  /** Reconnects after a capped, jittered backoff; resolves once that attempt settles. */
+  private _scheduleWSReconnect(): Promise<void> {
+    return new Promise((resolve) => {
+      this.wsReconnectWaiters.push(resolve);
+      if (this.wsReconnectTimer !== null) return;
+      const delay = getWSReconnectDelay(this.wsReconnectAttempts++);
+      this.wsReconnectTimer = setTimeout(() => this._reconnectWSNow(), delay);
+    });
+  }
+
+  private _reconnectWSNow() {
+    if (this.wsReconnectTimer !== null) clearTimeout(this.wsReconnectTimer);
+    this.wsReconnectTimer = null;
+    const waiters = this.wsReconnectWaiters.splice(0);
+    void this.connectWebSocket().finally(() => waiters.forEach((w) => w()));
+  }
+
+  private _cancelWSReconnect() {
+    if (this.wsReconnectTimer !== null) clearTimeout(this.wsReconnectTimer);
+    this.wsReconnectTimer = null;
+    this.wsReconnectWaiters.splice(0).forEach((w) => w());
+  }
+
+  /** Only instances that open a socket listen, so throwaway ones don't leak listeners. */
+  private _watchNetworkForWS() {
+    if (!isClient || this.wsWatchingNetwork) return;
+    this.wsWatchingNetwork = true;
+    window.addEventListener("online", () => this._checkWSConnection());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this._checkWSConnection();
+    });
+  }
+
+  /** Back online or back in view: don't wait out the backoff or the next heartbeat. */
+  private _checkWSConnection() {
+    if (!this.wsWanted || this.isIntentionallyDisconnected) return;
+    if (this.webSocket?.readyState === WebSocket.OPEN) {
+      this._sendWSHeartbeat();
+    } else if (this.wsReconnectTimer !== null) {
+      this._reconnectWSNow();
+    }
   }
 
   private _hasDisconnectIntent(): boolean {
@@ -1187,6 +1324,12 @@ export default class BackendAPI {
   private _handleWSMessage(event: MessageEvent): void {
     const message: WebsocketMessage = JSON.parse(event.data);
 
+    const ack = message as Partial<SubscribeAck>;
+    if (ack.success && typeof ack.channel === "string" && ack.method) {
+      this._resolveAckWaiters(ack.method, ack.channel);
+      return;
+    }
+
     // Handle heartbeat response
     if (message.method === "heartbeat" && message.data === "pong") {
       this._handleWSHeartbeatResponse();
@@ -1205,23 +1348,29 @@ export default class BackendAPI {
 
   private _startWSHeartbeat() {
     this._stopWSHeartbeat();
-    this.heartbeatIntervalID = window.setInterval(() => {
-      if (this.webSocket?.readyState === WebSocket.OPEN) {
-        this.webSocket.send(
-          JSON.stringify({
-            method: "heartbeat",
-            data: "ping",
-            success: true,
-          }),
-        );
+    this.heartbeatIntervalID = window.setInterval(
+      () => this._sendWSHeartbeat(),
+      this.HEARTBEAT_INTERVAL,
+    );
+  }
 
-        this.heartbeatTimeoutID = window.setTimeout(() => {
-          console.warn("Heartbeat timeout - reconnecting");
-          this.webSocket?.close();
-          this.connectWebSocket();
-        }, this.HEARTBEAT_TIMEOUT);
-      }
-    }, this.HEARTBEAT_INTERVAL);
+  private _sendWSHeartbeat() {
+    if (this.webSocket?.readyState !== WebSocket.OPEN) return;
+    if (this.heartbeatTimeoutID) return;
+    this.webSocket.send(
+      JSON.stringify({
+        method: "heartbeat",
+        data: "ping",
+        success: true,
+      }),
+    );
+
+    this.heartbeatTimeoutID = window.setTimeout(() => {
+      this.heartbeatTimeoutID = null;
+      console.warn("Heartbeat timeout - reconnecting");
+      this.webSocket?.close();
+      this.connectWebSocket();
+    }, this.HEARTBEAT_TIMEOUT);
   }
 
   private _stopWSHeartbeat() {
@@ -1241,6 +1390,72 @@ export default class BackendAPI {
       this.heartbeatTimeoutID = null;
     }
   }
+}
+
+const WS_RECONNECT_BASE_DELAY_MS = 1_000;
+const WS_TOKEN_TIMEOUT_MS = 10_000;
+
+/**
+ * The backend JWT for the socket, from Better Auth's token route. A plain
+ * fetch rather than the getWebSocketToken server action: Next runs a page's
+ * server actions one at a time and holds them through navigations, which
+ * could leave a (re)connect waiting on its token indefinitely.
+ */
+async function fetchWebSocketToken(): Promise<{
+  token: string | null;
+  transient: boolean;
+  status: number;
+}> {
+  const response = await fetch("/api/auth/token", {
+    cache: "no-store",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(WS_TOKEN_TIMEOUT_MS),
+  });
+  // No session: nothing to retry until the user signs in again.
+  if (response.status === 401 || response.status === 403) {
+    return { token: null, transient: false, status: response.status };
+  }
+  if (!response.ok) {
+    return { token: null, transient: true, status: response.status };
+  }
+  const { token } = (await response.json()) as { token?: string };
+  return { token: token ?? null, transient: !token, status: response.status };
+}
+const WS_HEALTHY_AFTER_MS = 10_000;
+// Above the server's own bound on opening a stream (15 s) plus the lookup.
+const WS_SUBSCRIBE_ACK_TIMEOUT_MS = 25_000;
+
+/** The socket closed before the server confirmed a subscription; the next
+ * connection resubscribes, so this needs no reporting. */
+export class WebSocketSubscriptionInterrupted extends Error {
+  constructor() {
+    super("WebSocket closed before the subscription was confirmed");
+    this.name = "WebSocketSubscriptionInterrupted";
+  }
+}
+
+type SubscribeMethod =
+  | "subscribe_graph_execution"
+  | "subscribe_graph_executions";
+
+type SubscribeAck = { method: string; success: boolean; channel: string };
+
+type SubscribeAckWaiter = {
+  method: SubscribeMethod;
+  channelSuffix: string;
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+const WS_RECONNECT_MAX_DELAY_MS = 30_000;
+
+/** Exponential backoff with jitter, so a server restart isn't met by every client at once. */
+export function getWSReconnectDelay(attempt: number): number {
+  const ceiling = Math.min(
+    WS_RECONNECT_MAX_DELAY_MS,
+    WS_RECONNECT_BASE_DELAY_MS * 2 ** attempt,
+  );
+  return ceiling / 2 + Math.random() * (ceiling / 2);
 }
 
 declare global {
