@@ -20,6 +20,7 @@ import {
   isFromBot,
   isNextRSCNavigationFallback,
   stripLogUserPII,
+  stripSpanPII,
   stripUserPII,
 } from "../sentry-filters";
 
@@ -184,6 +185,18 @@ describe("Sentry user privacy filters", () => {
       "server.address": "platform.agpt.co",
       "users.count": 3,
       "ip.allowlist_enabled": true,
+    });
+  });
+
+  it("leaves a transaction with no span data as it is", () => {
+    const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
+    const event = { type: "transaction" as const, contexts: { trace } };
+
+    expect(stripSpanPII(event)).toEqual({
+      type: "transaction",
+      contexts: {
+        trace: { trace_id: "a".repeat(32), span_id: "b".repeat(16) },
+      },
     });
   });
 });

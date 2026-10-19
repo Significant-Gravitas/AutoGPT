@@ -180,6 +180,59 @@ describe.each([
     }
   });
 
+  it("sends transactions whose spans carry no IP address, email or name", async () => {
+    await load();
+
+    const { beforeSendTransaction } = initMock.mock.calls[0][0];
+    const event = beforeSendTransaction({
+      type: "transaction",
+      transaction: "GET /library",
+      contexts: {
+        trace: {
+          trace_id: "a".repeat(32),
+          span_id: "b".repeat(16),
+          data: {
+            "http.client_ip": "203.0.113.7",
+            "net.peer.ip": "203.0.113.7",
+            "net.host.ip": "10.0.0.2",
+            "client.address": "203.0.113.7",
+            "network.peer.address": "203.0.113.7",
+            "http.route": "/library",
+            "server.address": "platform.agpt.co",
+            "user.id": "user-1",
+          },
+        },
+      },
+      spans: [
+        {
+          trace_id: "a".repeat(32),
+          span_id: "c".repeat(16),
+          start_timestamp: 1,
+          data: {
+            "net.sock.peer.addr": "203.0.113.7",
+            "net.peer.ip": "203.0.113.7",
+            "user.email": "ada@example.com",
+            "user.name": "ada",
+            "user.id": "user-1",
+            "http.route": "/api/library",
+            "server.address": "backend.agpt.co",
+          },
+        },
+      ],
+    });
+
+    expect(event.contexts.trace.data).toEqual({
+      "http.route": "/library",
+      "server.address": "platform.agpt.co",
+      "user.id": "user-1",
+    });
+    expect(event.spans[0].data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/api/library",
+      "server.address": "backend.agpt.co",
+    });
+  });
+
   it("sends logs with the user id only, and no email, name or IP address", async () => {
     await load();
 

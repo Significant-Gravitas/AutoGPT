@@ -120,14 +120,23 @@ export function stripUserPII<T extends Event>(event: T): T {
   return event;
 }
 
-// The SDK copies the scope's user id, email and username into every log's
-// attributes, and logs skip beforeSend. An IP address can arrive as
-// `client.address`, `http.client_ip`, `user.ip_address` or a bare `ip`.
-const LOG_IP_ATTRIBUTE = /(^|\.)(ip|ip_address|client_ip|client\.address)$/i;
+// The SDK copies the scope's user id, email and username into every log's and
+// span's attributes, and the HTTP instrumentation records the visitor's
+// address on server spans. An IP address can arrive as `client.address`,
+// `http.client_ip`, `net.peer.ip`, `net.host.ip`, `net.sock.peer.addr`,
+// `network.peer.address`, `user.ip_address` or a bare `ip`.
+const IP_ATTRIBUTE =
+  /(^|\.)(ip|ip_address|client_ip|client\.address|sock\.peer\.addr|network\.peer\.address)$/i;
 
-function isPrivateLogAttribute(name: string) {
+function isPrivateAttribute(name: string) {
   if (name.startsWith("user.")) return name !== "user.id";
-  return LOG_IP_ATTRIBUTE.test(name);
+  return IP_ATTRIBUTE.test(name);
+}
+
+function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([name]) => !isPrivateAttribute(name)),
+  );
 }
 
 type SentryLog = Parameters<
@@ -137,10 +146,18 @@ type SentryLog = Parameters<
 // Logs are known to Sentry by the user id only, like errors and transactions.
 export function stripLogUserPII(log: SentryLog): SentryLog {
   if (!log.attributes) return log;
-  log.attributes = Object.fromEntries(
-    Object.entries(log.attributes).filter(
-      ([name]) => !isPrivateLogAttribute(name),
-    ),
-  );
+  log.attributes = withoutPrivateAttributes(log.attributes);
   return log;
+}
+
+// Transactions carry their root span's attributes in the trace context and
+// every child span's in its own data, and beforeSendTransaction is the last
+// place to take the visitor's IP address, email and name out of either.
+export function stripSpanPII<T extends Event>(event: T): T {
+  const trace = event.contexts?.trace;
+  if (trace?.data) trace.data = withoutPrivateAttributes(trace.data);
+  for (const span of event.spans ?? []) {
+    if (span.data) span.data = withoutPrivateAttributes(span.data);
+  }
+  return event;
 }

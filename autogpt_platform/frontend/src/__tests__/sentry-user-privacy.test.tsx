@@ -126,6 +126,46 @@ describe("a signed-in user in Sentry", () => {
     }
   });
 
+  it("sends transactions whose spans carry no IP address or email", async () => {
+    Sentry.startSpan(
+      {
+        name: "load page",
+        forceTransaction: true,
+        attributes: {
+          "client.address": IP,
+          "http.client_ip": IP,
+          "http.route": "/library",
+        },
+      },
+      () => {
+        Sentry.startSpan(
+          {
+            name: "GET /api/library",
+            attributes: {
+              "net.peer.ip": IP,
+              "user.email": EMAIL,
+              "user.id": "user-1",
+              "server.address": "backend.agpt.co",
+            },
+          },
+          () => {},
+        );
+      },
+    );
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+    const [transaction] = sent;
+    expect(transaction.contexts?.trace?.data?.["http.route"]).toBe("/library");
+    expect(transaction.spans).toHaveLength(1);
+    expect(transaction.spans?.[0].data).toMatchObject({
+      "user.id": "user-1",
+      "server.address": "backend.agpt.co",
+    });
+    expect(JSON.stringify(transaction)).not.toContain(IP);
+    expect(JSON.stringify(transaction)).not.toContain(EMAIL);
+  });
+
   it("is identified by id only in logs, whatever other code puts on the scope", async () => {
     Sentry.setUser({
       id: "user-1",

@@ -5,6 +5,7 @@
 import {
   stripLogUserPII,
   stripRequestCredentials,
+  stripSpanPII,
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
@@ -38,7 +39,7 @@ Sentry.init({
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)
       ? null
-      : stripUserPII(stripRequestCredentials(event));
+      : stripSpanPII(stripUserPII(stripRequestCredentials(event)));
   },
   beforeSendLog: stripLogUserPII,
 

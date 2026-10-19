@@ -9,6 +9,7 @@ import {
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
   stripLogUserPII,
+  stripSpanPII,
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
@@ -53,7 +54,9 @@ Sentry.init({
     return isNextRSCNavigationFallback(event) ? null : event;
   },
   beforeSendTransaction(event) {
-    return isFromBot(navigator.userAgent) ? null : stripUserPII(event);
+    return isFromBot(navigator.userAgent)
+      ? null
+      : stripSpanPII(stripUserPII(event));
   },
   beforeSendLog: stripLogUserPII,
 
