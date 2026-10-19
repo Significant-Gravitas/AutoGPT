@@ -289,9 +289,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     });
   },
   getHardCodedValues: (nodeId: string) => {
-    return (
-      get().nodes.find((n) => n.id === nodeId)?.data?.hardcodedValues || {}
-    );
+    return findNodeById(get().nodes, nodeId)?.data?.hardcodedValues || {};
   },
   convertCustomNodeToBackendNode: (node: CustomNode) => {
     return {
@@ -318,7 +316,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => applyExecutionUpdate(state, nodeId, { status }));
   },
   getNodeStatus: (nodeId: string) => {
-    return get().nodes.find((n) => n.id === nodeId)?.data?.status;
+    return findNodeById(get().nodes, nodeId)?.data?.status;
   },
 
   cleanNodesStatuses: () => {
@@ -340,9 +338,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     useEdgeStore.getState().updateEdgeBeads(nodeId, result);
   },
   getNodeExecutionResults: (nodeId: string) => {
-    return (
-      get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResults || []
-    );
+    return findNodeById(get().nodes, nodeId)?.data?.nodeExecutionResults || [];
   },
   getLatestNodeInputData: (nodeId: string) => {
     return get().latestNodeInputData[nodeId];
@@ -358,8 +354,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
   getLatestNodeExecutionResult: (nodeId: string) => {
     const results =
-      get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResults ||
-      [];
+      findNodeById(get().nodes, nodeId)?.data?.nodeExecutionResults || [];
     return results.length > 0 ? results[results.length - 1] : undefined;
   },
   clearAllNodeExecutionResults: () => {
@@ -406,7 +401,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
 
   getNodeErrors: (nodeId: string) => {
-    return get().nodes.find((n) => n.id === nodeId)?.data?.errors;
+    return findNodeById(get().nodes, nodeId)?.data?.errors;
   },
 
   setNodeErrorsForBackendId: (
@@ -584,6 +579,26 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return mismatch?.newType;
   },
 }));
+
+const nodeIndexes = new WeakMap<CustomNode[], Map<string, CustomNode>>();
+
+/**
+ * O(1) lookup by id. Every node subscribes with a by-id selector, so a `find`
+ * per selector costs O(nodes²) per store update; the index is built once per
+ * `nodes` array instead. Store writes always replace the array, never mutate
+ * it, so an index can never go stale. The first match wins, as with `find`.
+ */
+function findNodeById(nodes: CustomNode[], nodeId: string) {
+  let index = nodeIndexes.get(nodes);
+  if (!index) {
+    index = new Map();
+    for (const node of nodes) {
+      if (!index.has(node.id)) index.set(node.id, node);
+    }
+    nodeIndexes.set(nodes, index);
+  }
+  return index.get(nodeId);
+}
 
 /**
  * Applies a status and/or an execution result to one node in a single write.
