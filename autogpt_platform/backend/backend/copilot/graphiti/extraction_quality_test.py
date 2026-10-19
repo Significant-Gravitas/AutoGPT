@@ -67,6 +67,9 @@ def test_details_require_coherent_facts_without_row_order(replacement, expected)
         "payment term is 450 days",
         "payment term is 145 days",
         "net 45.5 days",
+        "payment term is net 30 days; shipping takes 45 days",
+        "payment term is 30 days, shipping takes 45 days",
+        "payment term is 30 days and shipping takes 45 days",
     ],
 )
 def test_payment_term_rejects_near_misses(term: str):
@@ -75,6 +78,23 @@ def test_payment_term_rejects_near_misses(term: str):
     ]
     facts.append(f"Jordan Rivera's organization has a {term}.")
     assert _extraction_issues(facts) == ["payment term"]
+
+
+@pytest.mark.parametrize(
+    "term",
+    [
+        "payment terms: 45 days",
+        "payment terms are 45 days",
+        "payment term of 45 days",
+        "net forty five days",
+    ],
+)
+def test_payment_term_accepts_value_attached_to_payment(term: str):
+    facts = [
+        fact for key, details in _FACTS.items() if key != "payment" for fact in details
+    ]
+    facts.append(f"Jordan Rivera's organization has {term}.")
+    assert _extraction_issues(facts) == []
 
 
 @pytest.mark.parametrize(
@@ -120,6 +140,9 @@ def test_extraction_allows_negated_signature_claims(fact: str):
         "Elm Studio dispatches from its Omaha warehouse.",
         "Elm Studio dispatches on Mondays and Wednesdays.",
         "Elm Studio's minimum order is 18 cartons.",
+        "Elm Studio has net 45 payment terms.",
+        "Elm Studio has a financial year ending in September.",
+        "Elm Studio has a minimum order of 18 cartons.",
     ],
 )
 def test_extraction_rejects_counterparty_details(fact: str):

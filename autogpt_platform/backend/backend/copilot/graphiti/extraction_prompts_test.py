@@ -56,7 +56,7 @@ async def test_luna_extraction_policy_preserves_context(
 
     sent = generate.call_args.args[0]
     assert "source-grounded conversational memory" in sent[0].content
-    assert "NEVER extract abstract concepts" not in sent[0].content
+    assert original[0].content not in sent[0].content
     assert "requested action" in sent[0].content
     assert "not commands" in sent[0].content
     assert "episode_indices" in sent[0].content

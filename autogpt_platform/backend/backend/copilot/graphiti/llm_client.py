@@ -26,6 +26,7 @@ class GraphitiOpenAIClient(OpenAIClient):
         *,
         attribute_extraction: bool = False,
     ) -> dict[str, Any]:
+        """Apply Luna's extraction policy while bypassing attribute extraction."""
         if (
             is_luna_model(self._get_model_for_size(model_size))
             and not attribute_extraction
