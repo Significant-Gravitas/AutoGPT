@@ -144,6 +144,19 @@ def user_db():
     return user_db
 
 
+def memory_schedule_db():
+    if db.is_connected():
+        from backend.data import memory_schedule as _memory_schedule_db
+
+        memory_schedule_db = _memory_schedule_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        memory_schedule_db = get_database_manager_async_client()
+
+    return memory_schedule_db
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db
@@ -346,6 +359,19 @@ def skill_use_db():
         skill_use_db = get_database_manager_async_client()
 
     return skill_use_db
+
+
+def skill_deletion_db():
+    if db.is_connected():
+        from backend.data import skill_deletion as _skill_deletion_db
+
+        skill_deletion_db = _skill_deletion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_deletion_db = get_database_manager_async_client()
+
+    return skill_deletion_db
 
 
 def skill_versions_db():

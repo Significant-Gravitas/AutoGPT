@@ -3,7 +3,7 @@ import logging
 from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Query, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
@@ -17,6 +17,7 @@ from backend.copilot.gate.workflow import (
     step_of,
     step_rule_keys,
 )
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -191,7 +192,11 @@ async def list_pending_reviews_for_chat_session(
     return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
-@router.post("/action", response_model=ReviewResponse)
+@router.post(
+    "/action",
+    response_model=ReviewResponse,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def process_review_action(
     request: ReviewRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
