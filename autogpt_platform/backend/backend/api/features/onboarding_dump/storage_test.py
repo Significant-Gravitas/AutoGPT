@@ -183,7 +183,7 @@ def _handler(mocker: MockerFixture, bucket: str = "private-bucket") -> MagicMock
 
 
 @pytest.mark.asyncio
-async def test_recordings_are_stored_marked_with_a_backstop_expiry(
+async def test_recordings_are_stored_marked_with_an_expiry(
     mocker: MockerFixture,
 ):
     handler = _handler(mocker)
@@ -203,10 +203,12 @@ async def test_recordings_are_stored_marked_with_a_backstop_expiry(
 def test_a_recording_due_just_after_one_sweep_goes_within_48_hours():
     """The sweep runs once per ``RECORDING_PURGE_INTERVAL``, so a recording
     just short of the max age at one run goes at the next, and that run
-    needs time to finish."""
+    gets half an hour to reach it."""
+    assert storage.audio_max_age() == timedelta(hours=46, minutes=30)
+
     deleted_by = storage.audio_max_age() + storage.RECORDING_PURGE_INTERVAL
 
-    assert deleted_by + timedelta(minutes=10) <= timedelta(hours=48)
+    assert deleted_by + timedelta(minutes=30) <= timedelta(hours=48)
 
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)

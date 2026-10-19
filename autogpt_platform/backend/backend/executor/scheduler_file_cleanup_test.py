@@ -1,10 +1,12 @@
 """The scheduled cloud-storage cleanups: voice recordings, and the rest."""
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from apscheduler.executors.base import run_job
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -55,6 +57,43 @@ def test_the_purge_job_clears_rows_through_the_database_manager(
     scheduler.purge_expired_recordings_job()
 
     purge.assert_awaited_once_with(db.clear_brain_dump_audio_paths)
+
+
+def test_a_failed_purge_is_reported_as_an_error(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    """The job raises rather than swallowing the failure, so APScheduler logs
+    it at ERROR with the traceback, which Sentry's logging integration
+    captures. A sweep that keeps failing has to be seen: nothing else deletes
+    the recordings."""
+    mocker.patch.object(scheduler, "get_database_manager_async_client")
+    mocker.patch.object(
+        scheduler,
+        "purge_expired_recordings",
+        AsyncMock(side_effect=RuntimeError("bucket down")),
+    )
+    mocker.patch.object(scheduler, "run_async", side_effect=_run)
+    background = BackgroundScheduler(
+        jobstores={"default": MemoryJobStore()}, timezone=timezone.utc
+    )
+    background.start(paused=True)
+    job = background.add_job(
+        scheduler.purge_expired_recordings_job, id=scheduler.RECORDING_PURGE_JOB_ID
+    )
+    try:
+        with caplog.at_level(logging.ERROR, logger="apscheduler"):
+            run_job(
+                job,
+                "default",
+                [datetime.now(timezone.utc)],
+                "apscheduler.executors.default",
+            )
+    finally:
+        background.shutdown(wait=False)
+
+    [record] = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert record.exc_info is not None
+    assert isinstance(record.exc_info[1], RuntimeError)
 
 
 class TestRecordingPurgeRegistration:

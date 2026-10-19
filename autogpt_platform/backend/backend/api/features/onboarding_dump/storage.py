@@ -40,11 +40,13 @@ PART_BUFFER_TTL_SECONDS = 6 * 60 * 60
 # takes, and deletes that failed) once it reaches this age.
 AUDIO_RETENTION = timedelta(hours=48)
 
-# The blob's own expiry, read by the generic cleanup, is only a backstop for
-# a sweep that keeps failing. It sits a day past the sweep's reach, so it
-# never races the sweep for a recording whose row still points at it; if it
-# ever fires, the download route already answers 404 for a missing file.
-AUDIO_BACKSTOP_EXPIRATION_HOURS = int(
+# The blob's own expiry, in the custom metadata the generic cleanup reads.
+# Don't count on it: that cleanup lists only the first page of the bucket
+# (1,000 objects), so in a bucket of any size it never reaches recordings,
+# and the sweep is the only thing that deletes them. It sits a day past the
+# sweep's reach, so where the cleanup does reach it, it never races the sweep
+# for a recording whose row still points at it.
+AUDIO_EXPIRATION_HOURS = int(
     (AUDIO_RETENTION + timedelta(days=1)).total_seconds() // 3600
 )
 
@@ -61,8 +63,9 @@ RECORDING_MARKER_VALUE = "true"
 RECORDING_PURGE_INTERVAL = timedelta(hours=1)
 
 # A recording just short of the max age at one run goes at the next, once
-# that run reaches it. The scheduler gives a run 5 minutes.
-_PURGE_RUN_ALLOWANCE = timedelta(minutes=15)
+# that run reaches it. The scheduler gives a run 5 minutes; the rest covers
+# a run that starts late.
+_PURGE_RUN_ALLOWANCE = timedelta(minutes=30)
 
 
 def audio_max_age() -> timedelta:
@@ -166,7 +169,7 @@ async def store_audio(user_id: str, content: bytes, filename: str) -> str:
     return await handler.store_file(
         content,
         filename,
-        expiration_hours=AUDIO_BACKSTOP_EXPIRATION_HOURS,
+        expiration_hours=AUDIO_EXPIRATION_HOURS,
         user_id=user_id,
         delete_when_expired=True,
         custom_metadata={RECORDING_MARKER_KEY: RECORDING_MARKER_VALUE},
