@@ -196,7 +196,21 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
+    # DIAGNOSTIC (SECRT-2966, to be reverted): dump every thread's stack while
+    # the event loop has not ticked for 2 s.
+    import faulthandler
+
+    async def _dump_stacks_on_loop_stall():
+        while True:
+            faulthandler.dump_traceback_later(2.0, repeat=True)
+            await asyncio.sleep(0.25)
+
+    _stall_dumper = asyncio.create_task(_dump_stacks_on_loop_stall())
+
     yield
+
+    _stall_dumper.cancel()
+    faulthandler.cancel_dump_traceback_later()
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
