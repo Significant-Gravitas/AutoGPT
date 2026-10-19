@@ -20,8 +20,13 @@ import { notFound } from "next/navigation";
 import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedulesSection";
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
-import { AUTOPILOT_PILL_CLASS } from "../helpers";
+import {
+  PROFILE_TABS_INDICATOR_CLASS,
+  PROFILE_TABS_LIST_CLASS,
+  PROFILE_TABS_TRIGGER_CLASS,
+} from "../helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
@@ -29,7 +34,7 @@ import { useAutopilotPage } from "./useAutopilotPage";
 import { useAutopilotTab } from "./useAutopilotTab";
 
 const MAIN_CLASS =
-  "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
+  "container min-h-screen max-w-[1180px] space-y-5 px-4 pb-16 pt-6 sm:px-8 md:px-12";
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
@@ -80,11 +85,25 @@ export default function AutopilotPage() {
         Built in, always on your team.
       </Text>
 
-      <TabsLine variant="compact" value={activeTab} onValueChange={onTabChange}>
-        <TabsLineList className="overflow-x-auto">
+      <TabsLine
+        data-profile-tabs
+        variant="compact"
+        value={activeTab}
+        onValueChange={onTabChange}
+      >
+        <TabsLineList
+          flush={false}
+          className={PROFILE_TABS_LIST_CLASS}
+          indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
+        >
           {TABS.map((tab) => (
-            <TabsLineTrigger key={tab.value} value={tab.value} icon={tab.icon}>
-              {tab.label}
+            <TabsLineTrigger
+              className={PROFILE_TABS_TRIGGER_CLASS}
+              key={tab.value}
+              value={tab.value}
+              icon={tab.icon}
+            >
+              <span className="max-sm:sr-only">{tab.label}</span>
             </TabsLineTrigger>
           ))}
         </TabsLineList>
@@ -106,8 +125,8 @@ export default function AutopilotPage() {
           <ExpertWorkflowsSection
             expertName={AUTOPILOT_NAME}
             workflows={workflows}
-            accentClassName={AUTOPILOT_PILL_CLASS}
-            emptyMessage="No workflows yet. Workflows in your library that no expert owns show up here."
+            coverColor={AUTOPILOT_HEX}
+            emptyMessage="Workflows in your library that no expert owns show up here."
           />
         </TabsLineContent>
 

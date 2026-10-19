@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { http, HttpResponse } from "msw";
+
 import { getPostV2GenerateSubmissionImageMockHandler } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { server } from "@/mocks/mock-server";
 import {
@@ -19,6 +22,7 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
     >();
   return {
     ...actual,
+    toast: (...args: unknown[]) => toastSpy(...args),
     useToast: () => ({
       toast: toastSpy,
       dismiss: () => {},
@@ -26,6 +30,10 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
     }),
   };
 });
+
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+}));
 
 const uploadSpy = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/direct-upload", async (importOriginal) => {
@@ -131,6 +139,74 @@ describe("ThumbnailImages", () => {
         }),
       );
     });
+  });
+
+  it("points an account without a plan to the plans when an upload is refused", async () => {
+    toastSpy.mockClear();
+    uploadSpy.mockRejectedValueOnce(
+      new ApiError("A subscription is required.", 402, null),
+    );
+
+    render(
+      <ThumbnailImages
+        agentId="agent-1"
+        onImagesChange={() => {}}
+        initialImages={[]}
+      />,
+    );
+    const input = document.getElementById("image-upload") as HTMLInputElement;
+    selectFile(input, new File(["data"], "thumb.png", { type: "image/png" }));
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+    const [paywall] = toastSpy.mock.calls[0];
+    expect(paywall).toMatchObject({
+      title: "Uploading images needs an active plan",
+    });
+    render(
+      <>
+        {paywall.description}
+        {paywall.action}
+      </>,
+    );
+    expect(screen.getByText("Choose one to continue.")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "See plans" }).getAttribute("href"),
+    ).toBe("/settings/billing");
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Upload failed" }),
+    );
+  });
+
+  it("points an account without a plan to the plans when generating is refused", async () => {
+    toastSpy.mockClear();
+    server.use(
+      http.post("*/api/store/submissions/generate_image", () =>
+        HttpResponse.json(
+          { detail: "A subscription is required." },
+          { status: 402 },
+        ),
+      ),
+    );
+
+    render(
+      <ThumbnailImages
+        agentId="agent-1"
+        onImagesChange={() => {}}
+        initialImages={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /generate/i }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Generating an image needs an active plan",
+        }),
+      ),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Generation failed" }),
+    );
   });
 
   it("rejects an oversized file before uploading and explains the size limit", async () => {

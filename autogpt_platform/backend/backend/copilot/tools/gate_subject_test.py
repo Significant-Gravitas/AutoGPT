@@ -30,6 +30,7 @@ from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate import RUN_FILES_KEY
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
@@ -53,6 +54,7 @@ from backend.util import sandbox_login
 from backend.util.sandbox_login import READ_CAP
 from backend.util.sandbox_login_test import FakeRedis, FakeSandbox, stock_files
 
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 _GATE = "backend.copilot.gate"
 _BASH = "backend.copilot.tools.bash_exec"
 _CLASSIFIER = "backend.copilot.gate.classifier"
@@ -217,10 +219,6 @@ async def test_an_approved_irreversible_block_asks_once(gate):
         patch(
             "backend.copilot.tools.run_block.prepare_block_for_execution",
             AsyncMock(return_value=prep),
-        ),
-        patch(
-            "backend.copilot.tools.run_block.get_current_permissions",
-            return_value=None,
         ),
         patch(
             "backend.copilot.tools.run_block.check_spend_approval",

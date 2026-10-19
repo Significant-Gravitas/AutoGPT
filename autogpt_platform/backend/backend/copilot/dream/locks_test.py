@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.scope import MemoryScope
+
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
@@ -41,7 +43,9 @@ async def test_dream_lock_stores_uuid_token_and_releases_via_compare_and_delete(
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-a", ttl_seconds=DEFAULT_LOCK_TTL_SECONDS) as handle:
+    async with dream_lock(
+        MemoryScope.for_user("user-a"), ttl_seconds=DEFAULT_LOCK_TTL_SECONDS
+    ) as handle:
         token = handle.token
 
     # Acquire: SETNX with a uuid4 ownership token as the value, not "1".
@@ -67,7 +71,7 @@ async def test_dream_lock_raises_when_already_held(mocker):
     _patch_redis(mocker, redis)
 
     with pytest.raises(DreamLockHeld):
-        async with dream_lock("user-b"):
+        async with dream_lock(MemoryScope.for_user("user-b")):
             pytest.fail("should not enter the body when lock is held")
 
     # And critically: we don't try to delete a key that wasn't ours.
@@ -80,7 +84,7 @@ async def test_expert_dream_lock_uses_isolated_memory_scope_key(mocker):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-a", expert_id="expert-a"):
+    async with dream_lock(MemoryScope.for_expert("user-a", "expert-a")):
         pass
 
     key = redis.set.call_args.args[0]
@@ -96,7 +100,7 @@ async def test_dream_lock_swallows_release_failure(mocker, caplog):
 
     # The TTL is the fallback release, so a release failure must not
     # propagate up to the orchestrator.
-    async with dream_lock("user-c"):
+    async with dream_lock(MemoryScope.for_user("user-c")):
         pass
 
     assert "Failed to release dream lock" in caplog.text
@@ -109,7 +113,7 @@ async def test_release_on_exit_skips_delete_when_token_mismatch(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-d"):
+    async with dream_lock(MemoryScope.for_user("user-d")):
         pass
 
     redis.eval.assert_awaited_once()
@@ -125,7 +129,7 @@ async def test_dream_lock_disown_skips_release_and_extends_ttl(mocker):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-e") as handle:
+    async with dream_lock(MemoryScope.for_user("user-e")) as handle:
         await handle.extend(BATCH_LOCK_TTL_SECONDS)
         handle.disown()
 
@@ -151,7 +155,7 @@ async def test_extend_warns_when_lock_already_expired(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-f") as handle:
+    async with dream_lock(MemoryScope.for_user("user-f")) as handle:
         await handle.extend(BATCH_LOCK_TTL_SECONDS)
         handle.disown()
 
@@ -191,7 +195,7 @@ async def test_extend_leaves_lock_reacquired_by_newer_pass_untouched(mocker, cap
     )
     _patch_redis(mocker, redis)
 
-    async with dream_lock("user-m") as handle:
+    async with dream_lock(MemoryScope.for_user("user-m")) as handle:
         # Simulate expiry + re-acquire by a newer pass before our extend.
         store[key] = "tok-newer-pass"
         ttls[key] = DEFAULT_LOCK_TTL_SECONDS
@@ -208,7 +212,7 @@ async def test_release_dream_lock_compare_and_deletes_with_token(mocker):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    await release_dream_lock("user-g", "tok-g")
+    await release_dream_lock(MemoryScope.for_user("user-g"), "tok-g")
 
     redis.eval.assert_awaited_once()
     eval_args = redis.eval.call_args.args
@@ -226,7 +230,7 @@ async def test_release_skips_delete_when_token_mismatch(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
-    await release_dream_lock("user-h", "stale-token")
+    await release_dream_lock(MemoryScope.for_user("user-h"), "stale-token")
 
     redis.eval.assert_awaited_once()
     redis.delete.assert_not_awaited()
@@ -240,7 +244,7 @@ async def test_release_without_token_leaves_lock_for_ttl(mocker, caplog):
     redis = _redis_mock()
     _patch_redis(mocker, redis)
 
-    await release_dream_lock("user-i", None)
+    await release_dream_lock(MemoryScope.for_user("user-i"), None)
 
     redis.eval.assert_not_awaited()
     redis.delete.assert_not_awaited()
@@ -252,7 +256,7 @@ async def test_release_dream_lock_swallows_redis_failure(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(side_effect=Exception("redis down")))
     _patch_redis(mocker, redis)
 
-    await release_dream_lock("user-j", "tok-j")
+    await release_dream_lock(MemoryScope.for_user("user-j"), "tok-j")
 
     assert "Failed to release disowned dream lock" in caplog.text
 
@@ -262,7 +266,7 @@ async def test_read_dream_lock_token_decodes_current_holder(mocker):
     redis = _redis_mock(get=AsyncMock(return_value=b"tok-bytes"))
     _patch_redis(mocker, redis)
 
-    assert await read_dream_lock_token("user-k") == "tok-bytes"
+    assert await read_dream_lock_token(MemoryScope.for_user("user-k")) == "tok-bytes"
     redis.get.assert_awaited_once_with("dream:inflight:user-k")
 
 
@@ -271,4 +275,4 @@ async def test_read_dream_lock_token_none_when_unheld(mocker):
     redis = _redis_mock(get=AsyncMock(return_value=None))
     _patch_redis(mocker, redis)
 
-    assert await read_dream_lock_token("user-l") is None
+    assert await read_dream_lock_token(MemoryScope.for_user("user-l")) is None
