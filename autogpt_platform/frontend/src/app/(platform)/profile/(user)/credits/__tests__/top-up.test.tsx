@@ -72,4 +72,47 @@ describe("legacy credits page top-up", () => {
     expect(topUp.hasAttribute("disabled")).toBe(false);
     expect(upgrade.hasAttribute("disabled")).toBe(false);
   });
+
+  test.each(["fails", "returns a checkout"])(
+    "starts one checkout for a double click while the request is pending, and settles if it %s",
+    async (outcome) => {
+      const checkoutURL = "https://checkout.stripe.com/pay/cs_top_up";
+      let topUps = 0;
+      let finishTopUp = () => {};
+      const pending = new Promise<void>((resolve) => {
+        finishTopUp = resolve;
+      });
+      server.use(
+        http.post("*/api/credits", async () => {
+          topUps += 1;
+          await pending;
+          return outcome === "fails"
+            ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
+            : HttpResponse.json({ checkout_url: checkoutURL });
+        }),
+      );
+
+      render(<CreditsPage />);
+      const topUp = await screen.findByRole("button", { name: "Top-up" });
+      const form = topUp.closest("form")!;
+
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      await waitFor(() => expect(topUps).toBe(1));
+      expect(topUp.hasAttribute("disabled")).toBe(true);
+      fireEvent.submit(form);
+
+      finishTopUp();
+      if (outcome === "fails") {
+        await waitFor(() => expect(topUp.hasAttribute("disabled")).toBe(false));
+      } else {
+        await waitFor(() =>
+          expect(routerPush).toHaveBeenCalledWith(checkoutURL),
+        );
+        await act(async () => {});
+        expect(topUp.hasAttribute("disabled")).toBe(true);
+      }
+      expect(topUps).toBe(1);
+    },
+  );
 });

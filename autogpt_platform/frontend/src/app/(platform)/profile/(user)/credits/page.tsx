@@ -89,6 +89,7 @@ export default function CreditsPage() {
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
   const checkoutRedirect = useCheckoutRedirect();
+  const [isRequestingTopUp, setIsRequestingTopUp] = useState(false);
 
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [topUpTransactions, setTopUpTransactions] = useState<
@@ -134,13 +135,15 @@ export default function CreditsPage() {
 
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (checkoutRedirect.isRedirecting) return;
+    if (isRequestingTopUp || checkoutRedirect.isRedirecting) return;
     const form = e.currentTarget;
     const amount =
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
+    setIsRequestingTopUp(true);
     requestTopUp(amount)
       .then(() => checkoutRedirect.markRedirecting())
-      .catch(toastOnFail("request top-up"));
+      .catch(toastOnFail("request top-up"))
+      .finally(() => setIsRequestingTopUp(false));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -210,7 +213,7 @@ export default function CreditsPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={checkoutRedirect.isRedirecting}
+              disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
             >
               Top-up
             </Button>
