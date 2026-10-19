@@ -46,4 +46,13 @@ describe("isJsonTextFor", () => {
       }),
     ).toBe(true);
   });
+
+  // Once the field shows the stored (rounded) number, later edits must not be
+  // flagged again, or every keystroke would rewrite the field.
+  it("matches a big number written as it is stored", () => {
+    expect(
+      isJsonTextFor("[12345678901234567000]", [12345678901234567000]),
+    ).toBe(true);
+    expect(isJsonTextFor("[9007199254740992]", [9007199254740992])).toBe(true);
+  });
 });

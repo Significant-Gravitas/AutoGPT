@@ -21,13 +21,15 @@ export function isJsonTextFor(text: string, value: unknown): boolean {
 const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
 const NUMBER_LITERAL = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 
-// A number JSON.parse can only round (an integer past 2^53, or one too large
-// to hold at all) would be saved as something other than what is on screen.
+// A number JSON.parse can only round (an integer that doesn't read back as
+// the same digits, or one too large to hold at all) would be saved as
+// something other than what is on screen. An integer written as it is stored
+// reads back unchanged, so the field stops being rewritten once it shows it.
 function hasInexactNumber(text: string): boolean {
   const numbers = text.replace(STRING_LITERAL, '""').match(NUMBER_LITERAL);
   return (numbers ?? []).some((literal) => {
     const parsed = Number(literal);
     if (!Number.isFinite(parsed)) return true;
-    return /^-?\d+$/.test(literal) && !Number.isSafeInteger(parsed);
+    return /^-?\d+$/.test(literal) && String(parsed) !== literal;
   });
 }

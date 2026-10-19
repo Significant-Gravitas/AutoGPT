@@ -76,4 +76,11 @@ describe("JsonTextField", () => {
 
     await waitFor(() => expect(getJsonField().value).toBe('{\n  "b": 2\n}'));
   });
+
+  it("keeps typing next to a number stored as a rounded big integer", async () => {
+    render(<RowsForm rows={[{ id: 12345678901234567000 }]} />);
+    const field = getJsonField();
+
+    await expectTypingKept(field, ', "a": 1', field.value.indexOf("\n}"));
+  });
 });
