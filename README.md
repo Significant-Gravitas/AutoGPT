@@ -62,7 +62,7 @@ A 15-second highlight of a real run, edited and sped up. In this example, the te
 2. **Brief them on the job.** Share the context, connect the apps they need, and agree on the first outcome.
 3. **Review and refine.** Check the work and adjust the instructions. Activate routines for jobs that keep coming back.
 
-You choose which accounts each Expert can access, set spending approval thresholds, and follow progress in their activity.
+You choose which accounts each Expert can access, set spending controls, and follow progress in their activity.
 
 [See how it works →](https://agpt.co/how-it-works/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=how_it_works)
 
