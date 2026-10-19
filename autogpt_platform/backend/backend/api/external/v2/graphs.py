@@ -329,12 +329,12 @@ async def set_active_version(
         )
     owned_by_caller(new_active_graph, auth, f"Graph #{graph_id}")
 
-    current_active_graph = await graph_db.get_graph(
-        graph_id=graph_id,
-        version=None,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
+    # Not `get_graph(version=None)`, which returns the newest version, a draft
+    # included.
+    versions = await graph_db.get_graph_all_versions(
+        graph_id, user_id=auth.user_id, organization_id=auth.organization_id
     )
+    current_active_graph = next((v for v in versions if v.is_active), None)
 
     new_active_graph = await before_graph_activate(
         new_active_graph, user_id=auth.user_id
