@@ -1,6 +1,6 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import type { ToolUIPart } from "ai";
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import { HeldOutcomesContext } from "../HeldOutcomesContext";
 import { withHeldOutcome } from "../heldCallRows";
 import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
@@ -36,11 +36,12 @@ export function ChainMessageParts({
   liveCompactionStats,
 }: Props) {
   const outcomes = useContext(HeldOutcomesContext);
-  // Chain rows keep the held stub: applyHeldOutcome words them from it.
-  const resolved = parts.map((part) =>
-    isChainableToolPart(part) ? part : withHeldOutcome(part, outcomes),
+  // Kept per `parts` so each ToolChain gets the same `parts` array back and
+  // its own row derivation stays memoised.
+  const segments = useMemo(
+    () => buildChainSegments(parts, isChainableToolPart),
+    [parts],
   );
-  const segments = buildChainSegments(resolved, isChainableToolPart);
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );
@@ -58,11 +59,17 @@ export function ChainMessageParts({
         />
       );
     }
+    // Outside the chain a part renders from its held call's outcome; chain rows
+    // keep the stub, which applyHeldOutcome words.
     if (segment.kind === "experts") {
       return (
         <ExpertChangeGroup
           key={`${messageID}-experts-${segment.index}`}
-          parts={segment.parts as ToolUIPart[]}
+          parts={
+            segment.parts.map((part) =>
+              withHeldOutcome(part, outcomes),
+            ) as ToolUIPart[]
+          }
           isCurrentlyStreaming={isCurrentlyStreaming}
           readOnly={readOnly}
         />
@@ -71,7 +78,7 @@ export function ChainMessageParts({
     return (
       <MessagePartRenderer
         key={`${messageID}-${segment.index}`}
-        part={segment.part}
+        part={withHeldOutcome(segment.part, outcomes)}
         messageID={messageID}
         partIndex={segment.index}
         onRetry={onRetry}

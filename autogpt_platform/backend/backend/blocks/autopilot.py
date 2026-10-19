@@ -736,10 +736,12 @@ class AutoPilotBlock(Block):
 def _out_of_budget_message(pause: "TurnPause") -> str:
     """What a graph run shows for a turn refused for want of budget.
 
-    The executor runs a block turn on the credit balance once the plan's
-    allowance is used up, so a refusal means the balance can't pay for one
-    either: the message says both, how to add credits, and when the
-    allowance resets, if it does.
+    Where credits can pay for block turns (``credits_can_pay_block_turns``),
+    the executor runs one on the credit balance once the plan's allowance is
+    used up, so a refusal means the balance can't pay for it either: the
+    message says both and how to add credits. Elsewhere it says only that the
+    allowance is used up. Either way it ends with when the allowance resets,
+    if it does.
     """
     allowance = "the trial's" if pause.reason == "trial" else "your plan's"
     credits_url = f"{Settings().config.frontend_base_url.rstrip('/')}/profile/credits"

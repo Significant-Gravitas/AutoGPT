@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from .routing import resolve_dream_execution_path
+from .routing import batch_discount, resolve_dream_execution_path
 
 
 @pytest.mark.parametrize(
@@ -45,6 +45,13 @@ def test_local_and_subscription_transports_force_sync_baseline(transport_name):
         )
         == "sync_baseline"
     )
+
+
+@pytest.mark.parametrize(
+    "path,expected", [("sync_baseline", 0.0), ("anthropic_batch", 0.5)]
+)
+def test_batch_discount_is_half_on_the_anthropic_batch_path_only(path, expected):
+    assert batch_discount(path) == expected
 
 
 @pytest.mark.parametrize("transport_name", ["openrouter", "direct_anthropic", None])

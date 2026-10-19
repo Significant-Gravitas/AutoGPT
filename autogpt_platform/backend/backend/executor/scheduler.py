@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import hashlib
 import logging
 import os
@@ -8,9 +9,10 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import Future
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -21,16 +23,23 @@ from apscheduler.events import (
     EVENT_JOB_MISSED,
 )
 from apscheduler.job import Job as JobObj
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, create_engine, or_
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.retention import (
+    RecordingPurgeResult,
+    purge_expired_recordings,
+)
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -39,18 +48,42 @@ from backend.copilot.at_reset import (
     fire_verdict,
     load_at_reset_chat,
 )
+from backend.copilot.at_reset_lock import at_reset_job_lock
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.db import PaginatedMessages
+from backend.copilot.dream.deadline import bridge_timeout
 from backend.copilot.dream.scheduling import (
-    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
-    NIGHTLY_BATCH_REGISTRATION_PREFIX,
-    SKILL_LEARNING_REGISTRATION_PREFIX,
-    clear_registration_marker,
+    COMMUNITY_REBUILD_JOB_PREFIX,
+    DREAM_SYSTEM_JOBS,
+    NIGHTLY_BATCH_JOB_PREFIX,
+    SKILL_LEARNING_JOB_PREFIX,
+    DreamSystemJob,
+    dream_system_job,
+    jobs_for,
+)
+from backend.copilot.dream.scope_crons import (
+    forget_registration,
+    log_community_outcome,
+    log_nightly_outcome,
+    memory_job_kwargs,
+    memory_job_result,
+    memory_job_skipped,
+    memory_scope_may_fire,
+    nightly_error_parts,
+    record_scope_run,
+)
+from backend.copilot.dream.scope_jobs import scope_label
+from backend.copilot.dream.scope_reconcile import (
+    RECONCILE_INTERVAL_MINUTES,
+    RECONCILED_SUFFIX,
+    ListedCron,
+    reconcile,
 )
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
@@ -59,12 +92,16 @@ from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
+from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
+from backend.data.user import is_user_banned
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
-from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -90,6 +127,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
@@ -102,6 +140,9 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    from backend.copilot.dream.nightly_batch import NightlyBatchResult
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -142,6 +183,18 @@ SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
+
+# The memory cron reconcile reads every registry row; it must finish well
+# inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
+# Its listing of the dream-system crons runs inside that ceiling, and the
+# database stops that query at its own limit: cancelling the wait leaves
+# the thread running.
+MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS = 20 * 60
+MEMORY_CRON_LISTING_TIMEOUT_SECONDS = 60
+# Each of the reconcile's jobstore writes gives up after this on a row another
+# transaction holds (``jobstore.WRITE_TIMEOUT``), failing only its scope.
+MEMORY_CRON_WRITE_TIMEOUT_SECONDS = 10
+_MEMORY_CRON_RECONCILE_JOB_ID = "reconcile_memory_scope_crons"
 
 
 def job_listener(event):
@@ -200,12 +253,37 @@ def get_event_loop():
     return _event_loop
 
 
-def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
-    """Run a coroutine in the shared event loop and wait for completion."""
+def run_async(
+    coro,
+    timeout: float | None = SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+    *,
+    cancel_on_timeout: bool = False,
+):
+    """Run a coroutine in the shared event loop and wait for completion.
+
+    A ``TimeoutError`` does not prove the operation had no effect: it may
+    have finished just as the wait ended, or be past a write it cannot take
+    back. By default the coroutine is left running after a timeout.
+    ``cancel_on_timeout`` requests its cancellation (requested, not awaited:
+    it stops at its next await, possibly after this returns); only callers
+    whose coroutine is safe to stop anywhere pass it, today the memory
+    registry bridges. Graph dispatch is not: ``_add_graph_execution``
+    creates the execution row before its remaining lookups, and cancelled
+    there it leaves that row INCOMPLETE, never published or failed. Making
+    it cancellation-safe is the follow-up that would let the default flip.
+    """
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     try:
         return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        if cancel_on_timeout:
+            future.cancel()
+        logger.warning(
+            f"Async operation timed out after {timeout}s; "
+            + ("cancellation requested" if cancel_on_timeout else "not cancelled")
+        )
+        raise
     except Exception as e:
         logger.warning(f"Async operation failed: {type(e).__name__}: {e}")
         raise
@@ -271,6 +349,9 @@ async def _execute_graph(**kwargs):
         # Expected while the owner has no subscription: skip quietly. The
         # schedule stays registered so it resumes on its own once they
         # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserBannedError as e:
+        # Kept registered, so the schedule resumes if the ban is lifted.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -950,10 +1031,20 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
 # When a chat's resume or send at the reset was cancelled, by job id. A job
 # cancelled while it runs is already out of the job store, so the cancel
 # finds nothing to remove; before firing or putting itself back the job looks
-# here. In process, like the jobs themselves: one scheduler runs them.
+# here. Kept in Redis, since the replica that takes the cancel need not be the
+# one running the job, and in this process too, for when Redis can't be read.
 _at_reset_cancels: dict[str, datetime] = {}
 _at_reset_cancels_lock = threading.Lock()
 _AT_RESET_CANCEL_MEMORY = timedelta(hours=2)
+_AT_RESET_CANCEL_KEY_PREFIX = "copilot:at_reset_cancel:"
+# Kept as a sorted set's score, in microseconds since the epoch, and only
+# ever moved later: a write that stalled and lands after a newer cancel can't
+# put the older time back.
+_AT_RESET_CANCEL_MEMBER = "cancelled_at"
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# How long writing or reading a cancel waits on Redis, whose client retries
+# for far longer, before going on with only this replica's memory of it.
+_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS = 2
 
 # An at-reset turn that can't fire yet (the chat is busy, the budget or the
 # expert can't be read, the queue turned it away) tries again five minutes
@@ -976,7 +1067,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
         if chat is None:
             return
         verdict = await fire_verdict(kind, chat, args.created_at)
-        if _cancelled_after_set(args):
+        if await _cancelled_after_set(args):
             logger.info(
                 f"{kind}-at-reset turn for session {label} was cancelled "
                 "while it ran; dropping it"
@@ -1091,13 +1182,33 @@ async def _rearm_at_reset_turn(args: "CopilotTurnJobArgs", *, reason: str) -> No
 async def _readd_at_reset_turn(
     args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
 ) -> None:
-    """Put an at-reset turn back under its own id, keeping when it was set."""
-    if _cancelled_after_set(args):
-        logger.info(
-            f"Not putting back the {args.purpose}-at-reset turn for session "
-            f"{_session_id_label(args)}: it was cancelled while it ran"
-        )
-        return
+    """Put an at-reset turn back under its own id, keeping when it was set.
+
+    Under the job's lock, so a send the user writes or a cancel they make
+    meanwhile, on whichever replica, lands wholly before or after it.
+    """
+    job_lock = (
+        at_reset_job_lock(args.schedule_id) if args.schedule_id else nullcontext(True)
+    )
+    async with job_lock as locked:
+        if not locked:
+            # Losing the user's turn would be worse than racing their write.
+            logger.warning(
+                f"Putting back the {args.purpose}-at-reset turn for session "
+                f"{_session_id_label(args)} without its lock"
+            )
+        if await _cancelled_after_set(args):
+            logger.info(
+                f"Not putting back the {args.purpose}-at-reset turn for session "
+                f"{_session_id_label(args)}: it was cancelled while it ran"
+            )
+            return
+        await _put_back_at_reset_turn(args, run_at=run_at, retries=retries)
+
+
+async def _put_back_at_reset_turn(
+    args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
+) -> None:
     try:
         # Under its own id this is safe to repeat, and a put-back lost on a
         # connection the scheduler had just closed would drop the user's turn.
@@ -1146,18 +1257,62 @@ def _remember_at_reset_cancel(job_id: str) -> None:
         for key in stale:
             del _at_reset_cancels[key]
         _at_reset_cancels[job_id] = now
+    try:
+        # Waited for: the cancel route holds the job's lock until this
+        # returns, and a put-back that takes the lock next must find it.
+        run_async(
+            _share_at_reset_cancel(job_id, now),
+            # The write keeps its own deadline; this one only backs it up.
+            timeout=_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS + 1,
+        )
+    except Exception:
+        logger.warning(
+            f"Could not share the cancel of at-reset job {job_id}; only this "
+            "replica knows of it",
+            exc_info=True,
+        )
 
 
-def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
+async def _share_at_reset_cancel(job_id: str, cancelled_at: datetime) -> None:
+    key = f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}"
+    micros = (cancelled_at - _EPOCH) // timedelta(microseconds=1)
+    async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+        redis = await get_redis_async()
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zadd(key, {_AT_RESET_CANCEL_MEMBER: micros}, gt=True)
+            pipe.expire(key, _AT_RESET_CANCEL_MEMORY)
+            await pipe.execute()
+
+
+async def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
     """Whether the user cancelled this job after it was set: setting it
     again after a cancel makes a new job, set later than the cancel."""
     if args.schedule_id is None:
         return False
-    with _at_reset_cancels_lock:
-        cancelled_at = _at_reset_cancels.get(args.schedule_id)
+    cancelled_at = await _at_reset_cancelled_at(args.schedule_id)
     if cancelled_at is None:
         return False
     return args.created_at is None or args.created_at <= cancelled_at
+
+
+async def _at_reset_cancelled_at(job_id: str) -> datetime | None:
+    """When the job was last cancelled, on any replica. This replica's own
+    memory stands in for Redis when Redis can't be read."""
+    with _at_reset_cancels_lock:
+        here = _at_reset_cancels.get(job_id)
+    try:
+        async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+            redis = await get_redis_async()
+            micros = await redis.zscore(
+                f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}", _AT_RESET_CANCEL_MEMBER
+            )
+    except Exception:
+        logger.warning(
+            f"Could not read the cancels of at-reset job {job_id}", exc_info=True
+        )
+        return here
+    anywhere = None if micros is None else _EPOCH + timedelta(microseconds=micros)
+    return max((at for at in (here, anywhere) if at is not None), default=None)
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -1247,45 +1402,100 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
-def execute_community_rebuild(user_id: str):
-    """Per-user Graphiti community rebuild (P-1.7).
+def purge_expired_recordings_job():
+    """Delete brain-dump voice recordings that reached their max age."""
+    run_async(_purge_expired_recordings())
+
+
+async def _purge_expired_recordings() -> RecordingPurgeResult:
+    db = get_database_manager_async_client()
+    return await purge_expired_recordings(db.clear_brain_dump_audio_paths)
+
+
+def execute_community_rebuild(user_id: str, expert_id: str | None = None):
+    """Weekly community-rebuild cron body of one memory scope (P-1.7).
+
+    The job is ``community_rebuild_{scope_key}``. The account's jobs pass
+    only ``user_id``, as they did when the crons were per user. Runs only
+    while ``_memory_scope_may_fire`` lets it, and stamps
+    ``lastCommunityRunAt`` when the rebuild finishes without an error.
+    """
+    scope = MemoryScope.build(user_id, expert_id)
+    if not _memory_scope_may_fire(scope):
+        return
+    result = _rebuild_scope_communities(scope)
+    if result is not None and not result.get("error"):
+        _stamp_scope_run(scope, "community")
+
+
+def _rebuild_scope_communities(scope: MemoryScope) -> dict | None:
+    """Flag-gated community rebuild of one scope, with its outcome logged.
 
     Sync wrapper around the async ``rebuild_communities_for_user`` so it
     can run on the APScheduler thread pool. Failures are caught inside
     the coroutine; this wrapper logs the outcome.
 
     Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
-    on→off after the schedule was registered, this body short-circuits
-    instead of running. Registration-time gating is in
-    ``add_community_rebuild_schedule``; this is the third layer of
+    on→off after the schedule was registered, this returns None instead
+    of running. Registration-time gating is in
+    ``add_scope_community_rebuild_schedule``; this is the third layer of
     defense (see ``copilot/dream/scheduling.py`` module docstring).
     """
     from backend.copilot.graphiti.config import is_communities_enabled_for_user
 
-    if not run_async(is_communities_enabled_for_user(user_id)):
+    if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
         logger.info(
-            "Community rebuild skipped for user %s — flag flipped off post-registration",
-            user_id[:12],
+            "Community rebuild skipped for %s — flag flipped off post-registration",
+            scope_label(scope),
         )
-        return
+        return None
 
     result = run_async(
-        rebuild_communities_for_user(user_id),
+        rebuild_communities_for_user(scope.owner_user_id, expert_id=scope.expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
-    if result.get("error"):
-        logger.warning(
-            "Community rebuild errored for user %s: %s",
-            user_id[:12],
-            result["error"],
+    log_community_outcome(scope, result)
+    return result
+
+
+def _memory_scope_may_fire(scope: MemoryScope) -> bool:
+    """The registry gate of a dream-system cron (``memory_scope_may_fire``),
+    run on the scheduler loop. The gate bounds itself; if the bridge still
+    gives up, the gate's cancellation is requested and the run skipped."""
+    # A banned owner's crons stay registered and resume if the ban is lifted.
+    try:
+        banned = run_async(
+            is_user_banned(scope.owner_user_id),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
         )
-    else:
-        logger.info(
-            "Community rebuild completed for user %s in %.1fs: %s",
-            user_id[:12],
-            result.get("elapsed_seconds") or 0.0,
-            result.get("communities_built"),
+    except Exception:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        return False
+    if banned:
+        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+        return False
+    try:
+        return run_async(
+            memory_scope_may_fire(scope, _expert_scope_status),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
         )
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: gate timed out")
+        return False
+
+
+def _stamp_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> None:
+    """Record a clean run on the scope's registry row; best-effort."""
+    try:
+        run_async(
+            record_scope_run(scope, kind),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"Could not stamp the {kind} run of {scope_label(scope)}")
 
 
 def _morning_briefing_crontab(user_id: str) -> str:
@@ -1301,6 +1511,7 @@ def _morning_briefing_crontab(user_id: str) -> str:
 
 
 _POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+RECORDING_PURGE_JOB_ID = "purge_expired_brain_dump_recordings"
 
 
 def _job_timezone_name(job: JobObj) -> str | None:
@@ -1357,8 +1568,30 @@ async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
         )
 
 
-def execute_nightly_batch_sync(user_id: str):
-    """Per-user nightly batch-family fan-out cron body.
+def execute_nightly_batch_sync(
+    user_id: str, expert_id: str | None = None
+) -> "NightlyBatchResult | None":
+    """Nightly batch-family cron body of one memory scope.
+
+    The job is ``dream_nightly_batch_{scope_key}``. The account's jobs pass
+    only ``user_id``, as they did when the crons were per user. Runs only
+    while ``_memory_scope_may_fire`` lets it, and stamps ``lastNightlyRunAt``
+    when the fan-out reports no error. Returns the ``NightlyBatchResult``,
+    or ``None`` when a gate short-circuits.
+    """
+    scope = MemoryScope.build(user_id, expert_id)
+    if not _memory_scope_may_fire(scope):
+        return None
+    result = _submit_nightly_batch(user_id, expert_id)
+    if result is not None and not nightly_error_parts(result):
+        _stamp_scope_run(scope, "nightly")
+    return result
+
+
+def _submit_nightly_batch(
+    user_id: str, expert_id: str | None = None
+) -> "NightlyBatchResult | None":
+    """Flag-gated nightly batch-family fan-out of one scope, outcome logged.
 
     Sync wrapper for APScheduler. The body inside
     ``run_nightly_batch_submit`` sequentially invokes each enabled
@@ -1371,9 +1604,8 @@ def execute_nightly_batch_sync(user_id: str):
 
     Runtime flag gate (layer 3 of the 3-layer design): if
     ``DREAM_PASS_ENABLED`` flipped off after the cron was registered,
-    this body short-circuits before any submitter runs. The
-    consolidation removes the separate dream / ratification crons —
-    both are now submitters inside this single nightly cron.
+    this short-circuits before any submitter runs. The budget check
+    inside the fan-out stays on the owner, whichever scope runs.
 
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
@@ -1386,63 +1618,39 @@ def execute_nightly_batch_sync(user_id: str):
     )
     from backend.util.feature_flag import Flag, is_feature_enabled
 
+    scope = MemoryScope.build(user_id, expert_id)
     if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
         logger.info(
-            "Nightly batch skipped for user %s — DREAM_PASS_ENABLED flipped off",
-            user_id[:12],
+            "Nightly batch skipped for %s — DREAM_PASS_ENABLED flipped off",
+            scope_label(scope),
         )
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id),
+        run_nightly_batch_submit(user_id, expert_id=expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
-    if result.error:
-        logger.warning(
-            "Nightly batch errored for user %s (nightly %s): %s",
-            user_id[:12],
-            result.nightly_id,
-            result.error,
-        )
-    elif result.skipped:
-        logger.info(
-            "Nightly batch skipped for user %s (nightly %s): %s",
-            user_id[:12],
-            result.nightly_id,
-            result.skip_reason,
-        )
-    else:
-        dream_writes = result.dream.consolidated_count if result.dream else 0
-        dream_proposals = result.dream.proposal_count if result.dream else 0
-        rat_ratified = result.ratification.ratified_count if result.ratification else 0
-        rat_superseded = (
-            result.ratification.superseded_count if result.ratification else 0
-        )
-        logger.info(
-            "Nightly batch completed for user %s in %.1fs (nightly %s): "
-            "dream_writes=%d dream_proposals=%d ratified=%d superseded=%d",
-            user_id[:12],
-            result.elapsed_seconds or 0.0,
-            result.nightly_id,
-            dream_writes,
-            dream_proposals,
-            rat_ratified,
-            rat_superseded,
-        )
+    log_nightly_outcome(scope, result)
     return result
 
 
 def execute_skill_learning_sync(user_id: str):
-    """Per-user nightly skill-learning cron body (independent of the dream pass).
+    """The account's nightly skill-learning cron body (independent of the
+    dream pass); the job is ``skill_learning_nightly_{user_id}``.
 
-    Runtime flag gate (layer 3): if ``DREAM_SKILL_LEARNING_ENABLED`` flipped
-    off after the cron was registered, the body returns before any work.
-    The pass itself never raises; its outcome is logged here and kept in
-    the per-source review ledger.
+    Runs only while ``_memory_scope_may_fire`` lets the account's scope, as
+    the other dream-system crons do: a cron that straggles past a pause or a
+    wipe of the account's memory does nothing. Runtime flag gate (layer 3):
+    if ``DREAM_SKILL_LEARNING_ENABLED`` flipped off after the cron was
+    registered, the body returns before any work. The pass itself never
+    raises; its outcome is logged here and kept in the per-source review
+    ledger.
     """
     from backend.copilot.learning.nightly import run_skill_learning_pass
     from backend.util.feature_flag import Flag, is_feature_enabled
 
+    if not _memory_scope_may_fire(MemoryScope.for_user(user_id)):
+        return None
     if not run_async(is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)):
         logger.info(
             "Skill learning skipped for user %s — flag flipped off", user_id[:12]
@@ -1532,7 +1740,9 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
     try:
-        result = execute_nightly_batch_sync(user_id)
+        # The admin trigger bypasses the registry gate of the cron body:
+        # it runs the account's pass whatever state its scope row is in.
+        result = _submit_nightly_batch(user_id)
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1570,36 +1780,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             skip_reason="dream_pass_disabled_runtime",
         )
 
-    # ``run_nightly_batch_submit`` never raises — a submitter CRASH is
-    # captured in ``NightlyBatchResult.error``, while a submitter that
-    # ran but reported its own failure carries it on its sub-result
-    # (``dream.error`` / ``ratification.error``) with the top-level
-    # error left unset. The admin row must read errored for all of
-    # these — otherwise the Memory Visualizer renders a failed dream
-    # as a successful nightly run (same contract as the dream-pass
-    # wrapper below).
-    error_parts = [
-        part
-        for part in (
-            result.error,
-            (
-                f"dream: {result.dream.error}"
-                if result.dream is not None and result.dream.error
-                else None
-            ),
-            (
-                f"ratification: {result.ratification.error}"
-                if result.ratification is not None and result.ratification.error
-                else None
-            ),
-            (
-                f"learning: {result.learning.error}"
-                if result.learning is not None and result.learning.error
-                else None
-            ),
-        )
-        if part
-    ]
+    # The admin row must read errored for every error the result carries
+    # (see ``nightly_error_parts``) — otherwise the Memory Visualizer
+    # renders a failed dream as a successful nightly run (same contract as
+    # the dream-pass wrapper below).
+    error_parts = nightly_error_parts(result)
     if error_parts:
         try:
             run_async(
@@ -1834,22 +2019,129 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         )
 
 
-def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
-    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+# Each dream-system cron's body and crontab, by job-id prefix: weekly
+# community rebuild at owner-local 04:00 on Mondays (APScheduler counts
+# weekdays from 0 = Monday), nightly batch at owner-local 03:00.
+_MEMORY_CRONS: dict[str, tuple[Callable[..., object], str]] = {
+    COMMUNITY_REBUILD_JOB_PREFIX: (execute_community_rebuild, "0 4 * * 0"),
+    NIGHTLY_BATCH_JOB_PREFIX: (execute_nightly_batch_sync, "0 3 * * *"),
+    SKILL_LEARNING_JOB_PREFIX: (execute_skill_learning_sync, "0 3 * * *"),
+}
+# A missed run is caught up only within this many seconds; None (the
+# scheduler's default) catches it up however late. Skill learning's catch-up
+# after downtime is capped to the same morning: at most one run (coalesce),
+# and the pass re-checks every source's eligibility anyway.
+_MEMORY_CRON_MISFIRE_GRACE: dict[str, int | None] = {
+    SKILL_LEARNING_JOB_PREFIX: 6 * 3600,
+}
 
-    Best-effort: a failed clear only delays lazy re-registration until
-    the marker's 7-day TTL expires, so it must never break the delete
-    RPC that called it.
-    """
+
+def execute_expert_memory_cron(
+    func: Callable[..., object], user_id: str, expert_id: str
+) -> object:
+    """A distinct reference so old binaries park expert-only job payloads."""
+    return func(user_id=user_id, expert_id=expert_id)
+
+
+def reconcile_memory_scope_crons() -> None:
+    """System task, every ``RECONCILE_INTERVAL_MINUTES``: the dream-system
+    crons back in step with the registry rows (``copilot/dream/
+    scope_reconcile.py``). Safe on two schedulers at once."""
+    if _scheduler_instance is None:
+        logger.warning("Memory cron reconcile skipped: scheduler not running")
+        return
+    _scheduler_instance._reconcile_memory_crons()
+
+
+def listed_cron(job: JobObj) -> ListedCron | None:
+    """The scope a dream-system job runs for, from its kwargs, and the
+    timezone its trigger runs in; None when the kwargs name no scope."""
     try:
-        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+        scope = MemoryScope.build(job.kwargs["user_id"], job.kwargs.get("expert_id"))
+    except (KeyError, ValueError):
+        logger.warning("Memory cron %s names no memory scope; left alone", job.id)
+        return None
+    return ListedCron(
+        job_id=job.id,
+        scope=scope,
+        timezone=_job_timezone_name(job),
+        reconciled=job.name.endswith(RECONCILED_SUFFIX),
+    )
+
+
+class _SchedulerCrons:
+    """``scope_reconcile.CronStore`` over this scheduler's own jobstore, off
+    the event loop. Each write gives up after
+    ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` on a row another transaction holds,
+    failing only its scope: cancelling the wait for it would leave the
+    thread, and APScheduler's lock, held."""
+
+    def __init__(self, scheduler: "Scheduler") -> None:
+        self._scheduler = scheduler
+
+    async def listing(self) -> list[ListedCron]:
+        return await asyncio.to_thread(self._scheduler._memory_crons)
+
+    async def add(
+        self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
+    ) -> None:
+        """Register ``job`` of ``scope``, tagged as the reconcile's."""
+        await _bounded_write(
+            self._scheduler._add_memory_job,
+            *_MEMORY_CRONS[job.job_id_prefix],
+            job,
+            scope,
+            user_timezone,
+            True,
+        )
+
+    async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None:
+        await _bounded_write(self._scheduler._drop_memory_job, job, scope)
+
+    async def remove(self, scope: MemoryScope) -> None:
+        await _bounded_write(self._scheduler.remove_scope_memory_jobs, scope)
+
+
+async def _bounded_write(call: Callable[..., object], *args: object) -> None:
+    """``call`` off the event loop, its jobstore writes limited to
+    ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` (``asyncio.to_thread`` carries
+    ``WRITE_TIMEOUT`` into the thread)."""
+    token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+    try:
+        await asyncio.to_thread(call, *args)
+    finally:
+        WRITE_TIMEOUT.reset(token)
+
+
+def _removed(job: JobObj) -> bool:
+    """Remove ``job``; False when another scheduler removed it first."""
+    try:
+        job.remove()
+    except JobLookupError:
+        return False
+    return True
+
+
+def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> bool:
+    """Bridge ``forget_registration`` onto the scheduler's event loop: whether
+    the scope's row no longer records the cron. Never raises: a delete that
+    cannot forget keeps its cron."""
+    try:
+        return run_async(
+            forget_registration(scope, job),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
     except Exception:
         logger.warning(
-            "Failed to clear registration marker %s for user %s",
-            key_prefix,
-            user_id[:12],
-            exc_info=True,
+            "Failed to forget %s of %s", job.name, scope_label(scope), exc_info=True
         )
+        return False
+
+
+def refresh_near_expiry_credentials() -> None:
+    """Keep max_instances guarding the sweep until every refresh finishes."""
+    run_async(IntegrationCredentialsManager().refresh_idle_credentials(), timeout=None)
 
 
 def cleanup_oauth_tokens():
@@ -2036,6 +2328,7 @@ class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
     WEEKLY_NOTIFICATIONS = "weekly_notifications"
+    MEMORY_CRON_RECONCILE = "memory_cron_reconcile"
 
 
 class GraphExecutionJobArgs(BaseModel):
@@ -2496,6 +2789,7 @@ class Scheduler(AppService):
                 **self._persistent_jobstores,
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
+                Jobstores.MEMORY_CRON_RECONCILE.value: MemoryJobStore(),
             },
             logger=apscheduler_logger,
             timezone=ZoneInfo("UTC"),
@@ -2681,19 +2975,46 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
+        # Published before start: a system job due at start (such as the
+        # schedule index reconcile) runs at once, on the scheduler's thread,
+        # and reaches this instance only through _scheduler_instance.
+        global _scheduler_instance
+        _scheduler_instance = self
         self.scheduler.start()
         if self.register_system_tasks:
             # After start: until then get_job only sees pending jobs, not the
             # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
+            self._register_recording_purge()
+            self._register_memory_cron_reconcile()
         self._report_parked_jobs()
-
-        global _scheduler_instance
-        _scheduler_instance = self
         self._start_schedule_index_backfill()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _register_idle_credential_sweep(self) -> None:
+        """Keep an existing daily job's overdue run or explicit pause intact."""
+        job_id = "refresh_near_expiry_credentials"
+        trigger = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if (
+            existing is not None
+            and str(existing.trigger) == str(trigger)
+            and _job_timezone_name(existing) == "UTC"
+        ):
+            return
+        self.scheduler.add_job(
+            refresh_near_expiry_credentials,
+            id=job_id,
+            trigger=trigger,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+            jobstore=Jobstores.EXECUTION.value,
+        )
 
     # Paused and fired-once rows are never deleted, so this scan is bounded
     # rather than left to grow with the backlog — startup precedes the RPC port.
@@ -2971,9 +3292,9 @@ class Scheduler(AppService):
         if job is None:
             return False
         job.remove()
-        # Its index row stays: a row with no job is skipped on read, while the
-        # chat's next turn at reset reuses this id, so deleting the row could
-        # hide a job set again meanwhile from the chat's listing.
+        # Its index row stays for the next listing to drop. The chat's next
+        # turn at reset reuses this id, and that drop puts back the row of a
+        # job set again meanwhile, which a delete here would not.
         self._invalidate_jobs_cache()
         logger.info(f"Removed {kind}-at-reset job for session {session_id[:12]}")
         return True
@@ -3341,6 +3662,7 @@ class Scheduler(AppService):
             return full_scan()
         if self.scheduler.running:
             self._delete_schedule_index_rows(dangling)
+            self._restore_reused_index_rows(dangling)
         return jobs
 
     def _upsert_schedule_index_row(
@@ -3372,6 +3694,30 @@ class Scheduler(AppService):
             self._schedule_index.delete_many(job_ids)
         except Exception:
             logger.warning("Failed to remove stale schedule index rows", exc_info=True)
+
+    def _restore_reused_index_rows(self, job_ids: list[str]) -> None:
+        """Put back the row of any job set again under one of *job_ids*, the
+        rows just dropped for having no job.
+
+        A chat's turn at the budget reset reuses its id, so a new one can be
+        set between a listing finding the old job gone and the drop, and the
+        drop would hide it from the chat's listings until the next reconcile.
+        Every schedule is added before its row is written, so reading the job
+        after the drop catches each such row.
+        """
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                logger.warning(
+                    "Could not load job %s to check its dropped index row",
+                    job_id,
+                    exc_info=True,
+                )
+                continue
+            info = _job_to_info(job) if job else None
+            if info is not None:
+                self._upsert_schedule_index_row(job_id, info)
 
     def _mark_schedule_index_ready(self, failure_version: int) -> None:
         with self._jobs_cache_lock:
@@ -3445,6 +3791,7 @@ class Scheduler(AppService):
         if not self.scheduler.running:
             return
         index.delete_many(confirmed_gone)
+        self._restore_reused_index_rows(confirmed_gone)
 
         self._mark_schedule_index_ready(failure_version)
         logger.info(
@@ -3620,11 +3967,12 @@ class Scheduler(AppService):
 
     # --- Graphiti community detection (P-1.7) ---
     #
-    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``
-    # at the call sites. The scheduler unconditionally accepts the
-    # registration call; callers gate on the flag. Rebuilds run weekly at
-    # user-local 04:00 Sunday to avoid the Leiden cost spike during active
-    # hours (and to stagger from a future per-user dream pass at 03:00).
+    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``.
+    # Registration checks the flag here too (defense in depth: the registry
+    # gates first). Rebuilds run weekly at owner-local 04:00 on Mondays
+    # (``0 4 * * 0``: APScheduler counts weekdays from 0 = Monday) to avoid
+    # the Leiden cost spike during active hours and to stagger from the
+    # nightly dream at 03:00.
 
     @expose
     def add_community_rebuild_schedule(
@@ -3632,69 +3980,187 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a weekly community rebuild for one user.
+        """The account's weekly community rebuild: the scope-keyed method
+        for ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_community_rebuild_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
 
-        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` per-user. When the
-        flag is off the call is a no-op — returns a structured "skipped"
-        dict so callers see the same shape as a successful registration.
+    @expose
+    def add_scope_community_rebuild_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the weekly community rebuild of one memory scope.
+
+        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` for the scope's
+        owner. When the flag is off the call is a no-op — returns a
+        structured "skipped" dict so callers see the same shape as a
+        successful registration. Only adds the job: the registry row that
+        lets it fire is ``copilot/dream/registry.py``'s to write.
         """
         from backend.copilot.graphiti.config import is_communities_enabled_for_user
 
-        if not run_async(is_communities_enabled_for_user(user_id)):
+        user_timezone = user_timezone or "UTC"
+        if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
             logger.info(
-                "Community rebuild registration skipped for user %s — "
+                "Community rebuild registration skipped for %s — "
                 "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
-                user_id[:12],
+                scope_label(scope),
             )
-            return {
-                "id": None,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": None,
-                "skipped": True,
-                "reason": "graphiti_communities_disabled",
-            }
-
-        if not user_timezone:
-            user_timezone = "UTC"
-
-        job_id = f"community_rebuild_{user_id}"
-        job = self.scheduler.add_job(
-            execute_community_rebuild,
-            kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 4 * * 0", timezone=user_timezone),
-            id=job_id,
-            name=f"Graphiti community rebuild for {user_id[:12]}",
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            max_instances=1,
-        )
-        logger.info(
-            "Registered community rebuild job %s for user %s in tz %s",
-            job.id,
-            user_id[:12],
+            return memory_job_skipped(
+                scope, user_timezone, "graphiti_communities_disabled"
+            )
+        job = self._add_memory_job(
+            *_MEMORY_CRONS[COMMUNITY_REBUILD_JOB_PREFIX],
+            dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),
+            scope,
             user_timezone,
         )
-        return {
-            "id": job.id,
-            "user_id": user_id,
-            "user_timezone": user_timezone,
-            "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
-            ),
-        }
+        return memory_job_result(scope, job.id, job.next_run_time, user_timezone)
 
     @expose
     def delete_community_rebuild_schedule(self, user_id: str) -> bool:
-        """Remove the weekly community rebuild for one user."""
-        job_id = f"community_rebuild_{user_id}"
-        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
+        """Remove the account's weekly community rebuild."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX)
+        )
+
+    @expose
+    def remove_scope_memory_jobs(self, scope: MemoryScope) -> list[str]:
+        """Remove every dream-system cron of one memory scope (``jobs_for``:
+        an expert's has no skill-learning cron); returns the job ids removed.
+        The ids derive from the scope, so a caller can only ever reach that
+        scope's crons. The registry calls this when it pauses or wipes a
+        scope."""
+        jobs = [
+            self.scheduler.get_job(
+                job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+            )
+            for job in jobs_for(scope)
+        ]
+        removed = [job.id for job in jobs if job is not None and _removed(job)]
+        if removed:
+            logger.info("Removed the memory crons of %s", scope_label(scope))
+        return removed
+
+    def _reconcile_memory_crons(self) -> None:
+        """One reconcile pass (``reconcile_memory_scope_crons``), its listing
+        of the dream-system crons included, under
+        ``MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS``."""
+        try:
+            report = run_async(
+                reconcile(_SchedulerCrons(self)),
+                timeout=MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS,
+                cancel_on_timeout=True,
+            )
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "Memory cron reconcile cut off; the next pass carries on after "
+                "the last scope it took"
+            )
+            return
+        if report.restored or report.dropped or report.removed or report.failed:
+            logger.info(
+                "Memory cron reconcile: restored %d, took back %d, removed the "
+                "crons of %d scopes, %d failed",
+                len(report.restored),
+                len(report.dropped),
+                len(report.removed),
+                len(report.failed),
+            )
+
+    def _memory_crons(self) -> list[ListedCron]:
+        """Every dream-system cron that names a scope, with its timezone."""
+        return [
+            cron
+            for job in self._memory_jobs()
+            if (cron := listed_cron(job)) is not None
+        ]
+
+    def _memory_jobs(self) -> list[JobObj]:
+        """Every dream-system cron in the EXECUTION jobstore, in one read
+        filtered by job-id prefix and stopped by the database after
+        ``MEMORY_CRON_LISTING_TIMEOUT_SECONDS``."""
+        ids = self._execution_jobstore.jobs_t.c.id
+        return self._execution_jobstore._get_jobs(
+            or_(
+                *(
+                    ids.startswith(f"{job.job_id_prefix}_", autoescape=True)
+                    for job in DREAM_SYSTEM_JOBS
+                )
+            ),
+            statement_timeout=MEMORY_CRON_LISTING_TIMEOUT_SECONDS,
+        )
+
+    def _add_memory_job(
+        self,
+        func: Callable[..., object],
+        crontab: str,
+        job: DreamSystemJob,
+        scope: MemoryScope,
+        user_timezone: str,
+        reconciled: bool = False,
+    ) -> JobObj:
+        """Add, or replace, one dream-system cron of ``scope``; tagged as the
+        reconcile's when it registers it (``RECONCILED_SUFFIX``)."""
+        tag = RECONCILED_SUFFIX if reconciled else ""
+        kwargs: dict[str, object] = {**memory_job_kwargs(scope)}
+        if scope.expert_id is not None:
+            kwargs["func"] = func
+            func = execute_expert_memory_cron
+        added = self.scheduler.add_job(
+            func,
+            kwargs=kwargs,
+            trigger=CronTrigger.from_crontab(crontab, timezone=user_timezone),
+            id=job.job_id(scope),
+            name=f"{job.name} for {scope_label(scope)}{tag}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=_MEMORY_CRON_MISFIRE_GRACE.get(job.job_id_prefix),
+        )
+        logger.info(
+            "Registered %s job %s for %s in tz %s",
+            job.name,
+            added.id,
+            scope_label(scope),
+            user_timezone,
+        )
+        return added
+
+    def _delete_account_memory_job(self, user_id: str, job: DreamSystemJob) -> bool:
+        """Remove one of the account's crons, the registry forgetting it
+        first: the reconcile restores a cron a row records, and takes back
+        only one it registered itself once the row stops recording it, so the
+        record goes before the job. A forget that fails keeps the job, and
+        says so. The next ``ensure_scope_scheduled`` registers it again."""
+        scope = MemoryScope.for_user(user_id)
+        existing = self.scheduler.get_job(
+            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+        )
+        if not existing:
             return False
-        job.remove()
-        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
-        logger.info("Removed community rebuild job for user %s", user_id[:12])
+        if not _forget_dream_registration(scope, job):
+            logger.warning(
+                "Kept %s job for user %s: the registry could not forget it",
+                job.name,
+                user_id[:12],
+            )
+            return False
+        _removed(existing)
+        logger.info("Removed %s job for user %s", job.name, user_id[:12])
         return True
+
+    def _drop_memory_job(self, job: DreamSystemJob, scope: MemoryScope) -> None:
+        """Remove one dream-system cron of ``scope`` if it is there."""
+        try:
+            self.scheduler.remove_job(
+                job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+            )
+        except JobLookupError:
+            pass
 
     @expose
     def execute_community_rebuild_pass(self, user_id: str, force: bool = False) -> dict:
@@ -3733,6 +4199,55 @@ class Scheduler(AppService):
             replace_existing=True,
             max_instances=1,
             jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_recording_purge(self) -> None:
+        """The brain-dump recording sweep, which keeps "deleted within 48
+        hours" by running every ``RECORDING_PURGE_INTERVAL``.
+
+        Registered like the PostHog sweep: replacing an interval job re-arms
+        it at start + interval, so restarts closer together than the
+        interval would postpone the sweep indefinitely. An unchanged job is
+        left with the next run it has, and an overdue run fires on start.
+        """
+        trigger = IntervalTrigger(
+            seconds=int(RECORDING_PURGE_INTERVAL.total_seconds()),
+            timezone=timezone.utc,
+        )
+        existing = self.scheduler.get_job(
+            RECORDING_PURGE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            purge_expired_recordings_job,
+            trigger,
+            id=RECORDING_PURGE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_memory_cron_reconcile(self) -> None:
+        """The memory cron reconcile (``reconcile_memory_scope_crons``), the
+        level-triggered backstop of the registry's pause, resume and ensure
+        (``copilot/dream/scope_reconcile.py``), every
+        ``RECONCILE_INTERVAL_MINUTES``.
+
+        Each process starts with an immediate pass. Keep the job in memory
+        so an old scheduler cannot park it during a rolling deploy.
+        Overlapping passes replay the same bounded, idempotent work.
+        """
+        trigger = IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
+        self.scheduler.add_job(
+            reconcile_memory_scope_crons,
+            trigger,
+            id=_MEMORY_CRON_RECONCILE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=datetime.now(ZoneInfo("UTC")),
+            jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
         )
 
     # --- Morning briefing ---
@@ -3847,72 +4362,54 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register the nightly batch-family fan-out cron for one user.
+        """The account's nightly batch cron: the scope-keyed method for
+        ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_nightly_batch_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
 
-        Gated by ``Flag.DREAM_PASS_ENABLED`` per-user. When the flag
-        is off the call is a no-op — returns a structured "skipped"
-        dict matching the shape of a successful registration.
-        Defense-in-depth: the auto-registration helper in
-        ``copilot/dream/scheduling.py`` already gates this, but direct
-        callers (admin endpoint, ad-hoc scripts) bypass that helper.
+    @expose
+    def add_scope_nightly_batch_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly batch-family fan-out cron of one memory scope.
+
+        Gated by ``Flag.DREAM_PASS_ENABLED`` for the scope's owner. When
+        the flag is off the call is a no-op — returns a structured
+        "skipped" dict matching the shape of a successful registration.
+        Defense-in-depth: the registry in ``copilot/dream/registry.py``
+        already gates this, but direct callers (admin endpoint, ad-hoc
+        scripts) bypass it. Only adds the job: the registry row that lets
+        it fire is the registry's to write.
         """
         from backend.util.feature_flag import Flag, is_feature_enabled
 
-        if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+        user_timezone = user_timezone or "UTC"
+        if not run_async(
+            is_feature_enabled(Flag.DREAM_PASS_ENABLED, scope.owner_user_id)
+        ):
             logger.info(
-                "Nightly batch registration skipped for user %s — "
+                "Nightly batch registration skipped for %s — "
                 "DREAM_PASS_ENABLED flag is off.",
-                user_id[:12],
+                scope_label(scope),
             )
-            return {
-                "id": None,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": None,
-                "skipped": True,
-                "reason": "dream_pass_disabled",
-            }
-
-        if not user_timezone:
-            user_timezone = "UTC"
-
-        job_id = f"dream_nightly_batch_{user_id}"
-        job = self.scheduler.add_job(
-            execute_nightly_batch_sync,
-            kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
-            id=job_id,
-            name=f"Dream nightly batch for {user_id[:12]}",
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            max_instances=1,
-        )
-        logger.info(
-            "Registered nightly batch job %s for user %s in tz %s",
-            job.id,
-            user_id[:12],
+            return memory_job_skipped(scope, user_timezone, "dream_pass_disabled")
+        job = self._add_memory_job(
+            *_MEMORY_CRONS[NIGHTLY_BATCH_JOB_PREFIX],
+            dream_system_job(NIGHTLY_BATCH_JOB_PREFIX),
+            scope,
             user_timezone,
         )
-        return {
-            "id": job.id,
-            "user_id": user_id,
-            "user_timezone": user_timezone,
-            "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
-            ),
-        }
+        return memory_job_result(scope, job.id, job.next_run_time, user_timezone)
 
     @expose
     def delete_nightly_batch_schedule(self, user_id: str) -> bool:
-        """Remove the nightly batch cron for one user."""
-        job_id = f"dream_nightly_batch_{user_id}"
-        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
-            return False
-        job.remove()
-        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
-        logger.info("Removed nightly batch job for user %s", user_id[:12])
-        return True
+        """Remove the account's nightly batch cron."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
+        )
 
     @expose
     def add_skill_learning_schedule(
@@ -3920,89 +4417,65 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register the nightly skill-learning cron for one user.
+        """The account's nightly skill-learning cron: the scope-keyed method
+        for ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_skill_learning_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
 
-        Gated by ``Flag.DREAM_SKILL_LEARNING_ENABLED`` — independent of the
-        dream pass gate. Fires at 03:00 user-local. ``coalesce`` plus a
-        six-hour misfire grace give a capped catch-up after downtime: at
-        most one run, and only if the scheduler is back the same morning;
-        the pass itself re-checks every source's eligibility, so a stale
-        proposal is never applied by a catch-up run.
+    @expose
+    def add_scope_skill_learning_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly skill-learning cron of an account's scope.
+
+        Gated by ``Flag.DREAM_SKILL_LEARNING_ENABLED`` for the owner,
+        independent of the dream pass gate. An expert's scope has no such
+        cron (one pass reviews the account's skills and its experts'), so it
+        is refused. Fires at 03:00 owner-local. A cron already registered in
+        that timezone is kept as it is, its next run included, so an overdue
+        run is not pushed back a day, and reported as registered. A missed
+        run is caught up only the same morning
+        (``_MEMORY_CRON_MISFIRE_GRACE``): at most one run, and the pass
+        re-checks every source's eligibility, so a stale proposal is never
+        applied by a catch-up run. Only adds the job: the registry row that
+        lets it fire is the registry's to write.
         """
         from backend.util.feature_flag import Flag, is_feature_enabled
 
+        user_timezone = user_timezone or "UTC"
+        if scope.is_expert:
+            return memory_job_skipped(scope, user_timezone, "account_only")
         if not run_async(
-            is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)
+            is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, scope.owner_user_id)
         ):
             logger.info(
-                "Skill learning registration skipped for user %s — flag is off.",
-                user_id[:12],
+                "Skill learning registration skipped for %s — "
+                "DREAM_SKILL_LEARNING_ENABLED flag is off.",
+                scope_label(scope),
             )
-            return {
-                "id": None,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": None,
-                "skipped": True,
-                "reason": "skill_learning_disabled",
-            }
-
-        if not user_timezone:
-            user_timezone = "UTC"
-
-        job_id = f"skill_learning_nightly_{user_id}"
-        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            return memory_job_skipped(scope, user_timezone, "skill_learning_disabled")
+        job = dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+        existing = self.scheduler.get_job(
+            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+        )
         if existing is not None and _job_timezone_name(existing) == user_timezone:
-            return {
-                "id": existing.id,
-                "user_id": user_id,
-                "user_timezone": user_timezone,
-                "next_run_time": (
-                    existing.next_run_time.isoformat()
-                    if existing.next_run_time
-                    else None
-                ),
-                "skipped": True,
-                "reason": "already_registered",
-            }
-        job = self.scheduler.add_job(
-            execute_skill_learning_sync,
-            kwargs={"user_id": user_id},
-            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
-            id=job_id,
-            name=f"Skill learning nightly for {user_id[:12]}",
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=6 * 3600,
+            return memory_job_result(
+                scope, existing.id, existing.next_run_time, user_timezone
+            )
+        added = self._add_memory_job(
+            *_MEMORY_CRONS[SKILL_LEARNING_JOB_PREFIX], job, scope, user_timezone
         )
-        logger.info(
-            "Registered skill learning job %s for user %s in tz %s",
-            job.id,
-            user_id[:12],
-            user_timezone,
-        )
-        return {
-            "id": job.id,
-            "user_id": user_id,
-            "user_timezone": user_timezone,
-            "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
-            ),
-        }
+        return memory_job_result(scope, added.id, added.next_run_time, user_timezone)
 
     @expose
     def delete_skill_learning_schedule(self, user_id: str) -> bool:
-        """Remove the nightly skill-learning cron for one user."""
-        job_id = f"skill_learning_nightly_{user_id}"
-        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
-            return False
-        job.remove()
-        _clear_dream_registration_marker(user_id, SKILL_LEARNING_REGISTRATION_PREFIX)
-        logger.info("Removed skill learning job for user %s", user_id[:12])
-        return True
+        """Remove the account's nightly skill-learning cron."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+        )
 
     @expose
     def execute_skill_learning_now(self, user_id: str) -> dict:
@@ -4158,9 +4631,13 @@ class SchedulerClient(AppServiceClient):
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule
     )
+    add_scope_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.add_scope_community_rebuild_schedule
+    )
     delete_community_rebuild_schedule = endpoint_to_async(
         Scheduler.delete_community_rebuild_schedule
     )
+    remove_scope_memory_jobs = endpoint_to_async(Scheduler.remove_scope_memory_jobs)
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
     )
@@ -4173,11 +4650,17 @@ class SchedulerClient(AppServiceClient):
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
+    add_scope_nightly_batch_schedule = endpoint_to_async(
+        Scheduler.add_scope_nightly_batch_schedule
+    )
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )
     add_skill_learning_schedule = endpoint_to_async(
         Scheduler.add_skill_learning_schedule
+    )
+    add_scope_skill_learning_schedule = endpoint_to_async(
+        Scheduler.add_scope_skill_learning_schedule
     )
     delete_skill_learning_schedule = endpoint_to_async(
         Scheduler.delete_skill_learning_schedule

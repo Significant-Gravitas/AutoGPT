@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -463,6 +463,29 @@ describe("TurnPausedCard — Keep going", () => {
     expect(onBackendTurn).not.toHaveBeenCalled();
   });
 
+  it("points to the plans when picking up needs one", async () => {
+    backend();
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", () =>
+        HttpResponse.json(
+          { detail: "Choose a plan to keep using AutoPilot" },
+          { status: 402 },
+        ),
+      ),
+    );
+    renderCard(pause({ reason: "task", resets_at: null }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep going" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't pick this back up",
+        description: "Choose a plan to keep going.",
+        variant: "destructive",
+      }),
+    );
+  });
+
   it("turns into the budget pause when the account ran out meanwhile", async () => {
     backend();
     server.use(
@@ -673,6 +696,41 @@ describe("TurnPausedCard — Continue on ChatGPT", () => {
       { llm_auth_provider: "codex", llm_credential_id: "cred-1" },
     ]);
     expect(calls.continued).toEqual([{ model: "standard" }]);
+  });
+
+  it("spins on the button that was clicked while the task is picked up", async () => {
+    backend({ offers: [PLATFORM, CHATGPT] });
+    let pickUps = 0;
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", async () => {
+        pickUps += 1;
+        await delay("infinite");
+        return HttpResponse.json({});
+      }),
+    );
+    // The budget is back, so Keep going sits beside Continue on ChatGPT.
+    renderCard(
+      pause({ resets_at: new Date(2026, 9, 11, 20, 0).toISOString() }),
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue on ChatGPT" }),
+    );
+
+    // Past the switch, the pick-up itself is running.
+    await waitFor(() => expect(pickUps).toBe(1));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Continue on ChatGPT" })
+          .querySelector(".animate-spin"),
+      ).not.toBeNull(),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Keep going" })
+        .querySelector(".animate-spin"),
+    ).toBeNull();
   });
 
   it("never offers Microsoft 365 Copilot, which runs no tools, nor a locked ChatGPT", async () => {

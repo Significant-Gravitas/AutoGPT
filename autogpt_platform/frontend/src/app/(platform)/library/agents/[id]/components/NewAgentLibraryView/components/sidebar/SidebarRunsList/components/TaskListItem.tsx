@@ -3,7 +3,6 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { formatDistanceToNow } from "date-fns";
 import React from "react";
 import {
   describeFailedSteps,
@@ -24,6 +23,7 @@ import {
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
@@ -96,18 +96,24 @@ export function TaskListItem({
   ) : (
     statusIconMap[run.status]
   );
-  const startedAgo = run.started_at
-    ? formatDistanceToNow(run.started_at, { addSuffix: true })
-    : "—";
+  const startedAgo = run.started_at ? (
+    <RelativeTime date={run.started_at} />
+  ) : (
+    "—"
+  );
 
   return (
     <SidebarItemCard
       icon={icon}
       title={run.is_dry_run ? `${title} (Simulated)` : title}
       description={
-        withErrors
-          ? `${describeFailedSteps(getFailedStepCount(run))} · ${startedAgo}`
-          : startedAgo
+        withErrors ? (
+          <>
+            {describeFailedSteps(getFailedStepCount(run))} · {startedAgo}
+          </>
+        ) : (
+          startedAgo
+        )
       }
       descriptionTitle={
         run.started_at ? new Date(run.started_at).toString() : undefined

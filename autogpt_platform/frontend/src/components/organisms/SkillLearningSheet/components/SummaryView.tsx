@@ -10,6 +10,7 @@ import { reuseLabel, versionLabel } from "@/services/skill-learning/helpers";
 import { formatDistanceToNow } from "date-fns";
 import { OutcomeReportRequestOutcome } from "@/app/api/__generated__/models/outcomeReportRequestOutcome";
 import { SkillPolicyRequest } from "@/app/api/__generated__/models/skillPolicyRequest";
+import { SourceRemovedNotice } from "./SourceRemovedNotice";
 
 interface Props {
   detail: SkillLearningDetail;
@@ -63,6 +64,9 @@ export function SummaryView({
           Skill now: {detail.state_label}. The controls below apply to the skill
           as a whole, not to this historical version.
         </Text>
+      ) : null}
+      {isCurrent && version?.state === "invalidated" ? (
+        <SourceRemovedNotice usePaused={detail.policy.use_paused} />
       ) : null}
       {version ? (
         <>

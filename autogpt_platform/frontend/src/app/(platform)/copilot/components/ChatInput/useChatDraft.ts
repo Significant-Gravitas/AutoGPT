@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 const subscribers = new Map<string, Set<(value: string) => void>>();
+// Drafts browser storage refused, for a reader that doesn't follow the draft.
+// A draft leaves once storage takes a later write of it.
+const written = new Map<string, string>();
 
 function readDraft(key: string | null) {
   if (!key || typeof window === "undefined") return "";
@@ -17,18 +20,23 @@ function writeDraft(key: string | null, value: string) {
   try {
     if (value) sessionStorage.setItem(key, value);
     else sessionStorage.removeItem(key);
+    written.delete(key);
   } catch {
     /* Keep the in-memory draft when browser storage is unavailable. */
+    written.set(key, value);
   }
   subscribers.get(key)?.forEach((receive) => receive(value));
 }
 
-export function useChatDraft(draftKey?: string) {
+function useDraftKey(draftKey?: string) {
   const userID = useAuthStore((state) => state.user?.id);
-  const key =
-    draftKey && userID
-      ? `autogpt:chat-draft:${encodeURIComponent(userID)}:${encodeURIComponent(draftKey)}`
-      : null;
+  return draftKey && userID
+    ? `autogpt:chat-draft:${encodeURIComponent(userID)}:${encodeURIComponent(draftKey)}`
+    : null;
+}
+
+export function useChatDraft(draftKey?: string) {
+  const key = useDraftKey(draftKey);
   const [snapshot, setSnapshot] = useState(() => ({
     key,
     value: readDraft(key),
@@ -73,4 +81,17 @@ export function useChatDraft(draftKey?: string) {
     }
   }
   return [visible.value, setValue] as const;
+}
+
+/** The draft for a hook that acts on it without showing it. It is read when
+ *  asked rather than followed, so typing doesn't re-render the hook's host. */
+export function useChatDraftAccess(draftKey?: string) {
+  const key = useDraftKey(draftKey);
+  function read() {
+    return (key && written.get(key)) ?? readDraft(key);
+  }
+  function write(update: SetStateAction<string>) {
+    writeDraft(key, typeof update === "function" ? update(read()) : update);
+  }
+  return { read, write };
 }

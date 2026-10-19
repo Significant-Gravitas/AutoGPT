@@ -14,6 +14,7 @@ from typing import Any
 
 from posthog import Posthog
 
+from backend.util.posthog_client import revision_properties
 from backend.util.settings import Settings
 
 from .definition_cache import (
@@ -46,22 +47,7 @@ _shut_down = False
 
 def is_configured() -> bool:
     """Whether PostHog has the project key a flag read needs."""
-    return bool(_flag_project_key())
-
-
-def reads_another_project() -> bool:
-    """Whether flags come from a PostHog project other than the analytics one.
-
-    Dev reads prod's flag definitions, so nothing a read does may create data
-    there: no ``$feature_flag_called`` events, and no remote ``/flags`` call
-    carrying a user's properties when local evaluation cannot answer.
-    """
-    flags_key = settings.secrets.posthog_flags_api_key
-    return bool(flags_key) and flags_key != settings.secrets.posthog_api_key
-
-
-def _flag_project_key() -> str:
-    return settings.secrets.posthog_flags_api_key or settings.secrets.posthog_api_key
+    return bool(settings.secrets.posthog_api_key)
 
 
 async def evaluate_flag(
@@ -98,7 +84,6 @@ async def evaluate_flag(
                 flag_key,
                 distinct_id,
                 person_properties=person_properties or None,
-                only_evaluate_locally=reads_another_project(),
                 send_feature_flag_events=exposure,
             ),
         )
@@ -227,33 +212,23 @@ def _build_client() -> Posthog | None:
         return None
 
     secret_key = settings.secrets.posthog_secret_key
-    separate_project = reads_another_project()
-    if separate_project and not secret_key:
-        logger.warning(
-            "POSTHOG_FLAGS_API_KEY names another PostHog project but "
-            "POSTHOG_SECRET_KEY is unset: with no local definitions and no remote "
-            "fallback, every flag read serves its default"
-        )
     # One shared refresher, so the definitions bill stops scaling with replica
     # count. Without a provider the SDK polls PostHog once per process.
     definition_cache = get_flag_definition_cache() if secret_key else None
     _definition_cache = definition_cache
     _client = Posthog(
-        _flag_project_key(),
+        settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
         secret_key=secret_key or None,
         enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
-        # Its only events are $feature_flag_called, which would land in the
-        # flag project; this deployment's analytics belong in its own.
-        send=not separate_project,
+        super_properties=revision_properties(settings),
     )
     _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
-        f"(flag project: {'separate' if separate_project else 'analytics'}, "
-        f"local evaluation: {'on' if secret_key else 'off'}, "
+        f"(local evaluation: {'on' if secret_key else 'off'}, "
         f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client
