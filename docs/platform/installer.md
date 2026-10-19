@@ -25,19 +25,7 @@ Before running the installer:
 Docker Desktop is a separate product with its own license terms. AutoGPT does
 not install it or grant a Docker license.
 
-## Install (Hosted Command Not Live Yet)
-
-{% hint style="warning" %}
-Do not use the hosted command yet. `setup.agpt.co/install.sh` serves a
-clone-and-Compose script, not this one. The appliance image itself is published:
-`significantgravitas/autogpt:latest` and each `vX.Y.Z` release tag are public
-on Docker Hub for Linux `amd64` and `arm64`. Until the hosted command goes
-live, run the image with `docker run` as described in
-[Run AutoGPT in One Docker Container](single-container.md#quick-start).
-Maintainers must complete the remaining
-[release gates](#maintainer-release-gates) before exposing the hosted command
-in the README or getting-started guide.
-{% endhint %}
+## Install
 
 This first appliance-installer release supports Linux and macOS. Windows is
 intentionally withheld until its standard-user filesystem checks and native
@@ -165,10 +153,10 @@ private installer identity still match.
 
 ## Maintainer Release Gates
 
-Repository CI cannot prove the public bootstrap handoff. Do not publish or
-announce the hosted installation command until every gate below passes.
-
-The image gates already pass, and each release must keep them passing:
+`https://setup.agpt.co/install.sh` redirects to
+`autogpt_platform/installer/install.sh` on `master`, so the hosted installer
+changes whenever that file changes on `master`. Repository CI cannot prove this
+public bootstrap handoff, so each release must keep every gate below passing:
 
 - Only a published, non-prerelease `autogpt-platform-beta-vX.Y.Z` release
   publishes images. Its run smoke-tests and scans both architectures, then
@@ -184,11 +172,6 @@ The image gates already pass, and each release must keep them passing:
   docker buildx imagetools inspect significantgravitas/autogpt:latest
   ```
 
-Two gates remain open:
-
-- Deploy the repository `install.sh` from the current release tag through the
-  Caddy or object-storage configuration behind `setup.agpt.co`, replacing the
-  clone-and-Compose script it serves.
 - Fetch the hosted installer into a new temporary file from an external
   machine and compare it with the released repository file. On each supported
   operating system, perform a clean install against the public image, wait for

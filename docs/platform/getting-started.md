@@ -101,13 +101,11 @@ holds your accounts, agents, memory, and generated secrets.
 providers, another port or a public URL, backups, upgrades, and
 troubleshooting.
 
-### Appliance installer (not live yet)
+### Appliance installer
 
-The [appliance installer](installer.md) will wrap these steps in one command
-for Linux and macOS: it checks your Docker setup, pins the pulled image by
-digest, and keeps its configuration in a private directory. Its hosted command
-is not live yet. `setup.agpt.co/install.sh` still serves the old Compose
-installer, so don't run it; use the `docker run` command above.
+The [appliance installer](installer.md#linux-and-macos) wraps these steps in one
+command for Linux and macOS: it checks your Docker setup, pins the pulled image
+by digest, and keeps its configuration in a private directory.
 
 ## Manual Setup
 
