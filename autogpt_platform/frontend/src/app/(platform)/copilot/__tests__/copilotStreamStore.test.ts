@@ -225,6 +225,19 @@ describe("copilotStreamStore message snapshots", () => {
     );
   });
 
+  it("ignores a repeated write of the published messages", async () => {
+    const first = textOnly("Hel");
+    const { useCopilotStreamStore, listener } =
+      await freshStoreWithSnapshot(first);
+    const store = useCopilotStreamStore.getState();
+
+    store.setMessageSnapshot(SESSION, textOnly("Hello"));
+    store.setMessageSnapshot(SESSION, first);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(store.getMessageSnapshot(SESSION)).toBe(first);
+  });
+
   it("publishes a message that gains a file part", async () => {
     const { useCopilotStreamStore, listener } = await freshStoreWithSnapshot(
       textOnly("Here is the file"),
