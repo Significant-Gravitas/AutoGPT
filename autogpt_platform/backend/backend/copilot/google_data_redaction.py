@@ -114,9 +114,19 @@ def install_langfuse_mask() -> None:
     """Build the process's Langfuse client with the mask.
 
     Has to run before anything calls ``langfuse.get_client()``, which hands
-    out copies of the first client built; once one exists this is a no-op.
+    out copies of the first client built: the SDK keeps that one's settings
+    and drops a mask passed later. Raises when the client it gets back does
+    not mask, so the caller can leave tracing off rather than trace unmasked.
     """
-    Langfuse(mask=mask_langfuse_data)
+    client = Langfuse(mask=mask_langfuse_data)
+    # ``_resources`` is None when the client is disabled (no keys): it sends
+    # nothing, so there is nothing to mask.
+    resources = client._resources
+    if resources is not None and resources.mask is not mask_langfuse_data:
+        raise RuntimeError(
+            "A Langfuse client was built before the Google data mask; "
+            "its traces would not be redacted"
+        )
 
 
 def remember_google_output(output: str) -> None:

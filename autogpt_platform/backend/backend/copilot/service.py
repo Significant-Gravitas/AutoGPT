@@ -441,7 +441,11 @@ def _is_langfuse_configured() -> bool:
 # Before anything asks for a Langfuse client: the SDK keeps the first one's
 # settings, and this one's mask keeps Google data out of the traces.
 if _is_langfuse_configured():
-    install_langfuse_mask()
+    try:
+        install_langfuse_mask()
+    except Exception:
+        # The SDK path checks again and runs untraced; this is the alarm.
+        logger.exception("Langfuse traces are not masked for Google data")
 
 
 async def _fetch_langfuse_prompt() -> str | None:

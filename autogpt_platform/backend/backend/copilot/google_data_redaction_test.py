@@ -20,6 +20,7 @@ from backend.copilot.tools.models import BlockOutputResponse
 from . import google_data_redaction
 from .google_data_redaction import (
     REDACTED,
+    install_langfuse_mask,
     install_trace_redaction,
     is_google_output,
     mask_langfuse_data,
@@ -226,11 +227,46 @@ def test_langfuse_generation_input_is_masked(langfuse_spans: InMemorySpanExporte
     assert "run_block" in sent
 
 
+def _build_langfuse(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> None:
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "http://127.0.0.1:9")
+    Langfuse(tracer_provider=TracerProvider(), **kwargs)
+
+
+def test_install_langfuse_mask_refuses_a_client_built_without_it(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The SDK hands out the first client built; a mask passed later is
+    dropped, so installing it must fail rather than trace unmasked."""
+    LangfuseResourceManager.reset()
+    try:
+        _build_langfuse(monkeypatch)
+
+        with pytest.raises(RuntimeError):
+            install_langfuse_mask()
+    finally:
+        LangfuseResourceManager.reset()
+
+
+def test_install_langfuse_mask_accepts_a_client_built_with_it(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    LangfuseResourceManager.reset()
+    try:
+        _build_langfuse(monkeypatch, mask=mask_langfuse_data)
+
+        install_langfuse_mask()
+    finally:
+        LangfuseResourceManager.reset()
+
+
 def test_install_trace_redaction_masks_both_tracers():
     with (
         patch.object(google_data_redaction, "Langfuse") as langfuse,
         patch.object(google_data_redaction.langsmith, "configure") as configure,
     ):
+        langfuse.return_value._resources.mask = mask_langfuse_data
         install_trace_redaction()
 
     langfuse.assert_called_once_with(mask=mask_langfuse_data)
