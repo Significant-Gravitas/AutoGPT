@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -29,7 +30,6 @@ from backend.copilot.tools.workspace_files import (
     ReadWorkspaceFileTool,
     WorkspaceFileContentResponse,
 )
-from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
 from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.pro_activation import UsageActivationState

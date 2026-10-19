@@ -289,7 +289,9 @@ async def test_the_chat_routes_checks_read_the_usage_state_once():
     redis = MagicMock()
     redis.get = AsyncMock(return_value=None)
     with (
-        patch("backend.copilot.usage_activation.pro_activation_db", return_value=usage_db),
+        patch(
+            "backend.copilot.usage_activation.pro_activation_db", return_value=usage_db
+        ),
         patch(
             "backend.copilot.rate_limit._fetch_cost_limits_flag",
             new=AsyncMock(return_value=None),
