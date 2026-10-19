@@ -16,7 +16,6 @@ import type { ResetScope } from "./helpers";
 export function useAutoPilotUsage(userId: string) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const queryKey = getGetV2GetUserRateLimitQueryKey({ user_id: userId });
 
   const rateLimit = useGetV2GetUserRateLimit(
     { user_id: userId },
@@ -37,7 +36,9 @@ export function useAutoPilotUsage(userId: string) {
               }
             : { title: `Plan set to ${planName}`, variant: "success" },
         );
-        void queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({
+          queryKey: getUsageQueryKey(data.user_id),
+        });
       },
       onError: (error) => {
         toast({
@@ -52,7 +53,7 @@ export function useAutoPilotUsage(userId: string) {
   const reset = usePostV2ResetUserRateLimitUsage({
     mutation: {
       onSuccess: (response, { data }) => {
-        queryClient.setQueryData(queryKey, response);
+        queryClient.setQueryData(getUsageQueryKey(data.user_id), response);
         toast({
           title: data.reset_weekly
             ? "Daily and weekly usage reset"
@@ -96,4 +97,11 @@ export function useAutoPilotUsage(userId: string) {
     resetUsage,
     isResetting: reset.isPending,
   };
+}
+
+// Keyed by the user a request was sent for, never the one now on screen: the
+// section stays mounted across lookups, and React Query hands a pending
+// mutation the latest render's callbacks.
+function getUsageQueryKey(userID: string) {
+  return getGetV2GetUserRateLimitQueryKey({ user_id: userID });
 }
