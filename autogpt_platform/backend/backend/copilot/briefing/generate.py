@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.rate_limit import is_user_paywalled
+from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.db_accessors import (
     execution_db,
     experts_db,
@@ -251,9 +253,14 @@ async def _compose_fresh_briefing(
     # the thread — home's `without_summaries` only covers the card.
     if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
         return content
-    return content.model_copy(
-        update={"narrative": await compose_narrative(user_id, content)}
-    )
+    try:
+        narrative = await compose_narrative(user_id, content)
+    except UsageActivationUnavailable:
+        logger.warning(
+            "Briefing narrative usage attribution unavailable for %s", user_id[:8]
+        )
+        narrative = None
+    return content.model_copy(update={"narrative": narrative})
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
@@ -267,6 +274,9 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         if not authoritative:
             return {"status": "skipped", "reason": "flag_unavailable"}
         return {"status": "skipped", "reason": "flag_disabled"}
+
+    if await is_user_paywalled(user_id):
+        return {"status": "skipped", "reason": "paywalled"}
 
     user = await user_db().get_user_by_id(user_id)
     tz_name = get_user_timezone_or_utc(user.timezone)
@@ -336,6 +346,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         content=render_briefing_markdown(content),
         message_id=message_id,
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
+        title=f"Morning briefing — {briefing_date.isoformat()}",
     )
     await client.mark_briefing_delivered(user_id, record.id)
     emit_funnel_event(

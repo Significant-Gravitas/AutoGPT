@@ -4,7 +4,6 @@ with the webhook's secret can."""
 import hashlib
 import hmac
 import json
-from collections.abc import Iterator
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -31,11 +30,6 @@ client = fastapi.testclient.TestClient(app)
 def server() -> None:
     """Pure route logic; no live stack."""
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 @pytest.fixture(autouse=True)

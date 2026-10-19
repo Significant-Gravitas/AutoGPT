@@ -241,7 +241,7 @@ async def get_provider_token(
     # Credentials covering the requested scopes come first, then ones with
     # "repo" (full git access, where a public-data-only token lacks push/pull).
     # The sort is stable, so ties keep their stored order, as the card does.
-    # lock=False — background injection; not worth a distributed lock acquisition.
+    # Rotating providers still lock and reload when lock=False needs a refresh.
     def rank(creds: OAuth2Credentials) -> tuple[int, int]:
         granted = set(creds.scopes or [])
         return (

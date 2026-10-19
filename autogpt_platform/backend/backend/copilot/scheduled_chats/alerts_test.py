@@ -53,5 +53,20 @@ def test_step_labels():
     )
 
 
+def test_a_step_with_no_provider_named_still_reads_as_a_step():
+    """The email reads "The step “…” failed", so a connection or chat
+    platform it couldn't name gets a label of its own."""
+    assert (
+        step_label(
+            RunFailure(key="connection:run_block", kind="connection", tool="run_block")
+        )
+        == "Connected account"
+    )
+    assert (
+        step_label(RunFailure(key="chat_link:post", kind="chat_link", tool="post"))
+        == "Posting to chat"
+    )
+
+
 def test_one_alert_per_scheduled_chat():
     assert alert_key("routine-1") == "scheduled_chat:routine-1"

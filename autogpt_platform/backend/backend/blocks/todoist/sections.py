@@ -78,6 +78,7 @@ class TodoistListSectionsBlock(Block):
                     ],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -231,6 +232,7 @@ class TodoistGetSectionBlock(Block):
                     "name": "Groceries",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

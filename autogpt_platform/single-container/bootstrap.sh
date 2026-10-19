@@ -245,7 +245,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   platform."UserAuthJwks"
 TO autogpt_frontend;
 
-GRANT SELECT (id, email), UPDATE (email, "updatedAt")
+-- INSERT creates the platform User row from the sign-up hook
+-- (frontend/src/lib/auth/provision-platform-user.ts), so a session never
+-- exists before it. Every other column keeps its database default.
+GRANT SELECT (id, email),
+  INSERT (id, email, name, "updatedAt"),
+  UPDATE (email, "updatedAt")
   ON TABLE platform."User"
   TO autogpt_frontend;
 

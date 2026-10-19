@@ -358,8 +358,8 @@ class IntegrationCredentialsStore:
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
         """Return all credentials for *user_id*, without taking the lock.
 
-        Each row is read atomically, and a full-list replace creates new rows
-        before revoking old ones, so a read never misses a credential. Taking
+        A full-list replace commits in one transaction, so a read sees the
+        list from before it or after it, never a mix of the two. Taking
         the lock here would queue a page load's concurrent reads behind each
         other and behind every write or token refresh for the user.
         """

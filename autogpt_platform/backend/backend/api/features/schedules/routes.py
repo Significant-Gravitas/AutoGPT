@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
-from fastapi import APIRouter, Body, HTTPException, Path, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
@@ -19,6 +19,7 @@ from backend.api.features.schedules.model import (
     ScheduleUpdateRequest,
     SetScheduledChatCadenceRequest,
 )
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.scheduled_chats import cadence_service
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
@@ -42,6 +43,7 @@ router = APIRouter(dependencies=[Security(requires_user)])
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
 )
@@ -292,17 +294,32 @@ async def delete_graph_execution_schedule(
     except NotFoundError:
         # Gone already, perhaps by a delete whose streak cleanup failed: a
         # retry still clears the streak, or the chat stays listed as paused.
-        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+        await _forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
     # A follow-up's failure streak is keyed by its schedule id.
-    await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+    await _forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
 
 
+async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
+    """The schedule is gone whatever this does, so a failure is logged, not
+    answered: a 500 would say the delete failed. A streak left behind keeps
+    the chat listed as paused, and deleting it from there again clears it."""
+    try:
+        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
+        )
+
+
 @router.patch(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/schedules/{schedule_id}",
     summary="Update execution schedule",
 )

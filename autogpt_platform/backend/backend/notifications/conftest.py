@@ -13,7 +13,6 @@ a module that reaches past the RPC fails its test rather than passing it.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
@@ -30,11 +29,6 @@ NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 def server() -> None:
     """The notification suite is pure logic; it needs no live stack."""
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def make_db_client(**overrides) -> SimpleNamespace:
@@ -107,3 +101,19 @@ def audience_consent(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         delivery, "get_database_manager_async_client", lambda **_: client
     )
     return client
+
+
+@pytest.fixture(autouse=True)
+def lifecycle_resync(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """A group join asks the database manager for one more lifecycle sync
+    (`lifecycle_audience.resync_after_group_change`). Stubbed so no test
+    reaches for the RPC; assert on the returned mock to check the request."""
+    from backend.notifications import lifecycle_audience
+
+    request = AsyncMock()
+    monkeypatch.setattr(
+        lifecycle_audience,
+        "posthog_lifecycle_db",
+        lambda: SimpleNamespace(request_posthog_lifecycle_sync=request),
+    )
+    return request

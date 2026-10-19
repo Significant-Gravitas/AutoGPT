@@ -267,7 +267,9 @@ async def post_notice(
 
     Into the scheduled chat's own thread when it has one. A run that would
     have opened a fresh chat has none yet, so the note goes to the expert's
-    latest thread, or for an AutoPilot schedule to the owner's main chat.
+    latest thread, or for an AutoPilot schedule into a new chat named for the
+    schedule, where its run would have gone. The message id keeps that to one
+    chat per window.
     """
     message_id = notice_message_id(
         user_id=user_id, schedule_key=schedule_key, window_key=notice.window_key
@@ -296,6 +298,7 @@ async def post_notice(
             content=notice.content,
             message_id=message_id,
             metadata=metadata,
+            title=title,
         )
     return posted_in is not None
 

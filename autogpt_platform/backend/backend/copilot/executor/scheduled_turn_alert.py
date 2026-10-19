@@ -25,9 +25,11 @@ from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
 from backend.copilot.scheduled_chats.notices import schedule_title
 from backend.copilot.scheduled_chats.outcomes import (
+    PAUSE_ERROR_CODES,
     RunOutcome,
     ToolFailureDetail,
     classify_run,
@@ -52,11 +54,14 @@ _RECORD_TIMEOUT_SECONDS = 20
 _ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 UNCLASSIFIED = "unclassified"
 
-# Finding a block and reading its schema is how a run gets ready to work, not
-# work done. The every-minute Discord monitor did both before its one real
-# step failed; counting them made a run that did nothing read as one that
-# went ahead without Discord, so it was never paused.
-_LOOKUP_TOOLS = frozenset({"find_capability", "describe_capability"})
+# Finding a block or an agent and reading its schema is how a run gets ready
+# to work, not work done. The every-minute Discord monitor did both before its
+# one real step failed; counting them made a run that did nothing read as one
+# that went ahead without Discord, so it was never paused. The same goes for
+# a weekly report that finds its agent and then fails to run it (SECRT-2799).
+_LOOKUP_TOOLS = frozenset(
+    {"find_capability", "describe_capability", "find_agent", "find_library_agent"}
+)
 
 
 class ToolFailure(BaseModel):
@@ -77,6 +82,8 @@ class ScheduledTurnWatch:
         # platform tool calls worked.
         self._failure_details: list[tuple[str, ToolFailureDetail]] = []
         self._tool_successes = 0
+        # Set when the turn landed at a limit, or was refused one at pickup.
+        self._pause: dict | None = None
 
     @classmethod
     def for_entry(cls, entry: CoPilotExecutionEntry) -> "ScheduledTurnWatch | None":
@@ -87,6 +94,9 @@ class ScheduledTurnWatch:
     def observe(self, chunk: StreamBaseResponse) -> None:
         if isinstance(chunk, StreamError):
             self._turn_error_code = chunk.code
+            return
+        if isinstance(chunk, StreamTurnPaused):
+            self._pause = chunk.pause
             return
         if not isinstance(chunk, StreamToolOutputAvailable):
             return
@@ -111,13 +121,25 @@ class ScheduledTurnWatch:
             self._tool_successes += 1
 
     def outcome(self, turn_error: str | None) -> RunOutcome:
+        landed = self._pause is not None
         return classify_run(
             cancelled=turn_error == stream_registry.CANCELLED_MESSAGE,
-            turn_error_code=self._turn_error_code,
-            turn_errored=turn_error is not None,
-            tool_failures=self._failure_details,
+            turn_error_code=self._landed_error_code() or self._turn_error_code,
+            # A pause decides the run as a turn error does: its tools were
+            # refused while it wrote a checkpoint, so they are no failures.
+            turn_errored=turn_error is not None or landed,
+            tool_failures=[] if landed else self._failure_details,
             tool_successes=self._tool_successes,
         )
+
+    def _landed_error_code(self) -> str | None:
+        """The error the run's own budget or step limit used to end it with,
+        now that it lands there as a pause; None for the account's windows,
+        and for a run refused at pickup, which never ran."""
+        if self._pause is None or self._pause.get("started") is False:
+            return None
+        reason = self._pause.get("reason")
+        return PAUSE_ERROR_CODES.get(reason) if isinstance(reason, str) else None
 
     async def record(self, turn_error: str | None) -> None:
         """Count this run toward its schedule's failure streak.
@@ -155,11 +177,17 @@ class ScheduledTurnWatch:
         """Never raises: it runs in the turn's cleanup."""
         if turn_error == stream_registry.CANCELLED_MESSAGE:
             turn_error = None
-        if turn_error is None and not self.tool_failures:
+        failures = self.tool_failures
+        if self._pause is not None:
+            # The tools a landing refused are no failures; the run's own
+            # limits report as the errors they replaced.
+            failures = []
+            turn_error = turn_error or self._landed_error_code()
+        if turn_error is None and not failures:
             return
         try:
-            self._count(turn_error)
-            self._alert(turn_error)
+            self._count(turn_error, failures)
+            self._alert(turn_error, failures)
         except Exception:
             logger.warning(
                 "Could not report failed scheduled copilot turn %s",
@@ -167,20 +195,20 @@ class ScheduledTurnWatch:
                 exc_info=True,
             )
 
-    def _count(self, turn_error: str | None) -> None:
+    def _count(self, turn_error: str | None, failures: list[ToolFailure]) -> None:
         if turn_error is not None:
             COPILOT_SCHEDULED_TURN_FAILURES.labels(reason="turn_error", tool="").inc()
-        for failure in self.tool_failures:
+        for failure in failures:
             COPILOT_SCHEDULED_TURN_FAILURES.labels(
                 reason="tool_error", tool=failure.tool
             ).inc()
 
-    def _alert(self, turn_error: str | None) -> None:
+    def _alert(self, turn_error: str | None, failures: list[ToolFailure]) -> None:
         if turn_error is not None:
             reason, summary = "turn_error", "the turn errored"
         else:
             reason = "tool_error"
-            summary = f"{self.tool_failures[0].tool} returned an error"
+            summary = f"{failures[0].tool} returned an error"
         details = {
             "schedule_id": self._origin.schedule_id,
             "routine_id": self._origin.routine_id,
@@ -190,11 +218,9 @@ class ScheduledTurnWatch:
             "turn_error_type": (
                 error_type(self._turn_error_code or turn_error) if turn_error else None
             ),
-            "tool_failures": [f.model_dump() for f in self.tool_failures],
+            "tool_failures": [f.model_dump() for f in failures],
         }
-        failed_tools = ", ".join(
-            f"{f.tool} ({f.error_type})" for f in self.tool_failures
-        )
+        failed_tools = ", ".join(f"{f.tool} ({f.error_type})" for f in failures)
         logger.warning(
             f"Scheduled copilot turn failed: {summary} "
             f"(schedule {self._origin.schedule_id}, session "

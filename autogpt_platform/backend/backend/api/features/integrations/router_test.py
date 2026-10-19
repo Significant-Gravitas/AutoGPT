@@ -1,6 +1,7 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -15,6 +16,10 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
     UserPasswordCredentials,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -1526,3 +1531,38 @@ class TestDeviceAuthEndpoints:
         )
         # And never the "newest for this provider" shortcut.
         mock_mgr.store.get_creds_by_provider.assert_not_called()
+
+
+class TestAyrshareSSOURL:
+    """The builder's connect button, now on the shared provisioning path."""
+
+    def test_returns_the_link(self):
+        link = MagicMock(url="https://sso", expires_at=datetime.now(timezone.utc))
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(return_value=link),
+        ) as get_link:
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 200
+        assert response.json()["sso_url"] == "https://sso"
+        assert get_link.await_args.args[0] == JWT_USER_ID
+
+    def test_not_configured_is_500(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareNotConfiguredError("not configured")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 500
+
+    def test_failed_provisioning_is_502(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareProvisioningError("Failed to generate JWT")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Failed to generate JWT"

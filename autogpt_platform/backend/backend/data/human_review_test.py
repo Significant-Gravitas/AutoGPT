@@ -5,6 +5,7 @@ import pytest
 import pytest_mock
 from prisma.enums import ReviewStatus
 
+from backend.copilot.constants import step_card_id
 from backend.data.human_review import (
     get_or_create_human_review,
     get_pending_reviews_for_execution,
@@ -130,7 +131,10 @@ async def test_get_pending_reviews_for_user(
 ):
     """Test getting pending reviews for a user with pagination"""
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    # The chat cards answering steps (none), then the page.
+    mock_find_many.return_value.find_many = AsyncMock(
+        side_effect=[[], [sample_db_review]]
+    )
 
     # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
@@ -157,9 +161,29 @@ async def test_get_pending_reviews_for_user(
     assert result[0].node_id == "test_node_def_789"
 
     # Verify pagination parameters
-    call_args = mock_find_many.return_value.find_many.call_args
+    call_args = mock_find_many.return_value.find_many.call_args_list[1]
     assert call_args.kwargs["skip"] == 10  # (page-1) * page_size = (2-1) * 10
     assert call_args.kwargs["take"] == 10
+
+
+@pytest.mark.parametrize("named", ["its own step", "another step"])
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_step_card_hides_only_the_step_it_was_opened_for(
+    mocker: pytest_mock.MockFixture, named
+):
+    card = Mock()
+    card.nodeExecId = step_card_id("user-1", "step-1")
+    card.payload = {
+        "workflow": {"node_exec_id": "step-1" if named == "its own step" else "step-2"}
+    }
+    prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    prisma.return_value.find_many = AsyncMock(side_effect=[[card], []])
+
+    await get_pending_reviews_for_user("user-1")
+
+    page = prisma.return_value.find_many.call_args_list[1].kwargs["where"]
+    hidden = {"not_in": ["step-1"]} if named == "its own step" else None
+    assert page.get("nodeExecId") == hidden
 
 
 @pytest.mark.asyncio(loop_scope="function")
