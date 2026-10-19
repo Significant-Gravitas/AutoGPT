@@ -18,7 +18,7 @@ export function ExpertByline({ expert }: Props) {
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatarUrl}
-          color={expert.color}
+          backgroundColor={expert.color ?? undefined}
           size={20}
           className="rounded-full border border-zinc-200"
         />
