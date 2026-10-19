@@ -6,6 +6,7 @@ import { settle, type Scenario } from "../lib/scenario";
 const MOVES = 20;
 const DRAG_MS = 600;
 const READY_TIMEOUT_MS = 60_000;
+const EDGE_TIMEOUT_MS = 5_000;
 
 export const builderConnectEdge: Scenario = {
   name: "builder-connect-edge",
@@ -32,6 +33,9 @@ export const builderConnectEdge: Scenario = {
     const targetHandle = page.locator(
       `[data-tutorial-id="input-handler-${target.id}-a"]`,
     );
+    const newEdge = page.locator(
+      `[data-testid="rf__edge-${source.id}:output->${target.id}:a"]`,
+    );
     await targetHandle.waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });
     await settle(page);
     const from = await sourceHandle.boundingBox();
@@ -54,6 +58,8 @@ export const builderConnectEdge: Scenario = {
           await page.waitForTimeout(DRAG_MS / MOVES);
         }
         await page.mouse.up();
+        // A missed or rejected drop would otherwise save a run with no edge write.
+        await newEdge.waitFor({ state: "attached", timeout: EDGE_TIMEOUT_MS });
       },
     };
   },
