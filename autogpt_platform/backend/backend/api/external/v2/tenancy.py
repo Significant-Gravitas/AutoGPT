@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from starlette import status
 
 from backend.api.external import middleware
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.db import prisma
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -78,6 +79,22 @@ async def require_auth(
             detail="Missing authentication. Provide API key or access token.",
         )
     return await resolve_tenant(auth, requested_team)
+
+
+def require_paid_permission(*permissions: APIKeyPermission):
+    """`require_permission`, and a 402 for an account without an active plan.
+
+    For routes that start work, store files or call out, as on the internal API.
+    """
+    check_permissions = require_permission(*permissions)
+
+    async def check_plan(
+        tenant: TenantContext = Security(check_permissions),
+    ) -> TenantContext:
+        await enforce_payment_paywall(tenant.user_id)
+        return tenant
+
+    return check_plan
 
 
 def require_permission(*permissions: APIKeyPermission):

@@ -23,7 +23,7 @@ from backend.integrations.credentials_store import is_system_credential
 
 from ..models import CredentialCreateRequest, CredentialInfo
 from ..pagination import Page, PageRequest, page_request
-from ..tenancy import TenantContext, require_permission
+from ..tenancy import TenantContext, require_paid_permission, require_permission
 from .helpers import creds_manager
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ async def list_credentials(
 async def create_credential(
     request: Annotated[CredentialCreateRequest, Body(discriminator="type")],
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
+        require_paid_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
 ) -> CredentialInfo:
     """

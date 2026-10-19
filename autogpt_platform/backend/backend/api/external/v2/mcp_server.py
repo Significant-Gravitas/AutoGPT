@@ -36,6 +36,7 @@ from starlette.types import Receive, Scope, Send
 from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
 from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.sdk.tool_adapter import _build_input_schema, _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
@@ -46,7 +47,7 @@ from backend.data.auth.oauth import (
     InvalidTokenError,
     validate_access_token,
 )
-from backend.util.exceptions import NotAuthorizedError
+from backend.util.exceptions import NotAuthorizedError, UserPaywalledError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -362,6 +363,10 @@ def _create_tool_handler(
                 raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
 
         user_id = access_token.client_id
+        try:
+            await enforce_payment_paywall(user_id)
+        except UserPaywalledError as e:
+            raise ToolError(str(e)) from e
         organization_id, team_id = (
             (access_token.organization_id, access_token.team_id)
             if isinstance(access_token, TenantedAccessToken)

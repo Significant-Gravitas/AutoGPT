@@ -36,7 +36,13 @@ from .models import (
     MarketplaceAgentDetails,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, in_tenant, owned_by_caller, require_permission
+from .tenancy import (
+    TenantContext,
+    in_tenant,
+    owned_by_caller,
+    require_paid_permission,
+    require_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +114,9 @@ async def get_graph(
 )
 async def create_graph(
     create_graph: GraphCreateRequest,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+    ),
 ) -> Graph:
     """Create a new agent graph."""
     from backend.api.features.library import db as library_db
@@ -149,7 +157,9 @@ async def create_graph(
 async def update_graph(
     graph_id: str,
     update_graph: GraphCreateRequest,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+    ),
 ) -> Graph:
     """
     Update a graph by creating a new version.
@@ -293,7 +303,9 @@ async def list_graph_versions(
 async def set_active_version(
     graph_id: str,
     request_body: GraphSetActiveVersionRequest,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+    ),
 ) -> None:
     """
     Set which version of a graph is the active version.

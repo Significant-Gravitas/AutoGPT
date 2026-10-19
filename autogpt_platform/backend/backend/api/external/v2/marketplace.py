@@ -48,7 +48,12 @@ from .models import (
 )
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import enforce, media_upload_limiter
-from .tenancy import TenantContext, require_auth, require_permission
+from .tenancy import (
+    TenantContext,
+    require_auth,
+    require_paid_permission,
+    require_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +152,9 @@ async def get_agent_details(
 async def add_agent_to_library(
     username: str,
     agent_name: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+    ),
 ) -> LibraryAgent:
     """Add a marketplace agent to the authenticated user's library."""
     username = urllib.parse.unquote(username).lower()
@@ -305,7 +312,9 @@ async def list_submissions(
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_STORE)
+    ),
 ) -> MarketplaceAgentSubmission:
     """Submit a new marketplace listing for review."""
     submission = await store_db.create_store_submission(
@@ -337,7 +346,9 @@ async def create_submission(
 async def edit_submission(
     request: MarketplaceAgentSubmissionEditRequest,
     version_id: str = Path(description="Store listing version ID"),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_STORE)
+    ),
 ) -> MarketplaceAgentSubmission:
     """Replace a pending marketplace listing submission.
 
@@ -399,7 +410,9 @@ async def delete_submission(
 async def upload_submission_media(
     response: Response,
     file: UploadFile = File(...),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
+    auth: TenantContext = Security(
+        require_paid_permission(APIKeyPermission.WRITE_STORE)
+    ),
 ) -> MarketplaceMediaUploadResponse:
     """
     Upload an image or video for a marketplace submission. Max size: 10 MB.

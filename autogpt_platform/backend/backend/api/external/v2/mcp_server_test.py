@@ -193,6 +193,35 @@ async def test_a_call_without_the_right_credentials_reaches_the_client_as_an_err
     assert refusal in result.root.content[0].text
 
 
+async def test_an_account_without_a_plan_cannot_call_a_tool(
+    mocker: pytest_mock.MockerFixture, paywalled_user: str
+):
+    # Every call, reads included: the tools are Otto's, and every chat turn
+    # needs a plan.
+    tool = TOOL_REGISTRY["delete_folder"]
+    _, scopes = tool.allow_external_use
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=SimpleNamespace(
+            client_id=paywalled_user, scopes=[str(s) for s in scopes or []]
+        ),
+    )
+    run = mocker.patch.object(type(tool), "_execute")
+
+    result = await create_mcp_server()._mcp_server.request_handlers[CallToolRequest](
+        CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="delete_folder", arguments={"folder_id": "folder-1"}
+            ),
+        )
+    )
+
+    run.assert_not_called()
+    assert result.root.isError
+    assert "subscription is required" in result.root.content[0].text
+
+
 @pytest.mark.parametrize(
     "tool_name, args",
     [

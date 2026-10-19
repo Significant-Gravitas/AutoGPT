@@ -51,7 +51,8 @@ where the source cannot report one.
 ### Status codes
 
 `201` when a resource is created, `202` when work is queued, `204` on delete,
-`200` on everything else.
+`200` on everything else. An endpoint that starts work, stores files or calls
+out answers `402` (`payment_required`) for an account without an active plan.
 
 ### Errors
 
