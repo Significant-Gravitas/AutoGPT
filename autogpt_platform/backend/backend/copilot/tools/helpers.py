@@ -57,7 +57,7 @@ from backend.util.type import coerce_inputs_to_schema
 from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
-from .chat_platform_route import bot_link_hint, bot_post_redirect
+from .chat_platform_hint import bot_link_hint
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -1141,22 +1141,12 @@ async def prepare_block_for_execution(
             else ""
         )
         # A pinned account or an ungranted credential is the fix the owner
-        # set up, so its error or grant card stands; the bot is the answer,
-        # or the hint, only when nothing of theirs would be.
+        # set up, so its error or grant card stands; the bot is the hint
+        # only when nothing of theirs would be.
         owners_fix = bool(grant_hint) or bool(
             set(turn_credential_pins()) & missing_providers
         )
         bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
-        if (
-            missing_credentials
-            and not owners_fix
-            and (
-                redirect := await bot_post_redirect(
-                    user_id, block.name, input_data, session_id
-                )
-            )
-        ):
-            return redirect
         if missing_credentials and is_unattended_turn():
             unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",

@@ -16,7 +16,7 @@ from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .chat_platform_route import POST_TOOL, ChatPlatformLinks, chat_platform_links
+from .chat_platform_hint import POST_TOOL, ChatPlatformLinks, chat_platform_links
 from .models import (
     CapabilityListResponse,
     ErrorResponse,
