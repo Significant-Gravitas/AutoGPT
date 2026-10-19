@@ -27,7 +27,8 @@ export function useSessionDeletion() {
     sessionId: parseAsString,
     expertId: parseAsString,
   });
-  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
+  const sessionToDelete = useCopilotUIStore((s) => s.sessionToDelete);
+  const setSessionToDelete = useCopilotUIStore((s) => s.setSessionToDelete);
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
