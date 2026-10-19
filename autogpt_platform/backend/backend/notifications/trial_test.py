@@ -236,6 +236,103 @@ def test_ending_reminder_waits_for_current_reminder_window(trial):
     assert not notices._notice_applies(trial, "ending", raw)
 
 
+def test_ending_reminder_sent_just_before_three_day_mark(trial):
+    """Stripe's trial_will_end lead time is three days. An event created or
+    processed a little before that mark is still the reminder."""
+    raw = {
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=3, hours=1)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_applies(trial, "ending", raw)
+
+
+def test_ending_reminder_dropped_just_past_reminder_window(trial):
+    trial_end = datetime.now(UTC) + notices.TRIAL_REMINDER_WINDOW + timedelta(hours=1)
+    raw = {
+        "status": "trialing",
+        "trial_end": int(trial_end.timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial ends after the reminder window"
+    )
+
+
+def test_replayed_ending_reminder_for_ended_trial_names_the_real_reason(trial):
+    raw = {
+        "status": "canceled",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial is no longer running"
+    )
+
+
+@pytest.mark.parametrize(
+    "kind, current, reason",
+    [
+        ("converted", {}, "subscription is unknown, not converted"),
+        (
+            "payment_failed",
+            {"status": "active"},
+            "subscription is active, not a failed conversion",
+        ),
+        (
+            "ended",
+            {"status": "trialing"},
+            "subscription is trialing, not an ended trial",
+        ),
+        ("canceled", {"status": "trialing"}, "cancellation is not scheduled"),
+    ],
+)
+def test_skip_reason_names_why_the_notice_no_longer_applies(
+    trial, kind, current, reason
+):
+    current = {**current, "trial_end": int(trial.ends_at.timestamp())}
+    assert notices._notice_skip_reason(trial, kind, current) == reason
+
+
+@pytest.mark.asyncio
+async def test_dropped_notice_is_logged_without_sending(trial, caplog):
+    raw = {
+        "id": trial.subscription_id,
+        "customer": trial.customer_id,
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+        "metadata": {
+            "trial_enrollment_id": trial.id,
+            "user_id": trial.user_id,
+            "trial_checkout_attempt": str(trial.checkout_attempt),
+        },
+    }
+    queue = AsyncMock()
+    with (
+        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
+        ),
+        patch.object(notices, "queue_notification_async", queue),
+        patch.object(notices, "_track_billing_event") as track,
+        caplog.at_level("INFO", logger=notices.logger.name),
+    ):
+        assert await notices.notify_trial(raw, "ending")
+    queue.assert_not_awaited()
+    track.assert_not_called()
+    [record] = [r for r in caplog.records if r.name == notices.logger.name]
+    assert record.levelname == "INFO"
+    message = record.getMessage()
+    assert "ending" in message
+    assert trial.user_id in message
+    assert "reminder window" in message
+
+
 def test_failed_conversion_suppresses_paid_confirmation(trial):
     assert not notices._notice_applies(trial, "converted", {"status": "past_due"})
 

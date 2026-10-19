@@ -8,6 +8,8 @@ better or connected entries of other kinds it hid as ``other_kinds``.
 
 import pytest
 
+from backend.copilot.permissions import CopilotPermissions
+
 from .index import OTHER_KINDS_LIMIT, CapabilityIndex
 from .models import CapabilityEntry, Connection, Implementation
 from .ranking import ConnectionState
@@ -102,6 +104,24 @@ def test_other_kinds_are_capped_and_the_count_is_not(index):
 
     assert len(result.other_kinds) == OTHER_KINDS_LIMIT
     assert result.hidden_by_kind == len(GMAIL_BLOCKS)
+
+
+def test_the_hidden_count_is_independent_of_the_main_result_limit(index):
+    result = index.search("gmail", kind="tool", connections=GOOGLE, limit=1)
+
+    assert len(result.other_kinds) == OTHER_KINDS_LIMIT
+    assert result.hidden_by_kind == len(GMAIL_BLOCKS)
+
+
+def test_hidden_connected_blocks_still_respect_permissions(index):
+    result = index.search(
+        "gmail",
+        kind="tool",
+        connections=GOOGLE,
+        permissions=CopilotPermissions(blocks=[b.name for b in GMAIL_BLOCKS]),
+    )
+
+    assert result.other_kinds == [] and result.hidden_by_kind == 0
 
 
 def test_a_by_name_kind_lookup_gets_no_other_kinds(index):

@@ -1,9 +1,10 @@
 """Tests for graphiti_forget delete helpers."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
@@ -50,18 +51,15 @@ class TestExpertMemoryScope:
         async def _enabled(_user_id: str) -> bool:
             return True
 
-        derive = MagicMock(return_value="expert_private_group")
         client = type("Client", (), {"search": AsyncMock(return_value=[])})()
+        opened: list[str] = []
 
         async def _get_client(group_id: str):
-            assert group_id == "expert_private_group"
+            opened.append(group_id)
             return client
 
         monkeypatch.setattr(
             "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.derive_memory_group_id", derive
         )
         monkeypatch.setattr(
             "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
@@ -78,10 +76,11 @@ class TestExpertMemoryScope:
             query="private fact",
         )
 
-        derive.assert_called_once_with("user-abc", "expert-1")
+        expert_group = MemoryScope.for_expert("user-abc", "expert-1").group_id
+        assert opened == [expert_group]
         client.search.assert_awaited_once_with(
             query="private fact",
-            group_ids=["expert_private_group"],
+            group_ids=[expert_group],
             num_results=10,
         )
 
@@ -92,20 +91,17 @@ class TestExpertMemoryScope:
         async def _enabled(_user_id: str) -> bool:
             return True
 
-        derive = MagicMock(return_value="expert_private_group")
         driver = AsyncMock()
         driver.execute_query.return_value = ([], None, None)
         client = type("Client", (), {"graph_driver": driver})()
+        opened: list[str] = []
 
         async def _get_client(group_id: str):
-            assert group_id == "expert_private_group"
+            opened.append(group_id)
             return client
 
         monkeypatch.setattr(
             "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.derive_memory_group_id", derive
         )
         monkeypatch.setattr(
             "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
@@ -122,7 +118,7 @@ class TestExpertMemoryScope:
             uuids=["private-edge"],
         )
 
-        derive.assert_called_once_with("user-abc", "expert-1")
+        assert opened == [MemoryScope.for_expert("user-abc", "expert-1").group_id]
 
 
 class TestSoftDeleteNoMatchReportsFailure:

@@ -191,7 +191,7 @@ describe("Tour DataFast tracking", () => {
     await advanceThroughTurn();
     await pressEnterToSend();
 
-    fireEvent.click(screen.getByText("Make this agent yours"));
+    fireEvent.click(screen.getByText("Make this workflow yours"));
     fireEvent.click(screen.getByText("or self-host free"));
     fireEvent.click(
       screen.getByRole("button", { name: /Watch another scenario/i }),
@@ -213,7 +213,7 @@ describe("Tour DataFast tracking", () => {
     render(<TourChatPage />);
     await advanceThroughTurn();
     await pressEnterToSend();
-    fireEvent.click(screen.getByText("Make this agent yours"));
+    fireEvent.click(screen.getByText("Make this workflow yours"));
 
     const events = posthog.capture.mock.calls.map(([name, properties]) => [
       name,

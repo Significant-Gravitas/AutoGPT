@@ -236,7 +236,7 @@ class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
     type: ResponseType = ResponseType.AGENTS_FOUND
-    title: str = "Available Agents"
+    title: str = "Available Workflows"
     agents: list[AgentInfo]
     count: int
     name: str = "agents_found"

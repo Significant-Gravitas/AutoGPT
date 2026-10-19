@@ -57,6 +57,7 @@ from backend.util.type import coerce_inputs_to_schema
 from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
+from .chat_platform_hint import bot_link_hint
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -1128,28 +1129,47 @@ async def prepare_block_for_execution(
         missing_entries = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
+        missing_providers = {provider_slug(m.provider) for m in missing_credentials}
+        grant_hint = (
+            await ungranted_credential_hint(
+                user_id,
+                session.expert_id,
+                missing_providers,
+                missing_entries.values(),
+            )
+            if missing_credentials
+            else ""
+        )
+        # A pinned account or an ungranted credential is the fix the owner
+        # set up, so its error or grant card stands; the bot is the hint
+        # only when nothing of theirs would be.
+        owners_fix = bool(grant_hint) or bool(
+            set(turn_credential_pins()) & missing_providers
+        )
+        bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
         if missing_credentials and is_unattended_turn():
-            return await unattended_missing_credentials_error(
+            unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
                 missing_entries,
                 session_id,
                 user_id,
                 session.expert_id,
             )
+            unattended.message += bot_hint
+            return unattended
         missing_creds_dict = await annotate_expert_grants(
             user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
             message = (
-                f"Block '{block.name}' requires credentials that are not "
-                "configured. Please set up the required credentials before "
-                "running this block."
-            ) + await ungranted_credential_hint(
-                user_id,
-                session.expert_id,
-                {provider_slug(m.provider) for m in missing_credentials},
-                missing_entries.values(),
+                (
+                    f"Block '{block.name}' requires credentials that are not "
+                    "configured. Please set up the required credentials before "
+                    "running this block."
+                )
+                + grant_hint
+                + bot_hint
             )
         else:
             message = (
@@ -1648,15 +1668,15 @@ def require_library_check(session: ChatSession, tool_name: str):
         return None
     return ErrorResponse(
         message=(
-            f"Before tool:{tool_name} can run, search the user's library for an "
-            "agent that already does what they want. Call "
+            f"Before tool:{tool_name} can run, search the user's library for a "
+            "workflow that already does what they want. Call "
             "`find_library_agent` with `for_creation=true` and "
             "`goal_summary=<one-sentence description of the user's goal>` "
             "(default-mode substring search does NOT satisfy this gate). "
-            "If any agents are returned, present them to the user and ask "
+            "If any workflows are returned, present them to the user and ask "
             "whether they want to reuse one. Only retry "
             f"tool:{tool_name} with `library_check_ack=true` if the user "
-            "explicitly chooses to build a new agent anyway."
+            "explicitly chooses to build a new workflow anyway."
         ),
         session_id=session.session_id,
     )

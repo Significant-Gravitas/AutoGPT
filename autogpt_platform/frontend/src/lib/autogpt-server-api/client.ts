@@ -126,10 +126,6 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user", {});
   }
 
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
-  }
-
   ////////////////////////////////////////
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////

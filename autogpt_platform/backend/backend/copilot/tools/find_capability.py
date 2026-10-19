@@ -16,6 +16,7 @@ from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
+from .chat_platform_hint import POST_TOOL, ChatPlatformLinks, chat_platform_links
 from .models import (
     CapabilityListResponse,
     ErrorResponse,
@@ -139,9 +140,17 @@ class FindCapabilityTool(BaseTool):
                 suggestions=_no_result_suggestions(kind),
                 session_id=session_id,
             )
-        capabilities = [_listing(hit, connections) for hit in result.hits]
-        fallback = [_listing(hit, connections) for hit in result.fallback]
-        other_kinds = [_listing(hit, connections) for hit in result.other_kinds]
+        linked = (
+            await chat_platform_links(user_id)
+            if any(
+                hit.entry.name == POST_TOOL
+                for hit in result.hits + result.fallback + result.other_kinds
+            )
+            else ChatPlatformLinks()
+        )
+        capabilities = [_listing(hit, connections, linked) for hit in result.hits]
+        fallback = [_listing(hit, connections, linked) for hit in result.fallback]
+        other_kinds = [_listing(hit, connections, linked) for hit in result.other_kinds]
         message = _message(
             result.service,
             len(result.hits),
@@ -189,8 +198,17 @@ def _no_result_suggestions(kind: str | None) -> list[str]:
     ]
 
 
-def _listing(hit: SearchHit, connections: ConnectionState) -> dict[str, Any]:
+def _listing(
+    hit: SearchHit, connections: ConnectionState, linked: ChatPlatformLinks
+) -> dict[str, Any]:
     listing = hit.entry.listing()
+    # The bot posts only where the user linked a platform to it, which no
+    # credential records: without this the model cannot tell a tool that
+    # will post from one that answers "nothing is linked".  Channels need a
+    # linked server; a DM link lets it DM the user only.
+    if hit.entry.name == POST_TOOL:
+        listing["linked"] = sorted(linked.servers)
+        listing["dm_linked"] = sorted(linked.dms)
     if hit.entry.connection.required:
         listing["connected"] = (
             NEEDS_EXPERT_GRANT
