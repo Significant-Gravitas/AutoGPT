@@ -69,7 +69,7 @@ export function subscribeAccount(target, headers, runId) {
   const tier = cheapestTier(status.json.tier_costs);
   if (!tier) {
     return failure(
-      "the target prices no subscription tier (tier_costs is empty)",
+      "the target prices no subscription tier monthly (tier_costs has no positive amount)",
     );
   }
 
@@ -249,13 +249,15 @@ export function listRunSubscriptions(runId) {
   return found;
 }
 
-// Tiers with a price, cheapest first.
+// The cheapest tier with a monthly price, which is what the checkout above
+// asks for. tier_costs holds monthly amounts and 0 for a tier priced only
+// yearly, which a monthly checkout cannot buy.
 function cheapestTier(tierCosts) {
   if (!tierCosts || typeof tierCosts !== "object") return null;
   let best = null;
   for (const name of Object.keys(tierCosts)) {
     const cost = Number(tierCosts[name]);
-    if (!Number.isFinite(cost)) continue;
+    if (!Number.isFinite(cost) || cost <= 0) continue;
     if (best === null || cost < best.cost) best = { name, cost };
   }
   return best ? best.name : null;
