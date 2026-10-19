@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import OnboardingProvider from "../onboarding-provider";
 
-const routerReplace = vi.fn();
+// Stable across renders like the real router and BackendAPI instance, so an
+// effect re-runs only when its real inputs change.
+const { routerReplace, router, api } = vi.hoisted(() => {
+  const replace = vi.fn();
+  return {
+    routerReplace: replace,
+    router: { replace, push: () => {}, refresh: () => {} },
+    api: { onWebSocketMessage: () => () => {}, connectWebSocket: () => {} },
+  };
+});
 const toast = vi.hoisted(() => vi.fn());
 let completionError: Error | null = null;
 
@@ -12,13 +21,9 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 let mockPathname = "/signup";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    push: vi.fn(),
-    refresh: vi.fn(),
-  }),
+  useRouter: () => router,
   usePathname: () => mockPathname,
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 let mockIsLoggedIn = true;
@@ -31,10 +36,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
-  useBackendAPI: () => ({
-    onWebSocketMessage: () => () => {},
-    connectWebSocket: () => {},
-  }),
+  useBackendAPI: () => api,
 }));
 
 vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
@@ -187,6 +189,28 @@ describe("OnboardingProvider routing — logged-in user", () => {
     expect(routerReplace).not.toHaveBeenCalled();
     // The completion check should also be skipped — we never hit the API.
     expect(completedCallCount.value).toBe(0);
+  });
+
+  test("dropping ?next= on the same auth page re-runs the redirect", async () => {
+    mockPathname = "/login";
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
+    mockIsCompleted = true;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    window.history.replaceState(null, "", "/login");
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   });
 
   test("an unsafe ?next= value is treated as no deep link and the provider routes normally", async () => {

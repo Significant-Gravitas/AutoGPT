@@ -35,6 +35,7 @@ import {
   shouldRedirectFromOnboarding,
   updateOnboardingState,
 } from "./helpers";
+import { AuthDeepLinkWatcher } from "./AuthDeepLinkWatcher";
 import isEqual from "lodash/isEqual";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
@@ -87,7 +88,8 @@ export function useOnboarding(
 // as `null`, deadlocking the user on the auth loader. Read from the location
 // (only ever inside an effect, after Next has committed the URL) instead of
 // useSearchParams, which would re-render this app-root provider on every
-// search-param write anywhere in the app.
+// search-param write anywhere in the app. AuthDeepLinkWatcher re-runs the
+// effect when `next` changes on an auth route.
 function readPendingAuthDeepLink(isOnAuthRoute: boolean) {
   if (!isOnAuthRoute) return false;
   const next = new URLSearchParams(window.location.search).get("next");
@@ -101,6 +103,8 @@ export default function OnboardingProvider({
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
   const [step, setStep] = useState(1);
+  // Only a re-run trigger for the init effect, which reads the live URL.
+  const [authDeepLinkPending, setAuthDeepLinkPending] = useState(false);
   const hasInitialized = useRef(false);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
@@ -244,6 +248,7 @@ export default function OnboardingProvider({
     api,
     isOnOnboardingRoute,
     isOnAuthRoute,
+    authDeepLinkPending,
     router,
     isLoggedIn,
     pathname,
@@ -350,6 +355,9 @@ export default function OnboardingProvider({
 
   return (
     <OnboardingContext.Provider value={value}>
+      {isOnAuthRoute && (
+        <AuthDeepLinkWatcher onChange={setAuthDeepLinkPending} />
+      )}
       {children}
     </OnboardingContext.Provider>
   );
