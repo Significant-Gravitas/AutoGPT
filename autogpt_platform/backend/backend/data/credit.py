@@ -1075,8 +1075,6 @@ class UserCredit(UserCreditBase):
     async def _find_top_up(
         self, request: stripe.Refund | stripe.Dispute
     ) -> CreditTransaction | None:
-        # Refunds and disputes of subscription payments reach the same webhook;
-        # only a credit top-up has a ledger row to act on.
         transaction = await CreditTransaction.prisma().find_first(
             where={
                 "transactionKey": str(request.payment_intent),
@@ -1084,12 +1082,31 @@ class UserCredit(UserCreditBase):
                 "type": CreditTransactionType.TOP_UP,
             }
         )
-        if not transaction:
-            logger.warning(
-                f"Ignoring {request.id}: payment intent {request.payment_intent} "
-                "is not a credit top-up"
+        if transaction:
+            return transaction
+        # A Checkout top-up stays keyed by its session until fulfilled, so a miss
+        # raises (Stripe retries) unless the payment cannot have bought credits.
+        if not request.payment_intent or not await self._paid_invoice_without_credits(
+            str(request.payment_intent)
+        ):
+            raise RuntimeError(
+                f"No active top-up matches {request.id} (payment intent "
+                f"{request.payment_intent}); retrying until one is fulfilled"
             )
-        return transaction
+        logger.warning(
+            f"Ignoring {request.id}: payment intent {request.payment_intent} "
+            "paid a subscription invoice, which grants no credits"
+        )
+        return None
+
+    async def _paid_invoice_without_credits(self, payment_intent_id: str) -> bool:
+        # With the grant on, a paid subscription invoice buys credits too.
+        if settings.config.enable_subscription_credit_grant:
+            return False
+        payment_intent = await stripe_call(
+            stripe.PaymentIntent.retrieve_async, payment_intent_id
+        )
+        return bool(payment_intent.invoice)
 
     async def _top_up_credits(
         self,

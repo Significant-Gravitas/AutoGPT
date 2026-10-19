@@ -13,7 +13,9 @@ import pytest_mock
 import stripe
 from httpx import ASGITransport, AsyncClient
 from prisma.enums import SubscriptionTier
+from prisma.models import CreditTransaction
 
+from backend.api.rest_api import app as rest_app
 from backend.data.credit import (
     _expire_open_subscription_sessions,
     reconcile_stripe_tier_for_user,
@@ -32,6 +34,9 @@ app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 SIGNING_SECRET = "whsec_refund_test_only"
+# The real app's handlers, so a raised refund answers what Stripe would see.
+handled_app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
+handled_app.include_router(router)
 
 
 @pytest.fixture(autouse=True)
@@ -371,15 +376,36 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
         ),
     ],
 )
-async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_payment(
+@pytest.mark.parametrize(
+    "invoice, status_code, released",
+    [("in_subscription", 200, False), (None, 500, True)],
+    ids=["subscription-invoice", "maybe-unfulfilled-top-up"],
+)
+async def test_stripe_webhook_refund_or_dispute_matching_no_top_up(
     mocker: pytest_mock.MockFixture,
     server: SpinTestServer,
     event_type: str,
     data_object: dict,
+    invoice: str | None,
+    status_code: int,
+    released: bool,
 ) -> None:
-    """A refund or dispute of a payment that bought no credits, such as a
-    subscription invoice, answers 200 and keeps its dedup claim; a 500 makes
-    Stripe redeliver it for days."""
+    """A refund or dispute matching no active top-up is acknowledged with its
+    dedup claim kept only when it paid a subscription invoice; otherwise it may
+    be a Checkout top-up not yet fulfilled, so it answers 500 and releases the
+    claim for Stripe's retry."""
+    mocker.patch(
+        "stripe.PaymentIntent.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe.PaymentIntent.construct_from(
+            {
+                "id": "pi_non_topup_payment",
+                "object": "payment_intent",
+                "invoice": invoice,
+            },
+            "sk_test",
+        ),
+    )
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new=SIGNING_SECRET,
@@ -413,7 +439,7 @@ async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_paymen
     ).hexdigest()
 
     async with AsyncClient(
-        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        transport=ASGITransport(app=handled_app, raise_app_exceptions=False),
         base_url="http://test",
     ) as async_client:
         response = await async_client.post(
@@ -422,8 +448,16 @@ async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_paymen
             headers={"stripe-signature": f"t={timestamp},v1={signature}"},
         )
 
-    assert response.status_code == 200
-    mock_release.assert_not_awaited()
+    assert response.status_code == status_code
+    assert mock_release.await_args_list == (
+        [mocker.call("evt_non_topup")] if released else []
+    )
+    assert (
+        await CreditTransaction.prisma().count(
+            where={"transactionKey": data_object["id"]}
+        )
+        == 0
+    )
 
 
 # ---------------------------------------------------------------------------

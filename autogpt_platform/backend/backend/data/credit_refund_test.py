@@ -6,13 +6,14 @@ are atomic and maintain data consistency.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
 from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 
+from backend.data import credit as credit_module
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -144,11 +145,13 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_deduct_credits_ignores_refund_of_non_topup_payment(
-    server: SpinTestServer,
+@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
+async def test_deduct_credits_ignores_refund_of_subscription_invoice(
+    mock_retrieve, server: SpinTestServer
 ):
-    """A refund of a payment that bought no credits, such as a subscription
-    invoice, returns without touching the ledger or the user's refund requests."""
+    """A refund of a subscription invoice, which bought no credits, returns
+    without touching the ledger or the user's refund requests."""
+    mock_retrieve.return_value = _payment_intent(invoice="in_test_subscription")
     topup_tx = await setup_test_user_with_topup()
 
     try:
@@ -169,6 +172,7 @@ async def test_deduct_credits_ignores_refund_of_non_topup_payment(
 
         await credit_system.deduct_credits(refund)
 
+        mock_retrieve.assert_awaited_once_with("pi_test_subscription_invoice")
         assert (
             await CreditTransaction.prisma().count(where={"transactionKey": refund.id})
             == 0
@@ -296,12 +300,14 @@ async def test_handle_dispute_with_insufficient_balance(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@patch("stripe.PaymentIntent.retrieve_async", new_callable=AsyncMock)
 @patch("stripe.Dispute.modify_async")
-async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
-    mock_stripe_modify, server: SpinTestServer
+async def test_handle_dispute_ignores_dispute_of_subscription_invoice(
+    mock_stripe_modify, mock_retrieve, server: SpinTestServer
 ):
-    """A dispute of a payment that bought no credits is neither accepted nor
-    contested, and the user's unrelated top-up is left as it was."""
+    """A dispute of a subscription invoice is neither accepted nor contested,
+    and the user's unrelated top-up is left as it was."""
+    mock_retrieve.return_value = _payment_intent(invoice="in_test_subscription")
     topup_tx = await setup_test_user_with_topup()
 
     try:
@@ -326,6 +332,137 @@ async def test_handle_dispute_ignores_dispute_of_non_topup_payment(
         assert user_balance.balance == 1000
     finally:
         await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "request_type, request_id, status",
+    [
+        (stripe.Refund, "re_test_early", "succeeded"),
+        (stripe.Dispute, "du_test_early", "lost"),
+    ],
+    ids=["refund", "lost-dispute"],
+)
+async def test_refund_or_lost_dispute_before_checkout_fulfillment_deducts_on_retry(
+    request_type, request_id, status, server: SpinTestServer
+):
+    """A refund or lost dispute that arrives while its Checkout top-up is still
+    unfulfilled raises, so Stripe retries it, and deducts once fulfillment ran."""
+    await setup_test_user_with_topup()
+    try:
+        await CreditTransaction.prisma().create(
+            data={
+                "userId": REFUND_TEST_USER_ID,
+                "amount": 2000,
+                "type": CreditTransactionType.TOP_UP,
+                "transactionKey": "cs_test_unfulfilled",
+                "isActive": False,
+            }
+        )
+        request = MagicMock(spec=request_type)
+        request.id = request_id
+        request.payment_intent = "pi_test_checkout"
+        request.amount = 2000
+        request.status = status
+        request.reason = "requested_by_customer"
+        paid_session = stripe.checkout.Session.construct_from(
+            {
+                "id": "cs_test_unfulfilled",
+                "object": "checkout.session",
+                "payment_status": "paid",
+                "amount_total": 2000,
+                "currency": "usd",
+                "payment_intent": {
+                    "id": "pi_test_checkout",
+                    "object": "payment_intent",
+                },
+            },
+            "sk_test",
+        )
+
+        with (
+            patch(
+                "stripe.PaymentIntent.retrieve_async",
+                new_callable=AsyncMock,
+                return_value=_payment_intent(invoice=None),
+            ),
+            patch(
+                "stripe.checkout.Session.retrieve_async",
+                new_callable=AsyncMock,
+                return_value=paid_session,
+            ),
+        ):
+            with pytest.raises(RuntimeError):
+                await credit_system.deduct_credits(request)
+            assert (
+                await CreditTransaction.prisma().count(
+                    where={"transactionKey": request_id}
+                )
+                == 0
+            )
+
+            await credit_system.fulfill_checkout(session_id="cs_test_unfulfilled")
+            await credit_system.deduct_credits(request)
+
+        deduction = await CreditTransaction.prisma().find_first(
+            where={"transactionKey": request_id}
+        )
+        assert deduction is not None
+        assert deduction.amount == -2000
+        user_balance = await UserBalance.prisma().find_unique(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert user_balance is not None
+        assert user_balance.balance == 1000
+    finally:
+        await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "grant_on, lookup_error, error",
+    [
+        (True, None, RuntimeError),
+        (False, stripe.APIConnectionError("down"), stripe.StripeError),
+    ],
+    ids=["invoices-grant-credits", "lookup-fails"],
+)
+async def test_refund_without_a_top_up_raises_unless_shown_creditless(
+    grant_on, lookup_error, error, monkeypatch, server: SpinTestServer
+):
+    """A refund matching no top-up is acknowledged only on proof it bought no
+    credits: an invoice bought some when invoices grant credits, and a failed
+    lookup proves nothing."""
+    monkeypatch.setattr(
+        credit_module.settings.config, "enable_subscription_credit_grant", grant_on
+    )
+    refund = MagicMock(spec=stripe.Refund)
+    refund.id = "re_test_unproven"
+    refund.payment_intent = "pi_test_subscription_invoice"
+    refund.amount = 6000
+    refund.status = "succeeded"
+
+    with (
+        patch(
+            "stripe.PaymentIntent.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=_payment_intent(invoice="in_test_subscription"),
+            side_effect=lookup_error,
+        ),
+        pytest.raises(error),
+    ):
+        await credit_system.deduct_credits(refund)
+
+    assert (
+        await CreditTransaction.prisma().count(where={"transactionKey": refund.id}) == 0
+    )
+
+
+def test_payment_intent_still_carries_its_invoice():
+    """Acknowledging a subscription refund reads ``PaymentIntent.invoice``,
+    which Stripe API 2025-03-31.basil removed; an SDK bump past it must swap
+    that evidence for the InvoicePayment lookup."""
+    assert "invoice" in stripe.PaymentIntent.__annotations__
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -424,3 +561,9 @@ async def test_concurrent_refunds(server: SpinTestServer):
 
     finally:
         await cleanup_test_user()
+
+
+def _payment_intent(invoice: str | None) -> stripe.PaymentIntent:
+    return stripe.PaymentIntent.construct_from(
+        {"id": "pi_test", "object": "payment_intent", "invoice": invoice}, "sk_test"
+    )
