@@ -5,7 +5,7 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
@@ -15,6 +15,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
 from backend.data.user import DEFAULT_USER_ID
@@ -78,19 +79,47 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.close(code=4001, reason="Missing authentication token")
+        await _close_authentication_failure(
+            websocket, code=4001, reason="Missing authentication token"
+        )
         return ""
 
     try:
         payload = await parse_jwt_token_async(token)
         user_id = payload.get("sub")
         if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
+            await _close_authentication_failure(
+                websocket, code=4002, reason="Invalid token"
+            )
             return ""
+        await require_active_auth_session(payload)
         return user_id
     except ValueError:
-        await websocket.close(code=4003, reason="Invalid token")
+        await _close_authentication_failure(
+            websocket, code=4003, reason="Invalid token"
+        )
         return ""
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            await _close_authentication_failure(
+                websocket, code=1013, reason="Authentication service unavailable"
+            )
+        else:
+            await _close_authentication_failure(
+                websocket, code=4003, reason="Session expired or revoked"
+            )
+        return ""
+
+
+async def _close_authentication_failure(
+    websocket: WebSocket, *, code: int, reason: str
+) -> None:
+    """Complete the handshake so the client receives the close frame."""
+    try:
+        await websocket.accept()
+        await websocket.close(code=code, reason=reason)
+    except (WebSocketDisconnect, OSError):
+        logger.debug("WebSocket client disconnected during authentication rejection")
 
 
 # ===================== Message Handlers ===================== #

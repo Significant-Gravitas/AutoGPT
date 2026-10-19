@@ -58,6 +58,7 @@ from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
+from backend.copilot.pending_message_recovery import restore_pending_messages
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -134,7 +135,6 @@ from ..pending_message_helpers import (
 from ..pending_messages import (
     PendingMessage,
     drain_pending_for_persist,
-    push_pending_message,
 )
 from ..permissions import (
     CopilotPermissions,
@@ -6791,14 +6791,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     reason,
                     len(_auto_pending_messages),
                 )
-                for _pm in _auto_pending_messages:
-                    try:
-                        await push_pending_message(session_id, _pm)
-                    except Exception:
-                        logger.exception(
-                            "%s Failed to re-queue auto-continue message",
-                            log_prefix,
-                        )
+                try:
+                    await restore_pending_messages(session_id, _auto_pending_messages)
+                except Exception:
+                    logger.exception(
+                        "%s Failed to restore auto-continue batch", log_prefix
+                    )
 
             try:
                 async for event in stream_chat_completion_sdk(

@@ -8,6 +8,7 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from typing import Annotated
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -104,10 +105,11 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
     )
 
 
-def get_optional_user_id(
-    credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
-        optional_bearer
-    ),
+async def get_optional_user_id(
+    request: fastapi.Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, fastapi.Security(optional_bearer)
+    ] = None,
 ) -> str | None:
     """
     Attempts to extract the user ID ("sub" claim) from a Bearer JWT if provided.
@@ -126,12 +128,11 @@ def get_optional_user_id(
         return None
 
     try:
-        # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
+        payload = await get_jwt_payload(request, credentials)
         return payload.get("sub")
-    except Exception as e:
+    except fastapi.HTTPException as e:
+        if e.status_code >= 500:
+            raise
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
 

@@ -25,6 +25,7 @@ repos:
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
         args: ["--baseline", ".secrets.baseline"]
+        require_serial: true
         files: ^autogpt_platform/
         # The style eval's baseline and the recorded copilot streams are
         # generated and hold sha256 content hashes (of the assembled prompts,

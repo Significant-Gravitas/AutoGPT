@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
 
 from prisma.enums import ContentType
 
@@ -88,6 +89,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth.session import is_auth_session_active
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -358,6 +360,8 @@ class DatabaseManager(AppService):
         if name is not None:
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
+
+    is_auth_session_active = _(is_auth_session_active)
 
     # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
@@ -743,6 +747,7 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    get_chat_messages_by_ids = _(chat_db.get_chat_messages_by_ids)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
@@ -887,6 +892,7 @@ class DatabaseManagerClient(AppServiceClient):
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
+    is_auth_session_active = d.is_auth_session_active
 
     @classmethod
     def get_service_type(cls):
@@ -1237,6 +1243,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    get_chat_messages_by_ids = d.get_chat_messages_by_ids
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions

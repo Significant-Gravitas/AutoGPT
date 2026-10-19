@@ -14,8 +14,9 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials
+from httpx import ASGITransport, AsyncClient
 from jwt.algorithms import ECAlgorithm
 from pytest_mock import MockerFixture
 
@@ -151,7 +152,8 @@ async def test_get_jwt_payload_with_valid_token():
     token = create_token(TEST_USER_PAYLOAD)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-    result = await jwt_utils.get_jwt_payload(credentials)
+    request = Request({"type": "http", "app": FastAPI()})
+    result = await jwt_utils.get_jwt_payload(request, credentials)
     assert result["sub"] == "test-user-id"
     assert result["role"] == "user"
 
@@ -159,7 +161,7 @@ async def test_get_jwt_payload_with_valid_token():
 async def test_get_jwt_payload_no_credentials():
     """Test JWT payload when no credentials provided."""
     with pytest.raises(HTTPException) as exc_info:
-        await jwt_utils.get_jwt_payload(None)
+        await jwt_utils.get_jwt_payload(Request({"type": "http", "app": FastAPI()}))
     assert exc_info.value.status_code == 401
     assert "Authorization header is missing" in exc_info.value.detail
 
@@ -171,9 +173,32 @@ async def test_get_jwt_payload_invalid_token():
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await jwt_utils.get_jwt_payload(credentials)
+        await jwt_utils.get_jwt_payload(
+            Request({"type": "http", "app": FastAPI()}), credentials
+        )
     assert exc_info.value.status_code == 401
     assert "Invalid token" in exc_info.value.detail
+
+
+async def test_app_session_validation_survives_override_cleanup_and_is_isolated():
+    async def reject_session(_payload: dict) -> None:
+        raise HTTPException(status_code=401, detail="Session revoked")
+
+    async def identity(payload: dict = Security(jwt_utils.get_jwt_payload)) -> dict:
+        return {"sub": payload["sub"]}
+
+    protected, independent = FastAPI(), FastAPI()
+    protected.state.jwt_payload_validator = reject_session
+    for app in (protected, independent):
+        app.get("/identity")(identity)
+    protected.dependency_overrides.clear()
+    headers = {"Authorization": f"Bearer {create_token(TEST_USER_PAYLOAD)}"}
+    for app, status in ((protected, 401), (independent, 200), (protected, 401)):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/identity", headers=headers)
+            assert response.status_code == status
 
 
 def test_verify_user_with_valid_user():

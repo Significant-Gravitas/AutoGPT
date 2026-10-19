@@ -13,12 +13,13 @@ This module provides the cross-process buffer that makes that possible:
 - **Consumer** (executor running the turn): on each tool-call round,
   drains the buffer and appends the pending messages to the conversation.
 
-The Redis list is the durable store; the pub/sub channel is a fast
+The Redis list is an expiring buffer; the pub/sub channel is a fast
 wake-up hint for long-idle consumers (not used by default, but available
 for future blocking-wait semantics).
 
-A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
-buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
+An admission cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse. The
+full buffer rejects new messages without evicting accepted messages. Recovery
+may restore a drained batch above that cap; new admission stays blocked.
 """
 
 import asyncio
@@ -30,9 +31,10 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.pending_message_receipts import pending_message_receipt_key
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
-    capped_rpush,
+    bounded_rpush,
     capped_rpush_if_hash_field,
     string_compare_and_set,
 )
@@ -43,6 +45,10 @@ T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
 MAX_PENDING_MESSAGES = 10
+PENDING_BUFFER_FULL_REFUSAL = (
+    "That conversation has too many messages waiting. This message was not sent. "
+    "Wait for the queued messages to be processed, then try again."
+)
 
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
@@ -60,10 +66,8 @@ _NOTIFY_PAYLOAD = "1"
 
 # Client idempotency keys (``StreamChatRequest.message_id``, already scoped to
 # user + session) of sends the chat API has accepted.  A buffered message has
-# no ``ChatMessage`` row until a turn drains it, and the drained row gets a
-# fresh id, so the PK that dedupes a turn-start send cannot catch a
-# retransmit of a queued one: without this claim every copy was buffered
-# again and ran as another follow-up.
+# no ``ChatMessage`` row until a turn drains it, so the PK cannot catch a
+# retransmit while the send is being scheduled or pushed to the buffer.
 _CLIENT_MESSAGE_KEY_PREFIX = "copilot:pending:client-msg:"
 # A reservation names the request holding it, so one that outlived its TTL
 # cannot accept or release the claim of the request that took over.
@@ -201,15 +205,18 @@ async def finish_despite_cancellation(work: "asyncio.Future[T]") -> T:
                 return work.result()
 
 
-async def accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+async def accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool = False
+) -> None:
     """Mark a claimed send as taken, so its retransmits are skipped.  Also
     when the reservation has lapsed, unless another request holds it now.
 
     Finishes even if the caller is cancelled midway: the send has already
     landed, and a reservation left to lapse would let a retry send it again.
+    Pending sends inherit their receipt's deadline instead of starting a new TTL.
     """
     accept = asyncio.ensure_future(
-        _accept_client_message(session_id, message_id, owner)
+        _accept_client_message(session_id, message_id, owner, pending=pending)
     )
     try:
         await asyncio.shield(accept)
@@ -218,9 +225,24 @@ async def accept_client_message(session_id: str, message_id: str, owner: str) ->
         raise
 
 
-async def _accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+async def _accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool
+) -> None:
     try:
         redis = await get_redis_async()
+        expires_at_ms = None
+        if pending:
+            expires_at_ms = int(
+                await cast(
+                    "Any",
+                    redis.pexpiretime(
+                        pending_message_receipt_key(session_id, message_id)
+                    ),
+                )
+            )
+            if expires_at_ms < 0:
+                await release_client_message(session_id, message_id, owner)
+                return
         await string_compare_and_set(
             redis,
             _client_message_key(session_id, message_id),
@@ -228,6 +250,7 @@ async def _accept_client_message(session_id: str, message_id: str, owner: str) -
             new=_CLIENT_MESSAGE_ACCEPTED,
             ttl_seconds=_PENDING_TTL_SECONDS,
             or_missing=True,
+            expires_at_ms=expires_at_ms,
         )
     except Exception as e:
         logger.warning(
@@ -288,7 +311,7 @@ async def push_pending_message(
     message: PendingMessage,
 ) -> int:
     """Append a pending message to the session's buffer, capped at
-    ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
+    ``MAX_PENDING_MESSAGES`` (rejecting overflow). Returns the new buffer length.
 
     The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
     expires; messages not drained within that window are dropped.
@@ -297,7 +320,7 @@ async def push_pending_message(
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    new_length = await capped_rpush(
+    new_length = await bounded_rpush(
         redis,
         key,
         payload,
@@ -329,6 +352,7 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
+    deduplicate: bool = False,
 ) -> int | None:
     """Append a pending message only while the stream meta is still running."""
     redis = await get_redis_async()
@@ -344,6 +368,10 @@ async def push_pending_message_if_session_running(
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=_PENDING_TTL_SECONDS,
+        receipt_key=(
+            pending_message_receipt_key(session_id, message.id) if deduplicate else None
+        ),
+        message_id=message.id,
     )
     if new_length is None:
         logger.info(
@@ -369,8 +397,10 @@ async def push_pending_message_if_session_running(
     return new_length
 
 
-async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
-    """Atomically pop all pending messages for *session_id*.
+async def drain_pending_messages(
+    session_id: str, *, limit: int = MAX_PENDING_MESSAGES
+) -> list[PendingMessage]:
+    """Atomically pop one batch of pending messages for *session_id*.
 
     Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
     count so the read+delete is a single Redis round trip.  If the list
@@ -379,9 +409,11 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # LPOP with count drains everything in one round-trip; the push side
-    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
-    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
+    # Keep recovery batches bounded even when rollback restored an older batch
+    # ahead of a full buffer. Later drains pick up the remaining messages.
+    lpop_result = await cast(
+        "Any", redis.lpop(key, max(0, min(limit, MAX_PENDING_MESSAGES)))
+    )
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)

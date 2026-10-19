@@ -32,6 +32,11 @@ from backend.copilot.pending_messages import (
     release_client_message,
     stash_pending_for_persist,
 )
+from backend.data.redis_helpers import (
+    _BOUNDED_RPUSH_LUA,
+    _STRING_CAS_LUA,
+    RedisListCapacityExceeded,
+)
 
 # ── Fake Redis ──────────────────────────────────────────────────────
 
@@ -113,17 +118,17 @@ class _FakeRedis:
     async def get(self, key: str) -> str | None:
         return self.strings.get(key)
 
-    async def eval(
-        self,
-        script: str,
-        numkeys: int,
-        key: str,
-        expected: str,
-        new: str,
-        ttl_seconds: int,
-        or_missing: str,
-    ) -> int:
-        """``string_compare_and_set``, the only script these tests reach."""
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        if script == _BOUNDED_RPUSH_LUA:
+            key, value, max_len, ttl_seconds = args
+            if await self.llen(key) >= max_len:
+                return -2
+            length = await self.rpush(key, value)
+            self.ttls[key] = ttl_seconds
+            return length
+        if script != _STRING_CAS_LUA:
+            raise NotImplementedError("Unsupported Redis script")
+        key, expected, new, ttl_seconds, or_missing = args[:5]
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0
@@ -191,7 +196,7 @@ class _FakePipeline:
     async def __aenter__(self) -> "_FakePipeline":
         return self
 
-    async def __aexit__(self, *a: Any) -> None:
+    async def __aexit__(self, *a: object) -> None:
         return None
 
 
@@ -277,19 +282,20 @@ async def test_drain_defaults_id_for_legacy_entries(fake_redis: _FakeRedis) -> N
 
 
 @pytest.mark.asyncio
-async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
-    # Push MAX_PENDING_MESSAGES + 3 messages
-    for i in range(MAX_PENDING_MESSAGES + 3):
+async def test_cap_rejects_new_message_without_eviction(fake_redis: _FakeRedis) -> None:
+    for i in range(MAX_PENDING_MESSAGES):
         await push_pending_message("sess3", PendingMessage(content=f"m{i}"))
+
+    with pytest.raises(RedisListCapacityExceeded):
+        await push_pending_message("sess3", PendingMessage(content="overflow"))
 
     # Buffer should be clamped to MAX
     assert await peek_pending_count("sess3") == MAX_PENDING_MESSAGES
 
     drained = await drain_pending_messages("sess3")
     assert len(drained) == MAX_PENDING_MESSAGES
-    # Oldest 3 dropped — we should only see m3..m(MAX+2)
-    assert drained[0].content == "m3"
-    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES + 2}"
+    assert drained[0].content == "m0"
+    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES - 1}"
 
 
 # ── Clear ───────────────────────────────────────────────────────────

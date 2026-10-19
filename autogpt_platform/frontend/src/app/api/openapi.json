@@ -30496,11 +30496,11 @@
           },
           "message_id": {
             "anyOf": [
-              { "type": "string", "maxLength": 64 },
+              { "type": "string", "maxLength": 64, "minLength": 1 },
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-send UUID, scoped like ``StreamChatRequest.message_id``. A retransmit of a follow-up already queued is answered as accepted without queueing it again."
+            "description": "Per-send idempotency key, scoped to the user and session. Reuse on retries; use a new key for a separate send."
           }
         },
         "type": "object",

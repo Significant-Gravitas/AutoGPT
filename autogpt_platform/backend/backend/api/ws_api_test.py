@@ -424,7 +424,10 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
-        new=AsyncMock(return_value={"sub": "user-X"}),
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    validate = mocker.patch(
+        "backend.api.ws_api.require_active_auth_session", new=AsyncMock()
     )
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
@@ -432,6 +435,7 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     user_id = await authenticate_websocket(ws)
 
     assert user_id == "user-X"
+    validate.assert_awaited_once_with({"sub": "user-X", "sid": "session-X"})
 
 
 @pytest.mark.asyncio
@@ -476,12 +480,20 @@ async def test_lifespan_connects_and_disconnects_prisma(mocker) -> None:
     mock_db = mocker.patch("backend.api.ws_api.db")
     mock_db.connect = AsyncMock()
     mock_db.disconnect = AsyncMock()
+    redis_connect = mocker.patch(
+        "backend.api.ws_api.redis_client.get_redis_async", new=AsyncMock()
+    )
+    redis_disconnect = mocker.patch(
+        "backend.api.ws_api.redis_client.disconnect_async", new=AsyncMock()
+    )
 
     dummy_app = FastAPI()
     async with lifespan(dummy_app):
         mock_db.connect.assert_awaited_once()
         mock_db.disconnect.assert_not_called()
     mock_db.disconnect.assert_awaited_once()
+    redis_connect.assert_awaited_once()
+    redis_disconnect.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -494,6 +506,12 @@ async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
     mock_db = mocker.patch("backend.api.ws_api.db")
     mock_db.connect = AsyncMock()
     mock_db.disconnect = AsyncMock()
+    redis_connect = mocker.patch(
+        "backend.api.ws_api.redis_client.get_redis_async", new=AsyncMock()
+    )
+    redis_disconnect = mocker.patch(
+        "backend.api.ws_api.redis_client.disconnect_async", new=AsyncMock()
+    )
 
     dummy_app = FastAPI()
 
@@ -505,6 +523,8 @@ async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
             raise _Boom()
 
     mock_db.disconnect.assert_awaited_once()
+    redis_connect.assert_awaited_once()
+    redis_disconnect.assert_awaited_once()
 
 
 # ---------- Health endpoint ----------
