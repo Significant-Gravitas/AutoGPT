@@ -25,8 +25,9 @@ interface PendingWidth {
   frame: number | null;
 }
 
-// Runs before the drag ends, so the panel applies the last width with its
-// tween still off.
+// Reports the pending width, if any, and cancels its scheduled frame. Called
+// once per frame during a drag, and on pointer up/cancel/unmount before the
+// drag ends, so the panel applies the last width with its tween still off.
 function commitPendingWidth(
   pending: PendingWidth,
   onWidthChange: (width: number) => void,
