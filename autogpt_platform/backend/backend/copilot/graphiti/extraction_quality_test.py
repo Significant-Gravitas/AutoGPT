@@ -1,6 +1,6 @@
 import pytest
 
-from .extraction_quality_integration_test import _extraction_issues
+from .extraction_quality_helpers import extraction_issues
 
 _FACTS = {
     "payment": ["Jordan Rivera's organization uses net 45 payment terms."],
@@ -57,7 +57,7 @@ _FACTS = {
 )
 def test_details_require_coherent_facts_without_row_order(replacement, expected):
     facts = [fact for detail in (_FACTS | replacement).values() for fact in detail]
-    assert _extraction_issues(facts) == expected
+    assert extraction_issues(facts) == expected
 
 
 @pytest.mark.parametrize(
@@ -77,7 +77,7 @@ def test_payment_term_rejects_near_misses(term: str):
         fact for key, details in _FACTS.items() if key != "payment" for fact in details
     ]
     facts.append(f"Jordan Rivera's organization has a {term}.")
-    assert _extraction_issues(facts) == ["payment term"]
+    assert extraction_issues(facts) == ["payment term"]
 
 
 @pytest.mark.parametrize(
@@ -94,7 +94,7 @@ def test_payment_term_accepts_value_attached_to_payment(term: str):
         fact for key, details in _FACTS.items() if key != "payment" for fact in details
     ]
     facts.append(f"Jordan Rivera's organization has {term}.")
-    assert _extraction_issues(facts) == []
+    assert extraction_issues(facts) == []
 
 
 @pytest.mark.parametrize(
@@ -110,7 +110,7 @@ def test_payment_term_accepts_value_attached_to_payment(term: str):
 )
 def test_extraction_rejects_invented_signature_claims(claim: str):
     facts = [fact for details in _FACTS.values() for fact in details]
-    assert _extraction_issues([*facts, claim]) == ["unsupported signed-status claim"]
+    assert extraction_issues([*facts, claim]) == ["unsupported signed-status claim"]
 
 
 @pytest.mark.parametrize(
@@ -128,7 +128,7 @@ def test_extraction_rejects_invented_signature_claims(claim: str):
 )
 def test_extraction_allows_negated_signature_claims(fact: str):
     facts = [fact for details in _FACTS.values() for fact in details]
-    assert _extraction_issues([*facts, fact]) == []
+    assert extraction_issues([*facts, fact]) == []
 
 
 @pytest.mark.parametrize(
@@ -147,7 +147,7 @@ def test_extraction_allows_negated_signature_claims(fact: str):
 )
 def test_extraction_rejects_counterparty_details(fact: str):
     facts = [fact for details in _FACTS.values() for fact in details]
-    assert _extraction_issues([*facts, fact]) == ["misattributed company details"]
+    assert extraction_issues([*facts, fact]) == ["misattributed company details"]
 
 
 def test_supplier_brief_can_name_elm_studio_without_assigning_its_terms():
@@ -158,4 +158,4 @@ def test_supplier_brief_can_name_elm_studio_without_assigning_its_terms():
             "Monday and Wednesday dispatches, and minimum order of 18 cartons."
         )
     ]
-    assert _extraction_issues(facts) == []
+    assert extraction_issues(facts) == []

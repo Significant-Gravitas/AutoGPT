@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import re
 from datetime import datetime
 
 import pytest
@@ -10,6 +9,7 @@ from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 
 from .client import _build_graphiti, _build_llm_config
+from .extraction_quality_helpers import extraction_issues
 from .ingest import CUSTOM_EXTRACTION_INSTRUCTIONS
 from .llm_client import GraphitiOpenAIClient
 from .memory_model import MemoryEnvelope
@@ -52,7 +52,7 @@ async def test_incidental_details_survive_as_durable_facts(clean_graph, source):
             timeout=10,
         )
         facts = [row["fact"] for row in rows]
-        issues = _extraction_issues(facts)
+        issues = extraction_issues(facts)
         assert (
             not issues
         ), f"Extraction issues: {issues}. Synthetic stored facts: {facts}"
@@ -81,58 +81,3 @@ async def _ingest(client: Graphiti, group_id: str, source: EpisodeType) -> None:
             edge_type_map=EDGE_TYPE_MAP,
             custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
         )
-
-
-def _extraction_issues(facts: list[str]) -> list[str]:
-    """Check concrete details and explicit unsupported claim forms in this scenario."""
-    detail_name = r"(?:payment|financial|document|warehouse|dispatch|minimum)\b"
-    counterparty_details = (
-        rf"^\s*Elm Studio(?:['’]s\s+(?:normal\s+)?{detail_name}"
-        r"|\s+(?:uses|dispatches|ships)\b"
-        rf"|\s+has\s+(?:net\b|(?:(?:a|an|normal)\s+)?{detail_name}))"
-    )
-    violations = {
-        "unsupported signed-status claim": any(
-            _has_signed_claim(fact) for fact in facts
-        ),
-        "misattributed company details": any(
-            re.search(counterparty_details, fact, re.IGNORECASE) for fact in facts
-        ),
-    }
-    return _missing_details(facts) + [
-        name for name, found in violations.items() if found
-    ]
-
-
-def _missing_details(facts: list[str]) -> list[str]:
-    dispatch = r"(?=.*\b(?:dispatch|ship|leav)\w*\b).*"
-    payment_days = r"(?:\b45\b(?![.,]\d)|\bforty[- ]five\b)"
-    payment_prefix = r"\b(?:net\s+|payment(?:\s+terms?)?\s*(?:(?:is|are|of)\s+|:\s*)?)"
-    expected = {
-        "payment term": (payment_prefix + payment_days,),
-        "financial year end": (r"September",),
-        "document font": (r"Lato",),
-        "warehouse": (r"Omaha",),
-        "dispatch days": (dispatch + r"\bMondays?\b", dispatch + r"\bWednesdays?\b"),
-        "minimum order": (r"(?:18|eighteen)\s+cartons",),
-    }
-    return [
-        name
-        for name, patterns in expected.items()
-        if not all(
-            any(re.search(pattern, fact, re.IGNORECASE) for fact in facts)
-            for pattern in patterns
-        )
-    ]
-
-
-def _has_signed_claim(fact: str) -> bool:
-    negated = (
-        r"\b(?:not|never|\w+n['’]t)\s+(?:(?:yet|already|been|be|ever)\s+)*signed\b"
-        r"|\bno\s+(?:agreement|contract|document)\s+"
-        r"(?:(?:has|have|had|is|was|been|ever|yet)\s+)*signed\b"
-        r"|\b(?:without|not(?:\s+to)?|never)\s+claim(?:ing)?\b[^.;!?]*?\bsigned\b"
-        r"|\bsigned\s+no\s+(?:agreements?|contracts?|documents?)\b"
-    )
-    remaining = re.sub(negated, "", fact, flags=re.IGNORECASE)
-    return re.search(r"\bsigned\b", remaining, re.IGNORECASE) is not None
