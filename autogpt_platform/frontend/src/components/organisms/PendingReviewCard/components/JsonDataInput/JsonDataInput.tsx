@@ -7,6 +7,9 @@ interface Props {
    *  while it is unchanged; an equal copy on every render would replace a
    *  draft that doesn't parse yet. */
   value: unknown;
+  /** Text to start from instead of `value`: a draft kept from before the
+   *  card remounted, which may not parse. */
+  initialText?: string;
   onChange: (value: unknown) => void;
   /** The draft no longer parses. Its text goes up as is so approval can be
    *  blocked: the last valid value must not be sent while the screen shows
@@ -19,9 +22,14 @@ interface Props {
  *  once it does. Rebuilding the text from the value would drop those edits,
  *  and rewriting it under the user throws the caret to the end and cancels
  *  an IME composition. */
-export function JsonDataInput({ value, onChange, onInvalidDraft }: Props) {
+export function JsonDataInput({
+  value,
+  initialText,
+  onChange,
+  onInvalidDraft,
+}: Props) {
   const id = useId();
-  const [text, setText] = useState(() => toJsonText(value));
+  const [text, setText] = useState(() => initialText ?? toJsonText(value));
   const [shownValue, setShownValue] = useState(value);
 
   if (value !== shownValue) {

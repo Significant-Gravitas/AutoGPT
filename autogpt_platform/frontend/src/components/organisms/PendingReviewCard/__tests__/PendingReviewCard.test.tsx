@@ -314,3 +314,21 @@ test("an emptied JSON draft shows a value that then arrives from outside", () =>
 
   expect(field.value).toBe("null");
 });
+
+// A card mounted again (its group collapsed and expanded) must show the draft
+// the list still holds, or Approve fails over text the reviewer can't see.
+test("a JSON draft that doesn't parse is shown again when the card remounts", () => {
+  const draft = "[\n  1,\n]";
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={() => {}}
+      externalDataValue={draft}
+    />,
+  );
+
+  expect(
+    (screen.getByPlaceholderText("Edit JSON data") as HTMLTextAreaElement)
+      .value,
+  ).toBe(draft);
+});

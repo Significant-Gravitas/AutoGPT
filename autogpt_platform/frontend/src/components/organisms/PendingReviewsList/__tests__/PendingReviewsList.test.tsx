@@ -232,3 +232,28 @@ test.each([
     expect(captured.body).toBeUndefined();
   },
 );
+
+test("rejecting goes through while the JSON draft doesn't parse", async () => {
+  const captured = captureReviewAction();
+  const payload = ["a@x.com", "b@x.com"];
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          payload: payload as unknown as PendingHumanReviewModel["payload"],
+        }),
+      ]}
+    />,
+  );
+
+  fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+    target: { value: '[\n  "a@x.com",\n]' },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews[0]).toMatchObject({
+    approved: false,
+    reviewed_data: payload,
+  });
+});
