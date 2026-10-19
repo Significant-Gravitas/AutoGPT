@@ -87,7 +87,7 @@ export function FindAgentsTool({ part }: Props) {
       {hasAgents && agentsFoundOutput && (
         <ToolAccordion
           icon={<AccordionIcon toolType={part.type} />}
-          title="Agent results"
+          title="Workflow results"
           description={accordionDescription}
         >
           <ContentGrid className="sm:grid-cols-2">

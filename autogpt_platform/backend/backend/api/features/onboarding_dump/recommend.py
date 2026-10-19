@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Picking six ids off a list is a matching task, not a writing one, and
 # the onboarding loading screen holds the user until it answers — so this
 # runs on the fast model rather than the one that writes the greeting.
-_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 
 MAX_RECOMMENDATIONS = 6

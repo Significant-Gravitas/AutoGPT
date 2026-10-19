@@ -88,6 +88,10 @@ function getPreviewStealingDev() {
   return branch;
 }
 
+function getRevision() {
+  return process.env.NEXT_PUBLIC_REVISION?.trim() || "";
+}
+
 function getPostHogCredentials() {
   return {
     key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
@@ -148,11 +152,16 @@ function isClientSide() {
 }
 
 function isVercelPreview() {
-  // VERCEL_ENV is server-only; next.config.mjs mirrors it into the
-  // NEXT_PUBLIC_ copy so the browser bundle can read it too.
-  return (
-    (process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV) === "preview"
-  );
+  // VERCEL_ENV and VERCEL_TARGET_ENV are server-only; next.config.mjs mirrors
+  // them into NEXT_PUBLIC_ copies so the browser bundle can read them too.
+  // VERCEL_ENV is "preview" for every custom environment (the dev deployment's
+  // "staging") as well as for branch previews, while VERCEL_TARGET_ENV names
+  // the environment itself. Builds that don't carry it fall back to VERCEL_ENV.
+  const vercelEnv =
+    process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
+  const targetEnv =
+    process.env.NEXT_PUBLIC_VERCEL_TARGET_ENV || process.env.VERCEL_TARGET_ENV;
+  return vercelEnv === "preview" && (!targetEnv || targetEnv === "preview");
 }
 
 function isVercel() {
@@ -200,6 +209,7 @@ export const environment = {
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
   getPreviewStealingDev,
+  getRevision,
   getPostHogCredentials,
   getLaunchDarklyClientId,
   getGoogleAdsID,

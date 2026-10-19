@@ -12,8 +12,9 @@ from backend.copilot.graphiti._format import (
     extract_fact,
     extract_temporal_validity,
 )
-from backend.copilot.graphiti.client import derive_memory_group_id, get_graphiti_client
+from backend.copilot.graphiti.client import get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -101,7 +102,7 @@ class MemorySearchTool(BaseTool):
         limit = min(limit, _MAX_LIMIT)
 
         try:
-            group_id = derive_memory_group_id(user_id, session.expert_id)
+            group_id = MemoryScope.build(user_id, session.expert_id).group_id
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",

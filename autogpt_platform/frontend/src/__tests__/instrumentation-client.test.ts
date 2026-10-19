@@ -140,6 +140,19 @@ describe("Sentry client instrumentation", () => {
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
   });
 
+  it("traces every transaction but profiles one in ten", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const { tracesSampleRate, profilesSampleRate, replaysOnErrorSampleRate } =
+      initMock.mock.calls[0][0];
+
+    expect(tracesSampleRate).toBe(1);
+    expect(profilesSampleRate).toBe(0.1);
+    expect(replaysOnErrorSampleRate).toBe(1);
+  });
+
   it("tags events with the environment the deployment names for itself", async () => {
     vi.resetModules();
     initMock.mockClear();
