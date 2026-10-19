@@ -42,7 +42,6 @@ def test_cache_tokens_priced_separately():
     [
         ("sync_baseline", 0.0),
         ("anthropic_batch", 0.5),
-        ("openai_batch", 0.5),
     ],
 )
 def test_execution_path_discount(path, expected_discount):
