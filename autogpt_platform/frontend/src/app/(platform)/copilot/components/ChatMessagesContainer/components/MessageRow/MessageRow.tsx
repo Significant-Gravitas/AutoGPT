@@ -1,24 +1,18 @@
 import { memo, type ReactNode } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import {
-  Message,
-  MessageActions,
-  MessageContent,
-} from "@/components/ai-elements/message";
-import { cn } from "@/lib/utils";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { WorkCard } from "../../../WorkCard/WorkCard";
-import { AssistantMessageActions } from "../AssistantMessageActions";
 import { ChainMessageParts } from "../ChainMessageParts";
-import { CopyButton } from "../CopyButton";
 import { MessageAttachments } from "../MessageAttachments";
 import { MessagePartRenderer } from "../MessagePartRenderer";
-import { QueueBadge } from "../QueueBadge";
 import { SentFromBadge } from "../SentFromBadge";
 import { UserMessageClamp } from "../UserMessageClamp";
-import { areMessageRowPropsEqual } from "./helpers";
+import { AssistantRowActions } from "./components/AssistantRowActions";
+import { UserRowActions } from "./components/UserRowActions";
+import { areMessageRowPropsEqual, getMessageContentClassName } from "./helpers";
 import { useMessageRow } from "./useMessageRow";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -123,7 +117,6 @@ export const MessageRow = memo(function MessageRow({
     !isCurrentlyStreaming &&
     textParts.length > 0 &&
     !hasErrorMarker;
-  const createdAt = turnStat?.createdAt ? new Date(turnStat.createdAt) : null;
 
   return (
     <Message
@@ -131,21 +124,7 @@ export const MessageRow = memo(function MessageRow({
       data-message-id={message.id}
       className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
     >
-      <MessageContent
-        className={cn(
-          compact
-            ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-            : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-          "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
-          // Streamdown's links (buttons, `text-primary`) and light
-          // code chips would sink into the dark bubble.
-          "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
-          "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
-          // Chain hover pills use negative margins that the base
-          // overflow-hidden would clip.
-          "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
-        )}
-      >
+      <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
           <ChainMessageParts
             parts={renderableParts}
@@ -187,29 +166,16 @@ export const MessageRow = memo(function MessageRow({
         )}
         {indicator}
       </MessageContent>
-      {!readOnly &&
-        message.role === "user" &&
-        isSessionQueued &&
-        turnStat?.isLatestUserMessage && (
-          <MessageActions
-            className="mt-1 items-center justify-end gap-1.5"
-            data-testid="queue-status-row"
-          >
-            <QueueBadge sessionID={sessionID ?? null} />
-          </MessageActions>
-        )}
-      {message.role === "user" && textParts.length > 0 && (
-        <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-          {createdAt && !Number.isNaN(createdAt.getTime()) && (
-            <span className="text-[11px] tabular-nums text-neutral-500">
-              {createdAt.toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </span>
-          )}
-          <CopyButton text={copyText} />
-        </MessageActions>
+      {message.role === "user" && (
+        <UserRowActions
+          showQueueBadge={
+            !readOnly && isSessionQueued && !!turnStat?.isLatestUserMessage
+          }
+          showCopy={textParts.length > 0}
+          createdAt={turnStat?.createdAt}
+          copyText={copyText}
+          sessionID={sessionID}
+        />
       )}
       {(fileParts.length > 0 || folderParts.length > 0) && (
         <MessageAttachments
@@ -220,26 +186,14 @@ export const MessageRow = memo(function MessageRow({
           readOnly={readOnly}
         />
       )}
-      {!readOnly && showActions && (
-        <AssistantMessageActions
+      {showActions && (
+        <AssistantRowActions
           message={message}
-          sessionID={sessionID ?? null}
-          className={cn(
-            !isLastAssistant &&
-              "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-          )}
+          isLastAssistant={isLastAssistant}
+          readOnly={readOnly}
+          copyText={copyText}
+          sessionID={sessionID}
         />
-      )}
-      {readOnly && showActions && (
-        <MessageActions
-          className={cn(
-            "mt-1 items-center justify-start gap-2",
-            !isLastAssistant &&
-              "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-          )}
-        >
-          <CopyButton text={copyText} />
-        </MessageActions>
       )}
     </Message>
   );
