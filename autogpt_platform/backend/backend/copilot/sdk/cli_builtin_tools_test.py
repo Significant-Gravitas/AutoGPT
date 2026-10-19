@@ -8,7 +8,11 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
 
 from .env import build_sdk_env
-from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
+from .tool_adapter import (
+    create_copilot_mcp_server,
+    get_copilot_tool_names,
+    get_sdk_disallowed_tools,
+)
 
 
 @pytest.mark.parametrize("use_e2b", [False, True])
@@ -22,11 +26,14 @@ async def test_cli_offers_only_allowed_tools(
     allowed = get_copilot_tool_names(use_e2b=use_e2b)
     offered = await asyncio.wait_for(
         _cli_offered_tools(
-            allowed, get_sdk_disallowed_tools(use_e2b=use_e2b), tmp_path
+            allowed,
+            get_sdk_disallowed_tools(use_e2b=use_e2b),
+            tmp_path,
+            use_e2b=use_e2b,
         ),
         timeout=60,
     )
-    assert {"Task", "TodoWrite"} <= set(offered), offered
+    assert {"Task", "TodoWrite", "mcp__copilot__bash_exec"} <= set(offered), offered
     unclassified = sorted(set(offered) - set(allowed))
     assert not unclassified, (
         f"The bundled Claude CLI offers {unclassified}, which security_hooks "
@@ -36,7 +43,7 @@ async def test_cli_offers_only_allowed_tools(
 
 
 async def _cli_offered_tools(
-    allowed: list[str], disallowed: list[str], tmp_path: Path
+    allowed: list[str], disallowed: list[str], tmp_path: Path, *, use_e2b: bool
 ) -> list[str]:
     """The tool list in the CLI's ``init`` message, which precedes any API call."""
     sdk_cwd = tmp_path / "copilot-session"
@@ -53,6 +60,7 @@ async def _cli_offered_tools(
         extra_args={"strict-mcp-config": None},
         allowed_tools=allowed,
         disallowed_tools=disallowed,
+        mcp_servers={"copilot": create_copilot_mcp_server(use_e2b=use_e2b)},
         cwd=str(sdk_cwd),
         env=env,
     )
