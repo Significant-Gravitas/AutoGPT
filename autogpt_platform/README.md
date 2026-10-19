@@ -2,7 +2,7 @@
 
 Welcome to the AutoGPT Platform - a powerful system for creating and running AI agents to solve business problems. This platform enables you to harness the power of artificial intelligence to automate tasks, analyze data, and generate insights for your organization.
 
-> **Just want to run AutoGPT?** The quickest way is the single-container image on Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt). See the [self-hosting guide](https://docs.agpt.co/platform/self-hosting/getting-started). The steps below build and run every service from this checkout with Docker Compose.
+> **Just want to run AutoGPT?** The quickest way is the single-container image on Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt). See the [self-hosting guide](https://agpt.co/docs/platform/self-hosting/getting-started). The steps below build and run every service from this checkout with Docker Compose.
 
 ## Getting Started
 
