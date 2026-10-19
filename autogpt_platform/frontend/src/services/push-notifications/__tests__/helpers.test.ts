@@ -233,3 +233,50 @@ describe("teardownPushSubscriptionBeforeLogout", () => {
     consoleError.mockRestore();
   });
 });
+
+describe("push subscription lock across tabs", () => {
+  afterEach(() => {
+    Object.defineProperty(navigator, "locks", {
+      value: undefined,
+      configurable: true,
+    });
+  });
+
+  // A first-come, first-served lock like the browser's, shared by "tabs"
+  // that are just concurrent calls here.
+  function installSerialLock() {
+    let tail: Promise<unknown> = Promise.resolve();
+    const request = vi.fn(
+      (_name: string, action: () => Promise<unknown>): Promise<unknown> => {
+        const run = tail.then(action);
+        tail = run.catch(() => undefined);
+        return run;
+      },
+    );
+    Object.defineProperty(navigator, "locks", {
+      value: { request },
+      configurable: true,
+    });
+  }
+
+  it("makes another tab's subscribe wait until this tab has unsubscribed", async () => {
+    installSerialLock();
+    let finishUnsubscribe: (ok: boolean) => void = () => {};
+    mockUnsubscribeFromPush.mockReturnValue(
+      new Promise<boolean>((resolve) => (finishUnsubscribe = resolve)),
+    );
+
+    const tearingDown = teardownPushSubscription();
+    const settingUp = setupPushSubscription();
+    await vi.waitFor(() =>
+      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockSubscribeToPush).not.toHaveBeenCalled();
+
+    finishUnsubscribe(true);
+    await Promise.all([tearingDown, settingUp]);
+
+    expect(mockSubscribeToPush).toHaveBeenCalledOnce();
+  });
+});

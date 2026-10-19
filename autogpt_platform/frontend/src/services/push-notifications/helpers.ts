@@ -9,6 +9,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "./registration";
+import { withPushSubscriptionLock } from "./subscription-lock";
 
 export async function setupPushSubscription(): Promise<boolean> {
   if (!isPushSupported()) return false;
@@ -23,7 +24,9 @@ export async function setupPushSubscription(): Promise<boolean> {
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || (await fetchVapidPublicKey());
   if (!vapidKey) return false;
 
-  const subscription = await subscribeToPush(registration, vapidKey);
+  const subscription = await withPushSubscriptionLock(() =>
+    subscribeToPush(registration, vapidKey),
+  );
   if (!subscription) return false;
 
   return sendSubscriptionToServer(subscription);
@@ -33,18 +36,20 @@ export async function teardownPushSubscription(): Promise<void> {
   if (!navigator.serviceWorker) return;
   const registration = await navigator.serviceWorker.getRegistration("/");
   if (!registration) return;
-  const subscription = await registration.pushManager.getSubscription();
-  if (!subscription) return;
-
-  // Both at once, on the subscription read above. The browser side is local
-  // and fast, so a slow server can't leave this browser subscribed, and a
-  // late finish can never touch a subscription the next account has made.
+  // The server call starts at once but runs outside the lock: only the
+  // browser side has to finish before another tab may subscribe. Unsubscribe
+  // the subscription read here, never a later one, so a slow server can't
+  // leave this browser subscribed or touch the next account's subscription.
   // A row the server misses points at a dead endpoint and is dropped on the
   // next send.
-  await Promise.all([
-    unsubscribeFromPush(subscription),
-    removeSubscriptionFromServer(subscription.endpoint),
-  ]);
+  let serverRemoval: Promise<boolean> | undefined;
+  await withPushSubscriptionLock(async () => {
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    serverRemoval = removeSubscriptionFromServer(subscription.endpoint);
+    await unsubscribeFromPush(subscription);
+  });
+  await serverRemoval;
 }
 
 const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
