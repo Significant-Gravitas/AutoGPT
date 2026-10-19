@@ -228,6 +228,7 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
+from .env import SDK_PERMISSION_MODE
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .governor import TurnGovernor
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
@@ -5372,6 +5373,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             extra_args={"strict-mcp-config": None},
             allowed_tools=allowed,
             disallowed_tools=disallowed,
+            permission_mode=SDK_PERMISSION_MODE,
             hooks=security_hooks,
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,

@@ -38,7 +38,7 @@ from claude_agent_sdk import (
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
-from backend.copilot.sdk.env import build_sdk_env
+from backend.copilot.sdk.env import SDK_PERMISSION_MODE, build_sdk_env
 
 _MAIN_USER_MARKER = "MAIN-USER-7f3a"
 _SUBAGENT_PROMPT = "SUBAGENT-PROMPT-9c41: report the magic word."
@@ -271,6 +271,7 @@ async def run_copilot_style_turn(
             system_prompt="You are a test main agent.",
             setting_sources=[],
             allowed_tools=["Task", "Agent"],
+            permission_mode=SDK_PERMISSION_MODE,
             cwd=str(workdir),
             max_turns=5,
             env=env,

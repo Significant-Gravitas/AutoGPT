@@ -1146,6 +1146,10 @@ SDK_DISALLOWED_TOOLS = [
     "CronDelete",
     "ListAgents",
     "SendMessage",
+    # CLI 2.1.285+: uploads a local folder to a claude.ai organisation library.
+    "PublishPlugin",
+    # CLI 2.1.285+: asks the user to set up Claude in Chrome; no user can answer.
+    "OfferChromeSetup",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
