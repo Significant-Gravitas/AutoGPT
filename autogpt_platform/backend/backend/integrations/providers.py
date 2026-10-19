@@ -17,6 +17,7 @@ class ProviderName(str, Enum):
     CODEX = "codex"
     COMPASS = "compass"
     DATABASE = "database"
+    DEEPSEEK = "deepseek"
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
