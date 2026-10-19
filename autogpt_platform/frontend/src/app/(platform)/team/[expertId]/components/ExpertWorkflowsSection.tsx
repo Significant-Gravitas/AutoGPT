@@ -3,12 +3,15 @@
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import {
+  Calendar03Icon,
   GridViewIcon,
   ListViewIcon,
+  PlayIcon,
   PlusSignIcon,
+  WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import {
   filterExpertWorkflows,
@@ -17,10 +20,12 @@ import {
 } from "../../helpers";
 import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
 import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
-import { FilterIconMenu } from "./FilterIconMenu";
 import { useExpertWorkflowAgents } from "./useExpertWorkflowAgents";
 import { useExpertWorkflowsView } from "./useExpertWorkflowsView";
 import { ViewToggle } from "./ViewToggle";
+import { SectionEmptyState } from "../../components/SectionEmptyState";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
+import { PillFilterMenu } from "../../components/PillFilterMenu";
 
 const VIEW_OPTIONS = [
   { value: "list", label: "List view", icon: ListViewIcon },
@@ -30,7 +35,6 @@ const VIEW_OPTIONS = [
 interface Props {
   expertName: string;
   workflows: ExpertWorkflowRef[];
-  accentClassName: string;
   expertId?: string;
   coverColor?: string;
   emptyMessage?: string;
@@ -41,7 +45,6 @@ interface Props {
 export function ExpertWorkflowsSection({
   expertName,
   workflows,
-  accentClassName,
   expertId,
   coverColor,
   emptyMessage,
@@ -60,7 +63,7 @@ export function ExpertWorkflowsSection({
         <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Workflows
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {onInstallWorkflow ? (
             <Button
               variant="secondary"
@@ -71,14 +74,13 @@ export function ExpertWorkflowsSection({
               Install workflow
             </Button>
           ) : null}
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-workflows-search"
+            label="Search workflows"
             value={query}
             onChange={setQuery}
-            placeholder="Search workflows"
-            className="w-48"
           />
-          <FilterIconMenu
+          <PillFilterMenu
             label="Filter workflows"
             value={filter}
             defaultValue="all"
@@ -89,10 +91,44 @@ export function ExpertWorkflowsSection({
         </div>
       </div>
       {workflows.length === 0 ? (
-        <Text variant="body" tone="muted">
-          {emptyMessage ??
-            `No workflows yet. Install one to give ${expertName} something to run.`}
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <Icon
+              key="flow"
+              icon={WorkflowSquare01Icon}
+              size={22}
+              className="text-sky-500"
+            />,
+            <Icon
+              key="play"
+              icon={PlayIcon}
+              size={22}
+              className="text-orange-500"
+            />,
+            <Icon
+              key="calendar"
+              icon={Calendar03Icon}
+              size={22}
+              className="text-violet-500"
+            />,
+          ]}
+          title="No workflows yet"
+          description={
+            emptyMessage ??
+            `Install a workflow to give ${expertName} something to run.`
+          }
+        >
+          {onInstallWorkflow ? (
+            <Button
+              variant="primary"
+              size="small"
+              leadingIcon={PlusSignIcon}
+              onClick={onInstallWorkflow}
+            >
+              Install workflow
+            </Button>
+          ) : null}
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted">
           No workflows match.
@@ -105,7 +141,6 @@ export function ExpertWorkflowsSection({
               workflow={workflow}
               libraryAgent={agentsByID.get(workflow.library_agent_id ?? "")}
               expertId={expertId}
-              accentClassName={accentClassName}
               onAsk={onAskWorkflow}
             />
           ))}

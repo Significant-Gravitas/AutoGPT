@@ -9,12 +9,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import prisma.enums
 import pytest
 from pydantic import BaseModel
 
-from backend.copilot import rate_limit, token_tracking
+from backend.copilot import rate_limit, token_tracking, usage_activation
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.data import db_accessors
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
@@ -51,6 +53,10 @@ class TrialAccount:
         monkeypatch.setattr(
             rate_limit, "_fetch_user_tier", AsyncMock(side_effect=self._read_tier)
         )
+        usage = MagicMock(
+            get_usage_activation_state=AsyncMock(side_effect=self._read_usage_state)
+        )
+        monkeypatch.setattr(usage_activation, "pro_activation_db", lambda: usage)
         monkeypatch.setattr(
             rate_limit, "get_redis_async", AsyncMock(return_value=self.counters)
         )
@@ -104,6 +110,10 @@ class TrialAccount:
     async def _read_tier(self, user_id: str) -> SubscriptionTier:
         assert user_id == self.user_id
         return self.tier
+
+    async def _read_usage_state(self, user_id: str) -> UsageActivationState:
+        assert user_id == self.user_id
+        return usage_state_of(user_id, self.tier, self.trial)
 
     async def _charge_trial(
         self, user_id: str, cost_microdollars: int, trial_id: str | None = None
@@ -173,6 +183,26 @@ class _Transaction:
             else:
                 self._counters.ttls[key] = value
         self._queued.clear()
+
+
+def usage_state_of(
+    user_id: str, tier: SubscriptionTier, trial: TrialState | None
+) -> UsageActivationState:
+    """The usage state the database query reports for this tier and trial: the
+    trial counts only while it is live, started and not converted."""
+    live = (
+        tier == SubscriptionTier.TRIAL
+        and trial is not None
+        and trial.active
+        and trial.consumed_at is not None
+        and trial.converted_at is None
+    )
+    return UsageActivationState(
+        user_id=user_id,
+        tier=prisma.enums.SubscriptionTier(tier.value),
+        trial_id=trial.id if live and trial is not None else None,
+        ready=True,
+    )
 
 
 def active_trial(

@@ -11,6 +11,9 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from backend.util.cloud_storage import get_cloud_storage_handler
+from backend.util.filename import MAX_FILENAME_BYTES as MAX_FILENAME_BYTES
+from backend.util.filename import MAX_FILENAME_LENGTH as MAX_FILENAME_LENGTH
+from backend.util.filename import sanitize_filename as sanitize_filename
 from backend.util.request import Requests
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
@@ -60,37 +63,6 @@ MediaReturnFormat = Literal[
 ]
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
-
-# Maximum filename length (conservative limit for most filesystems)
-MAX_FILENAME_LENGTH = 200
-
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Sanitize and truncate filename to prevent filesystem errors.
-    """
-    # Remove or replace invalid characters
-    sanitized = re.sub(r'[<>:"/\\|?*\n\r\t]', "_", filename)
-
-    # Truncate if too long
-    if len(sanitized) > MAX_FILENAME_LENGTH:
-        # Keep the extension if possible, but only if it's reasonable length
-        if "." in sanitized:
-            name, ext = sanitized.rsplit(".", 1)
-            # If extension is too long, it's likely not a file extension but just text
-            if len(ext) <= 20:
-                max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
-                sanitized = name[:max_name_length] + "." + ext
-            else:
-                sanitized = sanitized[:MAX_FILENAME_LENGTH]
-        else:
-            sanitized = sanitized[:MAX_FILENAME_LENGTH]
-
-    # Ensure it's not empty or just dots
-    if not sanitized or sanitized.strip(".") == "":
-        sanitized = f"file_{uuid.uuid4().hex[:8]}"
-
-    return sanitized
 
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
