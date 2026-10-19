@@ -140,7 +140,9 @@ async def test_a_file_download_needs_the_run_still_shared_under_that_token(
 
     assert await get_shared_execution_file("token-1", "file-1") is None
 
-    where = find_first.await_args.kwargs["where"]
-    assert where["Execution"] == {
-        "is": {"isShared": True, "isDeleted": False, "shareToken": "token-1"}
-    }
+    shared = find_first.await_args.kwargs["where"]["Execution"]["is"]
+    assert (shared["isShared"], shared["isDeleted"], shared["shareToken"]) == (
+        True,
+        False,
+        "token-1",
+    )
