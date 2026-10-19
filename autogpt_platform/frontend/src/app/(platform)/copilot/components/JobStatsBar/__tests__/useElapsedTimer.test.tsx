@@ -111,4 +111,15 @@ describe("useElapsedAnchor", () => {
     rerender(<AnchorHarness id="a" isRunning={false} />);
     expect(text("a")).toBe("none|2");
   });
+
+  it("freezes the exact whole seconds of a run that did not start on a second", () => {
+    vi.setSystemTime(NOW + 700);
+    const { rerender } = render(<AnchorHarness id="a" isRunning />);
+
+    act(() => {
+      vi.advanceTimersByTime(5_100);
+    });
+    rerender(<AnchorHarness id="a" isRunning={false} />);
+    expect(text("a")).toBe("none|5");
+  });
 });

@@ -1,4 +1,4 @@
-import { getNowSecond, useNowSecond } from "@/hooks/useNowSecond";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import { useState } from "react";
 
 interface Run {
@@ -55,7 +55,7 @@ export function useElapsedAnchor(
       startedAtMs: isRunning ? resolveStartMs(anchorIso) : null,
       frozenSeconds:
         !isRunning && run.startedAtMs !== null
-          ? getElapsedSeconds(run.startedAtMs, getNowSecond())
+          ? getElapsedSeconds(run.startedAtMs, Date.now())
           : run.frozenSeconds,
     };
     setRun(current);

@@ -67,11 +67,6 @@ export function useWallClock(clock: WallClock, enabled: boolean) {
 
 const secondClock = createWallClock(1_000);
 
-/** The current wall-clock second, without subscribing. */
-export function getNowSecond() {
-  return secondClock.getSnapshot();
-}
-
 /**
  * Epoch milliseconds of the current wall-clock second. Re-renders once a
  * second, in step with every other `useNowSecond` caller, while `enabled`.
