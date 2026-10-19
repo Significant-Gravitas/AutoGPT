@@ -34,6 +34,7 @@ from backend.copilot.graphiti.recall import (
     search_forgotten_facts,
 )
 from backend.copilot.graphiti.recall_forget import retract
+from backend.copilot.graphiti.recall_recheck import recheck
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -153,6 +154,8 @@ class MemoryForgetSearchTool(BaseTool):
                 if include_forgotten
                 else []
             )
+            if include_forgotten:
+                edges, _ = await recheck(memory_scope, edges, [])
         except Exception:
             logger.warning(
                 "Memory forget search failed for user %s", user_id[:12], exc_info=True

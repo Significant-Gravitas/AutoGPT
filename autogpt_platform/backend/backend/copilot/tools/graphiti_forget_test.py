@@ -159,6 +159,7 @@ class TestForgetSearchForgottenCandidates:
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
             patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
+            patch(f"{_MODULE}.recheck", AsyncMock(return_value=(live, []))),
         ):
             response = await MemoryForgetSearchTool()._execute(
                 "user-abc",
