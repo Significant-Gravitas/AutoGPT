@@ -32,7 +32,7 @@ const RETRY_PAUSE_SECONDS = 5;
 
 const executionsDeleted = new Counter("cleanup_executions");
 const libraryAgentsDeleted = new Counter("cleanup_library_agents");
-const deletesFailed = new Counter("cleanup_failures");
+const cleanupFailures = new Counter("cleanup_failures");
 
 // For options.teardownTimeout: the deletes go ten at a time, but an account
 // can hold a few hundred runs after a stress run.
@@ -47,8 +47,11 @@ export function removeRunData(data, when) {
   for (const account of data.accounts) {
     const headers = accountHeaders(data, account.index);
     const runs = [];
+    let unlisted = 0;
     for (const graph of account.graphs) {
-      for (const id of graphRuns(graph.graphId, headers)) runs.push(id);
+      const listed = graphRuns(graph.graphId, headers);
+      for (const id of listed.ids) runs.push(id);
+      if (!listed.complete) unlisted++;
     }
     const executions = deleteAll(
       runs.map((id) => `/executions/${id}`),
@@ -62,8 +65,9 @@ export function removeRunData(data, when) {
     );
     if (executions.deleted) executionsDeleted.add(executions.deleted);
     if (libraryAgents.deleted) libraryAgentsDeleted.add(libraryAgents.deleted);
-    const failed = executions.failed + libraryAgents.failed;
-    if (failed) deletesFailed.add(failed);
+    // A graph whose runs could not be listed counts once: its runs stay.
+    const failed = executions.failed + libraryAgents.failed + unlisted;
+    if (failed) cleanupFailures.add(failed);
     done.executions += executions.deleted;
     done.libraryAgents += libraryAgents.deleted;
     done.failed += failed;
@@ -71,13 +75,14 @@ export function removeRunData(data, when) {
   console.log(
     `${when}: deleted ${done.executions} graph runs and ${done.libraryAgents} library agents${
       done.failed > 0
-        ? `; ${done.failed} deletes failed, the log above says which`
+        ? `; ${done.failed} deletes or listings failed, the log above says which`
         : ""
     }; the graphs and chat sessions stay (README: Seeding)`,
   );
 }
 
 // Every run of a graph the seed created: none existed before the run.
+// `complete` is false when a page could not be read, so some may be missing.
 function graphRuns(graphId, headers) {
   const ids = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -86,15 +91,16 @@ function graphRuns(graphId, headers) {
       "/graphs/{graph_id}/executions",
       headers,
     );
-    const executions =
-      body && Array.isArray(body.executions) ? body.executions : [];
-    for (const execution of executions) {
+    if (!body || !Array.isArray(body.executions)) {
+      return { ids, complete: false };
+    }
+    for (const execution of body.executions) {
       if (execution.id) ids.push(execution.id);
     }
-    const pages = body && body.pagination ? body.pagination.total_pages : 0;
-    if (executions.length === 0 || page >= pages) break;
+    const pages = body.pagination ? body.pagination.total_pages : 0;
+    if (body.executions.length === 0 || page >= pages) break;
   }
-  return ids;
+  return { ids, complete: true };
 }
 
 function params(route, headers, expected) {
@@ -140,7 +146,13 @@ function deleteAll(paths, route, headers) {
         })),
       );
       responses.forEach((res, j) => {
-        if (res.status === 200 || res.status === 204) {
+        // A 404 on a second attempt means the first went through and only
+        // its answer was lost.
+        if (
+          res.status === 200 ||
+          res.status === 204 ||
+          (res.status === 404 && attempt > 0)
+        ) {
           result.deleted++;
         } else if (TRANSIENT.includes(res.status) && attempt < RETRIES) {
           again.push(batch[j]);

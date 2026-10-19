@@ -689,6 +689,6 @@ export function seedingReport(summaryData) {
       credits && credits.values ? Math.round(credits.values.avg) : null,
     executions_deleted: count("cleanup_executions"),
     library_agents_deleted: count("cleanup_library_agents"),
-    deletes_failed: count("cleanup_failures"),
+    cleanup_failures: count("cleanup_failures"),
   };
 }
