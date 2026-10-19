@@ -8,6 +8,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import Future
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional, Union
@@ -39,6 +40,7 @@ from backend.copilot.at_reset import (
     fire_verdict,
     load_at_reset_chat,
 )
+from backend.copilot.at_reset_lock import at_reset_job_lock
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
@@ -60,6 +62,7 @@ from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
@@ -951,10 +954,20 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
 # When a chat's resume or send at the reset was cancelled, by job id. A job
 # cancelled while it runs is already out of the job store, so the cancel
 # finds nothing to remove; before firing or putting itself back the job looks
-# here. In process, like the jobs themselves: one scheduler runs them.
+# here. Kept in Redis, since the replica that takes the cancel need not be the
+# one running the job, and in this process too, for when Redis can't be read.
 _at_reset_cancels: dict[str, datetime] = {}
 _at_reset_cancels_lock = threading.Lock()
 _AT_RESET_CANCEL_MEMORY = timedelta(hours=2)
+_AT_RESET_CANCEL_KEY_PREFIX = "copilot:at_reset_cancel:"
+# Kept as a sorted set's score, in microseconds since the epoch, and only
+# ever moved later: a write that stalled and lands after a newer cancel can't
+# put the older time back.
+_AT_RESET_CANCEL_MEMBER = "cancelled_at"
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# How long writing or reading a cancel waits on Redis, whose client retries
+# for far longer, before going on with only this replica's memory of it.
+_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS = 2
 
 # An at-reset turn that can't fire yet (the chat is busy, the budget or the
 # expert can't be read, the queue turned it away) tries again five minutes
@@ -977,7 +990,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
         if chat is None:
             return
         verdict = await fire_verdict(kind, chat, args.created_at)
-        if _cancelled_after_set(args):
+        if await _cancelled_after_set(args):
             logger.info(
                 f"{kind}-at-reset turn for session {label} was cancelled "
                 "while it ran; dropping it"
@@ -1092,13 +1105,33 @@ async def _rearm_at_reset_turn(args: "CopilotTurnJobArgs", *, reason: str) -> No
 async def _readd_at_reset_turn(
     args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
 ) -> None:
-    """Put an at-reset turn back under its own id, keeping when it was set."""
-    if _cancelled_after_set(args):
-        logger.info(
-            f"Not putting back the {args.purpose}-at-reset turn for session "
-            f"{_session_id_label(args)}: it was cancelled while it ran"
-        )
-        return
+    """Put an at-reset turn back under its own id, keeping when it was set.
+
+    Under the job's lock, so a send the user writes or a cancel they make
+    meanwhile, on whichever replica, lands wholly before or after it.
+    """
+    job_lock = (
+        at_reset_job_lock(args.schedule_id) if args.schedule_id else nullcontext(True)
+    )
+    async with job_lock as locked:
+        if not locked:
+            # Losing the user's turn would be worse than racing their write.
+            logger.warning(
+                f"Putting back the {args.purpose}-at-reset turn for session "
+                f"{_session_id_label(args)} without its lock"
+            )
+        if await _cancelled_after_set(args):
+            logger.info(
+                f"Not putting back the {args.purpose}-at-reset turn for session "
+                f"{_session_id_label(args)}: it was cancelled while it ran"
+            )
+            return
+        await _put_back_at_reset_turn(args, run_at=run_at, retries=retries)
+
+
+async def _put_back_at_reset_turn(
+    args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
+) -> None:
     try:
         # Under its own id this is safe to repeat, and a put-back lost on a
         # connection the scheduler had just closed would drop the user's turn.
@@ -1147,18 +1180,62 @@ def _remember_at_reset_cancel(job_id: str) -> None:
         for key in stale:
             del _at_reset_cancels[key]
         _at_reset_cancels[job_id] = now
+    try:
+        # Waited for: the cancel route holds the job's lock until this
+        # returns, and a put-back that takes the lock next must find it.
+        run_async(
+            _share_at_reset_cancel(job_id, now),
+            # The write keeps its own deadline; this one only backs it up.
+            timeout=_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS + 1,
+        )
+    except Exception:
+        logger.warning(
+            f"Could not share the cancel of at-reset job {job_id}; only this "
+            "replica knows of it",
+            exc_info=True,
+        )
 
 
-def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
+async def _share_at_reset_cancel(job_id: str, cancelled_at: datetime) -> None:
+    key = f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}"
+    micros = (cancelled_at - _EPOCH) // timedelta(microseconds=1)
+    async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+        redis = await get_redis_async()
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zadd(key, {_AT_RESET_CANCEL_MEMBER: micros}, gt=True)
+            pipe.expire(key, _AT_RESET_CANCEL_MEMORY)
+            await pipe.execute()
+
+
+async def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
     """Whether the user cancelled this job after it was set: setting it
     again after a cancel makes a new job, set later than the cancel."""
     if args.schedule_id is None:
         return False
-    with _at_reset_cancels_lock:
-        cancelled_at = _at_reset_cancels.get(args.schedule_id)
+    cancelled_at = await _at_reset_cancelled_at(args.schedule_id)
     if cancelled_at is None:
         return False
     return args.created_at is None or args.created_at <= cancelled_at
+
+
+async def _at_reset_cancelled_at(job_id: str) -> datetime | None:
+    """When the job was last cancelled, on any replica. This replica's own
+    memory stands in for Redis when Redis can't be read."""
+    with _at_reset_cancels_lock:
+        here = _at_reset_cancels.get(job_id)
+    try:
+        async with asyncio.timeout(_AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS):
+            redis = await get_redis_async()
+            micros = await redis.zscore(
+                f"{_AT_RESET_CANCEL_KEY_PREFIX}{job_id}", _AT_RESET_CANCEL_MEMBER
+            )
+    except Exception:
+        logger.warning(
+            f"Could not read the cancels of at-reset job {job_id}", exc_info=True
+        )
+        return here
+    anywhere = None if micros is None else _EPOCH + timedelta(microseconds=micros)
+    return max((at for at in (here, anywhere) if at is not None), default=None)
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
