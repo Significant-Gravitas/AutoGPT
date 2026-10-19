@@ -62,9 +62,7 @@ def _beyond_the_bot(block_name: str, input_data: dict[str, Any]) -> bool:
     or not: a DM to someone else, a reply into a thread, a private thread."""
     if block_name == "SendSlackMessageBlock":
         channel = str(input_data.get("channel") or "").strip()
-        return bool(input_data.get("thread_ts")) or bool(
-            _SLACK_DM.match(channel.upper())
-        )
+        return bool(input_data.get("thread_ts")) or bool(_SLACK_DM.match(channel))
     if block_name == "CreateDiscordThreadBlock":
         return bool(input_data.get("is_private"))
     if block_name == "SendTelegramMessageBlock":
