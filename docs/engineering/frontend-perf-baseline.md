@@ -389,3 +389,51 @@ Added later than the other tables: app code is `dev` at `a1578ad9a` (2026-10-19)
 | `Primitive.div.Slot props:children` | 231 |
 | `Primitive.div.SlotClone props:children` | 231 |
 | `Text props:children` | 224 |
+
+## library-running-events · baseline — median of 3 runs
+
+Added after the table above, so it was measured on `dev` at `a1578ad9a` (2026-10-19), on the same machine. The websocket is mocked; each run prints what it saw, and all three printed the same: 80 events in 20 s, counted until 2 s after the last one, caused 1,600 `subscribe_graph_executions` frames (all 20 workflows on every event) and 80 `GET /executions` refetches. Each refetch re-renders the whole card grid.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 242 | 242 – 242 | 0.0% |
+| total renders | 143,052 | 143,052 – 143,052 | 0.0% |
+| renders per commit | 591.1 | 591.1 – 591.1 | 0.0% |
+| max renders in one commit | 1,768 | 1,768 – 1,768 | 0.0% |
+| script time (ms) | 8,442 | 8,191 – 8,797 | 7.2% |
+| task time (ms) | 10,585 | 10,338 – 10,975 | 6.0% |
+| layout time (ms) | 55 | 55 – 58 | 6.5% |
+| style recalc time (ms) | 160 | 139 – 175 | 22.7% |
+| long tasks (≥ 50 ms) | 80 | 80 – 80 | 0.0% |
+| long task total (ms) | 8,288 | 8,053 – 8,635 | 7.0% |
+| heap used after GC (MB) | 43.5 | 43.5 – 43.5 | 0.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon` | 9,760 |
+| `Icon` | 9,760 |
+| `Presence` | 8,642 |
+| `Dialog` | 6,881 |
+| `Text` | 5,440 |
+| `motion.div` | 4,880 |
+| `DialogPortal` | 3,441 |
+| `DialogPortalProvider` | 3,441 |
+| `DialogProvider` | 3,441 |
+| `BaseContent` | 3,440 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon parent-same-props<-Icon` | 9,760 |
+| `Presence props:children` | 8,642 |
+| `Icon parent-same-props<-motion.div` | 4,800 |
+| `Dialog props:onOpenChange,children` | 3,441 |
+| `DialogPortal props:children` | 3,441 |
+| `DialogPortalProvider props:children` | 3,441 |
+| `DialogProvider props:children` | 3,441 |
+| `BaseContent props:children` | 3,440 |
+| `DialogWrap props:styling,handleOpen,handleClose,children` | 3,440 |
+| `LinkComponent props:children` | 3,200 |
