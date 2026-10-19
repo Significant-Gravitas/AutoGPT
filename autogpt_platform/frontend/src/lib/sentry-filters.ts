@@ -1,4 +1,4 @@
-import type { Event } from "@sentry/nextjs";
+import type { Event, init } from "@sentry/nextjs";
 
 // Next.js logs exactly this when a client-side navigation cannot fetch the RSC
 // payload (flaky network, tab backgrounded, deploy in progress). It then does a
@@ -110,10 +110,37 @@ const SENTRY_USER_FIELDS = new Set(["id", "role"]);
 // address, whichever code put them on the scope.
 export function stripUserPII<T extends Event>(event: T): T {
   if (!event.user) return event;
-  event.user = Object.fromEntries(
+  const user = Object.fromEntries(
     Object.entries(event.user).filter(([field]) =>
       SENTRY_USER_FIELDS.has(field),
     ),
   );
+  if (Object.keys(user).length) event.user = user;
+  else delete event.user;
   return event;
+}
+
+// The SDK copies the scope's user id, email and username into every log's
+// attributes, and logs skip beforeSend. An IP address can arrive as
+// `client.address`, `http.client_ip`, `user.ip_address` or a bare `ip`.
+const LOG_IP_ATTRIBUTE = /(^|\.)(ip|ip_address|client_ip|client\.address)$/i;
+
+function isPrivateLogAttribute(name: string) {
+  if (name.startsWith("user.")) return name !== "user.id";
+  return LOG_IP_ATTRIBUTE.test(name);
+}
+
+type SentryLog = Parameters<
+  NonNullable<NonNullable<Parameters<typeof init>[0]>["beforeSendLog"]>
+>[0];
+
+// Logs are known to Sentry by the user id only, like errors and transactions.
+export function stripLogUserPII(log: SentryLog): SentryLog {
+  if (!log.attributes) return log;
+  log.attributes = Object.fromEntries(
+    Object.entries(log.attributes).filter(
+      ([name]) => !isPrivateLogAttribute(name),
+    ),
+  );
+  return log;
 }

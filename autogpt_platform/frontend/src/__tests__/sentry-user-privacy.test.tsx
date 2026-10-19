@@ -40,8 +40,14 @@ type SentPayload = Sentry.Event & {
   sdk?: { settings?: { infer_ip?: string } };
 };
 
-// Errors and transactions as the production client config would send them.
+interface SentLog {
+  body: string;
+  attributes: Record<string, { value: unknown }>;
+}
+
+// Errors, transactions and logs as the production client config would send them.
 const sent: SentPayload[] = [];
+const sentLogs: SentLog[] = [];
 
 beforeAll(async () => {
   vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -53,6 +59,9 @@ beforeAll(async () => {
         if (header.type === "event" || header.type === "transaction") {
           sent.push(payload as SentPayload);
         }
+        if (header.type === "log") {
+          sentLogs.push(...(payload as { items: SentLog[] }).items);
+        }
       }
       return {};
     },
@@ -61,6 +70,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   sent.length = 0;
+  sentLogs.length = 0;
 });
 
 afterEach(() => {
@@ -114,5 +124,30 @@ describe("a signed-in user in Sentry", () => {
       expect(JSON.stringify(payload)).not.toContain(IP);
       expect(JSON.stringify(payload)).not.toContain("Lovelace");
     }
+  });
+
+  it("is identified by id only in logs, whatever other code puts on the scope", async () => {
+    Sentry.setUser({
+      id: "user-1",
+      role: "admin",
+      email: EMAIL,
+      ip_address: IP,
+      username: "ada",
+      name: "Ada Lovelace",
+    });
+
+    Sentry.logger.info("loaded the library", { "client.address": IP });
+    await Sentry.flush(2000);
+
+    expect(sentLogs).toHaveLength(1);
+    const [log] = sentLogs;
+    expect(log.body).toBe("loaded the library");
+    expect(log.attributes["user.id"]?.value).toBe("user-1");
+    const userAttributes = Object.keys(log.attributes).filter((name) =>
+      name.startsWith("user."),
+    );
+    expect(userAttributes).toEqual(["user.id"]);
+    expect(JSON.stringify(log)).not.toContain(EMAIL);
+    expect(JSON.stringify(log)).not.toContain(IP);
   });
 });

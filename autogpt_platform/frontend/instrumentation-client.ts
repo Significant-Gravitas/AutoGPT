@@ -8,6 +8,7 @@ import {
   isFromBot,
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
+  stripLogUserPII,
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
@@ -54,6 +55,7 @@ Sentry.init({
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent) ? null : stripUserPII(event);
   },
+  beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
   integrations: [

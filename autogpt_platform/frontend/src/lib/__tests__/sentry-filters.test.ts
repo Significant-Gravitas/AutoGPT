@@ -19,6 +19,8 @@ import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
   isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripUserPII,
 } from "../sentry-filters";
 
 // Drives a real Sentry client with the same console capture as
@@ -155,5 +157,33 @@ describe("Sentry filter for crawler noise", () => {
     "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   ])("treats %j as a person", (userAgent) => {
     expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry user privacy filters", () => {
+  it("drops a user left with no id or role instead of sending an empty one", () => {
+    const event = stripUserPII({
+      user: { email: "ada@example.com", ip_address: "203.0.113.7" },
+    });
+
+    expect(event).not.toHaveProperty("user");
+  });
+
+  it("keeps log attributes that only mention an address or a user", () => {
+    const log = stripLogUserPII({
+      level: "info",
+      message: "rendered",
+      attributes: {
+        "server.address": "platform.agpt.co",
+        "users.count": 3,
+        "ip.allowlist_enabled": true,
+      },
+    });
+
+    expect(log.attributes).toEqual({
+      "server.address": "platform.agpt.co",
+      "users.count": 3,
+      "ip.allowlist_enabled": true,
+    });
   });
 });

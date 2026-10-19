@@ -180,6 +180,33 @@ describe.each([
     }
   });
 
+  it("sends logs with the user id only, and no email, name or IP address", async () => {
+    await load();
+
+    const { enableLogs, beforeSendLog } = initMock.mock.calls[0][0];
+    const log = beforeSendLog({
+      level: "info",
+      message: "rendered the library",
+      attributes: {
+        "user.id": "user-1",
+        "user.email": "ada@example.com",
+        "user.name": "ada",
+        "user.ip_address": "203.0.113.7",
+        "client.address": "203.0.113.7",
+        "http.client_ip": "203.0.113.7",
+        ip: "203.0.113.7",
+        "sentry.environment": "pr-123",
+      },
+    });
+
+    expect(enableLogs).toBe(true);
+    expect(log).toEqual({
+      level: "info",
+      message: "rendered the library",
+      attributes: { "user.id": "user-1", "sentry.environment": "pr-123" },
+    });
+  });
+
   it("tags events with the environment the deployment names for itself", async () => {
     vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
 
