@@ -88,6 +88,12 @@ export function useExecutionEvents({
       });
     });
 
+    // A new connection starts with no subscriptions on the server, so the
+    // next connect must send them all again.
+    const disconnectHandler = api.onWebSocketDisconnect(() => {
+      subscribedIds.clear();
+    });
+
     const messageHandler = api.onWebSocketMessage(
       "graph_execution_event",
       handleExecutionEvent,
@@ -97,6 +103,7 @@ export function useExecutionEvents({
 
     return () => {
       connectHandler();
+      disconnectHandler();
       messageHandler();
       throttle.flush();
       // Note: Backend automatically cleans up subscriptions on websocket disconnect

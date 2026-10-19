@@ -5,13 +5,20 @@ import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 type MessageHandler = (execution: GraphExecution) => void;
 
 const messageHandlers = new Set<MessageHandler>();
+const connectHandlers = new Set<() => void>();
+const disconnectHandlers = new Set<() => void>();
 const subscribeToGraphExecutions = vi.fn(() => Promise.resolve());
 const onWebSocketConnect = vi.fn((handler: () => void) => {
+  connectHandlers.add(handler);
   handler();
-  return () => undefined;
+  return () => connectHandlers.delete(handler);
 });
 const fakeAPI = {
   onWebSocketConnect,
+  onWebSocketDisconnect: (handler: () => void) => {
+    disconnectHandlers.add(handler);
+    return () => disconnectHandlers.delete(handler);
+  },
   subscribeToGraphExecutions,
   connectWebSocket: vi.fn(() => Promise.resolve()),
   onWebSocketMessage: (_method: string, handler: MessageHandler) => {
@@ -38,6 +45,8 @@ function emit(execution: GraphExecution) {
 
 beforeEach(() => {
   messageHandlers.clear();
+  connectHandlers.clear();
+  disconnectHandlers.clear();
   subscribeToGraphExecutions.mockClear();
   onWebSocketConnect.mockClear();
 });
@@ -69,6 +78,32 @@ describe("useExecutionEvents subscriptions", () => {
       ["graph-a"],
       ["graph-b"],
     ]);
+  });
+
+  test("subscribes again on a new connection after the socket drops", () => {
+    renderHook(() => useExecutionEvents({ graphIds: ["graph-a", "graph-b"] }));
+
+    act(() => {
+      disconnectHandlers.forEach((handler) => handler());
+      connectHandlers.forEach((handler) => handler());
+    });
+
+    expect(subscribeToGraphExecutions.mock.calls).toEqual([
+      ["graph-a"],
+      ["graph-b"],
+      ["graph-a"],
+      ["graph-b"],
+    ]);
+  });
+
+  test("a second connect on the same connection does not subscribe twice", () => {
+    renderHook(() => useExecutionEvents({ graphIds: ["graph-a"] }));
+
+    act(() => {
+      connectHandlers.forEach((handler) => handler());
+    });
+
+    expect(subscribeToGraphExecutions).toHaveBeenCalledTimes(1);
   });
 
   test("only events for the subscribed graphs reach the handler", () => {
