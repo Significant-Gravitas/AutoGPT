@@ -24,7 +24,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
-from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
@@ -2840,6 +2840,22 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     data = response.json()
     assert data["buffer_length"] == 1
     assert "turn_in_flight" in data
+
+
+def test_queue_pending_message_on_the_platform_route_needs_a_plan(
+    mocker: pytest_mock.MockerFixture, paywalled_user
+) -> None:
+    session = _mock_stream_queue_internals(mocker)
+    session.metadata.llm_auth_provider = "platform"
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post("/sessions/sess-1/messages/pending", json={"message": "more"})
+    push.assert_not_awaited()
 
 
 def test_queue_pending_message_same_message_id_is_buffered_once(
