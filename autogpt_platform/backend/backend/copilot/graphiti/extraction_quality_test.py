@@ -106,6 +106,12 @@ def test_payment_term_accepts_value_attached_to_payment(term: str):
         "Elm Studio signed the agreement but has not paid.",
         "Elm Studio has not paid but has signed the agreement.",
         "No agreement was signed yesterday, but Elm Studio signed today.",
+        "Jordan Rivera and Elm Studio signed an agreement.",
+        "Elm Studio and Jordan Rivera have already signed an agreement.",
+        "Jordan Rivera asked not to claim the agreement and Jordan Rivera and Elm Studio signed an agreement.",
+        "Jordan Rivera asked not to claim the agreement but Jordan Rivera and Elm Studio signed an agreement.",
+        "Jordan Rivera asked not to claim the agreement and Elm Studio and Jordan Rivera signed an agreement.",
+        "Jordan Rivera asked not to claim the agreement but Elm Studio and Jordan Rivera signed an agreement.",
     ],
 )
 def test_extraction_rejects_invented_signature_claims(claim: str):
@@ -142,6 +148,8 @@ def test_signing_instruction_does_not_hide_later_claim(
         "Jordan Rivera requested a brief without claiming anything has already been signed.",
         "Jordan Rivera asked not to claim the agreement has already been signed.",
         "Jordan Rivera instructed that the supplier brief for Elm Studio must not claim that anything has already been signed.",
+        "Jordan Rivera asked not to claim that Jordan Rivera and Elm Studio signed an agreement.",
+        "Jordan Rivera requested a brief without claiming Elm Studio and Jordan Rivera have already signed an agreement.",
     ],
 )
 def test_extraction_allows_negated_signature_claims(fact: str):

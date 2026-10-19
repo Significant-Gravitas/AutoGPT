@@ -50,6 +50,11 @@ def _missing_details(facts: list[str]) -> list[str]:
 
 
 def _has_signed_claim(fact: str) -> bool:
+    # The scenario's two participants can form one subject joined by "and".
+    coordinated_subject = (
+        r"\b(?:Jordan Rivera\s+and\s+Elm Studio|" r"Elm Studio\s+and\s+Jordan Rivera)\b"
+    )
+    fact = re.sub(coordinated_subject, "the parties", fact, flags=re.IGNORECASE)
     # A negated instruction must not hide a later claim after "but" or "and".
     negated = (
         r"\b(?:not|never|\w+n['’]t)\s+(?:(?:yet|already|been|be|ever)\s+)*signed\b"
