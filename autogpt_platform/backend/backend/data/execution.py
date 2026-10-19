@@ -1533,6 +1533,11 @@ class GraphExecutionEntry(BaseModel):
     nodes_to_skip: set[str] = Field(default_factory=set)
     """Node IDs that should be skipped due to optional credentials not being configured."""
     execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
+    admin_requeue: bool = False
+    """Published by an admin requeue of a run that looked stuck in QUEUED. The
+    original message may not have been lost, so the consumer starts the run
+    only from QUEUED (or continues it from RUNNING after a dead pod's
+    redelivery) and never resumes it from REVIEW."""
 
 
 class NodeExecutionEntry(BaseModel):

@@ -21,6 +21,7 @@ from backend.executor.utils import (
     CRED_ERR_NOT_AVAILABLE_PREFIX,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
+    ExecutionNotRequeuedError,
     _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
@@ -2232,6 +2233,7 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.id = "existing-execution"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED
+    graph_exec.is_dry_run = False
     graph_exec.graph_version = 1
     graph_exec.nodes_input_masks = {}
     graph_exec.expert_id = expert_id
@@ -3219,3 +3221,178 @@ async def test_subgraph_inherits_the_pause_through_its_context(
 
     child_context = add.await_args.kwargs["execution_context"]
     assert child_context.sensitive_action_safe_mode is True
+
+
+# ============================================================================
+# Admin requeue of a stuck QUEUED execution (#15282). QUEUED -> QUEUED is not
+# a valid status transition, so the CAS always "failed" and the publish was
+# silently skipped while the admin route reported success.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_publishes_queued_execution_without_cas(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=True,
+    )
+
+    queue.publish_message.assert_awaited_once()
+    for call in execution_store.update_graph_execution_stats.await_args_list:
+        assert call.kwargs.get("status") != ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_keeps_a_dry_run_dry(mocker: MockerFixture):
+    graph_exec, _, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    graph_exec.is_dry_run = True
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=True,
+    )
+
+    assert captured["execution_context"].dry_run is True
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_publish_failure_leaves_the_run_queued(
+    mocker: MockerFixture,
+):
+    """A broker error during admin recovery must not fail the user's run: it
+    stays QUEUED, where the requeue tools can reach it again."""
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    queue.publish_message.side_effect = ConnectionError("broker down")
+
+    with pytest.raises(ConnectionError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+
+    execution_store.update_node_execution_status_batch.assert_not_called()
+    for call in execution_store.update_graph_execution_stats.await_args_list:
+        assert call.kwargs.get("status") != ExecutionStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_of_expert_run_persists_tenancy_without_a_status_write(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id="expert-1", organization_id="org-1", team_id="team-1"
+    )
+    _mock_expert_personal_tenancy(
+        mocker, organization_id="current-org", team_id="current-team"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=True,
+    )
+
+    execution_store.update_graph_execution_stats.assert_awaited_once_with(
+        graph_exec_id="existing-execution",
+        update_tenancy=True,
+        organization_id="current-org",
+        team_id="current-team",
+    )
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.REVIEW,
+        ExecutionStatus.TERMINATED,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.COMPLETED,
+    ],
+)
+async def test_admin_requeue_leaves_a_row_that_left_queued_alone(
+    mocker: MockerFixture, status: ExecutionStatus
+):
+    """The row left QUEUED between the admin's select and the requeue. Admin
+    recovery must not resume it: TERMINATED and REVIEW are valid sources for
+    the QUEUED CAS, so without the status guard a stopped run would restart."""
+    graph_exec, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    graph_exec.status = status
+    # The CAS would succeed if it ran, as it does for TERMINATED/REVIEW rows.
+    execution_store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mocker.MagicMock(status=ExecutionStatus.QUEUED)
+    )
+
+    with pytest.raises(ExecutionNotRequeuedError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+
+    queue.publish_message.assert_not_called()
+    execution_store.update_graph_execution_stats.assert_not_called()
+    execution_store.update_node_execution_status_batch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_needs_an_existing_execution():
+    with pytest.raises(ValueError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_non_admin_requeue_keeps_silent_skip_when_cas_fails(
+    mocker: MockerFixture,
+):
+    """User resume keeps the tolerant behavior: a lost CAS race is a no-op."""
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    execution_store.update_graph_execution_stats = mocker.AsyncMock(return_value=None)
+    # Avoid the real paywall client (retries forever without a local service).
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=False),
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+    )
+
+    queue.publish_message.assert_not_called()
