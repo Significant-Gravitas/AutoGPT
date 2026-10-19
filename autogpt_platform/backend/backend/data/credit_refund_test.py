@@ -455,6 +455,34 @@ async def test_refund_without_a_top_up_raises_unless_shown_creditless(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "request_type, status",
+    [(stripe.Refund, "succeeded"), (stripe.Dispute, "lost")],
+    ids=["refund", "lost-dispute"],
+)
+async def test_refund_or_lost_dispute_without_a_payment_intent_raises(
+    request_type, status, server: SpinTestServer
+):
+    """A refund or lost dispute with no PaymentIntent, as on a charge made
+    outside one, cannot be shown creditless: it raises, so Stripe retries,
+    without a lookup of a PaymentIntent named "None"."""
+    request = MagicMock(spec=request_type)
+    request.id = "re_test_no_intent"
+    request.payment_intent = None
+    request.amount = 6000
+    request.status = status
+    retrieve = _stripe_payment_intents(invoice="in_test_subscription")
+
+    with (
+        patch("stripe.PaymentIntent.retrieve_async", new=retrieve),
+        pytest.raises(RuntimeError),
+    ):
+        await credit_system.deduct_credits(request)
+
+    retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_refunds(server: SpinTestServer):
     """Test that concurrent refunds are handled atomically."""
     import asyncio
@@ -564,10 +592,17 @@ def subscription_payment_intent(monkeypatch):
 
 
 def _stripe_payment_intents(invoice: str | None) -> AsyncMock:
-    """Answers as Stripe does: only API versions before 2025-03-31.basil name
-    the invoice a PaymentIntent paid."""
+    """Answers as Stripe does: an unknown id is a 404, and only API versions
+    before 2025-03-31.basil name the invoice a PaymentIntent paid."""
 
     async def retrieve(payment_intent_id: str, stripe_version: str | None = None):
+        if not payment_intent_id.startswith("pi_"):
+            raise stripe.InvalidRequestError(
+                f"No such payment_intent: '{payment_intent_id}'",
+                "intent",
+                code="resource_missing",
+                http_status=404,
+            )
         fields: dict = {"id": payment_intent_id, "object": "payment_intent"}
         if (stripe_version or stripe.api_version) < "2025-03-31":
             fields["invoice"] = invoice
