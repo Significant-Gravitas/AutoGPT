@@ -394,17 +394,12 @@ async def delete_submission(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> None:
     """Delete a marketplace listing submission. Approved listings can not be deleted."""
-    success = await store_db.delete_store_submission(
+    # Raising, so an approved listing is a 400 and a failure a 500, not a 404.
+    await store_db.delete_store_submission_or_raise(
         user_id=auth.user_id,
         store_listing_version_id=version_id,
         organization_id=auth.organization_id,
     )
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Submission #{version_id} not found",
-        )
 
 
 # ============================================================================

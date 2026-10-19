@@ -194,27 +194,17 @@ async def list_library_agents(
             },
         ]
 
-    # Filter by marketplace publish status
-    if published is not None:
-        active_listing_filter: prisma.types.StoreListingVersionWhereInput = {
-            "isAvailable": True,
-            "isDeleted": False,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-            "StoreListing": {"is": {"isDeleted": False}},
-        }
-        where_clause["AgentGraph"] = {
-            "is": {
-                "StoreListingVersions": (
-                    {"some": active_listing_filter}
-                    if published
-                    else {"none": active_listing_filter}
-                )
-            }
-        }
-
     # Filter by favorite status
     if favorite is not None:
         where_clause["isFavorite"] = favorite
+
+    # By graph, as a single read reports it: the entry follows every save of a
+    # listed graph, so its own version may never have been submitted.
+    if published is not None:
+        listed = await _listed_graph_ids(where_clause)
+        where_clause["agentGraphId"] = (
+            {"in": listed} if published else {"not_in": listed}
+        )
 
     order_by: (
         prisma.types.LibraryAgentOrderByInput
@@ -286,6 +276,21 @@ async def list_library_agents(
             page_size=page_size,
         ),
     )
+
+
+async def _listed_graph_ids(where: prisma.types.LibraryAgentWhereInput) -> list[str]:
+    """The graphs among these library entries with a live, approved listing."""
+    entries = await prisma.models.LibraryAgent.prisma().find_many(
+        where=where, distinct=["agentGraphId"]
+    )
+    listings = await prisma.models.StoreListing.prisma().find_many(
+        where={
+            "agentGraphId": {"in": [entry.agentGraphId for entry in entries]},
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        }
+    )
+    return [listing.agentGraphId for listing in listings]
 
 
 async def list_favorite_library_agents(

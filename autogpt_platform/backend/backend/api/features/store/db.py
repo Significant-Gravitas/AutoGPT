@@ -801,6 +801,22 @@ async def delete_store_submission(
     store_listing_version_id: str,
     organization_id: str | None = None,
 ) -> bool:
+    """`delete_store_submission_or_raise`, answering False for any failure."""
+    try:
+        await delete_store_submission_or_raise(
+            user_id, store_listing_version_id, organization_id
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting store submission: {e}")
+        return False
+
+
+async def delete_store_submission_or_raise(
+    user_id: str,
+    store_listing_version_id: str,
+    organization_id: str | None = None,
+) -> None:
     """
     Delete a store submission version as the submitting user.
 
@@ -811,53 +827,45 @@ async def delete_store_submission(
             belong to that org (or be tenant-less and personally owned) —
             mirrors ``edit_store_submission``.
 
-    Returns:
-        bool: True if successfully deleted
+    Raises:
+        SubmissionNotFoundError: no such submission, or not the caller's
+        InvalidOperationError: the submission is approved
     """
-    try:
-        # Find the submission version with ownership check
-        version = await prisma.models.StoreListingVersion.prisma().find_unique(
-            where={"id": store_listing_version_id}, include={"StoreListing": True}
+    # Find the submission version with ownership check
+    version = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}, include={"StoreListing": True}
+    )
+
+    if not version or not version.StoreListing:
+        raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+    listing = version.StoreListing
+    if organization_id is not None:
+        allowed = listing.owningOrgId == organization_id or (
+            listing.owningOrgId is None and listing.owningUserId == user_id
+        )
+    else:
+        allowed = listing.owningUserId == user_id
+    if not allowed:
+        raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+    # Prevent deletion of approved submissions
+    if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+        raise store_exceptions.InvalidOperationError(
+            "Cannot delete approved store listings"
         )
 
-        if not version or not version.StoreListing:
-            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+    # Delete the version
+    await prisma.models.StoreListingVersion.prisma().delete(where={"id": version.id})
 
-        listing = version.StoreListing
-        if organization_id is not None:
-            allowed = listing.owningOrgId == organization_id or (
-                listing.owningOrgId is None and listing.owningUserId == user_id
-            )
-        else:
-            allowed = listing.owningUserId == user_id
-        if not allowed:
-            raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-        # Prevent deletion of approved submissions
-        if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            raise store_exceptions.InvalidOperationError(
-                "Cannot delete approved store listings"
-            )
-
-        # Delete the version
-        await prisma.models.StoreListingVersion.prisma().delete(
-            where={"id": version.id}
+    # Clean up empty listing if this was the last version
+    remaining = await prisma.models.StoreListingVersion.prisma().count(
+        where={"storeListingId": version.storeListingId}
+    )
+    if remaining == 0:
+        await prisma.models.StoreListing.prisma().delete(
+            where={"id": version.storeListingId}
         )
-
-        # Clean up empty listing if this was the last version
-        remaining = await prisma.models.StoreListingVersion.prisma().count(
-            where={"storeListingId": version.storeListingId}
-        )
-        if remaining == 0:
-            await prisma.models.StoreListing.prisma().delete(
-                where={"id": version.storeListingId}
-            )
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
 
 
 async def create_store_submission(
