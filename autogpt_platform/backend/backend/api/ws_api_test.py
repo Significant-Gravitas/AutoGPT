@@ -455,6 +455,33 @@ async def test_authenticate_websocket_refuses_a_banned_account(mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_authenticate_websocket_refuses_when_the_ban_is_unreadable(
+    mocker,
+) -> None:
+    """A new socket fails closed, as a signed-in HTTP route does, and is not
+    told it is banned."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch.object(settings.config, "enable_auth", True)
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X"}),
+    )
+    mocker.patch(
+        "backend.api.ws_api.is_user_banned",
+        new=AsyncMock(side_effect=ConnectionError()),
+    )
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {"token": "abc"}
+
+    user_id = await authenticate_websocket(ws)
+
+    ws.close.assert_awaited_once()
+    assert ws.close.call_args.kwargs["code"] == 1011
+    assert user_id == ""
+
+
+@pytest.mark.asyncio
 async def test_a_ban_ends_an_open_socket_at_its_next_message(
     mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
 ) -> None:

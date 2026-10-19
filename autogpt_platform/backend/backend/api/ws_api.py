@@ -85,17 +85,26 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     try:
         payload = await parse_jwt_token_async(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
-            return ""
-        if await is_user_banned(user_id):
-            await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
-            return ""
-        return user_id
     except ValueError:
         await websocket.close(code=4003, reason="Invalid token")
         return ""
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4002, reason="Invalid token")
+        return ""
+
+    # Refused when the ban can't be read, as a request to a signed-in route is;
+    # 1011 rather than the ban's code, so an outage never reads as a ban.
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return ""
+    return user_id
 
 
 # ===================== Message Handlers ===================== #
