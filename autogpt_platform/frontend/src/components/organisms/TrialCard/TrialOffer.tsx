@@ -7,10 +7,11 @@ import { TrialTitle } from "./TrialTitle/TrialTitle";
 interface Props {
   trial: TrialStatusResponse;
   isStarting: boolean;
+  isBlocked: boolean;
   onStart: () => void;
 }
 
-export function TrialOffer({ trial, isStarting, onStart }: Props) {
+export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
   const offer = trial.offer;
   if (!offer) return null;
   return (
@@ -40,7 +41,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
         size="large"
         onClick={onStart}
         loading={isStarting}
-        disabled={isStarting}
+        disabled={isStarting || isBlocked}
         className="w-full shrink-0 md:w-auto md:min-w-[11rem]"
       >
         Start {offer.duration_days}-day trial

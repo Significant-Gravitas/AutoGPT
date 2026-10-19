@@ -1,3 +1,4 @@
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -488,6 +489,35 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(mutateFn).toHaveBeenCalledTimes(1);
     removeGtagShim();
     vi.unstubAllEnvs();
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      mutateFn: vi.fn().mockResolvedValue({
+        status: 200,
+        data: { url: "https://checkout.stripe.com/pay/cs_test" },
+      }),
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    const upgrade = screen.getByRole("button", { name: /start pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      ),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+
+    restoreFromBackForwardCache();
+
+    expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    await waitFor(() => expect(mutateFn).toHaveBeenCalledTimes(2));
   });
 
   it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {
