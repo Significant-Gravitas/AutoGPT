@@ -706,23 +706,19 @@ class ChatConfig(BaseSettings):
         "property for the final answer.",
     )
     openrouter_provider_order: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: [
-            "google-vertex/global",
-            "anthropic",
-            "amazon-bedrock",
-            "azure/global",
-            "claude-on-aws",
-        ],
+        default_factory=list,
         description="Allowed OpenRouter providers for the SDK path's Claude "
-        "calls, tried in order using the model's endpoint tags. Sessions with "
-        "a non-Claude fallback retain OpenRouter's routing. The default "
-        "prefers Google Vertex global, then Anthropic, then the other standard "
-        "Claude providers. Fallback stays within this list; if none can serve "
-        "the request, it fails instead of trying an unlisted provider. This "
-        "setting selects providers, not a price ceiling; recheck endpoint "
-        "pricing when changing models or this list. Set as a comma-separated list "
-        "(``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``); an "
-        "empty value leaves the choice to OpenRouter.",
+        "calls, tried in order using the model's endpoint tags. Empty (the "
+        "default) leaves the choice to OpenRouter. The hosted platform lists "
+        "``google-vertex/global,anthropic,amazon-bedrock,azure/global,"
+        "claude-on-aws``: Google Vertex global first, then Anthropic, then the "
+        "other standard Claude providers. Sessions with a non-Claude fallback "
+        "retain OpenRouter's routing. Fallback stays within the list; if none "
+        "of its providers can serve the request, it fails instead of trying an "
+        "unlisted one, so list only providers the OpenRouter account allows. "
+        "This setting selects providers, not a price ceiling; recheck endpoint "
+        "pricing when changing models or this list. Set as a comma-separated "
+        "list (``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``).",
     )
     use_claude_code_subscription: bool = Field(
         default=False,

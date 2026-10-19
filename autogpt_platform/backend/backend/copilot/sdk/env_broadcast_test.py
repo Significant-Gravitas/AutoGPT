@@ -40,6 +40,7 @@ def _outside_a_turn():
 
 
 SONNET = "anthropic/claude-sonnet-5.5"
+ORDER = ["provider-a/global", "provider-b"]
 
 
 def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
@@ -49,7 +50,9 @@ def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
 
 
 def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
-    body = _extra_body(session_id="sess-1", user_id="user-1", model=SONNET)
+    cfg = _config(openrouter_provider_order=ORDER)
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=SONNET)
 
     assert body == {
         "user": "user-1",
@@ -60,17 +63,19 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
             "environment": attribution_settings.config.app_env.value,
             "impersonated": False,
         },
-        "provider": {
-            "order": [
-                "google-vertex/global",
-                "anthropic",
-                "amazon-bedrock",
-                "azure/global",
-                "claude-on-aws",
-            ],
-            "allow_fallbacks": False,
-        },
+        "provider": {"order": ORDER, "allow_fallbacks": False},
     }
+
+
+def test_claude_calls_keep_openrouters_routing_unless_providers_are_listed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A self-hosted install that sets nothing routes as OpenRouter decides."""
+    monkeypatch.delenv("CHAT_OPENROUTER_PROVIDER_ORDER", raising=False)
+
+    body = _extra_body(_config(_env_file=None), user_id="user-1", model=SONNET)
+
+    assert "provider" not in body
 
 
 @pytest.mark.parametrize(
@@ -83,19 +88,18 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
     ],
 )
 def test_a_claude_call_asks_for_the_configured_providers_first(model: str):
-    cfg = _config(openrouter_provider_order=["provider-a/global", "provider-b"])
+    cfg = _config(openrouter_provider_order=ORDER)
 
     body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=model)
 
-    assert body["provider"] == {
-        "order": ["provider-a/global", "provider-b"],
-        "allow_fallbacks": False,
-    }
+    assert body["provider"] == {"order": ORDER, "allow_fallbacks": False}
 
 
 @pytest.mark.parametrize("model", ["moonshotai/kimi-k2.6", "google/gemini-3-pro", None])
 def test_another_vendors_model_keeps_openrouters_routing(model: str | None):
-    body = _extra_body(session_id="sess-1", user_id="user-1", model=model)
+    cfg = _config(openrouter_provider_order=ORDER)
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=model)
 
     assert "provider" not in body
 
@@ -113,9 +117,11 @@ def test_another_vendors_model_keeps_openrouters_routing(model: str | None):
 def test_mixed_vendor_fallback_keeps_openrouters_routing(
     fallback_model: str, routes_claude: bool
 ):
-    body = _extra_body(
-        _config(claude_agent_fallback_model=fallback_model), model=SONNET
+    cfg = _config(
+        openrouter_provider_order=ORDER, claude_agent_fallback_model=fallback_model
     )
+
+    body = _extra_body(cfg, model=SONNET)
 
     assert ("provider" in body) is routes_claude
 
