@@ -128,7 +128,9 @@ export function useCopilotPage({
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const isDryRun = useCopilotUIStore((s) => s.isDryRun);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -304,7 +306,13 @@ export function useCopilotPage({
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  // Memoised on their inputs so the stripReplayPrefix memos below only re-run
+  // when the messages actually change, not on every render once older pages
+  // are loaded.
+  const rawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, currentMessages),
+    [pagedMessages, currentMessages],
+  );
   const cachedSessionMessages = useMemo(
     () =>
       sessionId
@@ -312,9 +320,9 @@ export function useCopilotPage({
         : [],
     [sessionId],
   );
-  const cachedRawMessages = concatWithAssistantMerge(
-    pagedMessages,
-    cachedSessionMessages,
+  const cachedRawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, cachedSessionMessages),
+    [pagedMessages, cachedSessionMessages],
   );
 
   // Drop / trim assistant messages whose leading text is a replay of an
