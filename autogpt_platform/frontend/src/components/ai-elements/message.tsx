@@ -15,7 +15,7 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
-import { mermaid } from "@streamdown/mermaid";
+import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";

@@ -2,8 +2,10 @@ import type { Scenario } from "../lib/scenario";
 import { builderConnectEdge } from "./builder-connect-edge";
 import { builderDragRunning } from "./builder-drag-running";
 import { builderRunEvents } from "./builder-run-events";
+import { builderRunBeads } from "./builder-run-beads";
 import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
+import { copilotResizeDrag } from "./copilot-resize-drag";
 import { copilotStreamCode } from "./copilot-stream-code";
 import { copilotStreamReply } from "./copilot-stream-reply";
 import { copilotSwitchThreads } from "./copilot-switch-threads";
@@ -25,6 +27,8 @@ export const SCENARIOS: Scenario[] = [
   libraryRunningEvents,
   builderRunEvents,
   copilotToolWait,
+  copilotResizeDrag,
+  builderRunBeads,
 ];
 
 export function findScenario(name: string) {
