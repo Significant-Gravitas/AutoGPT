@@ -36,10 +36,15 @@ export async function teardownPushSubscription(): Promise<void> {
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return;
 
-  // Tell the backend first — if the row is deleted but the browser keeps the
-  // subscription, future pushes 404 and get cleaned up anyway.
-  await removeSubscriptionFromServer(subscription.endpoint);
-  await unsubscribeFromPush(registration);
+  // Both at once, on the subscription read above. The browser side is local
+  // and fast, so a slow server can't leave this browser subscribed, and a
+  // late finish can never touch a subscription the next account has made.
+  // A row the server misses points at a dead endpoint and is dropped on the
+  // next send.
+  await Promise.all([
+    unsubscribeFromPush(subscription),
+    removeSubscriptionFromServer(subscription.endpoint),
+  ]);
 }
 
 const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;

@@ -201,18 +201,23 @@ describe("useAuthStore.logOut", () => {
     vi.clearAllMocks();
   });
 
-  it("removes this browser's push subscription before the server signs out", async () => {
+  it("waits for this browser's push subscription to go before the server signs out", async () => {
+    let finishTeardown: () => void = () => {};
+    vi.mocked(teardownPushSubscriptionBeforeLogout).mockReturnValue(
+      new Promise<void>((resolve) => (finishTeardown = resolve)),
+    );
     useAuthStore.setState({ user: { id: "user-1" } as User });
 
-    await useAuthStore.getState().logOut();
+    const loggingOut = useAuthStore.getState().logOut();
+    await Promise.resolve();
 
-    const teardown = vi.mocked(teardownPushSubscriptionBeforeLogout);
-    const logout = vi.mocked(serverLogout);
-    expect(teardown).toHaveBeenCalledOnce();
-    expect(logout).toHaveBeenCalledOnce();
-    expect(teardown.mock.invocationCallOrder[0]).toBeLessThan(
-      logout.mock.invocationCallOrder[0],
-    );
+    expect(teardownPushSubscriptionBeforeLogout).toHaveBeenCalledOnce();
+    expect(serverLogout).not.toHaveBeenCalled();
+
+    finishTeardown();
+    await loggingOut;
+
+    expect(serverLogout).toHaveBeenCalledOnce();
   });
 });
 

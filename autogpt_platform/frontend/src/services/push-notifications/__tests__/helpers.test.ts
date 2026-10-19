@@ -15,7 +15,7 @@ vi.mock("../registration", () => ({
   registerServiceWorker: () => mockRegisterServiceWorker(),
   subscribeToPush: (...args: [unknown, unknown]) =>
     mockSubscribeToPush(...args),
-  unsubscribeFromPush: (reg: unknown) => mockUnsubscribeFromPush(reg),
+  unsubscribeFromPush: (sub: unknown) => mockUnsubscribeFromPush(sub),
 }));
 
 const mockFetchVapidPublicKey = vi.fn();
@@ -128,7 +128,7 @@ describe("teardownPushSubscription", () => {
     expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
       mockSubscription.endpoint,
     );
-    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
   });
 
   it("no-ops when serviceWorker is unavailable", async () => {
@@ -173,7 +173,40 @@ describe("teardownPushSubscriptionBeforeLogout", () => {
     expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
       mockSubscription.endpoint,
     );
-    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+  });
+
+  it("unsubscribes the browser without waiting for the server", async () => {
+    mockRemoveSubscriptionFromServer.mockReturnValue(new Promise(() => {}));
+
+    void teardownPushSubscriptionBeforeLogout();
+
+    await vi.waitFor(() =>
+      expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription),
+    );
+  });
+
+  it("never unsubscribes the next account's subscription after timing out", async () => {
+    vi.useFakeTimers();
+    let answerServer: (ok: boolean) => void = () => {};
+    mockRemoveSubscriptionFromServer.mockReturnValue(
+      new Promise<boolean>((resolve) => (answerServer = resolve)),
+    );
+
+    await Promise.all([
+      teardownPushSubscriptionBeforeLogout(),
+      vi.advanceTimersByTimeAsync(5_000),
+    ]);
+    const nextAccountSubscription = {
+      endpoint: "https://push.example.com/sub/2",
+    };
+    mockRegistration.pushManager.getSubscription = vi
+      .fn()
+      .mockResolvedValue(nextAccountSubscription);
+    answerServer(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockUnsubscribeFromPush.mock.calls).toEqual([[mockSubscription]]);
   });
 
   it("does not hold up logout when the server never answers", async () => {
