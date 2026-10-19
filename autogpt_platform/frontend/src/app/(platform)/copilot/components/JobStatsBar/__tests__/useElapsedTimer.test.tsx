@@ -122,4 +122,19 @@ describe("useElapsedAnchor", () => {
     rerender(<AnchorHarness id="a" isRunning={false} />);
     expect(text("a")).toBe("none|5");
   });
+
+  it("keeps the run's start when the anchor drops out mid-run", () => {
+    const anchor = new Date(NOW - 60_000).toISOString();
+    const { rerender } = render(
+      <AnchorHarness id="a" isRunning anchor={anchor} />,
+    );
+    expect(text("a")).toBe(`${NOW - 60_000}|0`);
+
+    advanceSeconds(5);
+    rerender(<AnchorHarness id="a" isRunning anchor={null} />);
+    expect(text("a")).toBe(`${NOW - 60_000}|0`);
+
+    rerender(<AnchorHarness id="a" isRunning={false} anchor={null} />);
+    expect(text("a")).toBe("none|65");
+  });
 });

@@ -8,9 +8,12 @@ interface Run {
   frozenSeconds: number;
 }
 
-function resolveStartMs(anchorIso: string | null | undefined) {
+function resolveStartMs(
+  anchorIso: string | null | undefined,
+  fallbackMs: number,
+) {
   const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
-  return Number.isFinite(anchorMs) ? anchorMs : Date.now();
+  return Number.isFinite(anchorMs) ? anchorMs : fallbackMs;
 }
 
 export function getElapsedSeconds(startedAtMs: number, nowMs: number) {
@@ -37,13 +40,14 @@ export function useElapsedAnchor(
   const [run, setRun] = useState<Run>(() => ({
     isRunning,
     anchorIso,
-    startedAtMs: isRunning ? resolveStartMs(anchorIso) : null,
+    startedAtMs: isRunning ? resolveStartMs(anchorIso, Date.now()) : null,
     frozenSeconds: 0,
   }));
 
   // Re-sync whenever the run starts or stops, and whenever a late-arriving
   // anchorIso (e.g. session data loads after the timer started on page
-  // refresh) replaces the one the run started from.
+  // refresh) replaces the one the run started from. An anchor that drops
+  // out mid-run (a session refetch clears it) keeps the start it had.
   let current = run;
   if (
     run.isRunning !== isRunning ||
@@ -52,7 +56,14 @@ export function useElapsedAnchor(
     current = {
       isRunning,
       anchorIso,
-      startedAtMs: isRunning ? resolveStartMs(anchorIso) : null,
+      startedAtMs: isRunning
+        ? resolveStartMs(
+            anchorIso,
+            run.isRunning && run.startedAtMs !== null
+              ? run.startedAtMs
+              : Date.now(),
+          )
+        : null,
       frozenSeconds:
         !isRunning && run.startedAtMs !== null
           ? getElapsedSeconds(run.startedAtMs, Date.now())
