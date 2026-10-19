@@ -173,6 +173,31 @@ async def test_the_connections_and_the_saved_default_are_read_side_by_side() -> 
     assert _default_of(found) == ("codex", "cred-codex")
 
 
+@pytest.mark.parametrize("broken", ["codex", "microsoft_365_copilot", "saved default"])
+@pytest.mark.asyncio
+async def test_a_read_that_fails_fails_the_list(broken: str) -> None:
+    """Taken for "no connections", a failed read would hide an account or move
+    the user's default without a word."""
+
+    async def connections(_user_id: str, provider: str):
+        if provider == broken:
+            raise RuntimeError(f"{broken} read failed")
+        return [
+            _codex_credentials() if provider == "codex" else _microsoft_credentials()
+        ]
+
+    async def saved_default(_user_id: str):
+        if broken == "saved default":
+            raise RuntimeError(f"{broken} read failed")
+        return ("microsoft_365_copilot", "cred-microsoft")
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    with pytest.raises(RuntimeError, match=f"{broken} read failed"):
+        await get_chat_transports(USER_ID)
+
+
 @pytest.mark.asyncio
 async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
     transports.credentials_manager.store.get_creds_by_provider.side_effect = (

@@ -2752,13 +2752,17 @@ def test_create_session_looks_the_expert_up_alongside_the_connection(
     assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
 
 
-def test_create_session_reports_a_missing_expert_before_a_bad_connection(
+@pytest.mark.parametrize(
+    "expert", [None, _make_expert(is_archived=True)], ids=["missing", "archived"]
+)
+def test_create_session_reports_a_missing_or_archived_expert_before_a_bad_connection(
     mocker: pytest_mock.MockerFixture,
+    expert,
 ) -> None:
     """Both lookups fail: the expert's 404 wins, as when it was looked up
     first."""
     mock_create = _mock_create_chat_session(mocker)
-    _mock_get_expert(mocker, None)
+    _mock_get_expert(mocker, expert)
     mocker.patch.object(
         chat_routes,
         "_resolve_new_session_llm_route",
@@ -2768,11 +2772,37 @@ def test_create_session_reports_a_missing_expert_before_a_bad_connection(
     )
 
     response = client.post(
-        "/sessions", json={"expert_id": "expert-other", "llm_auth_provider": "codex"}
+        "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
     )
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Expert not found"}
+    mock_create.assert_not_called()
+
+
+def test_create_session_reports_a_failed_expert_lookup_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The expert lookup errors and the connection is bad: the lookup's error
+    surfaces, as when it ran first, rather than reading as a missing expert."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("expert lookup failed"),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expert lookup failed"):
+        client.post(
+            "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+        )
     mock_create.assert_not_called()
 
 
