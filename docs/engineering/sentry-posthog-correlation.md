@@ -15,6 +15,10 @@ historical events are outside this bridge. PostHog failures do not stop Sentry
 reporting. PostHog exception autocapture stays disabled to avoid a second capture
 of the same browser error.
 
+Disabling Sentry with `DISABLE_SENTRY=true` also stops PostHog exception mirroring.
+The same applies when no Sentry DSN is configured or available through the hosted
+fallback. PostHog product analytics continues independently.
+
 The Sentry link uses the configured DSN's project in AutoGPT's Sentry organization,
 including preview projects. Other organizations and self-hosted DSNs still get
 PostHog tags, but no guessed Sentry URL.

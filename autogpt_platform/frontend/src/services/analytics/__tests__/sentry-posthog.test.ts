@@ -211,5 +211,6 @@ describe("Sentry to PostHog correlation", () => {
     });
     const event = sentryEvent();
     expect(processEvent(event)).toBe(event);
+    expect(posthog.capture).toHaveBeenCalledOnce();
   });
 });
