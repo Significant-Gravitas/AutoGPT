@@ -1,4 +1,8 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
@@ -734,7 +738,11 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
+      throw error;
     }
 
     return await response.json();
@@ -795,6 +803,9 @@ export default class BackendAPI {
           let errorMessage = `Upload failed (${xhr.status})`;
           try {
             const errorData = JSON.parse(xhr.responseText);
+            if (isAccountBannedResponse(xhr.status, errorData)) {
+              signOutBannedAccount();
+            }
             if (errorData.detail) {
               if (
                 typeof errorData.detail === "string" &&
@@ -876,9 +887,6 @@ export default class BackendAPI {
       isLogoutInProgress,
       isAuthenticationError,
     } = await import("./helpers");
-    const { isAccountBannedResponse, signOutBannedAccount } = await import(
-      "@/lib/auth/account-banned"
-    );
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);

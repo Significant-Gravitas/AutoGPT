@@ -3,6 +3,7 @@
 import fastapi
 import pytest
 from autogpt_libs.auth import (
+    get_optional_user_id,
     get_request_context,
     get_user_id,
     requires_admin_user,
@@ -56,6 +57,20 @@ def test_an_admin_can_still_act_as_a_banned_user(auth_row):
     assert response.json() == {"user_id": banned}
 
 
+@pytest.mark.parametrize("state", ["banned", "unbanned"])
+def test_an_optional_auth_route_sees_a_banned_account_as_signed_out(
+    mocker, auth_row, state
+):
+    user_id = auth_row(state)
+    mocker.patch(
+        "autogpt_libs.auth.jwt_utils.parse_jwt_token", return_value={"sub": user_id}
+    )
+
+    response = _client({}).get("/optional", headers={"Authorization": "Bearer t"})
+
+    assert response.json() == {"user_id": None if state == "banned" else user_id}
+
+
 def test_every_route_that_reads_a_token_refuses_a_banned_account():
     """A route that takes ``get_jwt_payload`` without one of the resolvers
     above would let a banned account through."""
@@ -88,6 +103,10 @@ def _client(jwt_payload: dict) -> TestClient:
     @app.get("/context", dependencies=[fastapi.Security(get_request_context)])
     async def by_context():
         return {}
+
+    @app.get("/optional")
+    async def by_optional(user_id=fastapi.Security(get_optional_user_id)):
+        return {"user_id": user_id}
 
     app.dependency_overrides[get_jwt_payload] = lambda: jwt_payload
     return TestClient(app)

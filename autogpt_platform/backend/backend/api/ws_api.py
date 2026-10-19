@@ -17,7 +17,7 @@ from backend.api.model import (
 )
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID
+from backend.data.user import DEFAULT_USER_ID, is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
@@ -27,6 +27,8 @@ from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+ACCOUNT_BANNED_CLOSE_CODE = 4004
 
 
 @asynccontextmanager
@@ -86,6 +88,9 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         user_id = payload.get("sub")
         if not user_id:
             await websocket.close(code=4002, reason="Invalid token")
+            return ""
+        if await is_user_banned(user_id):
+            await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
             return ""
         return user_id
     except ValueError:
@@ -242,6 +247,10 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # The socket outlives its token, so a ban ends it at the next message.
+            if await is_user_banned(user_id):
+                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+                break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:

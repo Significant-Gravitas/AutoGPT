@@ -110,7 +110,7 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
     )
 
 
-def get_optional_user_id(
+async def get_optional_user_id(
     credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
         optional_bearer
     ),
@@ -136,10 +136,14 @@ def get_optional_user_id(
         from autogpt_libs.auth.jwt_utils import parse_jwt_token
 
         payload = parse_jwt_token(credentials.credentials)
-        return payload.get("sub")
     except Exception as e:
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
+    user_id = payload.get("sub")
+    # A banned account reads these routes as someone signed out would.
+    if user_id and await _is_banned(user_id):
+        return None
+    return user_id
 
 
 async def get_unbanned_jwt_payload(

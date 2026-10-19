@@ -27,6 +27,7 @@ _BAN_CHECK_SITES = (
     "backend.data.user.is_user_banned",
     "backend.api.external.middleware.is_user_banned",
     "backend.api.features.integrations.router.is_user_banned",
+    "backend.api.ws_api.is_user_banned",
     "backend.data.auth.oauth.is_user_banned",
     "backend.executor.utils.is_user_banned",
 )
