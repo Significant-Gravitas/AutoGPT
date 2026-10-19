@@ -79,12 +79,87 @@ export function getAdminUsersHref(user?: string | null) {
   return `/admin/users?${new URLSearchParams({ [USER_QUERY_PARAM]: value })}`;
 }
 
-// The spending search matches the user ID by substring; a full UUID holds no
-// LIKE wildcards, so this only ever matches that user.
-export function getUserSpendingHref(userId: string) {
-  return `/admin/spending?${new URLSearchParams({ search: userId })}`;
+// The spending search is a substring match on user ID, email and name. A full
+// UUID holds no LIKE wildcards, so searching one only ever matches that user.
+export function getSpendingSearchHref(search: string) {
+  return `/admin/spending?${new URLSearchParams({ search })}`;
 }
 
 export function getUserPlatformCostsHref(userId: string) {
   return `/admin/platform-costs?${new URLSearchParams({ user_id: userId })}`;
+}
+
+// Pinned to en-GB so dates read "12 Mar 2026" and times 24h whatever the
+// admin's browser locale.
+const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const MONTH_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  year: "numeric",
+});
+const RELATIVE_FORMAT = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+export function formatDate(date: Date) {
+  return DATE_FORMAT.format(date);
+}
+
+export function formatDateTime(date: Date) {
+  return DATE_TIME_FORMAT.format(date);
+}
+
+export function formatMonth(date: Date) {
+  return MONTH_FORMAT.format(date);
+}
+
+export function formatTimeUntil(date: Date, now = new Date()) {
+  const ms = date.getTime() - now.getTime();
+  if (Math.abs(ms) < DAY_MS) {
+    return RELATIVE_FORMAT.format(Math.round(ms / HOUR_MS), "hour");
+  }
+  return RELATIVE_FORMAT.format(Math.round(ms / DAY_MS), "day");
+}
+
+export function getBanEnd(duration: BanDuration, now = new Date()) {
+  const seconds = getBanDurationSeconds(duration);
+  return seconds === undefined
+    ? null
+    : new Date(now.getTime() + seconds * 1000);
+}
+
+export function getDisplayName(user: Pick<AdminUser, "name" | "email">) {
+  return user.name.trim() || user.email;
+}
+
+const PLAN_NAMES: Record<string, string> = {
+  NO_TIER: "No plan",
+  TRIAL: "Trial",
+  BASIC: "Basic",
+  PRO: "Pro",
+  MAX: "Max",
+  BUSINESS: "Business",
+  ENTERPRISE: "Enterprise",
+};
+
+export function getPlanName(tier: string) {
+  return PLAN_NAMES[tier] ?? tier;
+}
+
+// Orval types a mutation's error as the response body, but the mutator throws
+// an ApiError carrying the server's message.
+export function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Something went wrong.";
 }

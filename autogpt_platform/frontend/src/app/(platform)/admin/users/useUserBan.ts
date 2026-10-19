@@ -32,9 +32,11 @@ export function useUserBan(user: AdminUser) {
 
   const ban = useMutation({
     mutationFn: async ({ reason, duration }: BanArgs) => {
+      const banReason = reason.trim();
+      if (!banReason) throw new Error("Give a reason for the ban.");
       const { data, error } = await authClient.admin.banUser({
         userId: user.id,
-        banReason: reason.trim() || undefined,
+        banReason,
         banExpiresIn: getBanDurationSeconds(duration),
       });
       if (error || !data) {

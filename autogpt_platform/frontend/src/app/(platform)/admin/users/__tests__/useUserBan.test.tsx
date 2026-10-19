@@ -75,10 +75,32 @@ describe("useUserBan", () => {
     );
     const { result } = renderBan(USER);
 
-    act(() => result.current.banUser({ reason: "", duration: "permanent" }));
+    act(() =>
+      result.current.banUser({ reason: "spam", duration: "permanent" }),
+    );
 
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toEqual({ userId: USER.id });
+    expect(bodies[0]).toEqual({ userId: USER.id, banReason: "spam" });
+  });
+
+  it("refuses a ban without a reason and sends nothing", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("*/api/auth/admin/ban-user", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ user: { ...RECORD, banned: true } });
+      }),
+    );
+    const { result } = renderBan(USER);
+
+    act(() => result.current.banUser({ reason: "   ", duration: "1h" }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive" }),
+      ),
+    );
+    expect(bodies).toEqual([]);
   });
 
   it("shows why Better Auth refused a ban and leaves the user unbanned", async () => {
@@ -95,7 +117,7 @@ describe("useUserBan", () => {
     );
     const { result, queryClient } = renderBan(USER);
 
-    act(() => result.current.banUser({ reason: "", duration: "1h" }));
+    act(() => result.current.banUser({ reason: "spam", duration: "1h" }));
 
     await waitFor(() =>
       expect(mockToast).toHaveBeenCalledWith(

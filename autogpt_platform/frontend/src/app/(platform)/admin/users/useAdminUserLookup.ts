@@ -26,9 +26,10 @@ export function useAdminUserLookup() {
   }
 
   return {
+    rawQuery: userParam ?? "",
     query,
     user: lookup.data ?? null,
-    isLoading: lookup.isFetching,
+    isLoading: lookup.isLoading,
     isNotFound: lookup.isSuccess && lookup.data === null,
     error: lookup.error,
     search,

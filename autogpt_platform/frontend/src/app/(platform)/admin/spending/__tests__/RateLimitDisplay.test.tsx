@@ -6,7 +6,7 @@ import {
   cleanup,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RateLimitDisplay } from "../RateLimitDisplay";
+import { RateLimitDisplay } from "../components/RateLimitDisplay";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
 const toastSpy = vi.hoisted(() => vi.fn());
