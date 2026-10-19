@@ -581,3 +581,51 @@ Added with SECRT-2995 and measured on `dev` at `a1578ad9a`, before that change. 
 | `Popper props:children` | 6,770 |
 | `PopperAnchor props:children` | 6,770 |
 | `PopperProvider props:children` | 6,770 |
+
+## library-agent-runs · baseline — median of 3 runs
+
+Added with SECRT-3010 and measured on `dev` at `ede2df2ae`, before that change. The websocket is mocked; every run printed the same: 3 new runs caused 3 `GET` refetches of the run list and the selected RUNNING run polled its detail 5 times. Each new run re-rendered every row of the list about twice (20 to 23 cards, each with its actions menu and two dialogs). Total renders move by one full-list re-render (about 1,300 renders) from run to run.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 40 | 38 – 41 | 7.5% |
+| total renders | 9,722 | 8,462 – 9,722 | 13.0% |
+| renders per commit | 237.1 | 222.7 – 243.1 | 8.6% |
+| max renders in one commit | 1,252 | 1,252 – 1,260 | 0.6% |
+| script time (ms) | 785 | 720 – 789 | 8.7% |
+| task time (ms) | 978 | 918 – 999 | 8.2% |
+| layout time (ms) | 9 | 8 – 10 | 24.7% |
+| style recalc time (ms) | 13 | 12 – 13 | 8.9% |
+| long tasks (≥ 50 ms) | 6 | 6 – 6 | 0.0% |
+| long task total (ms) | 579 | 539 – 588 | 8.5% |
+| heap used after GC (MB) | 43.3 | 43.2 – 44.0 | 1.8% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Presence` | 926 |
+| `Dialog` | 687 |
+| `Text` | 390 |
+| `DialogPortal` | 344 |
+| `DialogPortalProvider` | 344 |
+| `DialogProvider` | 344 |
+| `BaseContent` | 343 |
+| `DialogWrap` | 343 |
+| `MenuProvider` | 302 |
+| `Primitive.div` | 259 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Presence props:children` | 926 |
+| `Dialog props:onOpenChange,children` | 344 |
+| `DialogPortal props:children` | 344 |
+| `DialogPortalProvider props:children` | 344 |
+| `DialogProvider props:children` | 344 |
+| `BaseContent props:children` | 343 |
+| `DialogWrap props:styling,handleOpen,handleClose,children` | 343 |
+| `Dialog props:controlled,styling,children` | 328 |
+| `MenuProvider props:scope,children` | 302 |
+| `Primitive.div props:children` | 224 |
