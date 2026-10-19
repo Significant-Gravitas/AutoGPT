@@ -534,6 +534,54 @@ Added after the table above was saved: `dev` at `a1578ad9a`, same machine type, 
 | `Popper props:children` | 19,667 |
 | `PopperProvider props:children` | 19,667 |
 
+## copilot-tool-wait · baseline — median of 3 runs
+
+Added with SECRT-2995 and measured on `dev` at `a1578ad9a`, before that change. Each of the 20 long tasks is one tick of the thinking timer, which re-rendered the whole transcript once a second while the tool ran.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 45 | 45 – 49 | 8.9% |
+| total renders | 183,109 | 183,109 – 183,145 | 0.0% |
+| renders per commit | 4,069.1 | 3,737.7 – 4,069.1 | 8.1% |
+| max renders in one commit | 9,134 | 9,134 – 9,134 | 0.0% |
+| script time (ms) | 5,475 | 5,448 – 5,719 | 4.9% |
+| task time (ms) | 7,248 | 7,058 – 7,546 | 6.7% |
+| layout time (ms) | 0 | 0 – 0 | 0.0% |
+| style recalc time (ms) | 190 | 168 – 196 | 14.2% |
+| long tasks (≥ 50 ms) | 20 | 20 – 20 | 0.0% |
+| long task total (ms) | 5,439 | 5,412 – 5,693 | 5.2% |
+| heap used after GC (MB) | 91.8 | 89.2 – 96.6 | 8.0% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 13,532 |
+| `TooltipContent` | 13,532 |
+| `HugeiconsIcon` | 7,754 |
+| `Icon` | 7,754 |
+| `TooltipProvider` | 6,786 |
+| `Presence` | 6,780 |
+| `Popper` | 6,776 |
+| `PopperAnchor` | 6,776 |
+| `PopperProvider` | 6,776 |
+| `Primitive.button` | 6,776 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 13,532 |
+| `HugeiconsIcon parent-same-props<-Icon` | 7,754 |
+| `TooltipProvider props:children` | 6,786 |
+| `Presence props:children` | 6,780 |
+| `Primitive.div props:children` | 6,776 |
+| `Primitive.div.Slot props:children` | 6,776 |
+| `Primitive.div.SlotClone props:children` | 6,776 |
+| `Popper props:children` | 6,770 |
+| `PopperAnchor props:children` | 6,770 |
+| `PopperProvider props:children` | 6,770 |
+
 ## copilot-resize-drag · baseline — median of 3 runs
 
 Added with the scenario (SECRT-2999): `dev` at `6d793e53d`, same machine type, 1 warm-up and 3 saved runs. Every pointer move of the drag wrote the panel width to the copilot UI store, and the page hook read the whole store, so each move re-rendered the whole 200-message transcript: about 3,000 renders per commit and one long task per move.
