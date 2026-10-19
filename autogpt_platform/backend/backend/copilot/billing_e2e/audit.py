@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from backend.copilot.model import ChatSession, Usage
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
+from .credit_audit import credit_charge_problems, debit_problems
 from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, Call
 from .ledger import PlatformLedger
 from .provider import FakeProvider
@@ -37,6 +38,10 @@ def audit_thread(
     """
     findings = _audit_path(provider, cli_resumed, turns=len(usage_by_turn))
     findings += _audit_attribution(session, ledger)
+    findings += [
+        Finding(check="charge", message=problem)
+        for problem in debit_problems(scenario.credits, session, ledger)
+    ]
     for turn, session_usage in enumerate(usage_by_turn):
         calls = provider.calls_in(turn)
         findings += _audit_turn(scenario, turn, calls, ledger, session_usage)
@@ -127,13 +132,14 @@ def _audit_unbilled(
     """A turn that owes nothing leaves no charge, cost-log row or usage."""
     spend = [charge.microdollars for charge in ledger.spend_in(turn)]
     tree = [charge.microdollars for charge in ledger.tree_in(turn)]
+    debits = [debit.credits for debit in ledger.debits_in(turn)]
     rows = ledger.rows_in(turn)
-    if not (spend or tree or rows or session_usage):
+    if not (spend or tree or debits or rows or session_usage):
         return []
     message = (
-        f"turn {turn} owes nothing, yet charged {spend} to spend and {tree} to "
-        f"the tree, logged {len(rows)} cost-log row(s) and recorded "
-        f"{len(session_usage)} session usage entries"
+        f"turn {turn} owes nothing, yet charged {spend} to spend, {tree} to "
+        f"the tree and {debits} credits, logged {len(rows)} cost-log row(s) "
+        f"and recorded {len(session_usage)} session usage entries"
     )
     return [Finding(check="charge", message=message)]
 
@@ -155,6 +161,11 @@ def _audit_spend(
         sum(expected_charge_usd(scenario.charge, call) for call in calls)
     )
     tolerance = _MICRODOLLAR_TOLERANCE_PER_CALL * len(calls)
+    if scenario.credits is not None:
+        problems = credit_charge_problems(
+            scenario.credits, turn, expected or 0, tolerance, ledger
+        )
+        return [Finding(check="charge", message=problem) for problem in problems]
     messages = []
     if len(spend) != 1 or abs(spend[0] - (expected or 0)) > tolerance:
         messages.append(
@@ -179,12 +190,24 @@ def _audit_row(
                 f"for a route the platform does not pay for"
             )
     else:
-        charged = [charge.microdollars for charge in ledger.spend_in(turn)]
+        # A turn billed to credits charges no spend window: the tree has the
+        # cost it recorded.
+        charges = (
+            ledger.spend_in(turn) if scenario.credits is None else ledger.tree_in(turn)
+        )
+        charged = [charge.microdollars for charge in charges]
         if row.tracking_type != "cost_usd" or [row.cost_microdollars] != charged:
             messages.append(
                 f"turn {turn}: logged {row.tracking_type} {row.cost_microdollars}, "
                 f"charged {charged}"
             )
+    mode = (row.metadata or {}).get("billing_mode")
+    billed_to_credits = scenario.credits is not None
+    if (mode == "credits") != billed_to_credits:
+        messages.append(
+            f"turn {turn}: cost-log billing mode {mode!r}, though the turn is "
+            f"{'' if billed_to_credits else 'not '}billed to credits"
+        )
     return [Finding(check="charge", message=message) for message in messages]
 
 

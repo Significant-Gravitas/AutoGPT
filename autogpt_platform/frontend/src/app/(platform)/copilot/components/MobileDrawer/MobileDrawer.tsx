@@ -35,14 +35,14 @@ export function MobileDrawer() {
     "sessionId",
     parseAsString,
   );
-  const {
-    completedSessionIDs,
-    clearCompletedSession,
-    isDrawerOpen,
-    setDrawerOpen,
-    isSearchOpen,
-    setSearchOpen,
-  } = useCopilotUIStore();
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
+  const clearCompletedSession = useCopilotUIStore(
+    (s) => s.clearCompletedSession,
+  );
+  const isDrawerOpen = useCopilotUIStore((s) => s.isDrawerOpen);
+  const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
+  const isSearchOpen = useCopilotUIStore((s) => s.isSearchOpen);
+  const setSearchOpen = useCopilotUIStore((s) => s.setSearchOpen);
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
   const isSearchActive = isChatSearchEnabled && isSearchOpen;
   const sessionNeedsReload = useCopilotChatRuntimeStore(

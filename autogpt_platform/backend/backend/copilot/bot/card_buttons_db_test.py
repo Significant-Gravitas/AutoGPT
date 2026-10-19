@@ -662,6 +662,7 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     rules = [o for o in first.options if o not in ("Approve", "Reject")]
     platform = Platform(one_linked.platform.upper())
     judged_safe = AsyncMock(return_value=MagicMock(allowed=True))
+    judged_unsafe = AsyncMock(return_value=Judgement(allowed=False, reason="unsure"))
     redis = await get_redis_async()
     wider = [
         chat_rules._scoped_key(scope, test_user_id, None, _POST)
@@ -681,12 +682,16 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
                 ChatSession.new(user_id=test_user_id, dry_run=False)
             )
             again = {"text": f"again: {label}"}
+            judged_unsafe.reset_mock()
             with patch("backend.copilot.gate.supervise", judged_safe):
                 in_bot = await check_action(_POST, again, test_user_id, bot)
+            with patch("backend.copilot.gate.supervise", judged_unsafe):
                 in_web = await check_action(_POST, again, test_user_id, web)
 
             assert in_bot.allowed, label
+            # A chat post is judged in Auto: only a leaked rule skips the supervisor.
             assert not in_web.allowed, label
+            judged_unsafe.assert_awaited_once()
     finally:
         # A wider rule outlives the test and would ungate every later one.
         await redis.delete(*wider)
@@ -828,7 +833,7 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
             "pause_schedule", {"schedule_id": "weekly"}, test_user_id, woken
         )
 
-    assert supervise.await_args.kwargs["user_message"] == request
+    assert supervise.await_args.kwargs["user_messages"][-1] == request
     said = [c.args[:2] for c in bot.adapter.send_message.await_args_list]
     assert said == [(thread, executor.reply)]
 

@@ -18,9 +18,8 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import chat_db
 
 logger = logging.getLogger(__name__)
@@ -137,20 +136,6 @@ def _parse_iso_timestamp(raw: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices are built by the long-lived chat-write client when the
-        # user first writes a memory; the dream pass reads from an
-        # already-indexed graph and shouldn't refire the
-        # background-task race that produces "Buffer is closed" spam.
-        build_indices=False,
-    )
-
-
 async def _fetch_recent_episodes(
     driver: AutoGPTFalkorDriver,
     group_id: str,
@@ -253,10 +238,9 @@ async def _fetch_active_facts(
 
 
 async def _fetch_recent_sessions(
-    user_id: str,
+    scope: MemoryScope,
     window_start: datetime,
     limit: int,
-    expert_id: str | None = None,
 ) -> list[SessionRow]:
     """Pull the most recent N chat sessions and their first chunk of content.
 
@@ -274,14 +258,15 @@ async def _fetch_recent_sessions(
     clamp does the bounding.
     """
     _ = window_start
+    user_id = scope.owner_user_id
     try:
-        if expert_id is None:
+        if scope.expert_id is None:
             sessions = await chat_db().get_user_chat_sessions(
                 user_id, limit=limit, autopilot_only=True
             )
         else:
             sessions = await chat_db().get_user_chat_sessions(
-                user_id, limit=limit, expert_id=expert_id
+                user_id, limit=limit, expert_id=scope.expert_id
             )
     except Exception:
         logger.warning(
@@ -335,9 +320,8 @@ async def _fetch_recent_sessions(
 
 
 async def gather_dream_input(
-    user_id: str,
+    scope: MemoryScope,
     *,
-    expert_id: str | None = None,
     window_days: int = DEFAULT_WINDOW_DAYS,
     max_episodes: int = MAX_EPISODES,
     max_facts: int = MAX_ACTIVE_FACTS,
@@ -349,11 +333,11 @@ async def gather_dream_input(
     the three sources fails (Cypher error, Prisma timeout) the others
     still proceed — a partial dream is better than no dream.
     """
-    group_id = derive_memory_group_id(user_id, expert_id)
+    group_id = scope.group_id
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=window_days)
 
-    driver = _open_driver(group_id)
+    driver = open_driver(scope)
     try:
         episodes = await _fetch_recent_episodes(
             driver, group_id, window_start, max_episodes
@@ -362,13 +346,11 @@ async def gather_dream_input(
     finally:
         await driver.close()
 
-    sessions = await _fetch_recent_sessions(
-        user_id, window_start, max_sessions, expert_id
-    )
+    sessions = await _fetch_recent_sessions(scope, window_start, max_sessions)
 
     return DreamInput(
-        user_id=user_id,
-        expert_id=expert_id,
+        user_id=scope.owner_user_id,
+        expert_id=scope.expert_id,
         group_id=group_id,
         window_start=window_start,
         window_end=window_end,

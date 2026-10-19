@@ -13,10 +13,12 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import (
+    LINKED_CHAT_PLATFORMS,
     RUN_FILES_KEY,
     active_mode,
     chat_rules,
     check_action,
+    child_autopilot_mode,
     gate_active,
     held,
 )
@@ -140,6 +142,28 @@ async def test_the_default_mode_is_auto(gate_on):
     assert await active_mode("u", _session()) == "auto"
 
 
+def test_a_delegated_thread_follows_its_parent_when_the_expert_has_no_default():
+    assert child_autopilot_mode(_session("ask_first"), None) == "ask_first"
+    assert child_autopilot_mode(_session("unsupervised"), None) == "unsupervised"
+    assert child_autopilot_mode(_session(), None) == "auto"
+
+
+def test_a_delegated_thread_is_never_looser_than_its_parent():
+    assert child_autopilot_mode(_session("ask_first"), "unsupervised") == "ask_first"
+    # A parent on the platform default cannot hand out an unsupervised thread.
+    assert child_autopilot_mode(_session(), "unsupervised") == "auto"
+    assert child_autopilot_mode(_session("unsupervised"), "ask_first") == "ask_first"
+    assert child_autopilot_mode(_session("auto"), "auto") == "auto"
+
+
+@pytest.mark.parametrize("platform", sorted(LINKED_CHAT_PLATFORMS))
+def test_a_linked_chat_hands_its_thread_the_mode_its_gate_enforces(platform):
+    """A linked chat runs on Auto whatever it has stored."""
+    parent = _session("unsupervised", source_platform=platform)
+    assert child_autopilot_mode(parent, None) == "auto"
+    assert child_autopilot_mode(parent, "ask_first") == "ask_first"
+
+
 async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session_state):
     """Otherwise an approved outward call would park a second card forever."""
     with (
@@ -241,11 +265,23 @@ async def test_outward_actions_ask_without_the_supervisor(
     supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
     with patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
-            "post_to_chat_platform", {"text": "hi"}, "u", _session(mode)
+            "browser_act", {"action": "click"}, "u", _session(mode)
         )
     assert not decision.allowed
     assert decision.review_id
     supervisor.assert_not_awaited()
+
+
+async def test_a_chat_platform_post_in_auto_is_judged_as_outward(
+    gate_on, clean_session_state
+):
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+    with patch(f"{_GATE}.supervise", supervisor):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("auto")
+        )
+    assert decision.allowed
+    assert supervisor.await_args.kwargs["outward_judged"] is True
 
 
 async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):
@@ -510,3 +546,32 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     assert words in request
     assert "<available_skills>" not in request
     assert "<user_context>" not in request
+
+
+async def test_the_judge_is_handed_every_message_the_user_typed(
+    gate_on, clean_session_state
+):
+    """The supervisor picks its window from these; neither an answered card's rows
+    nor a row of nothing but the server's context take a place among them."""
+    session = _session()
+    session.messages = [
+        ChatMessage(role="user", content="Find student housing in Delft"),
+        ChatMessage(role="assistant", content="Here is a method."),
+        ChatMessage(role="user", content="<user_context>a</user_context>\n\n"),
+        ChatMessage(role="user", content="Use that method for Leiden too"),
+        ChatMessage(
+            role="user",
+            content=held.WAKE_MESSAGE,
+            metadata={"held_calls_answered": True},
+        ),
+        ChatMessage(role="user", content="carry on"),
+    ]
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="asked"))
+    with patch(f"{_GATE}.supervise", supervisor):
+        await check_action("bash_exec", {"command": "python3 run.py"}, "u", session)
+
+    assert supervisor.await_args.kwargs["user_messages"] == [
+        "Find student housing in Delft",
+        "Use that method for Leiden too",
+        "carry on",
+    ]
