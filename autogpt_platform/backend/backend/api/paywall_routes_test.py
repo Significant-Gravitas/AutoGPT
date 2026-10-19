@@ -289,6 +289,7 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/workspace/folders/{folder_id}",
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
+    "GET /.well-known/oauth-protected-resource/external-api/v2/mcp",
     "POST /api/auth/email/send",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",

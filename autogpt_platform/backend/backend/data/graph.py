@@ -79,22 +79,6 @@ class GraphSettings(BaseModel):
     ] = False
     builder_chat_session_id: str | None = None
 
-    @classmethod
-    def from_graph(
-        cls,
-        graph: "GraphModel",
-        hitl_safe_mode: bool | None = None,
-        sensitive_action_safe_mode: bool = False,
-        builder_chat_session_id: str | None = None,
-    ) -> "GraphSettings":
-        if hitl_safe_mode is None:
-            hitl_safe_mode = True
-        return cls(
-            human_in_the_loop_safe_mode=hitl_safe_mode,
-            sensitive_action_safe_mode=sensitive_action_safe_mode,
-            builder_chat_session_id=builder_chat_session_id,
-        )
-
 
 class Link(BaseDbModel):
     source_id: str
@@ -413,6 +397,22 @@ class GraphTriggerInfo(BaseModel):
         description="Input schema for the trigger block"
     )
     credentials_input_name: Optional[str]
+
+
+def unknown_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Names in `inputs` that a graph's `input_schema` has no input for."""
+    return sorted(inputs.keys() - input_schema.get("properties", {}).keys())
+
+
+def missing_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Required inputs of a graph's `input_schema` that `inputs` omits or sets to null."""
+    return sorted(
+        name for name in input_schema.get("required", []) if inputs.get(name) is None
+    )
 
 
 class Graph(BaseGraph):
@@ -1370,13 +1370,6 @@ class GraphModelWithoutNodes(GraphModel):
     sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
 
 
-class GraphsPaginated(BaseModel):
-    """Response schema for paginated graphs."""
-
-    graphs: list[GraphMeta]
-    pagination: Pagination
-
-
 # --------------------- CRUD functions --------------------- #
 
 
@@ -1411,7 +1404,7 @@ async def list_graphs_paginated(
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
     organization_id: str | None = None,
-) -> GraphsPaginated:
+) -> tuple[list[GraphMeta], Pagination]:
     """
     Retrieves paginated graph metadata objects.
 
@@ -1426,7 +1419,8 @@ async def list_graphs_paginated(
             personal ownership.
 
     Returns:
-        GraphsPaginated: Paginated list of graph metadata.
+        list[GraphMeta]: List of graph info objects.
+        Pagination: Pagination information.
     """
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
@@ -1435,7 +1429,7 @@ async def list_graphs_paginated(
             visibility_filter(user_id, organization_id, team_ids),
         )
     else:
-        where_clause = {"userId": user_id}
+        where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -1456,14 +1450,11 @@ async def list_graphs_paginated(
 
     graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
-    return GraphsPaginated(
-        graphs=graph_models,
-        pagination=Pagination(
-            total_items=total_count,
-            total_pages=total_pages,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return graph_models, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
     )
 
 
@@ -1833,29 +1824,14 @@ async def get_graph_all_versions(
     team_id: str | None = None,
     organization_id: str | None = None,
     include_subgraphs: bool = False,
+    offset: int = 0,
 ) -> list[GraphModel]:
-    where_clause: AgentGraphWhereInput = {"id": graph_id}
-    if organization_id is not None:
-        # Same membership predicate as get_graph/list_graphs — NOT a raw
-        # org match, which would expose other teams' versions to every
-        # org member.
-        team_ids = await get_user_team_ids(user_id, organization_id)
-        where_clause["AND"] = [
-            cast(
-                AgentGraphWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
-    elif team_id is not None:
-        where_clause["teamId"] = team_id
-    else:
-        where_clause["userId"] = user_id
-
     graph_versions = await AgentGraph.prisma().find_many(
-        where=where_clause,
+        where=await _graph_versions_where(graph_id, user_id, team_id, organization_id),
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
         take=limit,
+        skip=offset,
     )
 
     if not graph_versions:
@@ -1876,6 +1852,52 @@ async def get_graph_all_versions(
             # they picked and the credentials embedded in them.
             version.clear_auto_credentials()
     return versions
+
+
+async def get_active_graph_version(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int | None:
+    """The version marked active. `get_graph(version=None)` returns the newest."""
+    graph = await AgentGraph.prisma().find_first(
+        where={
+            **await _graph_versions_where(graph_id, user_id, None, organization_id),
+            "isActive": True,
+        },
+    )
+    return graph.version if graph else None
+
+
+async def count_graph_versions(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    return await AgentGraph.prisma().count(
+        where=await _graph_versions_where(graph_id, user_id, None, organization_id)
+    )
+
+
+async def _graph_versions_where(
+    graph_id: str,
+    user_id: str,
+    team_id: str | None,
+    organization_id: str | None,
+) -> AgentGraphWhereInput:
+    where_clause: AgentGraphWhereInput = {"id": graph_id}
+    if organization_id is not None:
+        # Same membership predicate as get_graph/list_graphs — NOT a raw
+        # org match, which would expose other teams' versions to every
+        # org member.
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause["AND"] = [
+            cast(
+                AgentGraphWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    elif team_id is not None:
+        where_clause["teamId"] = team_id
+    else:
+        where_clause["userId"] = user_id
+    return where_clause
 
 
 async def delete_graph(

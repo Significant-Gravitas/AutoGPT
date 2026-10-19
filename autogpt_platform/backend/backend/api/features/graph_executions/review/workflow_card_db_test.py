@@ -45,7 +45,7 @@ from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import BlockExecutionError
 from backend.util.feature_flag import Flag
 
-_ROUTES = "backend.api.features.graph_executions.review.routes"
+_SERVICE = "backend.api.features.graph_executions.review.service"
 _BLOCK = SendDiscordMessageBlock()
 _INPUT = {"channel_name": "general", "message_content": "The digest is out"}
 _KEY = f"block:{_BLOCK.id}"
@@ -78,7 +78,7 @@ def flags():
 
 @pytest.fixture
 def resumed():
-    with patch(f"{_ROUTES}.add_graph_execution", AsyncMock()) as add:
+    with patch(f"{_SERVICE}.add_graph_execution", AsyncMock()) as add:
         yield add
 
 

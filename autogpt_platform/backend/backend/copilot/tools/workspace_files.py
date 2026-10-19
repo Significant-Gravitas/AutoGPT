@@ -7,6 +7,8 @@ import os
 from collections import deque
 from typing import Any, Optional
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     get_current_sandbox,
@@ -340,6 +342,10 @@ class ListWorkspaceFilesTool(BaseTool):
         return "list_workspace_files"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
+
+    @property
     def description(self) -> str:
         return (
             "List persistent workspace files, with the folders at that level. "
@@ -558,6 +564,10 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "read_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
 
     @property
     def description(self) -> str:
@@ -837,6 +847,10 @@ class WriteWorkspaceFileTool(BaseTool):
         return "write_workspace_file"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
     def description(self) -> str:
         return (
             "Write a file to persistent workspace (survives across sessions). "
@@ -1075,6 +1089,10 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
 
     @property
     def description(self) -> str:

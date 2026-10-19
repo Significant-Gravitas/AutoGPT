@@ -1,70 +1,32 @@
-from fastapi import HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
+from starlette.types import Scope
 
-from backend.data.auth.api_key import APIKeyInfo, validate_api_key
+from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidTokenError,
-    OAuthAccessTokenInfo,
     validate_access_token,
 )
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
-
-async def require_api_key(api_key: str | None = Security(api_key_header)) -> APIKeyInfo:
-    """Middleware for API key authentication only"""
-    if api_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key"
-        )
-
-    api_key_obj = await validate_api_key(api_key)
-
-    if not api_key_obj:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
-
-    return api_key_obj
+_REQUEST_AUTH = "external_api_auth"
 
 
-async def require_access_token(
-    bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
-) -> OAuthAccessTokenInfo:
-    """Middleware for OAuth access token authentication only"""
-    if bearer is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-        )
-
-    try:
-        token_info, _ = await validate_access_token(bearer.credentials)
-    except (InvalidClientError, InvalidTokenError) as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
-
-    return token_info
-
-
-async def require_auth(
+async def resolve_auth_info(
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
-) -> APIAuthorizationInfo:
+) -> APIAuthorizationInfo | None:
     """
-    Unified authentication middleware supporting both API keys and OAuth tokens.
+    Resolve authentication from API key or Bearer token headers.
 
-    Supports two authentication methods, which are checked in order:
-    1. X-API-Key header (existing API key authentication)
-    2. Authorization: Bearer <token> header (OAuth access token)
-
-    Returns:
-        APIAuthorizationInfo: base class of both APIKeyInfo and OAuthAccessTokenInfo.
+    Returns the auth info if valid credentials are provided, or None if no
+    credentials are present. Raises HTTPException on *invalid* credentials.
     """
-    # Try API key first
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
@@ -73,19 +35,53 @@ async def require_auth(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
-    # Try OAuth bearer token
     if bearer is not None:
+        # MCP clients can only send credentials as a Bearer token, so an API key
+        # arrives here too; without this the request resolves to anonymous and
+        # gets the per-IP rate limit. Order matches v2's MCP TokenVerifier.
+        if api_key_info := await validate_api_key(bearer.credentials):
+            return api_key_info
+
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
             return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
-    # No credentials provided
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing authentication. Provide API key or access token.",
-    )
+    return None
+
+
+async def resolve_request_auth(
+    scope: Scope,
+    api_key: str | None,
+    bearer: HTTPAuthorizationCredentials | None,
+) -> APIAuthorizationInfo | None:
+    """`resolve_auth_info`, verified at most once per request.
+
+    v2's rate limiter and route dependency both need the caller, and an API key
+    costs a Scrypt hash per check. Failures are not remembered, so a retry retries.
+    """
+    state = scope.setdefault("state", {})
+    if _REQUEST_AUTH not in state:
+        state[_REQUEST_AUTH] = await resolve_auth_info(api_key=api_key, bearer=bearer)
+    return state[_REQUEST_AUTH]
+
+
+async def require_auth(
+    auth: APIAuthorizationInfo | None = Security(resolve_auth_info),
+) -> APIAuthorizationInfo:
+    """
+    Unified authentication dependency that requires valid credentials.
+
+    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
+    and rejects requests with no credentials.
+    """
+    if auth is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication. Provide API key or access token.",
+        )
+    return auth
 
 
 def require_permission(*permissions: APIKeyPermission):
@@ -96,7 +92,9 @@ def require_permission(*permissions: APIKeyPermission):
     """
 
     async def check_permissions(
-        auth: APIAuthorizationInfo = Security(require_auth),
+        auth: APIAuthorizationInfo = Security(
+            require_auth, scopes=[p.value for p in permissions]
+        ),
     ) -> APIAuthorizationInfo:
         missing = [p for p in permissions if p not in auth.scopes]
         if missing:
@@ -108,3 +106,15 @@ def require_permission(*permissions: APIKeyPermission):
         return auth
 
     return check_permissions
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints secured with `require_auth`,
+    `require_api_key`, or `require_access_token` middleware.
+    """
+    from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(
+        app, [api_key_header.scheme_name, bearer_auth.scheme_name]
+    )
