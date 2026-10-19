@@ -144,4 +144,24 @@ describe("RecentChats — chat rows", () => {
     await settle();
     expect(itemRenders).toHaveBeenCalledTimes(1);
   });
+
+  it("re-renders only the edited row while typing a rename", async () => {
+    renderRecentChats();
+    await screen.findByText("Third chat");
+    await settle();
+
+    const actions = screen.getAllByRole("button", { name: /chat actions/i });
+    fireEvent.pointerDown(actions[2], { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    await screen.findByLabelText("Rename chat");
+    await settle();
+    itemRenders.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Rename chat"), {
+      target: { value: "Renamed chat" },
+    });
+    await settle();
+
+    expect(itemRenders).toHaveBeenCalledTimes(1);
+  });
 });

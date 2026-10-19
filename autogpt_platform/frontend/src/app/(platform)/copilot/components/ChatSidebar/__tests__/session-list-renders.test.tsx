@@ -184,6 +184,47 @@ describe("ChatSidebar — session rows", () => {
   });
 });
 
+describe("ChatSidebar — session rows while editing and over midnight", () => {
+  it("does not re-render sibling rows while a title is being edited", async () => {
+    serveList();
+    renderSidebar();
+    const row = (await screen.findByText("Third chat")).closest("div.group");
+    if (!row) throw new Error("row not found");
+
+    fireEvent.pointerDown(
+      within(row as HTMLElement).getByRole("button", { name: /more actions/i }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename/i }));
+    const input = await screen.findByLabelText("Rename chat");
+    await settle();
+    blockRenders.mockClear();
+
+    fireEvent.change(input, { target: { value: "Renamed" } });
+    await settle();
+
+    expect(blockRenders).not.toHaveBeenCalled();
+  });
+
+  it("re-renders every row once at local midnight so 'Today' moves on", async () => {
+    vi.setSystemTime(new Date(2026, 9, 19, 23, 59, 0));
+    serveList();
+    renderSidebar();
+    await screen.findByText("Third chat");
+    await settle();
+    blockRenders.mockClear();
+
+    await tick(60_000);
+    await settle();
+
+    expect(blockRenders.mock.calls.map(([title]) => title).sort()).toEqual([
+      "First chat",
+      "Second chat",
+      "Third chat",
+    ]);
+  });
+});
+
 describe("ChatSidebar — 10-second refresh", () => {
   function seedPages(count: number) {
     listed = Array.from({ length: count }, (_, i) => ({

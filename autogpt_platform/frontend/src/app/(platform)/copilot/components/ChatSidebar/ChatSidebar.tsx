@@ -27,6 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocalDay } from "@/hooks/useLocalDay";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
@@ -74,6 +75,7 @@ export function ChatSidebar() {
   );
 
   const queryClient = useQueryClient();
+  const today = useLocalDay();
 
   const {
     sessions,
@@ -350,6 +352,7 @@ export function ChatSidebar() {
         showCompleted={
           completedSessionIDs.has(session.id) && session.id !== sessionId
         }
+        dayKey={today}
         onSelect={handleSelectSession}
         onEditingTitleChange={setEditingTitle}
         onRenameCancel={handleRenameCancel}

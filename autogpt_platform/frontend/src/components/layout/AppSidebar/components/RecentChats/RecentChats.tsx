@@ -7,6 +7,7 @@ import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useLocalDay } from "@/hooks/useLocalDay";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
@@ -18,6 +19,9 @@ export function RecentChats() {
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById, activeExpertIds } = useExpertMap();
+  // Re-groups "Today" / "Yesterday" at midnight: list polls that return the
+  // same sessions no longer re-render this component.
+  useLocalDay();
   const {
     sessions,
     isLoading,
