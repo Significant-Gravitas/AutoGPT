@@ -30,6 +30,13 @@ def stub_narrative(monkeypatch):
     return mock
 
 
+@pytest.fixture(autouse=True)
+def paid_user(monkeypatch):
+    mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(generate_module, "is_user_paywalled", mock)
+    return mock
+
+
 def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png", workflows=None):
     # Build a minimal backend.api.features.experts.models.Expert
     from backend.api.features.experts.models import Expert
@@ -277,6 +284,22 @@ async def test_generate_skips_when_flag_off(monkeypatch):
     monkeypatch.setattr(generate, "evaluate_feature_flag", flag_off)
     result = await generate.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "flag_disabled"}
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_a_paywalled_user_before_reading_anything(
+    monkeypatch, paid_user
+):
+    paid_user.return_value = True
+    monkeypatch.setattr(
+        generate_module, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    db = MagicMock()
+    monkeypatch.setattr(generate_module, "user_db", lambda: db)
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "paywalled"}
+    paid_user.assert_awaited_once_with("user-1")
+    db.get_user_by_id.assert_not_called()
 
 
 @pytest.mark.asyncio
