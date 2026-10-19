@@ -6,6 +6,10 @@ import { settle, type Scenario } from "../lib/scenario";
 const READY_TIMEOUT_MS = 60_000;
 const EVENT_INTERVAL_MS = 250;
 const EVENT_COUNT = 80;
+// The fleet summary refetches at most once per 2 s, so a trailing refetch
+// can land up to 2 s after the last event; it counts towards the run.
+const TRAILING_WINDOW_MS = 2_000;
+const SUBSCRIBE_TIMEOUT_MS = 15_000;
 
 type Fixture = ReturnType<typeof createLibraryFixture>;
 
@@ -16,7 +20,7 @@ type Fixture = ReturnType<typeof createLibraryFixture>;
  */
 async function mockExecutionSocket(page: Page) {
   const sockets = new Set<WebSocketRoute>();
-  const stats = { subscribeFrames: 0 };
+  const stats = { subscribeFrames: 0, subscribedGraphIDs: new Set<string>() };
   await page.routeWebSocket(/\/ws(\?|$)/, (ws) => {
     sockets.add(ws);
     ws.onClose(() => sockets.delete(ws));
@@ -28,6 +32,7 @@ async function mockExecutionSocket(page: Page) {
       }
       if (message.method === "subscribe_graph_executions") {
         stats.subscribeFrames += 1;
+        stats.subscribedGraphIDs.add(String(message.data?.graph_id));
       }
       ws.send(
         JSON.stringify({
@@ -46,7 +51,21 @@ async function mockExecutionSocket(page: Page) {
     });
     for (const ws of sockets) ws.send(frame);
   }
-  return { stats, push };
+  async function waitForSubscriptions(graphIDs: string[]) {
+    const deadline = Date.now() + SUBSCRIBE_TIMEOUT_MS;
+    while (!graphIDs.every((id) => stats.subscribedGraphIDs.has(id))) {
+      if (Date.now() > deadline) {
+        const missing = graphIDs.filter(
+          (id) => !stats.subscribedGraphIDs.has(id),
+        ).length;
+        throw new Error(
+          `The page never subscribed to ${missing} of ${graphIDs.length} workflows; events would reach no one.`,
+        );
+      }
+      await page.waitForTimeout(100);
+    }
+  }
+  return { stats, push, waitForSubscriptions };
 }
 
 function countRequests(handler: RouteHandler | undefined) {
@@ -62,8 +81,9 @@ export const libraryRunningEvents: Scenario = {
   name: "library-running-events",
   description:
     "The library with 20 RUNNING workflows while the websocket pushes an execution event every 250 ms.",
-  readyWhen: "the 20th workflow is listed, then network idle + 1 s",
-  windowMs: 2_000,
+  readyWhen:
+    "the 20th workflow is listed, network idle + 1 s, and the socket has a subscription for all 20 workflows",
+  windowMs: 0,
   async setup(ctx) {
     const { page } = ctx;
     const fixture = createLibraryFixture(ctx.userID);
@@ -82,6 +102,9 @@ export const libraryRunningEvents: Scenario = {
       .first()
       .waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });
     await settle(page);
+    await socket.waitForSubscriptions(
+      fixture.agents.map((agent) => agent.graph_id),
+    );
     return {
       async run() {
         const subscribesBefore = socket.stats.subscribeFrames;
@@ -90,9 +113,10 @@ export const libraryRunningEvents: Scenario = {
           socket.push(fixture.executions[index % fixture.executions.length]);
           await page.waitForTimeout(EVENT_INTERVAL_MS);
         }
+        await page.waitForTimeout(TRAILING_WINDOW_MS);
         const seconds = (EVENT_COUNT * EVENT_INTERVAL_MS) / 1000;
         console.log(
-          `[library-running-events] ${EVENT_COUNT} events in ${seconds}s: ` +
+          `[library-running-events] ${EVENT_COUNT} events in ${seconds}s (+ ${TRAILING_WINDOW_MS / 1000}s after): ` +
             `${socket.stats.subscribeFrames - subscribesBefore} subscribe_graph_executions frames, ` +
             `${executions.stats.count - fetchesBefore} GET /executions ` +
             `(setup: ${subscribesBefore} subscribes, ${fetchesBefore} fetches)`,
