@@ -36,7 +36,7 @@ describe("copilot fixtures", () => {
 
   it("reads the reply text out of recorded frames with id lines and comments", () => {
     const recorded = [
-      "id: t:1-0\ndata: {\"type\": \"data-status\", \"data\": {}}",
+      'id: t:1-0\ndata: {"type": "data-status", "data": {}}',
       ": heartbeat",
       'id: t:2-0\ndata: {"type":"text-delta","id":"x","delta":"Hello "}',
       'id: t:2-1\ndata: {"type":"text-delta","id":"x","delta":"world"}',

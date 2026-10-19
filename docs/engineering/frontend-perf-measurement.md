@@ -103,7 +103,7 @@ Names come from the component function. Third-party code bundled already minifie
 | --- | --- | --- | --- |
 | `copilot-idle` | Open the 200-message chat | Nothing | 20 s |
 | `copilot-stream-reply` | Open the 200-message chat | Type "go", press Enter, stream the 20-line fixture reply at about 33 chunks a second | Until the reply has been sent, + 1 s |
-| `copilot-background-stream` | Start the same reply slowly (200 ms a chunk) in the 200-message chat, then click Home | Nothing | 15 s |
+| `copilot-background-stream` | Start the same reply slowly (200 ms a chunk) in the 200-message chat, click Home, and wait 3 s for Home's entrance animations | Nothing | 15 s |
 | `copilot-type` | Open the 200-message chat and focus the composer | Type 19 characters, 50 ms apart | 2 s after the last key |
 | `copilot-switch-threads` | Open the 200-message chat and list the 200 / 50 / 10-message chats in the sidebar | Click 50 → 10 → 200, three rounds, 2 s on each | Until done |
 | `builder-drag-running` | Open a 50-node workflow whose run is RUNNING (the page polls it every second) | Drag one node for 2 s with 60 pointer moves | 2 s |
@@ -144,7 +144,7 @@ __renderCounter.report(); // { commits, totalRenders, rendersPerCommit, maxRende
 
 How it works: React reports every commit to `window.__REACT_DEVTOOLS_GLOBAL_HOOK__` if that object exists before React loads, which is why the script is loaded with `strategy="beforeInteractive"`. The script wraps an existing hook (the React DevTools extension, or Fast Refresh in dev) or installs a minimal one. On each commit it walks the fiber tree and counts function, class, `forwardRef` and simple `memo` components whose `PerformedWork` flag is set. It skips subtrees React bailed out of, because their fibers keep stale flags from older commits. `memo` wrappers that hold another component (tag 14) are not counted, because React flags both the wrapper and the component inside it and one render would count twice.
 
-Production stays untouched: the file is in `public/`, is never bundled, and the `<Script>` tag in `src/app/layout.tsx` is only rendered when `NEXT_PUBLIC_RENDER_COUNTER` is exactly `"1"` at build time. After `pnpm build` without the flag, `grep -r __renderCounter .next/static` finds nothing.
+Production stays untouched: the file is in `public/` and is never bundled, and the `<Script>` tag in `src/app/layout.tsx` is only rendered when `NEXT_PUBLIC_RENDER_COUNTER` is exactly `"1"`. The root layout is a server component, so a production server reads the variable from its own environment at request time; no deployment sets it. After `pnpm build` without the flag, `grep -r __renderCounter .next/static` finds nothing.
 
 ## Fixtures
 
