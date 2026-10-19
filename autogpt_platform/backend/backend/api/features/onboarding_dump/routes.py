@@ -267,7 +267,18 @@ async def download_brain_dump_recording(
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:
         raise fastapi.HTTPException(status_code=404, detail="No recording found")
-    if not await storage.audio_available(dump.audioPath):
+    try:
+        available = await storage.audio_available(dump.audioPath)
+    except Exception as e:
+        # Type only: a GCS error carries the object URL, which holds the
+        # user ID, and so would the traceback of a 500.
+        logger.warning(
+            f"Brain dump recording check failed at the bucket: {type(e).__name__}"
+        )
+        raise fastapi.HTTPException(
+            status_code=503, detail="Recording temporarily unavailable, try again"
+        ) from None
+    if not available:
         # So ``has_audio`` stops offering it, even if the blob went some way
         # other than the sweep, which clears the row itself.
         await db.clear_audio_paths([dump.audioPath])

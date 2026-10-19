@@ -24,6 +24,7 @@ from backend.api.features.onboarding_dump.models import (
 )
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.data.understanding import BusinessUnderstandingInput
+from backend.util.gcs_utils_test import _gcs_http_error
 
 app = fastapi.FastAPI()
 app.include_router(routes.router)
@@ -586,6 +587,37 @@ def test_recording_deleted_by_retention_is_404_not_a_dead_link(
     storage_mocks["audio_download_url"].assert_not_awaited()
     # The status stops offering a download that can only 404.
     assert dumps.row is not None and dumps.row.audioPath is None
+
+
+def test_recording_check_failing_at_the_bucket_is_503_without_the_path(
+    dumps: DumpStore,
+    storage_mocks: dict[str, AsyncMock],
+    stt_create: AsyncMock,
+    mocker: MockerFixture,
+    test_user_id: str,
+):
+    """A GCS outage or auth error must not become a 500 whose traceback
+    carries the object URL, and with it the user ID."""
+    upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
+    finalize()
+    storage_mocks["audio_available"].side_effect = _gcs_http_error(
+        503, f"https://storage.googleapis.com/storage/v1/b/b/o/{test_user_id}%2Fa.webm"
+    )
+    warning = mocker.patch.object(routes.logger, "warning")
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
+
+    assert recording.status_code == 503
+    assert recording.json()["detail"] == (
+        "Recording temporarily unavailable, try again"
+    )
+    storage_mocks["audio_download_url"].assert_not_awaited()
+    # Still the user's recording: the row keeps pointing at it.
+    assert dumps.row is not None and dumps.row.audioPath is not None
+    logged = " ".join(str(c.args) for c in warning.call_args_list)
+    assert "ClientResponseError" in logged
+    assert test_user_id not in logged and "storage.googleapis.com" not in logged
 
 
 def test_discard_clears_the_part_buffer_of_an_unfinished_take(
