@@ -8,6 +8,7 @@ import {
   isFromBot,
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
+  stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { setupSessionReplay } from "@/lib/session-replay";
@@ -32,6 +33,10 @@ Sentry.init({
   // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: CLIENT_IGNORE_ERRORS,
 
+  // Errors are reported without consent (legitimate interest), so they carry
+  // the user id only: no email, and Sentry is told not to infer the IP address.
+  sendDefaultPii: false,
+
   // Next's handled RSC fetch fallback reaches us only through console capture
   // and falls back to a full navigation, so it is noise (BUILDER-3QB).
   // Crawlers render our pages too; what breaks for them is not a user's bug.
@@ -40,13 +45,14 @@ Sentry.init({
   // Some browsers inject a script that logs every cross-origin iframe it may
   // not read (BUILDER-943).
   beforeSend(event) {
+    stripUserPII(event);
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
     return isNextRSCNavigationFallback(event) ? null : event;
   },
   beforeSendTransaction(event) {
-    return isFromBot(navigator.userAgent) ? null : event;
+    return isFromBot(navigator.userAgent) ? null : stripUserPII(event);
   },
 
   // Add optional integrations for additional features

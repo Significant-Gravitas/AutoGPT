@@ -141,6 +141,43 @@ describe.each([
     expect(beforeSendTransaction(withCredentials()).request).toEqual(stripped);
   });
 
+  it("sends no user email or IP address", async () => {
+    await load();
+
+    const { sendDefaultPii, beforeSend, beforeSendTransaction } =
+      initMock.mock.calls[0][0];
+    function withPersonalData() {
+      return {
+        user: {
+          id: "user-1",
+          email: "ada@example.com",
+          ip_address: "203.0.113.7",
+        },
+        request: {
+          url: "https://platform.agpt.co/library",
+          headers: {
+            "user-agent": "ua",
+            "X-Forwarded-For": "203.0.113.7",
+            "x-real-ip": "203.0.113.7",
+            "x-vercel-forwarded-for": "203.0.113.7",
+            "x-vercel-ip-city": "Warsaw",
+            "cf-connecting-ip": "203.0.113.7",
+            forwarded: "for=203.0.113.7",
+          },
+        },
+      };
+    }
+
+    expect(sendDefaultPii).toBe(false);
+    for (const event of [
+      beforeSend(withPersonalData(), {}),
+      beforeSendTransaction(withPersonalData()),
+    ]) {
+      expect(event.user).toEqual({ id: "user-1" });
+      expect(event.request.headers).toEqual({ "user-agent": "ua" });
+    }
+  });
+
   it("tags events with the environment the deployment names for itself", async () => {
     vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
 

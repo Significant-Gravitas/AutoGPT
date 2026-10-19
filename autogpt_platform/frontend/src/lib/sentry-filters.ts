@@ -66,10 +66,31 @@ export function isFromBot(userAgent: string | undefined) {
   return BOT_USER_AGENT.test(userAgent);
 }
 
-const CREDENTIAL_HEADERS = new Set(["cookie", "authorization"]);
+// Credentials, and the headers proxies put the visitor's IP address (and
+// Vercel the location it resolves from it) in.
+const PRIVATE_HEADERS = new Set([
+  "cookie",
+  "authorization",
+  "x-forwarded-for",
+  "x-real-ip",
+  "x-vercel-forwarded-for",
+  "x-vercel-proxied-for",
+  "cf-connecting-ip",
+  "true-client-ip",
+  "x-client-ip",
+  "forwarded",
+]);
+const PRIVATE_HEADER_PREFIX = "x-vercel-ip-";
 
-// Keeps the request's body, cookies and credential headers out of server and
-// edge events.
+function isPrivateHeader(name: string) {
+  const header = name.toLowerCase();
+  return (
+    PRIVATE_HEADERS.has(header) || header.startsWith(PRIVATE_HEADER_PREFIX)
+  );
+}
+
+// Keeps the request's body, cookies, credential headers and the visitor's IP
+// address out of server and edge events.
 export function stripRequestCredentials<T extends Event>(event: T): T {
   const { request } = event;
   if (!request) return event;
@@ -77,9 +98,18 @@ export function stripRequestCredentials<T extends Event>(event: T): T {
   delete request.cookies;
   if (!request.headers) return event;
   request.headers = Object.fromEntries(
-    Object.entries(request.headers).filter(
-      ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
-    ),
+    Object.entries(request.headers).filter(([name]) => !isPrivateHeader(name)),
   );
+  return event;
+}
+
+// Error monitoring runs without consent (legitimate interest), so a user is
+// known to Sentry by their id and role only: never their email or IP address,
+// whichever code put them on the scope.
+export function stripUserPII<T extends Event>(event: T): T {
+  if (!event.user) return event;
+  delete event.user.email;
+  delete event.user.ip_address;
+  delete event.user.username;
   return event;
 }

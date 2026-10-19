@@ -285,6 +285,7 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _strip_user_pii(event)
     _scrub_sentry_event(event)
     return event
 
@@ -292,8 +293,20 @@ def _before_send(event, hint):
 def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
     every WebSocket connection is one."""
+    _strip_user_pii(event)
     _redact_request_urls(event)
     return event
+
+
+# Sentry knows a user by their id only: never their email or IP address,
+# whichever code put them on the scope.
+_USER_PII_FIELDS = ("email", "ip_address", "username")
+
+
+def _strip_user_pii(event: dict) -> None:
+    user = event.get("user") or {}
+    for field in _USER_PII_FIELDS:
+        user.pop(field, None)
 
 
 def _sentry_environment() -> str:
@@ -328,6 +341,9 @@ def sentry_init():
         profiles_sample_rate=1.0,
         release=settings.config.sentry_release.strip() or None,
         environment=_sentry_environment(),
+        # The SDK default, pinned: no IP address, request headers with
+        # personal data or cookies.
+        send_default_pii=False,
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
         integrations=[

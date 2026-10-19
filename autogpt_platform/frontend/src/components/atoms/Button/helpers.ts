@@ -87,8 +87,8 @@ type BaseButtonProps = {
   asChild?: boolean;
   withTooltip?: boolean;
   /**
-   * Adds the sentry-unmask class for static button labels.
-   * Disable for user-provided or dynamic strings.
+   * Shows the label in session replays, which mask all text by default.
+   * Only for a static label that is the same for every user.
    */
   unmask?: boolean;
 } & VariantProps<typeof extendedButtonVariants>;

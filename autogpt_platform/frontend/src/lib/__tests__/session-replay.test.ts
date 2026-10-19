@@ -60,6 +60,18 @@ describe("setupSessionReplay", () => {
     expect(Sentry.addIntegration).toHaveBeenCalledTimes(2);
   });
 
+  it("masks all text, inputs and media unless an element opts in", () => {
+    installCookiebot({ statistics: true });
+    setupSessionReplay();
+
+    expect(Sentry.replayIntegration).toHaveBeenCalledExactlyOnceWith({
+      maskAllText: true,
+      maskAllInputs: true,
+      blockAllMedia: true,
+      unmask: [".sentry-unmask, [data-sentry-unmask]"],
+    });
+  });
+
   it("never installs replay without a consent banner", () => {
     vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
     installCookiebot({ statistics: true });

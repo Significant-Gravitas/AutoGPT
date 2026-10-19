@@ -5,7 +5,12 @@ function createReplayIntegrations() {
   // Canvas first: Replay looks it up by name when it sets up.
   return [
     Sentry.replayCanvasIntegration(),
+    // Everything on screen is masked unless an element opts in with
+    // `sentry-unmask`, which only copy that is the same for every user should.
     Sentry.replayIntegration({
+      maskAllText: true,
+      maskAllInputs: true,
+      blockAllMedia: true,
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
   ];

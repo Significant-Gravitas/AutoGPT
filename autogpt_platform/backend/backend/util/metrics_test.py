@@ -577,3 +577,34 @@ def test_sentry_settings_are_empty_for_blank_deployment_env_vars(monkeypatch) ->
     config = Config()
 
     assert (config.sentry_release, config.sentry_environment) == ("", "")
+
+
+# ---------- personal data ----------
+
+
+def _event_with_personal_user() -> dict:
+    return {
+        "level": "error",
+        "user": {
+            "id": "user-1",
+            "email": "ada@example.com",
+            "ip_address": "203.0.113.7",
+        },
+    }
+
+
+def test_before_send_keeps_only_the_user_id() -> None:
+    event = _before_send(_event_with_personal_user(), hint={})
+
+    assert event is not None
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_before_send_transaction_keeps_only_the_user_id() -> None:
+    event = metrics._before_send_transaction(_event_with_personal_user(), hint={})
+
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_sentry_init_sends_no_default_pii(monkeypatch) -> None:
+    assert _sentry_init_options(monkeypatch)["send_default_pii"] is False

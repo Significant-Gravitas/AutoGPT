@@ -113,7 +113,6 @@ export function BillingOffer({ controller }: Props) {
           : undefined
       }
       price={price}
-      isTrialOffer={isTrial}
       benefits={benefits}
       actionLabel={
         quiet
