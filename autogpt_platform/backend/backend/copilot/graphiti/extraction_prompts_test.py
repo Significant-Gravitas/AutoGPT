@@ -1,18 +1,24 @@
-from unittest.mock import AsyncMock
+from datetime import datetime
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from graphiti_core.graphiti_types import GraphitiClients
 from graphiti_core.llm_client import LLMConfig, openai_base_client
 from graphiti_core.llm_client.config import ModelSize
+from graphiti_core.nodes import EpisodeType, EpisodicNode
 from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
 from graphiti_core.prompts.prompt_helpers import DO_NOT_ESCAPE_UNICODE
+from graphiti_core.utils.maintenance.edge_operations import extract_edges
+from graphiti_core.utils.maintenance.node_operations import extract_nodes
 
 from backend.copilot.graphiti.extraction_prompts import prepare_extraction_messages
 from backend.copilot.graphiti.flex_client import FlexOpenAIClient
 from backend.copilot.graphiti.ingest import CUSTOM_EXTRACTION_INSTRUCTIONS
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
+from backend.copilot.graphiti.types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 
 @pytest.fixture
@@ -59,6 +65,38 @@ async def test_luna_extraction_policy_preserves_context(
     assert generate.call_args.args[1] is schema
     assert prompt_name in client.token_tracker.get_usage()
     assert DO_NOT_ESCAPE_UNICODE in sent[0].content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source", [EpisodeType.message, EpisodeType.json, EpisodeType.text]
+)
+async def test_upstream_extraction_entry_points_apply_luna_policy(monkeypatch, source):
+    episode = _episode(source)
+    node_response = {
+        "extracted_entities": [
+            {"name": name, "entity_type_id": 0} for name in ("Mira", "Lato")
+        ]
+    }
+    generate = AsyncMock(side_effect=[(node_response, 0, 0), ({"edges": []}, 0, 0)])
+    client = GraphitiOpenAIClient(config=LLMConfig(api_key="test", model="gpt-6-luna"))
+    clients = Mock(spec=GraphitiClients, llm_client=client)
+    monkeypatch.setattr(client, "_generate_response", generate)
+    try:
+        nodes, _ = await extract_nodes(clients, episode, [], entity_types=ENTITY_TYPES)
+        await extract_edges(
+            clients, episode, nodes, [], EDGE_TYPE_MAP, edge_types=EDGE_TYPES
+        )
+    finally:
+        await client.client.close()
+    assert generate.await_count == 2
+    node_call, edge_call = generate.await_args_list
+    assert (
+        "Numeric values belong in the associated fact" in node_call.args[0][0].content
+    )
+    assert "Return every supported relationship" in edge_call.args[0][0].content
+    assert node_call.args[1] is ExtractedEntities
+    assert edge_call.args[1] is ExtractedEdges
 
 
 @pytest.mark.asyncio
@@ -212,3 +250,14 @@ def _prompt(kind, context):
             "episode_content": '{"user":"Mira","content":"My font is Lato"}'
         }
     return factories[kind](context), ExtractedEntities, f"extract_nodes.{kind}"
+
+
+def _episode(source: EpisodeType) -> EpisodicNode:
+    return EpisodicNode(
+        name="policy contract",
+        group_id="test_contract",
+        source=source,
+        source_description="Synthetic user memory",
+        content='{"user":"Mira","content":"My font is Lato"}',
+        valid_at=datetime.fromisoformat("2026-08-11T00:00:00+00:00"),
+    )

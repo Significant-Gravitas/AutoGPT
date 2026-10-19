@@ -153,12 +153,23 @@ schemas. This validates output shape, not semantic completeness.
 
 ## Regression checks and reproduction
 
+Initial evaluation checks:
+
 - Graphiti non-integration suite: **330 passed, one pre-existing xfail**.
 - Focused client/prompt suite: **65 passed**, 100% statement coverage of the
   prompt dispatcher and adapter; three paid tests skipped by default.
 - Paid regression: **three passed**, covering message, JSON, and text ingestion
   into a fresh graph. It inspects stored relationships for six concrete details.
 - Black, isort, Ruff, and scoped Pyright passed. Full application E2E was not run.
+
+The review follow-up passed **339 unit tests** with one pre-existing xfail.
+New tests invoke graphiti-core's real node/edge extraction entry points and reject
+an inactive dispatcher. Four assertion regressions were reproduced before fixing
+row-order dependence and cross-fact matches. Detail checks now match individual
+facts and require each dispatch day in a dispatch-related fact. CI's complete
+Python 3.11/3.12/3.13 reports validate after registering the three intentional
+paid-test skips. The paid run above predates the stricter assertions; it was not
+repeated after the provider's daily quota was exhausted.
 
 The full pre-commit invocation encountered local Windows/WSL tooling failures:
 Bash could not resolve the Windows worktree metadata or find Poetry/Node, and the
@@ -184,11 +195,13 @@ were removed after validation.
 
 ## Evidence fingerprints
 
-SHA-256 identifies the evaluated artifacts; source hashes use LF bytes.
+SHA-256 identifies the evaluated artifacts; source hashes use LF bytes. The
+review follow-up changes only comments in the prompt module: its syntax tree and
+prompt strings match the evaluated revision.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Shipped `extraction_prompts.py` | `34b04d8c8d12475d77d9c1b90414a78ddf5ac86434c0f2c6d853f9f63475c5cd` |
+| Evaluated `extraction_prompts.py` at `51cdfdd` | `34b04d8c8d12475d77d9c1b90414a78ddf5ac86434c0f2c6d853f9f63475c5cd` |
 | AgentProbe source YAML | `faf01e2ec24135acc3fb558bee02ad1a31faf999919b7a854fb77245e563412b` |
 | Adapted probe/check definitions | `413edbfbd714941a9e578fb52c31d1593c2886de5b245c27d054cb0ff25f503f` |
 | Mini primary capture | `91415816d889790d21d525d5bb6e70f168ad375701c63040293db5fc3f16722a` |

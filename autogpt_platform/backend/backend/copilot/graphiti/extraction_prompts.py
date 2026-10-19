@@ -16,8 +16,8 @@ def prepare_extraction_messages(
     if not policy or not messages or messages[0].role != "system":
         return messages
 
-    # Replace the upstream abstract-entity ban instead of appending a conflicting
-    # instruction. Preserve all source context without parsing its delimiters.
+    # Replace only the system preamble; preserve source templates and isolate
+    # caller messages from the parent's in-place language and retry additions.
     return [
         Message(role="system", content=_COMMON + policy + DO_NOT_ESCAPE_UNICODE),
         *(message.model_copy(deep=True) for message in messages[1:]),

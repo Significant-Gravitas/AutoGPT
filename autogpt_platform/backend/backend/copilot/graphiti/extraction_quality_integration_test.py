@@ -3,7 +3,7 @@
 import asyncio
 import os
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from graphiti_core import Graphiti
@@ -51,23 +51,11 @@ async def test_incidental_details_survive_as_durable_facts(clean_graph, source):
             driver.execute_query("MATCH ()-[e:RELATES_TO]->() RETURN e.fact AS fact"),
             timeout=10,
         )
-        facts = "\n".join(row["fact"] for row in rows)
-        expected = {
-            "payment term": r"net\s+(?:45|forty.five)|payment[^.]{0,90}(?:45|forty.five)",
-            "financial year end": r"September",
-            "document font": r"Lato",
-            "warehouse": r"Omaha",
-            "dispatch days": r"Monday.*Wednesday",
-            "minimum order": r"(?:18|eighteen)\s+cartons",
-        }
-        missing = [
-            name
-            for name, pattern in expected.items()
-            if not re.search(pattern, facts, re.IGNORECASE | re.DOTALL)
-        ]
+        facts = [row["fact"] for row in rows]
+        missing = _missing_details(facts)
         assert (
             not missing
-        ), f"Details missing: {missing}. Synthetic stored facts:\n{facts}"
+        ), f"Details missing: {missing}. Synthetic stored facts: {facts}"
     finally:
         await llm_client.client.close()
         await client.embedder.client.close()
@@ -86,10 +74,32 @@ async def _ingest(client: Graphiti, group_id: str, source: EpisodeType) -> None:
             episode_body=content,
             source=source,
             source_description="Synthetic memory quality regression",
-            reference_time=datetime(2026, 8, 11, 10, tzinfo=UTC),
+            reference_time=datetime.fromisoformat("2026-08-11T10:00:00+00:00"),
             group_id=group_id,
             entity_types=ENTITY_TYPES,
             edge_types=EDGE_TYPES,
             edge_type_map=EDGE_TYPE_MAP,
             custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
         )
+
+
+def _missing_details(facts: list[str]) -> list[str]:
+    dispatch = r"(?=.*\b(?:dispatch|ship|leav)\w*\b).*"
+    expected = {
+        "payment term": (
+            r"net\s+(?:45|forty.five)|payment[^.]{0,90}(?:45|forty.five)",
+        ),
+        "financial year end": (r"September",),
+        "document font": (r"Lato",),
+        "warehouse": (r"Omaha",),
+        "dispatch days": (dispatch + r"\bMondays?\b", dispatch + r"\bWednesdays?\b"),
+        "minimum order": (r"(?:18|eighteen)\s+cartons",),
+    }
+    return [
+        name
+        for name, patterns in expected.items()
+        if not all(
+            any(re.search(pattern, fact, re.IGNORECASE) for fact in facts)
+            for pattern in patterns
+        )
+    ]
