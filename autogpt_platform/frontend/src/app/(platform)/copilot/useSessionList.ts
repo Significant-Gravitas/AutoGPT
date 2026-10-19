@@ -87,7 +87,9 @@ export function useSessionList({ enabled = true }: Args = {}) {
     initialDataUpdatedAt: () =>
       queryClient.getQueryState(SESSION_LIST_QUERY_KEY)?.dataUpdatedAt,
     staleTime: SESSION_LIST_REFETCH_INTERVAL_MS,
-    // The list's own focus refetch already covers every page.
+    // The list's own mount and focus refetches already cover every page, so
+    // this query only ever fetches on its interval.
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     // Nothing reads this cache entry; the poll only patches the list.
     notifyOnChangeProps: [],

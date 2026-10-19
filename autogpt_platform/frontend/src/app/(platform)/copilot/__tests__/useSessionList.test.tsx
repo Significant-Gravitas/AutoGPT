@@ -245,4 +245,27 @@ describe("useSessionList — older pages", () => {
       "Renamed after the poll left",
     );
   });
+
+  it("does not poll the first page straight away when the list remounts", async () => {
+    const client = makeClient();
+    const first = renderSessionList(client);
+    await waitFor(() => expect(first.result.current.sessions).toHaveLength(50));
+    await act(async () => {
+      await first.result.current.loadMore();
+    });
+    await waitFor(() => expect(first.result.current.sessions).toHaveLength(75));
+    await settle();
+    first.unmount();
+
+    // Back within the list's own 60 s staleTime, so nothing is due yet.
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    listRequests = [];
+    const second = renderSessionList(client);
+    expect(second.result.current.sessions).toHaveLength(75);
+    await settle();
+
+    expect(listRequests).toEqual([]);
+  });
 });
