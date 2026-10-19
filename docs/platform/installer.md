@@ -28,8 +28,8 @@ not install it or grant a Docker license.
 ## Install (Hosted Command Not Live Yet)
 
 {% hint style="warning" %}
-Do not use the hosted command yet. `setup.agpt.co/install.sh` still serves the
-legacy Compose installer. The appliance image itself is published:
+Do not use the hosted command yet. `setup.agpt.co/install.sh` serves a
+clone-and-Compose script, not this one. The appliance image itself is published:
 `significantgravitas/autogpt:latest` and each `vX.Y.Z` release tag are public
 on Docker Hub for Linux `amd64` and `arm64`. Until the hosted command goes
 live, run the image with `docker run` as described in
@@ -187,8 +187,8 @@ The image gates already pass, and each release must keep them passing:
 Two gates remain open:
 
 - Deploy the repository `install.sh` from the current release tag through the
-  Caddy or object-storage configuration behind `setup.agpt.co`. The endpoint
-  must no longer serve the legacy clone/Compose installer.
+  Caddy or object-storage configuration behind `setup.agpt.co`, replacing the
+  clone-and-Compose script it serves.
 - Fetch the hosted installer into a new temporary file from an external
   machine and compare it with the released repository file. On each supported
   operating system, perform a clean install against the public image, wait for

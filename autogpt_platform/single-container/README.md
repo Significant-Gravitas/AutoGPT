@@ -104,8 +104,7 @@ use shared memory.
 - `vX.Y.Z` — immutable image for GitHub release `autogpt-platform-beta-vX.Y.Z`.
 - `sha-<git-sha>` — immutable build for the exact source revision of a release.
 
-Legacy `canary-sha-*` tags are unsupported pre-release validation artifacts and
-are no longer published.
+`canary-sha-*` tags are unsupported pre-release validation artifacts.
 
 ## Upgrading
 

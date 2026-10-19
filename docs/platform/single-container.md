@@ -43,8 +43,7 @@ tag or manifest digest. Docker image tags map to source releases as follows:
   release. Each release publishes one for the commit it was built from; `dev`
   commits are built and tested in CI but not published.
 
-Older `canary-sha-*` tags are legacy pre-release validation artifacts, not a
-currently published or supported tag family.
+`canary-sha-*` tags are unsupported pre-release validation artifacts.
 
 To build from source instead, run Docker Buildx Bake from the repository root:
 
