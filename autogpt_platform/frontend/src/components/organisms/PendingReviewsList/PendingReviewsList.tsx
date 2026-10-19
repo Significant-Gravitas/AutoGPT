@@ -132,7 +132,9 @@ export function PendingReviewsList({
       let parsedData: any = undefined;
 
       if (!autoApproveThisNode) {
-        if (review.editable && reviewData) {
+        // An emptied draft is "" here and must fail the parse below, not
+        // fall back to the original payload the reviewer just cleared.
+        if (review.editable && reviewData !== undefined) {
           try {
             parsedData = JSON.parse(reviewData);
           } catch (error) {

@@ -117,6 +117,9 @@ export function PendingReviewCard({
         <JsonDataInput
           value={data}
           onChange={(value) => handleDataChange(value as ReviewPayload)}
+          onInvalidDraft={(text) =>
+            onReviewDataChange(review.node_exec_id, text)
+          }
         />
       );
     }

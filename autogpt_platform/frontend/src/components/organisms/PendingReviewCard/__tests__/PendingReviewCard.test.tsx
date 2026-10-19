@@ -293,3 +293,24 @@ test("keeps half-typed JSON in a list payload and reports it once it parses", as
     JSON.stringify([1, 2, 3], null, 2),
   );
 });
+
+test("an emptied JSON draft shows a value that then arrives from outside", () => {
+  const review = makeReview({ payload: [1, 2] as unknown as ReviewPayload });
+  const { rerender } = render(
+    <PendingReviewCard review={review} onReviewDataChange={() => {}} />,
+  );
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+
+  fireEvent.change(field, { target: { value: "" } });
+  rerender(
+    <PendingReviewCard
+      review={review}
+      onReviewDataChange={() => {}}
+      externalDataValue="null"
+    />,
+  );
+
+  expect(field.value).toBe("null");
+});
