@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 from sentry_sdk.tracing import Span
 
 from backend.copilot.constants import is_platform_text
-from backend.copilot.model import is_message_duplicate
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamReasoningDelta,
@@ -24,11 +23,12 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
 )
+from backend.copilot.service import strip_user_context_tags
 from backend.util import tracing
 
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
-    from backend.copilot.model import ChatSession
+    from backend.copilot.model import ChatMessage, ChatSession
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,17 @@ def _is_platform_delta(chunk: StreamBaseResponse) -> bool:
     return isinstance(chunk, StreamTextDelta) and is_platform_text(chunk.delta)
 
 
+def _is_latest_user_message(messages: list["ChatMessage"], message: str) -> bool:
+    """Whether *message* is already saved at the end of the chat, compared
+    without the server blocks a saved copy can carry."""
+    for row in reversed(messages):
+        if row.role != "user":
+            return False
+        if strip_user_context_tags(row.content or "") == message:
+            return True
+    return False
+
+
 class TurnTrace:
     """One turn's timings and outcome, recorded on its transaction."""
 
@@ -79,13 +90,14 @@ class TurnTrace:
         user message; a greeting or note the platform wrote before it doesn't
         make it a follow-up.
 
-        ``message`` is the user message the turn answers, as the engine will
-        save it. The chat route saves it before dispatch; a schedule or a
-        sub-session doesn't, and the engine saves it when the turn starts,
-        unless it is already the chat's latest, as it decides itself."""
+        ``message`` is the user message the turn answers, its server tags
+        stripped. The chat route saves it before dispatch, sometimes behind a
+        server block (a voice turn's instructions, a first turn's context); a
+        schedule or a sub-session doesn't, and the engine saves it when the
+        turn starts. Either way it counts once."""
         try:
             users = sum(1 for row in session.messages if row.role == "user")
-            if message and not is_message_duplicate(session.messages, "user", message):
+            if message and not _is_latest_user_message(session.messages, message):
                 users += 1
             self.span.set_tag("copilot.turn.first", "true" if users <= 1 else "false")
             self.span.set_tag(

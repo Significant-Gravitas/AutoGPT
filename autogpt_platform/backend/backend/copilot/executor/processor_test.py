@@ -36,6 +36,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.prompting import VOICE_TURN_PREFIX
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
     StreamError,
@@ -45,6 +46,7 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
 )
+from backend.copilot.service import format_user_context_prefix
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -574,6 +576,21 @@ class TestExecuteAsyncAclose:
             # A redelivered schedule turn whose message the engine saved with
             # its server tags stripped: the same message, not a second one.
             ([("user", "do this")], "<user_context>x</user_context>do this", "true"),
+            # A voice chat's first message: the route saves and dispatches it
+            # behind the voice instructions, which the turn's copy drops.
+            ([("user", VOICE_TURN_PREFIX + "hi")], VOICE_TURN_PREFIX + "hi", "true"),
+            (
+                [
+                    ("user", VOICE_TURN_PREFIX + "hi"),
+                    ("assistant", "hello"),
+                    ("user", VOICE_TURN_PREFIX + "next"),
+                ],
+                VOICE_TURN_PREFIX + "next",
+                "false",
+            ),
+            # A first turn redelivered after the engine saved its message
+            # behind the user's context block, before anything answered it.
+            ([("user", format_user_context_prefix("ctx") + "hi")], "hi", "true"),
             # A kickoff the platform posts as the chat's first message.
             ([("assistant", "kickoff")], None, "true"),
         ],
