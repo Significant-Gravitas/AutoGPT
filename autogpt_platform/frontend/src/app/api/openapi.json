@@ -3817,28 +3817,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/health": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Health Check",
-        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
-        "operationId": "getV2HealthCheck",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Getv2Healthcheck"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/model-tiers": {
       "get": {
         "tags": ["v2", "chat", "chat"],

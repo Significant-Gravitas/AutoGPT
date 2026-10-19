@@ -293,7 +293,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/email/send",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
-    "GET /api/chat/health",
     "GET /api/chat/schema/tool-responses",
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
