@@ -224,6 +224,34 @@ describe("useCopilotNotifications — unfocused windows", () => {
   });
 });
 
+describe("useCopilotNotifications — focus inside an iframe", () => {
+  it("does not notify for the open chat while the user works in an embedded frame", async () => {
+    setVisibility("visible");
+    // Focus moving into an iframe blurs the window but keeps document focus.
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+
+    act(() => {
+      capturedHandler!({
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-1",
+      });
+    });
+    await act(async () => {});
+
+    expect(NotificationCtor).not.toHaveBeenCalled();
+    expect(useCopilotUIStore.getState().completedSessionIDs).not.toContain(
+      "sess-1",
+    );
+  });
+});
+
 describe("useCopilotNotifications — tab title", () => {
   it("leaves the tab title alone when sessions finish", async () => {
     document.title = "AutoPilot";
