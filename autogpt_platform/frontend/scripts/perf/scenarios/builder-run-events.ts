@@ -76,13 +76,21 @@ async function routeExecutionSocket(page: Page, executionID: string) {
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, what: string) {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timed out waiting for ${what}`)), ms),
-    ),
-  ]);
+async function withTimeout<T>(promise: Promise<T>, ms: number, what: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Timed out waiting for ${what}`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const builderRunEvents: Scenario = {
