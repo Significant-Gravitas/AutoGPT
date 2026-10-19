@@ -1,10 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 
-const shikiLib = vi.hoisted(() => ({ loads: 0 }));
+const shikiLib = vi.hoisted(() => ({ loads: 0, failNextCreate: false }));
 
 vi.mock("shiki", async (importOriginal) => {
   shikiLib.loads += 1;
-  return importOriginal();
+  const shiki = await importOriginal<typeof import("shiki")>();
+  return {
+    ...shiki,
+    createHighlighter: ((...args) => {
+      if (shikiLib.failNextCreate) {
+        shikiLib.failNextCreate = false;
+        return Promise.reject(new Error("grammar failed to load"));
+      }
+      return shiki.createHighlighter(...args);
+    }) as typeof shiki.createHighlighter,
+  };
 });
 
 describe("shiki highlighter loading", () => {
@@ -17,6 +27,15 @@ describe("shiki highlighter loading", () => {
     expect(resolveLanguage("ts")).toBe("typescript");
     expect(getSupportedLanguages()).toContain("python");
     expect(shikiLib.loads).toBe(0);
+  });
+
+  it("tries again after a failed load instead of keeping the failure", async () => {
+    const { getShikiHighlighter } = await import("../shiki-highlighter");
+
+    shikiLib.failNextCreate = true;
+    await expect(getShikiHighlighter()).rejects.toThrow("grammar failed");
+
+    await expect(getShikiHighlighter()).resolves.toBeDefined();
   });
 
   it("loads the highlighter once, on first use", async () => {
