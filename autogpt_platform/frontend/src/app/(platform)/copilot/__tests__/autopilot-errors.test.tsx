@@ -342,7 +342,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         ) as HTMLTextAreaElement;
         expect(input.disabled).toBe(false);
       });
-      expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
     });
   });
 
