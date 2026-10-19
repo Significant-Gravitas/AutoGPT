@@ -21,7 +21,9 @@ export function PlanSelect({ tier, multipliers, disabled, onPick }: Props) {
         label="Plan"
         hideLabel
         size="small"
-        value={isAssignableTier(tier) ? tier : undefined}
+        // "" keeps Radix controlled and shows the placeholder; undefined would
+        // let it keep a pick the admin then cancelled.
+        value={isAssignableTier(tier) ? tier : ""}
         placeholder={`${getPlanName(tier)} (set by billing)`}
         options={getPlanOptions(multipliers)}
         onValueChange={(picked) => {

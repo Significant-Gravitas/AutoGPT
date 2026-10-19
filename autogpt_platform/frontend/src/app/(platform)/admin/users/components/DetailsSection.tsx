@@ -18,7 +18,7 @@ interface Props {
 
 export function DetailsSection({ user }: Props) {
   const { toast } = useToast();
-  const { data: rateLimit } = useGetV2GetUserRateLimit(
+  const { data: rateLimit, isError: planFailed } = useGetV2GetUserRateLimit(
     { user_id: user.id },
     { query: { select: okData } },
   );
@@ -74,7 +74,13 @@ export function DetailsSection({ user }: Props) {
           </span>
         </Row>
         <Row label="Role">{user.role === "admin" ? "Admin" : "User"}</Row>
-        <Row label="Plan">{rateLimit ? getPlanName(rateLimit.tier) : "—"}</Row>
+        <Row label="Plan">
+          {rateLimit
+            ? getPlanName(rateLimit.tier)
+            : planFailed
+              ? "Couldn't load"
+              : "—"}
+        </Row>
         <Row label="Joined">{formatDate(user.createdAt)}</Row>
         <Row label="Status">
           {user.banned ? (

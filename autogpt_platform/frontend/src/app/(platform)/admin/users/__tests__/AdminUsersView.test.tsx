@@ -183,6 +183,45 @@ describe("/admin/users", () => {
     );
   });
 
+  it("says when the plan couldn't load rather than showing it blank", async () => {
+    server.use(
+      http.get("*/api/copilot/admin/rate_limit", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    const details = await screen.findByRole("region", { name: "Details" });
+    expect(await within(details).findByText("Couldn't load")).toBeDefined();
+  });
+
+  it("shows a billing-set plan again after a plan change is cancelled", async () => {
+    server.use(
+      http.get("*/api/copilot/admin/rate_limit", () =>
+        HttpResponse.json({
+          user_id: ALEX.id,
+          user_email: ALEX.email,
+          daily_cost_limit_microdollars: 5_000_000,
+          weekly_cost_limit_microdollars: 25_000_000,
+          daily_cost_used_microdollars: 0,
+          weekly_cost_used_microdollars: 0,
+          tier: "TRIAL",
+          tier_multipliers: { MAX: 10 },
+        }),
+      ),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    await chooseOption(/plan/i, /^Max/);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const select = screen.getByRole("combobox", { name: /plan/i });
+    expect(select.textContent).toContain("Trial (set by billing)");
+    expect(select.textContent).not.toContain("Max");
+  });
+
   it("asks before impersonating, and stays put when the audit notice fails", async () => {
     const notices = mockImpersonationNotice(502);
     renderPage(`?user=${ALEX.id}`);
