@@ -17,7 +17,11 @@ from .security_hooks import (
     _validate_user_isolation,
     create_security_hooks,
 )
-from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
+from .tool_adapter import (
+    get_copilot_tool_names,
+    get_sdk_builtin_tools,
+    get_sdk_disallowed_tools,
+)
 
 SDK_CWD = "/tmp/copilot-abc123"
 ALLOWED = get_copilot_tool_names()
@@ -84,6 +88,27 @@ async def test_every_allowed_tool_passes_the_hook(use_e2b):
         )
     ]
     assert denied == []
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.asyncio
+async def test_every_unusable_builtin_is_denied(use_e2b):
+    allowed = get_copilot_tool_names(use_e2b=use_e2b)
+    pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=allowed)[
+        "PreToolUse"
+    ][0].hooks[0]
+    usable = set(allowed) - set(get_sdk_disallowed_tools(use_e2b=use_e2b))
+    passed = [
+        name
+        for name in sorted(set(get_sdk_builtin_tools()) - usable)
+        if not _is_denied(
+            await pre(
+                {"tool_name": name, "tool_input": {}}, tool_use_id=None, context={}
+            )
+        )
+    ]
+    assert passed == []
 
 
 # -- Workspace-scoped tools --------------------------------------------------
