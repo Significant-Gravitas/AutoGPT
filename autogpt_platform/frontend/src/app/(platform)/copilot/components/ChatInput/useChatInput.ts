@@ -39,13 +39,11 @@ export function useChatInput({
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
   const isEnqueueingRef = useRef(false);
-  const {
-    initialPrompt,
-    setInitialPrompt,
-    recoveredDraft,
-    clearRecoveredDraft,
-    notifyMessageSent,
-  } = useCopilotUIStore();
+  const initialPrompt = useCopilotUIStore((s) => s.initialPrompt);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const recoveredDraft = useCopilotUIStore((s) => s.recoveredDraft);
+  const clearRecoveredDraft = useCopilotUIStore((s) => s.clearRecoveredDraft);
+  const notifyMessageSent = useCopilotUIStore((s) => s.notifyMessageSent);
 
   useEffect(
     function consumeInitialPrompt() {

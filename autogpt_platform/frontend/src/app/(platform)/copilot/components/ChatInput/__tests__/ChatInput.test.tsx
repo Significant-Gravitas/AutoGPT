@@ -79,21 +79,22 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 });
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotLlmModel: mockCopilotLlmModel,
-    setCopilotLlmModel: mockSetCopilotLlmModel,
-    copilotLlmAuth: {
-      authProvider: mockCopilotLlmAuthProvider,
-      credentialId: null,
-    },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: mockInitialPrompt,
-    setInitialPrompt: mockSetInitialPrompt,
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: mockCopilotLlmModel,
+      setCopilotLlmModel: mockSetCopilotLlmModel,
+      copilotLlmAuth: {
+        authProvider: mockCopilotLlmAuthProvider,
+        credentialId: null,
+      },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: mockInitialPrompt,
+      setInitialPrompt: mockSetInitialPrompt,
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 let mockFlagValue = false;

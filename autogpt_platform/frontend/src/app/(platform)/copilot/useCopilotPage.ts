@@ -126,7 +126,9 @@ export function useCopilotPage({
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const isDryRun = useCopilotUIStore((s) => s.isDryRun);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
