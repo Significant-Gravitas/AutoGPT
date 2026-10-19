@@ -248,9 +248,17 @@ class HITLReviewHelper:
             return None
         if waiting is not None:
             return waiting
-        if not await workflow.open_step_card(
-            session, block, review["input_data"], step, ruling
-        ):
+        try:
+            opened = await workflow.open_step_card(
+                session, block, review["input_data"], step, ruling
+            )
+        except Exception:
+            logger.warning(
+                f"Gate could not open the card of step {step.node_exec_id}",
+                exc_info=True,
+            )
+            opened = False
+        if not opened:
             # No card, so the row is an ordinary human review and alerts as one.
             try:
                 await HITLReviewHelper.get_or_create_human_review(**review)

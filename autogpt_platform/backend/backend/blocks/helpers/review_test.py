@@ -89,7 +89,13 @@ def _pause(**helpers):
 
 
 async def _run(
-    stubs, patches, ruling=None, routed=True, card_opens=True, judge_error=None
+    stubs,
+    patches,
+    ruling=None,
+    routed=True,
+    card_opens=True,
+    judge_error=None,
+    card_error=None,
 ):
     ctx = ExecutionContext(
         user_id="u1",
@@ -103,7 +109,7 @@ async def _run(
         return_value=ruling or Ruling(run=False, reason="asks"),
         side_effect=judge_error,
     )
-    open_card = AsyncMock(return_value=card_opens)
+    open_card = AsyncMock(return_value=card_opens, side_effect=card_error)
     chat = SimpleNamespace(session_id="chat-1") if routed else None
     with (
         patch(f"{_WORKFLOW}.review_route", AsyncMock(return_value=chat)),
@@ -166,9 +172,12 @@ async def test_a_gate_ask_parks_the_step_silently_behind_its_card():
     assert status == ExecutionStatus.REVIEW
 
 
-async def test_a_card_that_cannot_open_leaves_an_alerted_human_review():
+@pytest.mark.parametrize("card_error", [None, OSError])
+async def test_a_card_that_cannot_open_leaves_an_alerted_human_review(card_error):
     stubs, patches = _pause()
-    (paused, _), _, _ = await _run(stubs, patches, card_opens=False)
+    (paused, _), _, _ = await _run(
+        stubs, patches, card_opens=False, card_error=card_error
+    )
     assert paused
     calls = stubs["get_or_create_human_review"].await_args_list
     assert [c.kwargs.get("alert", True) for c in calls] == [False, True]

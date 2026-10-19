@@ -16,7 +16,7 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
   if (!description) return null;
 
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={400} disableHoverableContent={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           {/* A native button, because an SVG cannot take focus: bound straight
@@ -39,7 +39,7 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
               a: ({ node: _, ...props }) => (
                 <a
                   target="_blank"
-                  className="text-blue-400 underline"
+                  className="pointer-events-auto text-blue-400 underline"
                   {...props}
                 />
               ),

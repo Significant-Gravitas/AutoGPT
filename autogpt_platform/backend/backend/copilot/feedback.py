@@ -20,9 +20,10 @@ consent, like the generations OpenRouter Broadcast sends there.
 ``$ai_session_id`` is the chat session id, the same value the chat's
 ``$ai_generation`` events carry, which is what joins a rating to the
 generations of its chat; ``message_id`` names the reply. It carries no
-``$ai_trace_id``: Broadcast assigns the generations' trace ids, so we have
-none to match. Rating again sends another event; the latest per
-``feedback_id`` is the rating that stands.
+``$ai_trace_id`` yet: each generation's trace id is the turn that made it (see
+``llm_attribution``), but a reply row does not record which turn wrote it.
+Rating again sends another event; the latest per ``feedback_id`` is the
+rating that stands.
 """
 
 import logging

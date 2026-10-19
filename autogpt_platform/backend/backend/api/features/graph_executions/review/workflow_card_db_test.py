@@ -25,7 +25,7 @@ from backend.api.rest_api import app
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.helpers.review import HITLReviewHelper
 from backend.copilot.constants import step_card_id
-from backend.copilot.gate import chat_rules, check_action, held
+from backend.copilot.gate import RUNS_KEY, chat_rules, check_action, held
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import (
     ChatSession,
@@ -311,6 +311,37 @@ async def test_an_allow_rule_runs_the_step_and_records_why(
         "Allowed by Otto: you set Send Discord Message to run without asking."
     )
     assert await run.card() is None
+
+
+async def test_a_cheap_outward_step_reaches_the_supervisor_as_its_direct_call_does(
+    setup_test_user, test_user_id, flags
+):
+    """Auto judges a cheap outward block by the lighter rubric, naming the block."""
+    chat = await _chat(test_user_id)
+    await update_session_autopilot_mode(chat.session_id, test_user_id, "auto")
+    chat = await get_chat_session(chat.session_id, test_user_id)
+    assert chat is not None
+    run = await _Run(test_user_id, chat.session_id).create()
+    args = {"id": _BLOCK.id, "input": _INPUT}
+
+    async def subject():
+        return await RunCapabilityTool().gate_subject(test_user_id, chat, args)
+
+    supervise = AsyncMock(return_value=Judgement(allowed=True, reason="ok"))
+    with (
+        patch("backend.copilot.gate.workflow.supervise", supervise),
+        patch("backend.copilot.gate.supervise", supervise),
+    ):
+        step = await run.step()
+        direct = await check_action(
+            "run_capability", args, test_user_id, chat, subject_of=subject
+        )
+
+    assert step == (False, _INPUT) and direct.allowed
+    for call in supervise.await_args_list:
+        assert call.kwargs.get("outward_judged") is True
+        assert call.kwargs["args"].get(RUNS_KEY) == "Send Discord Message"
+    assert supervise.await_count == 2
 
 
 @pytest.mark.parametrize("failure", ["no stamp", "chat gone", "card fails"])

@@ -32,7 +32,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import set_turn_impersonated
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -837,6 +837,7 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
+            set_turn_trace_id(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
             raw_stream = stream_fn(
@@ -883,6 +884,9 @@ class CoPilotProcessor:
                         log.info("Cancel requested, breaking stream")
                         break
 
+                    # Before the StreamError break: the watch reports its code.
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
                     # the error message (stream_and_publish yields but does
                     # not publish StreamError — that's done by mark_session_completed).
@@ -890,8 +894,6 @@ class CoPilotProcessor:
                         error_msg = chunk.errorText
                         error_code = chunk.code
                         break
-                    if scheduled_watch is not None:
-                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:

@@ -30,11 +30,11 @@ from backend.copilot.rate_limit import is_user_paywalled
 from backend.data.db_accessors import graph_db, review_db
 from backend.data.execution import ExecutionContext
 
-from . import Ruling, _typed_messages, chat_rules, gate_active
+from . import Ruling, _judged_args, _typed_messages, chat_rules, gate_active
 from . import review as review_store
 from . import rule_on, unified_approvals
 from .classifier import Judgement, supervise
-from .policy import DEFAULT_MODE
+from .policy import DEFAULT_MODE, Effect
 from .subject import Subject, block_subject
 
 logger = logging.getLogger(__name__)
@@ -81,12 +81,16 @@ async def judge_step(
     subject = step_subject(block, inputs, step.name)
 
     async def judge() -> Judgement:
+        # Judged as a direct call of the block would be: same rubric, vouched name.
+        outward_judged = subject.effect is Effect.EXTERNAL_JUDGED
+        args = {"workflow": step.name, "step": subject.name, "input": inputs}
         return await supervise(
             tool_name=STEP_TOOL,
-            args={"workflow": step.name, "step": subject.name, "input": inputs},
+            args=_judged_args(args, None, subject.name if outward_judged else None),
             user_messages=request_that_started(
                 session, ctx.root_execution_id or step.graph_exec_id
             ),
+            outward_judged=outward_judged,
         )
 
     ruling = await rule_on(

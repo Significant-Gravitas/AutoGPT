@@ -21,6 +21,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -1786,6 +1787,29 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
     assert kwargs["coalesce"] is True
     assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
     assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
+
+
+def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
+    """The brain-dump recording sweep keeps "deleted within 48 hours". It is
+    registered once the scheduler has started, so an unchanged job keeps its
+    next run; a start that stopped calling ``_register_recording_purge``
+    would leave no sweep at all."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job"
+        and args
+        and args[0] is scheduler_module.purge_expired_recordings_job
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert kwargs["id"] == scheduler_module.RECORDING_PURGE_JOB_ID
+    assert args[1].interval == RECORDING_PURGE_INTERVAL
+    assert kwargs["max_instances"] == 1
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
 
 
 def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):

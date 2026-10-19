@@ -62,6 +62,8 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 # Where the supervisor reads the content of the files a command runs.
 RUN_FILES_KEY = "files_this_command_runs"
+# Where it reads what a judged outward block is: the call names only its id.
+RUNS_KEY = "capability_this_call_runs"
 # A chat driven from these runs in Auto, and its cards are answered in the channel.
 LINKED_CHAT_PLATFORMS = frozenset({"discord", "slack", "teams", "telegram"})
 # Any other linked platform has no buttons to answer a card with, so it runs
@@ -235,10 +237,20 @@ async def check_action(
                     "checked."
                 ),
             )
+        outward_judged = effect is Effect.EXTERNAL_JUDGED
+        # A workflow's name is its author's free text; only a block's is vouched for.
+        runs = (
+            subject.name
+            if outward_judged
+            and subject is not None
+            and subject.key.startswith("block:")
+            else None
+        )
         return await supervise(
             tool_name=tool_name,
-            args=_judged_args(args, files),
+            args=_judged_args(args, files, runs),
             user_messages=_typed_messages(session),
+            outward_judged=outward_judged,
         )
 
     ruling = await rule_on(
@@ -291,15 +303,19 @@ async def rule_on(
         if effect in PARKABLE
         else None
     )
-    if hit and hit.rule in ("ask", "unreadable"):
+    rule = hit.rule if hit else None
+    if hit and rule in ("ask", "unreadable"):
         return Ruling(run=False, reason=hit.reason, reason_kind="rule", by="rule")
     if over_ceiling is not None and (held_for_spend := await over_ceiling()):
         return held_for_spend
+    # No supervisor reads a scheduled run, so a judge rule falls back to the mode.
+    if rule == "judge" and subject is not None and subject.schedules:
+        rule = None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
-    verdict = _RULE_VERDICTS[hit.rule] if hit else verdict_for_effect(mode, effect)
-    if hit is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
+    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    if rule is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
         verdict = Verdict.ASK
-    by = "rule" if hit else "mode"
+    by = "rule" if rule else "mode"
     if verdict is Verdict.RUN:
         return Ruling(run=True, by=by)
     if verdict is Verdict.ASK and subject is not None and subject.reason:
@@ -397,12 +413,18 @@ def _dollars(microdollars: int) -> str:
 
 
 def _judged_args(
-    args: dict[str, Any], files: dict[str, str | None] | None
+    args: dict[str, Any], files: dict[str, str | None] | None, runs: str | None
 ) -> dict[str, Any]:
     # Dropped first, so a model cannot hand the supervisor a harmless copy.
-    judged = {key: value for key, value in args.items() if key != RUN_FILES_KEY}
+    judged = {
+        key: value
+        for key, value in args.items()
+        if key not in (RUN_FILES_KEY, RUNS_KEY)
+    }
     if files:
         judged[RUN_FILES_KEY] = files
+    if runs:
+        judged[RUNS_KEY] = runs
     return judged
 
 
@@ -424,6 +446,7 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
 
 __all__ = [
+    "RUNS_KEY",
     "RUN_FILES_KEY",
     "Decision",
     "Ruling",

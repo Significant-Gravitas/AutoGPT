@@ -14,8 +14,9 @@ from prisma.enums import ReviewStatus
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+from backend.blocks.email_block import SendEmailBlock
 from backend.copilot.constants import COPILOT_STEP_CARD_PREFIX, step_card_id
-from backend.copilot.gate import chat_rules
+from backend.copilot.gate import RUNS_KEY, chat_rules
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate import unified_approvals, workflow
 from backend.copilot.gate.chat_rules import DECLINED
@@ -146,15 +147,33 @@ async def test_a_flag_read_that_fails_is_on():
 
 
 @pytest.mark.parametrize(
-    "mode, runs", [("ask_first", False), ("auto", False), ("unsupervised", True)]
+    "mode, verdict", [("ask_first", "ask"), ("auto", "judge"), ("unsupervised", "run")]
 )
-async def test_a_step_follows_the_modes_table_for_an_outward_block(redis, mode, runs):
-    ruling = await workflow.judge_step(_session(mode), _BLOCK, _INPUTS, _ctx(), _STEP)
-    assert ruling.run is runs
-    if not runs:
+async def test_a_step_follows_the_modes_table_for_a_cheap_outward_block(
+    redis, mode, verdict
+):
+    supervise = AsyncMock(return_value=Judgement(allowed=False, reason=_FALLBACK))
+    with patch(f"{_WORKFLOW}.supervise", supervise):
+        ruling = await workflow.judge_step(
+            _session(mode), _BLOCK, _INPUTS, _ctx(), _STEP
+        )
+    assert ruling.run is (verdict == "run")
+    assert supervise.await_count == (verdict == "judge")
+    if verdict == "ask":
         assert ruling.reason == (
             "A step of Morning digest, which reaches outside the platform."
         )
+
+
+async def test_auto_asks_before_a_step_of_a_block_hard_to_take_back(redis):
+    block = SendEmailBlock()
+    supervise = AsyncMock()
+    with patch(f"{_WORKFLOW}.supervise", supervise):
+        ruling = await workflow.judge_step(
+            _session("auto"), block, {"to_email": "a@example.com"}, _ctx(), _STEP
+        )
+    assert not ruling.run
+    supervise.assert_not_awaited()
 
 
 async def test_an_allow_rule_runs_the_step_and_says_so_on_the_run_page(redis):
@@ -196,10 +215,12 @@ async def test_a_judge_rule_hands_the_step_to_the_supervisor(
         )
     assert ruling.run is runs
     assert supervise.await_args.kwargs["tool_name"] == "workflow_step"
+    assert supervise.await_args.kwargs["outward_judged"] is True
     assert supervise.await_args.kwargs["args"] == {
         "workflow": "Morning digest",
         "step": "Send Discord Message",
         "input": _INPUTS,
+        RUNS_KEY: "Send Discord Message",
     }
     if reason:
         assert (ruling.reason, ruling.reason_kind) == (reason, "supervisor")

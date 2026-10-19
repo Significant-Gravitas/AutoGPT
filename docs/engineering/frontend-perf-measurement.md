@@ -108,7 +108,10 @@ Names come from the component function. Third-party code bundled already minifie
 | `copilot-switch-threads` | Open the 200-message chat and list the 200 / 50 / 10-message chats in the sidebar | Click 50 → 10 → 200, three rounds, 2 s on each | Until done |
 | `builder-drag-running` | Open a 50-node workflow whose run is RUNNING (the page polls it every second) | Drag one node for 2 s with 60 pointer moves | 2 s |
 | `library-running` | Open the library with 20 workflows, all with a RUNNING run | Nothing | 30 s |
+| `copilot-stream-code` | Open the 10-message chat | Type "go", press Enter, stream a reply that is one 130-line code block (`fixtures/reply-long-code.sse`) at about 33 chunks a second | Until the last line of the reply is on screen and the page has refetched the session, + 1 s |
 | `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
+| `library-running-events` | Open the same library at `/library?sort=updatedAt`, with the websocket mocked | Push a `graph_execution_event` for one of the 20 runs every 250 ms, 80 in all; print the `subscribe_graph_executions` frames and `GET /executions` requests seen | 20 s of events + 2 s |
+| `builder-run-events` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 40 node execution events over the websocket, one every 50 ms: the 10 unfinished nodes go RUNNING then COMPLETED, each event sent twice. The execution GET returns what has been sent so far, as the backend would | 2 s after the last event |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
@@ -153,6 +156,7 @@ The copilot scenarios do not need an LLM:
 
 - `fixtures/session-200.json`: 200 message rows (text, code blocks, tables, lists and tool calls). The 50- and 10-message chats are its first 50 and 10 rows.
 - `fixtures/reply-20-lines.sse`: one streamed reply in the backend's SSE format, one word per `text-delta`.
+- `fixtures/reply-long-code.sse`: a reply that is mostly one 130-line TypeScript block, streamed the same way, so nearly every chunk lands inside an open code fence.
 - `lib/stream-server.ts`: a small local HTTP server that replays the `.sse` file one frame every N ms. The stream request is redirected there with `route.continue({ url })`, so the reply arrives at a steady, repeatable pace. The copilot's own word-by-word smoothing (`copilotStreamSmoothing.ts`) then runs on top, as it does in production.
 - `lib/copilot-fixture.ts` keeps state: once a streamed turn ends, the session GET returns the new user and assistant rows, as the backend would. Without that, the page's refetch after each turn would wipe the reply it just streamed.
 

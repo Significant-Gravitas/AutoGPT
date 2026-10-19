@@ -40,6 +40,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -473,6 +474,9 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    clear_brain_dump_audio_paths = _(
+        onboarding_dump_db.clear_audio_paths, name="clear_brain_dump_audio_paths"
+    )
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -1023,6 +1027,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    clear_brain_dump_audio_paths = d.clear_brain_dump_audio_paths
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
