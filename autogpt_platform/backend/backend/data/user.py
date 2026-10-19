@@ -379,25 +379,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     return [(u.id, u.email) for u in users]
 
 
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
-
-
 async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:
@@ -891,16 +872,17 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
-        # local time. Fire-and-forget so this profile update returns
-        # immediately — the helper's lazy drift-detection path (via the
-        # Redis dedup key value) is the durable backstop if this
-        # fails or the user doesn't trigger a memory write within the
-        # 7-day key TTL.
+        # local time. Every memory scope of the user (the account and each
+        # scheduled expert) is re-registered. Fire-and-forget so this
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
-            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+            from backend.copilot.dream.registry import reregister_user
 
             task = asyncio.create_task(
-                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                reregister_user(user_id),
                 name=f"tz-reregister-{user_id[:12]}",
             )
             _background_tasks.add(task)

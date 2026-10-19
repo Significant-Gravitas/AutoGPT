@@ -21,7 +21,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
-import { isPaywallError } from "./helpers/sendFailureToast";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,

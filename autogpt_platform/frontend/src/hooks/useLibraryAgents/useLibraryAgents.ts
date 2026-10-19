@@ -22,7 +22,12 @@ export function useLibraryAgents() {
       },
     );
 
-  const agents = agentsQueryData ? unpaginate(agentsQueryData, "agents") : [];
+  // Stable between renders, so consumers keyed on it (status maps, the
+  // execution event subscription) only recompute when the data changes.
+  const agents = useMemo(
+    () => (agentsQueryData ? unpaginate(agentsQueryData, "agents") : []),
+    [agentsQueryData],
+  );
 
   // Use agents.length as dependency to avoid recreating map unnecessarily
   const agentInfoMap = useMemo(
