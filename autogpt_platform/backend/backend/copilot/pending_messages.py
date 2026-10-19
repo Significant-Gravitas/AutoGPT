@@ -30,6 +30,7 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.pending_message_tracing import record_injected_messages
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
@@ -591,6 +592,8 @@ async def drain_and_format_for_injection(
     session_id: str,
     *,
     log_prefix: str,
+    tool_use_id: str | None = None,
+    tool_name: str | None = None,
 ) -> str:
     """Drain the pending buffer and produce a ``<user_follow_up>`` block.
 
@@ -624,7 +627,9 @@ async def drain_and_format_for_injection(
         session_id,
     )
     await stash_pending_for_persist(session_id, pending)
-    return format_pending_as_followup(pending)
+    followup = format_pending_as_followup(pending)
+    record_injected_messages(pending, tool_use_id=tool_use_id, tool_name=tool_name)
+    return followup
 
 
 def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:

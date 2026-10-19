@@ -395,6 +395,8 @@ def create_security_hooks(
                 followup = await drain_and_format_for_injection(
                     session.session_id,
                     log_prefix="[SDK][PostToolUse]",
+                    tool_use_id=tool_use_id,
+                    tool_name=tool_name,
                 )
             if followup:
                 return cast(
