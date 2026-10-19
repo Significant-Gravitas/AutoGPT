@@ -282,8 +282,9 @@ class PhaseUsage(BaseModel):
     cache_creation_tokens: int = 0
     cost_usd: float | None = None
     """``None`` when the provider didn't return a cost and the model
-    isn't in ``model_pricing.py`` — caller treats as unknown rather
-    than zero. ``0.0`` is legitimate (zero tokens, edge case)."""
+    has no catalog price (``backend/copilot/price_card.py``) — caller
+    treats as unknown rather than zero. ``0.0`` is legitimate (zero
+    tokens, edge case)."""
 
 
 class DreamPassUsage(BaseModel):
