@@ -247,7 +247,7 @@ def _int(value: str | None) -> int | None:
         return None
     try:
         return int(float(value))
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 

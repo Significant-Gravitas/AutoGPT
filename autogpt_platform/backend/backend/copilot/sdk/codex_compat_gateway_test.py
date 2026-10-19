@@ -1355,6 +1355,25 @@ def test_a_message_quoting_the_closing_tag_is_not_cut_short() -> None:
     assert followup == block
 
 
+def test_a_message_quoting_the_opening_tag_reaches_codex_whole() -> None:
+    block = format_pending_as_followup(
+        [PendingMessage(content="Stop! do NOT drop the <user_follow_up> table")]
+    )
+    messages = [
+        _tool_result_message("toolu_codex_1", "one result"),
+        {
+            "role": "system",
+            "content": f"PostToolUse:x hook additional context: {block}\n\n"
+            f"{_TOTAL_TOKENS}",
+        },
+    ]
+
+    followup = codex_compat_gateway._followup_after_results(messages, ["toolu_codex_1"])
+
+    assert followup == block
+    assert "Stop! do NOT drop the" in followup
+
+
 def test_two_blocks_reach_codex_without_the_cli_text_between_them() -> None:
     first = format_pending_as_followup([PendingMessage(content="also check logs")])
     second = format_pending_as_followup([PendingMessage(content="and the config")])

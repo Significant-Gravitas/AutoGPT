@@ -65,9 +65,10 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
 )
 # A queued user message the PostToolUse hook injected, wrapper included.
-# Greedy up to the next opening tag, never past it: a message quoting the
-# closing tag is not cut short, and two blocks never merge into one match
-# that carries the CLI's text between them.
+# `format_pending_as_followup` escapes the tags inside each message, so a
+# block's own tags are the only raw ones in it. Greedy up to the next opening
+# tag, never past it, so two blocks never merge into one match that carries
+# the CLI's text between them.
 _FOLLOW_UP_BLOCK = re.compile(
     re.escape(FOLLOW_UP_OPEN_TAG)
     + r"(?:(?!"

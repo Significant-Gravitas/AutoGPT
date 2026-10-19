@@ -464,6 +464,14 @@ FOLLOW_UP_OPEN_TAG = "<user_follow_up>"
 FOLLOW_UP_CLOSE_TAG = "</user_follow_up>"
 
 
+def _escape_follow_up_tags(text: str) -> str:
+    """A message quoting the tags can't open or close the block early: the
+    block's own tags stay the only raw ones in it."""
+    return text.replace(FOLLOW_UP_OPEN_TAG, "&lt;user_follow_up&gt;").replace(
+        FOLLOW_UP_CLOSE_TAG, "&lt;/user_follow_up&gt;"
+    )
+
+
 def _persist_queue_key(session_id: str) -> str:
     return f"{_PERSIST_QUEUE_KEY_PREFIX}{session_id}"
 
@@ -553,7 +561,7 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     total_chars = 0
     dropped = 0
     for idx, pm in enumerate(pending, start=1):
-        text = pm.content
+        text = _escape_follow_up_tags(pm.content)
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
         entry = f"Message {idx}:\n{text}"

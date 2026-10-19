@@ -249,9 +249,10 @@ def test_no_reset_is_invented_when_no_window_is_full() -> None:
     assert usage_limit_resets_at(headers, {"type": "usage_limit_reached"}) is None
 
 
-def test_an_unreadable_body_reset_falls_back_to_the_headers() -> None:
+@pytest.mark.parametrize("raw", ["soon", float("inf"), float("nan")])
+def test_an_unreadable_body_reset_falls_back_to_the_headers(raw: object) -> None:
     headers = _window("primary", "100", "1788400000")
-    assert usage_limit_resets_at(headers, {"resets_at": "soon"}) == 1788400000
+    assert usage_limit_resets_at(headers, {"resets_at": raw}) == 1788400000
 
 
 @pytest.mark.parametrize("raw", ["-1", "0"])
