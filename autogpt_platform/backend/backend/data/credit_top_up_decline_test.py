@@ -1,4 +1,5 @@
-"""A declined saved card moves on to the next one, and says why when all fail."""
+"""A declined saved card moves on to the next one, except on an automatic
+top-up, and says why when the top-up fails."""
 
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,6 +8,7 @@ import pytest
 import stripe
 
 from backend.data.credit import CardDeclinedError, UserCredit
+from backend.data.model import TopUpType
 
 
 def _card(pm_id: str) -> MagicMock:
@@ -22,6 +24,24 @@ def _declined(message: str = "Your card has insufficient funds.") -> stripe.Card
         "card_declined",
         http_status=402,
         headers={"request-id": "req_secret123"},
+    )
+
+
+def _hard_declined() -> stripe.CardError:
+    message = "Your card was declined."
+    return stripe.CardError(
+        message,
+        None,
+        "card_declined",
+        http_status=402,
+        json_body={
+            "error": {
+                "type": "card_error",
+                "code": "card_declined",
+                "decline_code": "stolen_card",
+                "message": message,
+            }
+        },
     )
 
 
@@ -164,3 +184,54 @@ async def test_a_decline_asking_for_bank_approval_is_flagged():
         await credit._top_up_credits("user-1", 500)
 
     assert exc.value.needs_authentication
+
+
+@pytest.mark.asyncio
+async def test_an_automatic_top_up_stops_at_the_first_declined_card():
+    credit = UserCredit()
+    cards = [_card("pm_1"), _card("pm_2"), _card("pm_3")]
+    results = [_hard_declined(), _succeeded("pi_2"), _succeeded("pi_3")]
+    with (
+        _stripe(credit, cards, results) as (enable, payment_intent, _),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500, top_up_type=TopUpType.AUTO)
+
+    tried = [c.kwargs["payment_method"] for c in payment_intent.await_args_list]
+    assert tried == ["pm_1"]
+    assert str(exc.value) == "Your card was declined."
+    enable.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_automatic_top_up_needing_bank_approval_stops_and_is_flagged():
+    credit = UserCredit()
+    cards = [_card("pm_1"), _card("pm_2")]
+    sca = stripe.CardError(
+        "Your card was declined. This transaction requires authentication.",
+        None,
+        "authentication_required",
+        http_status=402,
+    )
+    with (
+        _stripe(credit, cards, [sca, _succeeded("pi_2")]) as (_, payment_intent, _),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500, top_up_type=TopUpType.AUTO)
+
+    assert payment_intent.await_count == 1
+    assert exc.value.needs_authentication
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("top_up_type", [TopUpType.MANUAL, TopUpType.UNCATEGORIZED])
+async def test_a_top_up_the_user_starts_still_tries_the_next_card(top_up_type):
+    credit = UserCredit()
+    cards = [_card("pm_1"), _card("pm_2"), _card("pm_3")]
+    results = [_hard_declined(), _succeeded("pi_ok")]
+    with _stripe(credit, cards, results) as (enable, payment_intent, _):
+        await credit._top_up_credits("user-1", 500, top_up_type=top_up_type)
+
+    tried = [c.kwargs["payment_method"] for c in payment_intent.await_args_list]
+    assert tried == ["pm_1", "pm_2"]
+    enable.assert_awaited_once()
