@@ -19,7 +19,7 @@ from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 BUCKET = "private-bucket"
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
 # After every unmarked recording is gone: only the marker counts.
-LATER = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)
+LATER = datetime(2027, 2, 1, 12, 0, tzinfo=timezone.utc)
 MAX_AGE = timedelta(hours=42)
 OLD = "uploads/users/user-1/uuid-a/brain-dump-rec-old.webm"
 RECENT = "uploads/users/user-1/uuid-b/brain-dump-rec-new.webm"
@@ -162,6 +162,59 @@ async def test_a_user_upload_named_like_a_recording_is_left_alone(
     assert result.expired == 1
     assert calls.cleared == [f"gcs://{BUCKET}/{OLD}"]
     assert calls.order == ["clear", f"delete:{OLD}"]
+
+
+def test_unmarked_recordings_are_recognised_until_2027():
+    """Recordings are marked from this PR's release on. The cutoff has to be
+    on or after that release, or an unmarked recording stored in between is
+    never deleted."""
+    assert retention._UNMARKED_RECORDINGS_BEFORE == datetime(
+        2027, 1, 1, tzinfo=timezone.utc
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unmarked_recording_created_at_the_cutoff_is_kept_and_counted(
+    client: MagicMock, calls: Calls, mocker: MockerFixture
+):
+    """Kept, since an upload named like a recording looks the same; counted,
+    so a release that landed after the cutoff shows up in the log."""
+    caplog_info = mocker.patch.object(retention.logger, "info")
+    cutoff = retention._UNMARKED_RECORDINGS_BEFORE
+    now = cutoff + timedelta(days=10)
+    at_cutoff = "uploads/users/user-3/uuid-h/brain-dump-rec-3.webm"
+    client.list_objects.return_value = {
+        "items": [_item(at_cutoff, now - cutoff, now=now, marked=False)]
+    }
+    clear = _clear(calls)
+
+    result = await retention.purge_expired_recordings(clear, now=now)
+
+    assert result == retention.RecordingPurgeResult(unmarked_skipped=1)
+    clear.assert_not_awaited()
+    client.delete.assert_not_awaited()
+    logged = caplog_info.call_args.args[0]
+    assert "unmarked_skipped=1" in logged
+    assert "user-3" not in logged and "uploads/" not in logged
+
+
+@pytest.mark.asyncio
+async def test_a_marked_recording_newer_than_the_cutoff_is_still_taken(
+    client: MagicMock, calls: Calls
+):
+    cutoff = retention._UNMARKED_RECORDINGS_BEFORE
+    now = cutoff + timedelta(days=10)
+    newer = "uploads/users/user-4/uuid-i/brain-dump-rec-4.webm"
+    client.list_objects.return_value = {
+        "items": [_item(newer, timedelta(days=5), now=now)]
+    }
+
+    result = await retention.purge_expired_recordings(_clear(calls), now=now)
+
+    assert result == retention.RecordingPurgeResult(
+        expired=1, rows_cleared=1, deleted=1, failed=0, unmarked_skipped=0
+    )
+    assert calls.order == ["clear", f"delete:{newer}"]
 
 
 @pytest.mark.asyncio

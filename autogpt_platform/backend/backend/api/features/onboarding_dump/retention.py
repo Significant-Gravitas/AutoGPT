@@ -22,14 +22,20 @@ is saved under) proves nothing. ``store_audio`` marks recordings in their
 custom metadata, which an upload can't set. Recordings from before the
 marker existed are recognised by name, but only if they were created
 before ``_UNMARKED_RECORDINGS_BEFORE``, a date on or after the release
-that added the marker.
+that added the marker. Each run counts the name-matched, unmarked objects
+it skipped as too new (``unmarked_skipped``), so a recording missed that
+way shows up in the log.
 
 Rows that point at an expired recording are cleared *before* the blob is
 deleted. If clearing fails nothing is deleted and the next run retries; if
 a delete fails the row is already clear and the blob is found again next
-run, so the database never points at a recording that is gone. (Only the
-blob's backstop expiry, which fires if the sweep keeps failing for a day,
-can leave a row behind; the download route answers 404 for that.)
+run, so the database never points at a recording that is gone. (A blob
+that goes some other way can leave a row behind; the download route
+answers 404 for that and clears the row.)
+
+Nothing else deletes recordings: the generic expiry cleanup reads only the
+first page of the bucket listing. A run that fails raises out of the job,
+which APScheduler logs at ERROR, so it reaches Sentry.
 """
 
 import asyncio
@@ -70,9 +76,10 @@ _RECORDING_NAME = re.compile(
 )
 # Must not be earlier than the production release that started marking
 # recordings: an unmarked recording stored in between would never be
-# deleted. Later only risks an upload named like a recording, stored after
-# that release and before this date.
-_UNMARKED_RECORDINGS_BEFORE = datetime(2026, 11, 1, tzinfo=timezone.utc)
+# deleted (``unmarked_skipped`` counts what this date leaves out). Later
+# only risks an upload named like a recording, stored after that release
+# and before this date.
+_UNMARKED_RECORDINGS_BEFORE = datetime(2027, 1, 1, tzinfo=timezone.utc)
 _DELETE_CONCURRENCY = 10
 # Keeps one run well inside the scheduler's 5-minute timeout. The first runs
 # after this shipped have every recording ever stored to delete; at one run
@@ -88,6 +95,10 @@ class RecordingPurgeResult(BaseModel):
     rows_cleared: int = 0
     deleted: int = 0
     failed: int = 0
+    # Named like a recording but unmarked, and created on or after
+    # ``_UNMARKED_RECORDINGS_BEFORE``: a user's upload, or a recording the
+    # cutoff missed.
+    unmarked_skipped: int = 0
 
 
 async def purge_expired_recordings(
@@ -109,32 +120,37 @@ async def purge_expired_recordings(
 
     cutoff = (now or datetime.now(timezone.utc)) - audio_max_age()
     async with fresh_gcs_client() as client:
-        names = await _list_expired_recordings(client, bucket, cutoff)
-        if not names:
-            return RecordingPurgeResult()
-        rows_cleared = await clear_audio_paths([f"gcs://{bucket}/{n}" for n in names])
-        outcomes = await _delete_blobs(client, bucket, names)
+        listing = await _list_expired_recordings(client, bucket, cutoff)
+        result = RecordingPurgeResult(unmarked_skipped=listing.unmarked_skipped)
+        names = listing.names
+        if names:
+            result.rows_cleared = await clear_audio_paths(
+                [f"gcs://{bucket}/{n}" for n in names]
+            )
+            outcomes = await _delete_blobs(client, bucket, names)
+            result.expired = len(names)
+            result.deleted = sum(outcomes)
+            result.failed = len(names) - result.deleted
 
-    deleted = sum(outcomes)
-    result = RecordingPurgeResult(
-        expired=len(names),
-        rows_cleared=rows_cleared,
-        deleted=deleted,
-        failed=len(names) - deleted,
-    )
     logger.info(f"[BrainDumpRetention] Purged expired recordings: {result}")
     return result
 
 
+class _Listing(BaseModel):
+    names: list[str]
+    unmarked_skipped: int
+
+
 async def _list_expired_recordings(
     client: async_gcs_storage.Storage, bucket: str, cutoff: datetime
-) -> list[str]:
+) -> _Listing:
     """Up to ``_MAX_PURGED_PER_RUN`` due recordings, newest first.
 
     The bucket lists in name (user ID) order, so the whole listing is read
     before any are picked.
     """
     due: list[tuple[datetime, str]] = []
+    unmarked_skipped = 0
     page_token: str | None = None
     while True:
         params = {"prefix": "uploads/users/", "matchGlob": _RECORDINGS_GLOB}
@@ -142,25 +158,27 @@ async def _list_expired_recordings(
             params["pageToken"] = page_token
         page = await client.list_objects(bucket, params=params)
         for item in page.get("items", []):
-            if not _is_recording(item):
+            if not _RECORDING_NAME.match(item.get("name", "")):
                 continue
             created = object_created_at(item)
+            if not _is_marked(item) and created >= _UNMARKED_RECORDINGS_BEFORE:
+                unmarked_skipped += 1
+                continue
             if created <= cutoff:
                 due.append((created, item["name"]))
         page_token = page.get("nextPageToken")
         if not page_token:
             break
     due.sort(reverse=True)
-    return [name for _, name in due[:_MAX_PURGED_PER_RUN]]
+    return _Listing(
+        names=[name for _, name in due[:_MAX_PURGED_PER_RUN]],
+        unmarked_skipped=unmarked_skipped,
+    )
 
 
-def _is_recording(item: dict) -> bool:
-    if not _RECORDING_NAME.match(item.get("name", "")):
-        return False
+def _is_marked(item: dict) -> bool:
     custom = item.get("metadata") or {}
-    if custom.get(RECORDING_MARKER_KEY) == RECORDING_MARKER_VALUE:
-        return True
-    return object_created_at(item) < _UNMARKED_RECORDINGS_BEFORE
+    return custom.get(RECORDING_MARKER_KEY) == RECORDING_MARKER_VALUE
 
 
 async def _delete_blobs(
