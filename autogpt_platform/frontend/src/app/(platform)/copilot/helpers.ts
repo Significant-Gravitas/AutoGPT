@@ -5,6 +5,7 @@ import type { ChatStatus, UIMessage } from "ai";
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
 export const ORIGINAL_TITLE = "AutoGPT";
@@ -248,8 +249,36 @@ export function extractSendMessageText(firstArg: unknown): string {
   return String(firstArg ?? "");
 }
 
+/** What the files and folders passed to `sendMessage` point at, sorted, so
+ *  two sends can be told apart when their text is the same. */
+export function extractSendMessageAttachments(firstArg: unknown): string[] {
+  if (!firstArg || typeof firstArg !== "object") return [];
+  if ("files" in firstArg && Array.isArray(firstArg.files))
+    return attachmentKeys(firstArg.files);
+  if ("parts" in firstArg && Array.isArray(firstArg.parts))
+    return attachmentKeys(firstArg.parts);
+  return [];
+}
+
+function attachmentKeys(parts: readonly unknown[]): string[] {
+  return parts
+    .flatMap((part) => {
+      if (!part || typeof part !== "object" || !("type" in part)) return [];
+      if (part.type === "file" && "url" in part)
+        return typeof part.url === "string" ? [part.url] : [];
+      if (part.type === WORKSPACE_FOLDER_PART_TYPE && "data" in part) {
+        const data = part.data as { id?: unknown } | null;
+        return typeof data?.id === "string" ? [`folder:${data.id}`] : [];
+      }
+      return [];
+    })
+    .sort();
+}
+
 interface SuppressDuplicateArgs {
   text: string;
+  /** The outgoing message's attachments, from `extractSendMessageAttachments`. */
+  attachments?: string[];
   isReconnectScheduled: boolean;
   lastSubmittedText: string | null;
   messages: UIMessage[];
@@ -261,8 +290,9 @@ interface SuppressDuplicateArgs {
  *
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
- * - ``"duplicate"``: the same text was just submitted and echoed back
- *   by the session — safe to silently drop (user double-clicked).
+ * - ``"duplicate"``: the same text, with the same attachments, was just
+ *   submitted and echoed back by the session — safe to silently drop
+ *   (user double-clicked).
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -275,6 +305,7 @@ export type SuppressReason = "reconnecting" | "duplicate" | null;
  */
 export function getSendSuppressionReason({
   text,
+  attachments = [],
   isReconnectScheduled,
   lastSubmittedText,
   messages,
@@ -299,7 +330,13 @@ export function getSendSuppressionReason({
       ?.map((p) => ("text" in p ? p.text : ""))
       .join("")
       .trim();
-    if (lastUserText === text) return "duplicate";
+    // The same caption on other files is a new message, not a resend.
+    const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
+    if (
+      lastUserText === text &&
+      lastUserAttachments.join("\n") === attachments.join("\n")
+    )
+      return "duplicate";
   }
 
   return null;

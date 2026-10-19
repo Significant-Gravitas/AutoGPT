@@ -157,11 +157,7 @@ def review_payload(
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         decided_by=decided_by,
-        chat_rules_allowed=(
-            ["allow", "judge"]
-            if _offers_rules(tool_name, subject, spend, reason_kind)
-            else []
-        ),
+        chat_rules_allowed=_rules_offered(tool_name, subject, spend, reason_kind),
         headline=(
             Headline(ask="Run", object=subject.name)
             if subject is not None
@@ -307,16 +303,21 @@ def payload_headline(payload: dict[str, Any]) -> str:
     return Headline.model_validate(payload["headline"]).text
 
 
-def _offers_rules(
+def _rules_offered(
     tool_name: str,
     subject: "GateSubject | None",
     spend: dict[str, int] | None,
     reason_kind: ReasonKind,
-) -> bool:
+) -> list[Literal["allow", "judge"]]:
     # A money card or a held read rules on nothing: neither consults a rule.
     if spend is not None or reason_kind == "content":
-        return False
-    return (subject.effect if subject else effect_for(tool_name)) in PARKABLE
+        return []
+    if (subject.effect if subject else effect_for(tool_name)) not in PARKABLE:
+        return []
+    # The gate ignores a judge rule on a schedule.
+    return (
+        ["allow"] if subject is not None and subject.schedules else ["allow", "judge"]
+    )
 
 
 def _payload_subject(
