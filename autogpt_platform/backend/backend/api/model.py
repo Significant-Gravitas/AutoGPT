@@ -125,7 +125,7 @@ class CopilotCompletionPayload(NotificationPayload):
     # Rich display fields, composed by the backend so desktop and PWA surfaces
     # render them verbatim. All optional: older payloads (and enrichment
     # failures) omit them and clients fall back to their generic copy.
-    # ``title`` names who did it (the expert, or AutoPilot); ``body`` says
+    # ``title`` names who did it (the expert, or Otto); ``body`` says
     # what happened in a few words; ``icon`` is the expert's avatar URL
     # (absolute https or site-relative); ``url`` is the click-through path.
     title: str | None = None

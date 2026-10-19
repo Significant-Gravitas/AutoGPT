@@ -3,7 +3,7 @@
 The backend composes the display strings so every OS surface (desktop
 ``Notification`` fallback, PWA service worker) renders the same copy without
 duplicating the formatting rules: ``title`` names who did it (the expert, or
-AutoPilot), ``body`` says what happened in a few words, ``icon`` carries the
+Otto), ``body`` says what happened in a few words, ``icon`` carries the
 expert's avatar, and ``url`` is the click-through path.
 
 Enrichment is best-effort and must never break the completion path: every
@@ -23,7 +23,7 @@ from backend.data.notification_bus import (
 
 logger = logging.getLogger(__name__)
 
-AUTOPILOT_DISPLAY_NAME = "AutoPilot"
+AUTOPILOT_DISPLAY_NAME = "Otto"
 
 FALLBACK_BODY_COMPLETED = "Task completed"
 FALLBACK_BODY_FAILED = "Task failed"
@@ -101,7 +101,7 @@ async def build_copilot_completion_payload(
 
     Each lookup is individually guarded: a missing session still notifies
     (with generic copy), and a missing expert still names the session's work
-    under the AutoPilot title.
+    under the Otto title.
     """
     session_title: str | None = None
     pending_question: str | None = None
