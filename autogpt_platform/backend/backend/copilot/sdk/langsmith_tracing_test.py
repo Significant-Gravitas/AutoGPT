@@ -9,6 +9,7 @@ find no parent and are silently dropped from the trace.
 """
 
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -117,3 +118,32 @@ async def test_main_agent_replies_get_assistant_turn_runs(
         conversation.id,
         conversation.id,
     ], "each main-agent reply should get a turn run under the conversation"
+
+
+@pytest.mark.asyncio
+async def test_conversation_output_when_consumer_stops_at_result(
+    traced_client: type[_ScriptedClient],
+    posted_runs: list[RunTree],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exported: list[dict] = []
+
+    def capture_patch(run: RunTree, **_: Any) -> None:
+        if run.name == "claude.conversation":
+            exported.append(dict(run.outputs or {}))
+
+    monkeypatch.setattr(RunTree, "patch", capture_patch)
+    client = traced_client(options=ClaudeAgentOptions())
+    await client.query("list the files")
+
+    with tracing_context(enabled=True):
+        async with aclosing(
+            _iter_sdk_messages(cast(ClaudeSDKClient, client))
+        ) as stream:
+            async for message in stream:
+                if isinstance(message, ResultMessage):
+                    break
+
+    assert exported == [
+        {"content": [{"type": "text", "text": "done"}], "role": "assistant"}
+    ]

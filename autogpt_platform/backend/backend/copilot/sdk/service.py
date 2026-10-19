@@ -66,6 +66,7 @@ from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     gateway_for_lease,
 )
+from backend.copilot.sdk.conversation_output import ConversationOutputClient
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
     read_cli_session_usage,
@@ -2160,14 +2161,22 @@ async def _iter_sdk_messages(
     On stream end (`StopAsyncIteration`), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
     """
-    msg_iter = client.receive_response().__aiter__()
+    msg_iter = cast(AsyncGenerator[Any, None], client.receive_response())
     fetch_context = contextvars.copy_context()
     pending_task: asyncio.Task[Any] | None = None
     wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
     async def _next_msg() -> Any:
         """Await the next SDK message, wrapped for use with `asyncio.Task`."""
-        return await msg_iter.__anext__()
+        message = await msg_iter.__anext__()
+        if isinstance(message, ResultMessage):
+            # The SDK ends immediately after ResultMessage. Finish the tracing
+            # wrapper before the consumer breaks on the corresponding StreamFinish.
+            await anext(msg_iter, None)
+        return message
+
+    async def _close_messages() -> None:
+        await msg_iter.aclose()
 
     try:
         while True:
@@ -2212,6 +2221,7 @@ async def _iter_sdk_messages(
                     await task
                 except (asyncio.CancelledError, StopAsyncIteration):
                     pass
+        await asyncio.create_task(_close_messages(), context=fetch_context)
 
 
 def _normalize_model_name(raw_model: str) -> str:
@@ -4229,7 +4239,7 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    sdk_client = ConversationOutputClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
         logger.info(

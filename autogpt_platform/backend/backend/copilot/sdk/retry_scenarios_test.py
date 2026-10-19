@@ -1048,7 +1048,7 @@ def _make_sdk_patches(
             f"{_SVC}.compact_transcript",
             dict(new_callable=AsyncMock, return_value=compacted_transcript),
         ),
-        (f"{_SVC}.ClaudeSDKClient", dict(side_effect=client_side_effect)),
+        (f"{_SVC}.ConversationOutputClient", dict(side_effect=client_side_effect)),
         (f"{_SVC}.create_copilot_mcp_server", dict(return_value=MagicMock())),
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),

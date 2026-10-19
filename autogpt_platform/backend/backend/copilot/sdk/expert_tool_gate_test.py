@@ -124,7 +124,7 @@ def _make_patches(*, hire_experts_enabled: bool):
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
         (
-            f"{_SVC}.ClaudeSDKClient",
+            f"{_SVC}.ConversationOutputClient",
             dict(side_effect=lambda *a, **kw: _make_client_mock()),
         ),
         (f"{_SVC}.create_copilot_mcp_server", dict(new=mcp_server_mock)),

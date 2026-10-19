@@ -2007,7 +2007,7 @@ class TestStreamEndedWithoutResultMessage:
 
         with (
             patch(
-                "backend.copilot.sdk.service.ClaudeSDKClient",
+                "backend.copilot.sdk.service.ConversationOutputClient",
                 return_value=fake_sdk_client,
             ),
             patch(
@@ -2069,7 +2069,7 @@ class TestStreamEndedWithoutResultMessage:
 
         with (
             patch(
-                "backend.copilot.sdk.service.ClaudeSDKClient",
+                "backend.copilot.sdk.service.ConversationOutputClient",
                 return_value=fake_sdk_client,
             ),
             patch(
@@ -2123,7 +2123,7 @@ class TestStreamEndedWithoutResultMessage:
 
         with (
             patch(
-                "backend.copilot.sdk.service.ClaudeSDKClient",
+                "backend.copilot.sdk.service.ConversationOutputClient",
                 return_value=fake_sdk_client,
             ),
             patch(
@@ -2171,7 +2171,7 @@ class TestStreamEndedWithoutResultMessage:
 
         with (
             patch(
-                "backend.copilot.sdk.service.ClaudeSDKClient",
+                "backend.copilot.sdk.service.ConversationOutputClient",
                 return_value=fake_sdk_client,
             ),
             patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),

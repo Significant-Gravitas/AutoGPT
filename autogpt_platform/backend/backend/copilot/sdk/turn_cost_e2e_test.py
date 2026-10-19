@@ -32,7 +32,7 @@ _CALL_USAGE = {
     "cache_creation_input_tokens": 2000,
 }
 _STUBBED_HERE = {
-    f"{_SVC}.ClaudeSDKClient",
+    f"{_SVC}.ConversationOutputClient",
     f"{_SVC}._make_sdk_cwd",
     "os.makedirs",
     f"{_SVC}.download_transcript",
@@ -149,7 +149,9 @@ async def _run_turn(session, prompt, tmp_path, env, client, upload, download):
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
-        stack.enter_context(patch(f"{_SVC}.ClaudeSDKClient", side_effect=client))
+        stack.enter_context(
+            patch(f"{_SVC}.ConversationOutputClient", side_effect=client)
+        )
         stack.enter_context(patch(f"{_SVC}._make_sdk_cwd", return_value=str(sdk_cwd)))
         stack.enter_context(patch(f"{_SVC}.build_sdk_env", return_value=env))
         stack.enter_context(patch(f"{_SVC}.upload_transcript", side_effect=upload))
