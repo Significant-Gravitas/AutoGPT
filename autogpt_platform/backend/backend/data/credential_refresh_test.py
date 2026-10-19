@@ -12,15 +12,15 @@ from backend.util.encryption import JSONCryptor
     "access_expiry,refresh_expiry,eligible",
     [
         (None, None, False),
-        (999, None, False),
-        (1_000, None, False),
-        (1_001, None, True),
-        (1_299, None, True),
-        (1_300, None, False),
-        (1_301, None, False),
-        (1_100, 999, False),
-        (1_100, 1_000, False),
-        (1_100, 1_001, True),
+        (790_399, None, True),
+        (790_400, None, True),
+        (790_401, None, False),
+        (1_999_999, None, False),
+        (2_000_000, None, False),
+        (2_000_100, None, False),
+        (790_399, 1_999_999, False),
+        (790_399, 2_000_000, False),
+        (790_399, 2_000_001, True),
     ],
 )
 async def test_refresh_candidate_expiry_boundaries(
@@ -42,9 +42,9 @@ async def test_refresh_candidate_expiry_boundaries(
     )
     database = mocker.patch("backend.data.user.prisma")
     database.integrationcredential.find_many = AsyncMock(return_value=[row])
-    mocker.patch("time.time", return_value=1_000)
+    mocker.patch("time.time", return_value=2_000_000)
 
-    result = await get_near_expiry_oauth_credentials(1_300)
+    result = await get_near_expiry_oauth_credentials(2_000_000 - 14 * 86_400)
 
     assert result == ([("owner", credentials)] if eligible else [])
 

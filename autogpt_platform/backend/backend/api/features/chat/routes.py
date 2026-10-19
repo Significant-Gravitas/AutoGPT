@@ -8,7 +8,15 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Request, Response, Security
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+)
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -999,7 +1007,7 @@ async def get_session_computer(
 
 @router.post(
     "/sessions/{session_id}/desktop",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
         502: {"description": "The desktop could not be started"},
@@ -1866,7 +1874,7 @@ async def stream_chat_post(
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
-    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    # graphiti/ingest.py's ensure_scope_scheduled registration.
     from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
 
     # Spawned through the shared helper: the loop only holds a weak
@@ -2332,7 +2340,9 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_writable_session(session_id, user_id)
-    if session.metadata.llm_auth_provider == "codex":
+    if session.metadata.llm_auth_provider == "platform":
+        await enforce_payment_paywall(user_id)
+    elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     client_message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
