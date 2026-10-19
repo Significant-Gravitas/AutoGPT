@@ -25,6 +25,7 @@ from backend.copilot.scheduled_chats.failure_notices import (
     paused_notice,
     resumed_notice,
 )
+from backend.copilot.scheduled_chats.forget import resolve_alert
 from backend.copilot.scheduled_chats.jobs import (
     jobs_paused,
     pause_jobs,
@@ -80,7 +81,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         return
     step = advance(current, run.outcome)
     if step.ended_notified:
-        await alerts.resolve(run.user_id, run.schedule_key)
+        await resolve_alert(run.user_id, run.schedule_key)
     if step.streak is None:
         if row is not None:
             await ScheduledChatStreak.prisma().delete(where={"id": row.id})
@@ -148,7 +149,7 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
         return False
     await resume_jobs(user_id, row.scheduleIds)
     await ScheduledChatStreak.prisma().delete(where={"id": row.id})
-    await alerts.resolve(user_id, schedule_key)
+    await resolve_alert(user_id, schedule_key)
     if row.sessionId is not None:
         try:
             await post_notice(
@@ -181,7 +182,7 @@ async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
     await ScheduledChatStreak.prisma().delete_many(
         where={"userId": user_id, "scheduleKey": schedule_key}
     )
-    await alerts.resolve(user_id, schedule_key)
+    await resolve_alert(user_id, schedule_key)
 
 
 async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]:

@@ -14,17 +14,14 @@ import logging
 from urllib.parse import quote
 
 from backend.copilot.scheduled_chats.failure_notices import provider_name
+from backend.copilot.scheduled_chats.forget import alert_key
 from backend.copilot.scheduled_chats.outcomes import RunFailure
-from backend.data.alerts import raise_alert_condition, resolve_alert_condition
+from backend.data.alerts import raise_alert_condition
 from backend.notifications.alert_causes import PausedFailuresCause
 
 logger = logging.getLogger(__name__)
 
 FOLLOWUPS_PATH = "/library/followups"
-
-
-def alert_key(schedule_key: str) -> str:
-    return f"scheduled_chat:{schedule_key}"
 
 
 def paused_cause(
@@ -69,17 +66,6 @@ async def raise_paused(
     except Exception:
         logger.warning(
             "Could not raise the paused alert for scheduled chat %s",
-            schedule_key,
-            exc_info=True,
-        )
-
-
-async def resolve(user_id: str, schedule_key: str) -> None:
-    try:
-        await resolve_alert_condition(user_id, alert_key(schedule_key))
-    except Exception:
-        logger.warning(
-            "Could not resolve the alert for scheduled chat %s",
             schedule_key,
             exc_info=True,
         )

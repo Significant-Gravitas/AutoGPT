@@ -262,6 +262,11 @@ async def test_switching_a_paused_routine_off_forgets_its_streak(
 
         assert await list_paused_scheduled_chats(user_id) == []
         assert not await resume_scheduled_chat(user_id, routine.id)
+        # Nor is its owner emailed about a routine they switched off.
+        alert = await AlertCondition.prisma().find_first(
+            where={"userId": user_id, "causeKey": f"scheduled_chat:{routine.id}"}
+        )
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
     finally:
         await _cleanup(user_id)
 
