@@ -425,6 +425,24 @@ describe("builder execution updates", () => {
     ).toHaveLength(2);
   });
 
+  it("refetches on every acknowledgement, so a late one for an earlier run cannot hide this run's", async () => {
+    renderBuilder();
+    await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("RUNNING"));
+    act(() => socket.connect());
+    await waitFor(() =>
+      expect(socket.state.subscribes).toEqual([EXECUTION_ID]),
+    );
+
+    // An ack left over from a run opened earlier arrives first...
+    await acknowledgeSubscribe();
+    // ...and the run finishes before this run's own subscription is in place.
+    run = { status: "COMPLETED", nodes: { "node-1": "COMPLETED" } };
+    await acknowledgeSubscribe();
+
+    await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("COMPLETED"));
+    expect(useGraphStore.getState().isGraphRunning).toBe(false);
+  });
+
   it("ignores a repeated websocket event", async () => {
     renderBuilder();
     await waitFor(() => expect(nodeStatuses()["node-1"]).toBe("RUNNING"));

@@ -109,6 +109,10 @@ export const useFlowRealtime = () => {
     // The server acknowledges a subscription once it is registered. Refetch
     // then too: anything published before that point is in the response, and
     // everything after it arrives over the websocket, so useFlow stops polling.
+    // The ack carries no payload, so a late one for a previously opened run
+    // can land here first; that is harmless because the server answers
+    // subscribes in the order they were sent on the socket, so this run's own
+    // ack still follows and its refetch runs after this run is registered.
     const deregisterSubscribeAck = api.onWebSocketMessage(
       "subscribe_graph_execution",
       () => {
