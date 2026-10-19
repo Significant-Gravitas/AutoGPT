@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_invoice import TrialPaymentDue
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 
 
@@ -30,9 +31,11 @@ class TrialStatusResponse(BaseModel):
     ends_at: datetime | None = None
     cancel_at_period_end: bool = False
     allowance_used_percent: float | None = None
+    usage_policy: Literal["lifetime", "rolling"] | None = None
     active: bool = False
     converted: bool = False
     onboarding_credits_previously_received: bool = False
+    payment_due: TrialPaymentDue | None = None
 
 
 class TrialCheckoutRequest(BaseModel):

@@ -28,8 +28,8 @@ export function IntegrationsListEmpty({ query }: Props) {
           No integration connected
         </Text>
         <Text variant="body" className="max-w-[360px] text-zinc-500">
-          Connect a service to let your agents use third-party tools like
-          GitHub, Gmail, or Figma.
+          Connect a service to let your experts and workflows use third-party
+          tools like GitHub, Gmail, or Figma.
         </Text>
       </div>
     </div>

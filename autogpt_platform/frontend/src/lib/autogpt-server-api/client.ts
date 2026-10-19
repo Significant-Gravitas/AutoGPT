@@ -126,10 +126,6 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user", {});
   }
 
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
-  }
-
   ////////////////////////////////////////
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
@@ -1091,7 +1087,16 @@ export default class BackendAPI {
               this.wsUrl,
               phase,
             );
-            if (phase == "connecting") {
+            // A logout in this tab or another closes the socket on purpose,
+            // and one still connecting then reports a 1006: not a failure.
+            if (
+              this.isIntentionallyDisconnected ||
+              this._hasDisconnectIntent()
+            ) {
+              console.debug(
+                `[BackendAPI] WebSocket closed on purpose: ${summary}`,
+              );
+            } else if (phase == "connecting") {
               logWebSocketIssue(
                 "error",
                 `[BackendAPI] WebSocket failed to connect: ${summary}`,

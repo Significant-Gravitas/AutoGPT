@@ -8,15 +8,13 @@ const HEARTBEAT_MS = 10_000;
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
 // What the route answers a send it queued: framing, no ids, no turn.
-const QUEUED_STREAM = [
-  { type: "start", messageId: "queued" },
-  { type: "start-step" },
-  { type: "finish-step" },
-  { type: "finish" },
-]
-  .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-  .concat("data: [DONE]\n\n")
-  .join("");
+const QUEUED_STREAM = emptyStream();
+// What it answers a send it queued behind the turn already running.
+const FOLLOW_UP_STREAM = emptyStream({
+  type: "data-follow-up-queued",
+  data: {},
+  transient: true,
+});
 
 export interface FakeConnection {
   method: string;
@@ -34,10 +32,14 @@ export interface FakeConnection {
   silence(): void;
 }
 
-type Responder = (request: {
-  method: string;
-  url: URL;
-}) => "stream" | "network-error" | { status: number; body: unknown };
+type Responder = (request: { method: string; url: URL }) =>
+  | "stream"
+  | "network-error"
+  // An open response that never yields a byte: a page frozen before it read any.
+  | "silent"
+  // The backend queued the send behind a turn already running.
+  | "follow-up-queued"
+  | { status: number; body: unknown };
 
 /**
  * The backend as the runtime sees it, for one recorded turn: the turn's
@@ -77,6 +79,16 @@ export function fakeBackend(turn: RecordedTurn) {
     requests.push({ method, url });
     const answer = responder({ method, url });
     if (answer === "network-error") throw new TypeError("Failed to fetch");
+    if (answer === "follow-up-queued")
+      return new Response(FOLLOW_UP_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    if (answer === "silent")
+      return new Response(new ReadableStream<Uint8Array>(), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
     if (answer !== "stream") {
       return new Response(JSON.stringify(answer.body), {
         status: answer.status,
@@ -275,4 +287,17 @@ function dataOf(sse: string) {
         data: Record<string, unknown>;
       })
     : null;
+}
+
+function emptyStream(...parts: object[]) {
+  return [
+    { type: "start", messageId: "queued" },
+    { type: "start-step" },
+    ...parts,
+    { type: "finish-step" },
+    { type: "finish" },
+  ]
+    .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+    .concat("data: [DONE]\n\n")
+    .join("");
 }

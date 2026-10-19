@@ -81,20 +81,9 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     },
     toolName,
     toolCallId: str(payload, "tool_call_id") ?? "",
-    args: asObject(payload.arguments) ?? {},
-    fields: asArray(payload.fields)
-      .map((f) => asObject(f) ?? {})
-      .filter((f) => str(f, "key"))
-      .map((f) => ({
-        key: String(f.key),
-        label: str(f, "label") ?? String(f.key),
-        format: str(f, "format"),
-      })),
+    ...cardArguments(payload),
     references: asArray(payload.references).flatMap(toReference),
     referenceTotals: toTotals(payload.reference_totals),
-    clipped: asArray(payload.clipped).filter(
-      (k): k is string => typeof k === "string",
-    ),
     subject: {
       kind: str(subject, "kind") ?? "tool",
       key: str(subject, "key") ?? toolName,
@@ -120,6 +109,24 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
             object: str(headline, "object"),
           },
     headlineKeys: objectKey ? [objectKey] : [],
+  };
+}
+
+// The card's arguments as the server built them, on the review and on its late result.
+export function cardArguments(payload: Record<string, unknown>) {
+  return {
+    args: asObject(payload.arguments) ?? {},
+    fields: asArray(payload.fields)
+      .map((f) => asObject(f) ?? {})
+      .filter((f) => str(f, "key"))
+      .map((f) => ({
+        key: String(f.key),
+        label: str(f, "label") ?? String(f.key),
+        format: str(f, "format"),
+      })),
+    clipped: asArray(payload.clipped).filter(
+      (k): k is string => typeof k === "string",
+    ),
   };
 }
 

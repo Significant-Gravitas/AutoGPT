@@ -212,6 +212,29 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_the_result_row_carries_the_arguments_as_the_card_showed_them(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The card is consumed by then, so the chain row shows these instead."""
+    session = await _new_session(test_user_id)
+    secret = "sk-live-not-for-the-chain-row-0123456789"
+    args = {"text": "hello team", "api_key": secret}
+    decision = await check_action(
+        _TOOL, args, test_user_id, session, tool_call_id="call-1"
+    )
+    assert decision.review_id
+    await _answer(decision.review_id, ReviewStatus.APPROVED)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [args]
+    shown = delivered.metadata["held_call"]
+    assert shown["arguments"] == {"text": "hello team", "api_key": "[redacted]"}
+    assert [f["key"] for f in shown["fields"]] == ["text", "api_key"]
+    assert secret not in json.dumps(delivered.metadata)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
     setup_test_user, test_user_id, gate_on
 ):
@@ -265,11 +288,10 @@ async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
+async def test_a_call_rebuilt_without_usage_origin_asks_for_resend_in_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Its record was lost, but a turn in the user's own chat is a root anyway:
-    the wake starts as one, under the session's permissions as they are now."""
+    """The card alone cannot establish which allowance bought the work."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
@@ -287,9 +309,10 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     ):
         await held.wake(test_user_id, session.session_id, rows.values())
 
-    woken = dispatch.await_args.kwargs
-    assert (woken["envelope"], woken["root"]) == (None, True)
-    assert woken["permissions"] == today
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert any("send the request again" in (m.content or "") for m in reloaded.messages)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -416,7 +439,7 @@ async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+async def test_an_approval_whose_usage_origin_was_lost_does_not_run_from_the_card(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     session = await _new_session(test_user_id)
@@ -425,8 +448,8 @@ async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
 
     [delivered] = await held.resolve_answered(test_user_id, session)
 
-    assert post_tool.runs == [{"text": "from the card"}]
-    assert "posted from the card" in delivered.content
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
     # The card kept the call's id, so the chain row still finds its result.
     assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
     assert await _row(review_id, test_user_id) is None
@@ -694,4 +717,4 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
     with patch("backend.copilot.gate.supervise", supervisor):
         await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
 
-    assert supervisor.await_args.kwargs["user_message"] == request
+    assert supervisor.await_args.kwargs["user_messages"] == [request]

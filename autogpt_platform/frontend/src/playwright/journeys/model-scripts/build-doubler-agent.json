@@ -1,0 +1,104 @@
+{
+  "description": "AutoPilot reads the agent-building guide, then builds and saves an agent that doubles a number. copilot-build-agent-journey.spec.ts follows it.",
+  "title": "Doubler agent",
+  "turns": [
+    {
+      "text": "I'll read the agent-building guide first, so the agent I build is valid.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": { "id": "skill:agent_building_guide", "input": {} }
+        }
+      ],
+      "usage": {
+        "input_tokens": 3200,
+        "output_tokens": 45,
+        "cache_read_input_tokens": 24000,
+        "cache_creation_input_tokens": 1800
+      }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "Agent Generation Guide" }
+      ],
+      "text": "Now I'll build an agent that takes a number and returns double that number.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": {
+            "id": "tool:create_agent",
+            "input": {
+              "library_check_ack": true,
+              "agent_json": {
+                "name": "Journey Doubler",
+                "description": "Takes a number and returns double that number.",
+                "nodes": [
+                  {
+                    "id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a01",
+                    "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+                    "input_default": {
+                      "name": "number",
+                      "title": "Number",
+                      "value": null
+                    },
+                    "metadata": { "position": { "x": 0, "y": 0 } }
+                  },
+                  {
+                    "id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a02",
+                    "block_id": "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+                    "input_default": {
+                      "operation": "Multiply",
+                      "b": 2,
+                      "round_result": false
+                    },
+                    "metadata": { "position": { "x": 500, "y": 0 } }
+                  },
+                  {
+                    "id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a03",
+                    "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+                    "input_default": { "name": "doubled", "title": "Doubled" },
+                    "metadata": { "position": { "x": 1000, "y": 0 } }
+                  }
+                ],
+                "links": [
+                  {
+                    "id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a04",
+                    "source_id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a01",
+                    "source_name": "result",
+                    "sink_id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a02",
+                    "sink_name": "a",
+                    "is_static": false
+                  },
+                  {
+                    "id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a05",
+                    "source_id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a02",
+                    "source_name": "result",
+                    "sink_id": "5d1a9f3e-6b1c-4c8e-9a51-2f0e7c3b1a03",
+                    "sink_name": "value",
+                    "is_static": false
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_tokens": 9000,
+        "output_tokens": 380,
+        "cache_read_input_tokens": 25800
+      }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "agent_builder_saved" }
+      ],
+      "text": "Done. Journey Doubler is saved in your Library: give it a number and it returns double that number.",
+      "usage": {
+        "input_tokens": 400,
+        "output_tokens": 40,
+        "cache_read_input_tokens": 34800
+      }
+    }
+  ]
+}
