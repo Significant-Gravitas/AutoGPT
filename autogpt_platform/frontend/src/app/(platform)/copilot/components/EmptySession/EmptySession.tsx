@@ -41,8 +41,8 @@ interface Props {
   expertName?: string;
   /** Expert the new conversation will address; scopes workspace-file pickers. */
   expertId?: string | null;
-  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
-  voiceToggle?: ReactNode;
+  /** Starts voice mode from the + menu. Absent when the flag is off. */
+  voiceMode?: ComponentProps<typeof ChatInput>["voiceMode"];
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
   /** Out of AutoPilot budget with a reset ahead: the composer sets the new
@@ -64,7 +64,7 @@ export function EmptySession({
   isKickoffStarting,
   expertName,
   expertId = null,
-  voiceToggle,
+  voiceMode,
   modeSelector,
   atReset,
   usageNotice,
@@ -185,7 +185,7 @@ export function EmptySession({
                   inputId="chat-input-empty"
                   draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
-                  voiceToggle={voiceToggle}
+                  voiceMode={voiceMode}
                   modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}

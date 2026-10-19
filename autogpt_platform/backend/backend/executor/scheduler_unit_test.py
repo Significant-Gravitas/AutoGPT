@@ -9,6 +9,8 @@ import asyncio
 import logging
 import threading
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,15 +18,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
 )
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
@@ -50,7 +55,9 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
+    refresh_near_expiry_credentials,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -1676,14 +1683,20 @@ class _StartupRun(NamedTuple):
     add_job_calls: list
     embedding_backfill: MagicMock
     backfill_calls_at_readiness: int
+    scheduler_calls: list
 
 
 def _registered_jobs(
-    monkeypatch, interval_hours: int, startup_embedding_backfill: bool = True
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+    on_start: Callable[[], object] | None = None,
+    existing_idle_job=None,
 ) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
-    handing over to ``AppService.run_service``."""
+    handing over to ``AppService.run_service``. *on_start* runs as the mock
+    APScheduler starts, as a job due then would."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
@@ -1693,6 +1706,13 @@ def _registered_jobs(
         startup_embedding_backfill,
     )
     mock_scheduler = MagicMock()
+    mock_scheduler.start.side_effect = on_start
+
+    mock_scheduler.get_job.side_effect = lambda job_id, **_: (
+        existing_idle_job
+        if mock_scheduler.start.called and job_id == "refresh_near_expiry_credentials"
+        else None
+    )
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
@@ -1719,7 +1739,10 @@ def _registered_jobs(
     ):
         Scheduler(register_system_tasks=True).run_service()
     return _StartupRun(
-        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+        mock_scheduler.add_job.call_args_list,
+        embedding_backfill,
+        at_readiness[0],
+        mock_scheduler.mock_calls,
     )
 
 
@@ -1738,6 +1761,129 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_memory_cron_reconcile_registered_after_start_on_its_interval(
+    monkeypatch,
+):
+    """The level-triggered backstop of the memory registry runs every
+    ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
+    coalesced. Each process gets an immediate pass in its own memory store."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job" and args and args[0] is reconcile_memory_scope_crons
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert str(args[1]) == str(IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES))
+    assert RECONCILE_INTERVAL_MINUTES == 30
+    assert kwargs["id"] == "reconcile_memory_scope_crons"
+    assert kwargs["max_instances"] == 1
+    assert kwargs["coalesce"] is True
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
+    assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
+
+
+def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):
+    """An immediately due system job reaches the service only through
+    ``_scheduler_instance``, so that is published before ``start``; published
+    after it, the pass was skipped as "scheduler not running" and the crons
+    waited a whole interval more."""
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}._scheduler_instance", None)
+    reconciled = MagicMock()
+    monkeypatch.setattr(Scheduler, "_reconcile_memory_crons", reconciled)
+
+    _registered_jobs(
+        monkeypatch, interval_hours=6, on_start=reconcile_memory_scope_crons
+    )
+
+    reconciled.assert_called_once_with()
+
+
+@pytest.mark.parametrize("offset_days", [-2, 1, None])
+def test_idle_credentials_startup_preserves_existing_daily_job(
+    monkeypatch, offset_days
+):
+    existing = MagicMock(
+        trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+        next_run_time=(
+            datetime.now(timezone.utc) + timedelta(days=offset_days)
+            if offset_days is not None
+            else None
+        ),
+    )
+    calls = _registered_jobs(
+        monkeypatch, interval_hours=6, existing_idle_job=existing
+    ).add_job_calls
+
+    assert not [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+
+def test_idle_credentials_job_is_registered_daily(monkeypatch):
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    matches = [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "refresh_near_expiry_credentials"
+    assert str(call.kwargs["trigger"]) == str(
+        CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+    )
+    assert call.kwargs["replace_existing"] is True
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == "execution"
+
+
+def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    started, release, completed = (threading.Event() for _ in range(3))
+    run_async = scheduler_module.run_async
+
+    async def refresh():
+        started.set()
+        await asyncio.to_thread(release.wait)
+        completed.set()
+
+    def short_timeout(coro, timeout=0.01):
+        return run_async(coro, timeout=timeout)
+
+    monkeypatch.setattr(scheduler_module, "_event_loop", loop)
+    monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(
+        scheduler_module,
+        "IntegrationCredentialsManager",
+        lambda: MagicMock(refresh_idle_credentials=refresh),
+    )
+    thread.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job = pool.submit(refresh_near_expiry_credentials)
+            try:
+                assert started.wait(timeout=2)
+                assert not completed.wait(timeout=0.1)
+                assert not job.done()
+            finally:
+                release.set()
+                assert completed.wait(timeout=2)
+            job.result(timeout=2)
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2)
+        loop.close()
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):

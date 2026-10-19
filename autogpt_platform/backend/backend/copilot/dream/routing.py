@@ -14,9 +14,12 @@ from typing import Literal
 
 from backend.copilot.config import TransportName
 
-# The single source of truth for execution paths; ``model_pricing``,
-# ``billing`` and ``schemas`` import it from here.
+# The single source of truth for execution paths; ``billing``,
+# ``orchestrator`` and ``schemas`` import it from here.
 ExecutionPath = Literal["sync_baseline", "anthropic_batch"]
+
+# Anthropic's Message Batches API bills half the synchronous list price.
+_ANTHROPIC_BATCH_DISCOUNT = 0.5
 
 
 # Transports that cannot honour the batch path even when an Anthropic key
@@ -61,3 +64,13 @@ def resolve_dream_execution_path(
     if batch_processing_enabled and has_anthropic_key:
         return "anthropic_batch"
     return "sync_baseline"
+
+
+def batch_discount(path: ExecutionPath) -> float:
+    """The share of the list price the provider takes off on *path*: half
+    on Anthropic's Message Batches API, nothing on the sync path.
+
+    Priced into the dream's cost rows and recorded next to them as
+    ``discount_applied``.
+    """
+    return _ANTHROPIC_BATCH_DISCOUNT if path == "anthropic_batch" else 0.0
