@@ -2,7 +2,7 @@
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import isEqual from "lodash/isEqual";
-import { useMemo, useRef } from "react";
+import { useMemo, useState } from "react";
 import { getHeldOutcomes, type HeldOutcome } from "../heldCallRows";
 import { HeldOutcomesContext } from "../HeldOutcomesContext";
 import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
@@ -54,8 +54,11 @@ export function PendingAnswerContexts({ messages, children }: Props) {
   );
 }
 
+// Kept in state, not a ref: a render React throws away cannot change it.
+// Setting state while rendering re-runs this component before it commits.
 function useEqualValue<T>(value: T): T {
-  const kept = useRef(value);
-  if (!isEqual(kept.current, value)) kept.current = value;
-  return kept.current;
+  const [kept, setKept] = useState(() => value);
+  if (kept === value || isEqual(kept, value)) return kept;
+  setKept(() => value);
+  return value;
 }
