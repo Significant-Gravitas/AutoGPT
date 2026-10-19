@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { StrictMode, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatDraft } from "../../ChatInput/useChatDraft";
 import { SEND_SETTLE_MS, sessionDraftKey } from "../helpers";
 import { useScheduledSendHandoff } from "../scheduledSendHandoff";
@@ -52,6 +52,7 @@ function useNewChat(
     pending: scheduled.pending,
     schedule: scheduled.schedule,
     cancel: scheduled.cancel,
+    edit: scheduled.edit,
   };
 }
 
@@ -263,68 +264,30 @@ describe("useHandedOffSend", () => {
       }
     });
 
-    // The request landed while the page waited, the chip showed it, and the
-    // user cancelled it: putting the message back would undo that.
-    it("leaves it to the user once they change the send while it waits", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      try {
+    describe("when the user changes the send during the wait", () => {
+      beforeEach(() => {
+        // The clock stands still, so the page reads before the window ends
+        // however long it takes to open; the wait itself runs in real time.
+        vi.useFakeTimers({ toFake: ["Date"] });
         vi.setSystemTime(new Date(2026, 9, 18, 9, 0));
-        const client = listedEmpty("chat-changed");
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      // The page has read the send once and waits for the gone page's
+      // request, which lands right after that read if `lands`.
+      async function waitingChat(sessionId: string, lands: boolean) {
+        const calls = { reads: 0, cancelled: 0 };
         let waiting: string | null = null;
-        let reads = 0;
-        let cancelled = 0;
         server.use(
           http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
-            reads += 1;
+            calls.reads += 1;
             const jobs = waiting
               ? [{ kind: "send", run_at: RUN_AT, message: waiting }]
               : [];
-            // The gone page's request lands right after the first read.
-            waiting = MESSAGE;
+            if (lands && calls.reads === 1) waiting = MESSAGE;
             return HttpResponse.json({ jobs });
-          }),
-          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
-            cancelled += 1;
-            waiting = null;
-            return new HttpResponse(null, { status: 204 });
-          }),
-        );
-        sentBeforeTheReload("chat-changed", SEND_SETTLE_MS - 1000);
-
-        const { result } = renderHook(() => useNewChat("chat-changed"), {
-          wrapper: withQueryClient(client),
-        });
-        await waitFor(() => expect(reads).toBe(1));
-        await act(() => result.current.cancel());
-
-        await waitFor(() => expect(handedOff("chat-changed")).toBeUndefined(), {
-          timeout: 3000,
-        });
-        expect(cancelled).toBe(1);
-        expect(result.current.draft).toBe("");
-        expect(toastTitles()).toEqual([]);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    // A message the user sets meanwhile doesn't stand in for the one the gone
-    // page's request was carrying, which never landed.
-    it("still puts it back once the user adds a message of their own", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      try {
-        vi.setSystemTime(new Date(2026, 9, 18, 9, 0));
-        const client = listedEmpty("chat-added-to");
-        let waiting: string | null = null;
-        let reads = 0;
-        server.use(
-          http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
-            reads += 1;
-            return HttpResponse.json({
-              jobs: waiting
-                ? [{ kind: "send", run_at: RUN_AT, message: waiting }]
-                : [],
-            });
           }),
           http.post(
             "*/api/chat/sessions/:sessionId/at-reset",
@@ -340,13 +303,55 @@ describe("useHandedOffSend", () => {
               });
             },
           ),
+          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
+            calls.cancelled += 1;
+            waiting = null;
+            return new HttpResponse(null, { status: 204 });
+          }),
         );
-        sentBeforeTheReload("chat-added-to", SEND_SETTLE_MS - 1000);
-
-        const { result } = renderHook(() => useNewChat("chat-added-to"), {
+        sentBeforeTheReload(sessionId, SEND_SETTLE_MS - 1000);
+        const client = listedEmpty(sessionId);
+        const { result } = renderHook(() => useNewChat(sessionId), {
           wrapper: withQueryClient(client),
         });
-        await waitFor(() => expect(reads).toBe(1));
+        await waitFor(() => expect(calls.reads).toBe(1));
+        return { calls, client, result };
+      }
+
+      // The request landed, the chip showed it, and the user cancelled or
+      // edited it: putting the message back would undo what they did.
+      it.each(["cancel", "edit"] as const)(
+        "leaves a send that landed to the user once they %s it",
+        async (action) => {
+          const sessionId = `chat-landed-${action}`;
+          const { calls, client, result } = await waitingChat(sessionId, true);
+          await act(() =>
+            client.invalidateQueries({
+              queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
+            }),
+          );
+          await waitFor(() =>
+            expect(result.current.pending?.message).toBe(MESSAGE),
+          );
+
+          await act(async () => {
+            await result.current[action]();
+          });
+
+          await waitFor(() => expect(handedOff(sessionId)).toBeUndefined(), {
+            timeout: 3000,
+          });
+          expect(calls.cancelled).toBe(1);
+          expect(result.current.draft).toBe(action === "edit" ? MESSAGE : "");
+          expect(toastTitles()).toEqual([]);
+        },
+      );
+
+      // A message the user sets meanwhile doesn't stand in for the one the
+      // gone page's request was carrying, which never landed.
+      it("still puts it back once the user adds a message of their own", async () => {
+        const { result } = await waitingChat("chat-added-to", false);
+
         await act(() => result.current.schedule("Then the newsletter"));
 
         await waitFor(() => expect(result.current.draft).toBe(MESSAGE), {
@@ -354,9 +359,34 @@ describe("useHandedOffSend", () => {
         });
         expect(handedOff("chat-added-to")).toBeUndefined();
         expect(toastTitles()).toEqual(["Couldn’t schedule your message"]);
-      } finally {
-        vi.useRealTimers();
-      }
+      });
+
+      // Nor does cancelling or editing that message: it never held this one.
+      it.each(["cancel", "edit"] as const)(
+        "still puts it back once the user %ss a message of their own",
+        async (action) => {
+          const sessionId = `chat-own-${action}`;
+          const { calls, result } = await waitingChat(sessionId, false);
+          await act(() => result.current.schedule("Then the newsletter"));
+
+          await act(async () => {
+            await result.current[action]();
+          });
+
+          await waitFor(
+            () =>
+              expect(result.current.draft).toBe(
+                action === "edit"
+                  ? `${MESSAGE}\n\nThen the newsletter`
+                  : MESSAGE,
+              ),
+            { timeout: 3000 },
+          );
+          expect(calls.cancelled).toBe(1);
+          expect(handedOff(sessionId)).toBeUndefined();
+          expect(toastTitles()).toEqual(["Couldn’t schedule your message"]);
+        },
+      );
     });
 
     it("puts it back in the composer when the server doesn't have it", async () => {

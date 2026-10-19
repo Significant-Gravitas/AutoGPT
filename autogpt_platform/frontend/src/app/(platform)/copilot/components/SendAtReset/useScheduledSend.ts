@@ -24,8 +24,8 @@ import {
   sessionDraftKey,
 } from "./helpers";
 import {
-  countSendCancels,
   countSendChanges,
+  noteCancel,
   startCancelWatch,
   startSendRead,
 } from "./sendChanges";
@@ -49,7 +49,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     mutation: countSendChanges,
   });
   const cancelSend = useDeleteV2CancelTurnAtBudgetReset({
-    mutation: countSendCancels,
+    mutation: countSendChanges,
   });
   const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
@@ -105,8 +105,10 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     }
   }
 
-  async function unschedule() {
+  /** Cancels the chat's send, whose text this page knows as `cancelling`. */
+  async function unschedule(cancelling: string) {
     if (!sessionId) return false;
+    noteCancel(sessionId, cancelling);
     try {
       await cancelSend.mutateAsync({ sessionId, kind: "send" });
     } catch (error) {
@@ -135,7 +137,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       rereadList();
       return;
     }
-    if (!(await unschedule())) return;
+    if (!(await unschedule(send.message ?? ""))) return;
     draft.write((current) => returnToDraft(current, send.message ?? ""));
     if (inputId) document.getElementById(inputId)?.focus();
   }
@@ -185,10 +187,11 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     const settling = sentAt + SEND_SETTLE_MS - Date.now();
     if (!readHolds(read, message) && settling > 0) {
       // The gone page's request can still be landing.
-      const cancelledSince = startCancelWatch(sessionId);
+      const cancelledSince = startCancelWatch(sessionId, message);
       await new Promise((resolve) => setTimeout(resolve, settling));
-      // Edited or cancelled on this page meanwhile: what the user did with
-      // the send stands. A message they added doesn't stand in for this one.
+      // Edited or cancelled on this page meanwhile, holding the message:
+      // what the user did with it stands. A send without it, such as a
+      // message they added, doesn't stand in for this one.
       if (cancelledSince()) return;
       read = await readSend();
     }
@@ -215,7 +218,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     scheduleQuietly,
     recover,
     edit,
-    cancel: unschedule,
+    cancel: () => unschedule(pending?.message ?? ""),
     isBusy: scheduleSend.isPending || cancelSend.isPending,
   };
 }
