@@ -29,7 +29,6 @@ vi.mock("@/services/analytics", () => ({ SetupAnalytics: () => null }));
 vi.mock("@/services/analytics/VercelAnalyticsWrapper", () => ({
   VercelAnalyticsWrapper: () => null,
 }));
-vi.mock("@/components/AgentationDevtool", () => ({ default: () => null }));
 vi.mock("@tanstack/react-query-devtools", () => ({
   ReactQueryDevtools: () => null,
 }));

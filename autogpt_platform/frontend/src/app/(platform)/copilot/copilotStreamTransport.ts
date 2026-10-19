@@ -1,5 +1,6 @@
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { environment } from "@/services/environment";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
@@ -66,11 +67,13 @@ export function createCopilotTransport({
     api: baseUrl,
     // Tee the raw SSE into the stream converter's shadow, and in dev into the
     // token devtool, which reads the `: usage {...}` comments the SDK drops.
-    fetch: createShadowFetch(
-      sessionId,
-      isTokenDevtoolEnabled()
-        ? createUsageCapturingFetch(sessionId)
-        : undefined,
+    fetch: keepPaywallStatus(
+      createShadowFetch(
+        sessionId,
+        isTokenDevtoolEnabled()
+          ? createUsageCapturingFetch(sessionId)
+          : undefined,
+      ),
     ),
     prepareSendMessagesRequest: async ({ messages }) => ({
       body: streamRequestBody(
@@ -99,6 +102,23 @@ export function createCopilotTransport({
 }
 
 /** The POST body for a new turn, whichever client sends it. */
+// The SDK turns a non-OK response into a bare Error carrying only the body,
+// so a refusal for want of a plan would read as an unexplained failure. Keep
+// its status so the error banner can offer plans instead of "reload".
+function keepPaywallStatus(inner: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await inner(input, init);
+    if (response.status !== 402) return response;
+    const body = await response.json().catch(() => null);
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    throw new ApiError(
+      typeof detail === "string" ? detail : "A plan is required to send",
+      402,
+      body,
+    );
+  };
+}
+
 export function streamRequestBody(
   sessionId: string,
   last: UIMessage,

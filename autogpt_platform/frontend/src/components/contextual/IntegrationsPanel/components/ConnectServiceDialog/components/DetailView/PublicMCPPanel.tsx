@@ -35,8 +35,8 @@ export function PublicMCPPanel({ serverURL, actions }: Props) {
       )}
       {toolCount !== null && (
         <Text variant="small" className="text-zinc-600">
-          This service needs no sign-in, so nothing was saved. Add it to an
-          agent or ask an expert to use it.
+          This service needs no sign-in, so nothing was saved. Add it to a
+          workflow or ask an expert to use it.
         </Text>
       )}
       {error && (
