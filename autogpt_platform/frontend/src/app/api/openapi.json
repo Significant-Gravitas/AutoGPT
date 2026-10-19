@@ -12518,7 +12518,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
-        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "description": "Hand back the user's own recording, for as long as it is kept.\n\nMeant for a take that failed: \"your recording is safe\" has to be\ntrue, and this is what makes it checkable. A transcribed take has no\nrecording left, since only the transcript is kept. A failed take's\nrecording is deleted within 48 hours (see ``retention.py``), and one\nthat is due is refused even before the sweep reaches it; a signed URL\nfor one that is gone would only fail at the bucket, so say so here\ninstead.",
         "operationId": "download_brain_dump_recording",
         "responses": {
           "200": {
