@@ -63,6 +63,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
@@ -187,6 +188,7 @@ from backend.data.user import (
     get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
+    get_near_expiry_oauth_credentials,
     get_user_by_id,
     get_user_credentials,
     get_user_default_chat_route,
@@ -214,7 +216,10 @@ from backend.data.workspace import (
     soft_delete_workspace_file,
 )
 from backend.data.workspace_folder import list_workspace_folders
-from backend.data.workspace_skill import publish_workspace_skill_file
+from backend.data.workspace_skill import (
+    publish_workspace_skill_file,
+    skill_root_has_room,
+)
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -408,6 +413,7 @@ class DatabaseManager(AppService):
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
@@ -512,6 +518,7 @@ class DatabaseManager(AppService):
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
     publish_workspace_skill_file = _(publish_workspace_skill_file)
+    skill_root_has_room = _(skill_root_has_room)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
@@ -587,6 +594,20 @@ class DatabaseManager(AppService):
     upsert_bot_install = _(bot_installs_db.upsert_bot_install)
     revoke_bot_install = _(bot_installs_db.revoke_bot_install)
 
+    # ============ Memory Scope Schedules ============ #
+    # Exposed so the Prisma-less scheduler (cron bodies) and copilot-executor
+    # (lazy registration on the first memory write) reach the registry via
+    # db_accessors.memory_schedule_db().
+    get_scope_schedule = _(memory_schedule_db.get_scope_schedule)
+    claim_scope_schedule = _(memory_schedule_db.claim_scope_schedule)
+    record_scope_jobs = _(memory_schedule_db.record_scope_jobs)
+    set_scope_state = _(memory_schedule_db.set_scope_state)
+    forget_scope_job = _(memory_schedule_db.forget_scope_job)
+    record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
+    list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
+    existing_user_ids = _(memory_schedule_db.existing_user_ids)
+
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
     record_guild_joined = _(bot_analytics_db.record_guild_joined)
@@ -601,6 +622,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -904,6 +926,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
 
@@ -1023,6 +1046,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
     publish_workspace_skill_file = d.publish_workspace_skill_file
+    skill_root_has_room = d.skill_root_has_room
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
@@ -1091,6 +1115,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     upsert_bot_install = d.upsert_bot_install
     revoke_bot_install = d.revoke_bot_install
 
+    # ============ Memory Scope Schedules ============ #
+    get_scope_schedule = d.get_scope_schedule
+    claim_scope_schedule = d.claim_scope_schedule
+    record_scope_jobs = d.record_scope_jobs
+    set_scope_state = d.set_scope_state
+    forget_scope_job = d.forget_scope_job
+    record_scope_run = d.record_scope_run
+    list_user_scope_schedules = d.list_user_scope_schedules
+    list_scope_schedules = d.list_scope_schedules
+    existing_user_ids = d.existing_user_ids
+
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event
     record_guild_joined = d.record_guild_joined
@@ -1103,6 +1138,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired

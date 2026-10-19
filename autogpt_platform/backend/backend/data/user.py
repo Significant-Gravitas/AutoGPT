@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -21,6 +22,7 @@ from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -462,6 +464,50 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
     return credentials
 
 
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return refreshable user OAuth credentials expired at or before the cutoff.
+
+    This cross-user query is for trusted system callers such as the scheduler,
+    never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+    )
+    now = int(time.time())
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping"
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and credential.access_token_expires_at <= refresh_before
+            and (
+                credential.refresh_token_expires_at is None
+                or credential.refresh_token_expires_at > now
+            )
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
+
+
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
     """Full-list replace of the user's USER-scoped credential rows.
 
@@ -845,16 +891,17 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
-        # local time. Fire-and-forget so this profile update returns
-        # immediately — the helper's lazy drift-detection path (via the
-        # Redis dedup key value) is the durable backstop if this
-        # fails or the user doesn't trigger a memory write within the
-        # 7-day key TTL.
+        # local time. Every memory scope of the user (the account and each
+        # scheduled expert) is re-registered. Fire-and-forget so this
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
-            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+            from backend.copilot.dream.registry import reregister_user
 
             task = asyncio.create_task(
-                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                reregister_user(user_id),
                 name=f"tz-reregister-{user_id[:12]}",
             )
             _background_tasks.add(task)

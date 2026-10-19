@@ -52,7 +52,17 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   const { nodeId, uiType } = registry.formContext;
   const parentAccessibility = useFieldAccessibilityContext(id);
 
-  const { isInputConnected } = useEdgeStore();
+  const uiOptions = getUiOptions(uiSchema);
+  const handleId = getHandleId({
+    uiOptions,
+    id: id,
+    schema: schema,
+  });
+  // Select only this field's connection so an edge write elsewhere on the
+  // canvas (connect, select, execution beads) does not re-render every field.
+  const isHandleConnected = useEdgeStore((state) =>
+    state.isInputConnected(nodeId, cleanUpHandleId(handleId)),
+  );
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[registry.formContext.nodeId ?? ""],
   );
@@ -65,7 +75,6 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     return children;
   }
 
-  const uiOptions = getUiOptions(uiSchema);
   const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
     registry,
@@ -79,15 +88,9 @@ export default function FieldTemplate(props: FieldTemplateProps) {
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
-  const handleId = getHandleId({
-    uiOptions,
-    id: id,
-    schema: schema,
-  });
   const updatedUiSchema = updateUiOption(uiSchema, {
     handleId: handleId,
   });
-  const isHandleConnected = isInputConnected(nodeId, cleanUpHandleId(handleId));
 
   const shouldDisplayLabel =
     displayLabel ||

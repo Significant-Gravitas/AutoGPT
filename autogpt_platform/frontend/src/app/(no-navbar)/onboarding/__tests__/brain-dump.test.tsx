@@ -391,6 +391,22 @@ afterEach(() => {
 });
 
 describe("onboarding brain dump — flag gating", () => {
+  it("explains what to share before choosing Talk or Write", async () => {
+    mockFlags = { "onboarding-brain-dump": true };
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByText(
+        "Tell me what you do and what eats up your week. Two or three minutes is plenty. You can type instead if you prefer.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
   it("renders the brain dump in the pillbox slot when the flag is on", async () => {
     mockFlags = { "onboarding-brain-dump": true };
     landOnPainPointsStep();
