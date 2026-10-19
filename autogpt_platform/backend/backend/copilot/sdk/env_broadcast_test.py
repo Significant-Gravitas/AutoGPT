@@ -138,6 +138,17 @@ def test_mixed_vendor_fallback_keeps_openrouters_routing(
         ("anthropic", ["anthropic"]),
         ("", []),
         ("[]", []),
+        # The hosted platform's value (the copilot executor's Helm values).
+        (
+            "google-vertex/global,anthropic,amazon-bedrock,azure/global,claude-on-aws",
+            [
+                "google-vertex/global",
+                "anthropic",
+                "amazon-bedrock",
+                "azure/global",
+                "claude-on-aws",
+            ],
+        ),
     ],
 )
 def test_the_provider_order_reads_from_the_environment_in_either_spelling(
