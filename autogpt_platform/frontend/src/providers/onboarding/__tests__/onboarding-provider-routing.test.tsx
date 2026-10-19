@@ -10,7 +10,6 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast }),
 }));
 let mockPathname = "/signup";
-let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -18,8 +17,8 @@ vi.mock("next/navigation", () => ({
     push: vi.fn(),
     refresh: vi.fn(),
   }),
-  useSearchParams: () => mockSearchParams,
   usePathname: () => mockPathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 let mockIsLoggedIn = true;
@@ -70,7 +69,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     routerReplace.mockClear();
     toast.mockClear();
     completionError = null;
-    mockSearchParams = new URLSearchParams();
+    window.history.replaceState(null, "", "/");
     mockPathname = "/signup";
     mockIsLoggedIn = true;
     mockIsCompleted = false;
@@ -173,7 +172,8 @@ describe("OnboardingProvider routing — logged-in user", () => {
 
   test("a safe ?next= deep link defers to the auth page — no redirect from provider", async () => {
     mockPathname = "/login";
-    mockSearchParams = new URLSearchParams({ next: "/library" });
+    // The provider reads `next` off the committed URL, not useSearchParams.
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
     mockIsCompleted = true;
 
     render(
@@ -194,7 +194,11 @@ describe("OnboardingProvider routing — logged-in user", () => {
     // fix, OnboardingProvider would defer (assuming the auth page handles it)
     // while the auth page silently drops the value — deadlocking the user.
     mockPathname = "/signup";
-    mockSearchParams = new URLSearchParams({ next: "https://phishing.site" });
+    window.history.replaceState(
+      null,
+      "",
+      `/signup?next=${encodeURIComponent("https://phishing.site")}`,
+    );
     mockIsCompleted = false;
 
     render(
