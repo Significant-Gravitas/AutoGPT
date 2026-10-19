@@ -247,7 +247,10 @@ def capture_turn(
     ``$ai_span`` of a subtask in the trace of the reply it works for.
 
     *outcome* is ``completed``, ``cancelled`` or ``failed``; only ``failed``
-    is an error, and *error_code* (a code, never a message) says which."""
+    is an error, and *error_code* (a code, never a message) says which.
+
+    A redelivered turn ends twice; the turn id is the event's dedup key, so
+    PostHog keeps one root (or one subtask span) per turn."""
     try:
         trace_id = trace_id_for(entry)
         failed = outcome == "failed"
@@ -278,7 +281,13 @@ def capture_turn(
             ) or trace_id
             properties["depth"] = envelope.depth if envelope else None
             event = PostHogEvent.AI_SPAN
-        posthog_client.capture(entry.user_id, event, properties, source=SOURCE)
+        posthog_client.capture(
+            entry.user_id,
+            event,
+            properties,
+            source=SOURCE,
+            dedup_key=entry.turn_id,
+        )
     except Exception:
         logger.warning("Failed to send the turn's PostHog trace", exc_info=True)
 

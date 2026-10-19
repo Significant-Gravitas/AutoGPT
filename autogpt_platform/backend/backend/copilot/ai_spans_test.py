@@ -515,6 +515,53 @@ def test_a_turn_end_failure_is_swallowed(capture: MagicMock):
     _end(_entry())
 
 
+def _redelivered_twice(
+    entry: CoPilotExecutionEntry, mocker: pytest_mock.MockerFixture
+) -> list[dict]:
+    """End the same turn twice, as a redelivered turn would, and return what
+    reached the PostHog client."""
+    client = MagicMock()
+    mocker.patch.object(posthog_client, "get_posthog_client", return_value=client)
+    _end(entry)
+    _end(entry)
+    return [call.kwargs for call in client.capture.call_args_list]
+
+
+def test_a_redelivered_reply_sends_one_trace_root(
+    mocker: pytest_mock.MockerFixture,
+):
+    first, second = _redelivered_twice(_entry(), mocker)
+
+    assert first["event"] == PostHogEvent.AI_TRACE.value
+    assert first["uuid"] is not None
+    assert first["uuid"] == second["uuid"]
+    assert first["properties"]["$insert_id"] == TURN_ID
+
+
+def test_a_redelivered_subtask_sends_one_span(mocker: pytest_mock.MockerFixture):
+    entry = _entry(
+        turn_id="child-turn",
+        envelope=TurnEnvelope(tree_id="root-turn", depth=1, ai_trace_id="root-turn"),
+    )
+
+    first, second = _redelivered_twice(entry, mocker)
+
+    assert first["event"] == PostHogEvent.AI_SPAN.value
+    assert first["uuid"] is not None
+    assert first["uuid"] == second["uuid"]
+
+
+def test_different_turns_are_not_deduplicated(mocker: pytest_mock.MockerFixture):
+    client = MagicMock()
+    mocker.patch.object(posthog_client, "get_posthog_client", return_value=client)
+
+    _end(_entry(turn_id="turn-a"))
+    _end(_entry(turn_id="turn-b"))
+
+    first, second = (call.kwargs for call in client.capture.call_args_list)
+    assert first["uuid"] != second["uuid"]
+
+
 # -- stamp_turn_trace_id ------------------------------------------------------
 
 
