@@ -111,9 +111,6 @@ vi.mock("../useCopilotPendingChips", () => ({
   useCopilotPendingChips: () => ({ queuedMessages: [], queueMessage: vi.fn() }),
 }));
 
-vi.mock("../useCopilotNotifications", () => ({
-  useCopilotNotifications: () => undefined,
-}));
 vi.mock("../useSessionTitlePoll", () => ({
   useSessionTitlePoll: () => undefined,
 }));
