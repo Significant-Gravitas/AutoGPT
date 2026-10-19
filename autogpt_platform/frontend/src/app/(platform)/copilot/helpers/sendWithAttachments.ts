@@ -1,3 +1,7 @@
+import {
+  isPaywallError,
+  toastPlanRequired,
+} from "@/components/contextual/PaywallToast/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { FileUIPart, UIMessage } from "ai";
@@ -167,6 +171,10 @@ async function uploadFiles(
           mime_type: data.mime_type || "application/octet-stream",
         } as UploadedFile;
       } catch (err) {
+        if (isPaywallError(err)) {
+          toastPlanRequired("Attaching files needs an active plan");
+          throw err;
+        }
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",

@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  isPaywallError,
+  toastPlanRequired,
+} from "@/components/contextual/PaywallToast/helpers";
 import { useContext, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -44,6 +48,10 @@ export function useInlineConnectForm({
       // this; only the success payload carries an id.
       onSuccess("id" in created.data ? created.data : undefined);
     } catch (error) {
+      if (isPaywallError(error)) {
+        toastPlanRequired("Connecting a service needs an active plan");
+        return;
+      }
       toast({
         title: failureTitle,
         description:

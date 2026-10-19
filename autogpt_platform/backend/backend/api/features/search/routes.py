@@ -14,7 +14,9 @@ agents (library + store), workspace files, and chat sessions.
 from __future__ import annotations
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Query, Security
+from fastapi import APIRouter, Depends, Query, Security
+
+from backend.copilot.rate_limit import enforce_payment_paywall
 
 from . import service
 from .model import GlobalSearchResponse
@@ -29,7 +31,10 @@ MAX_QUERY_LENGTH = 512
 
 router = APIRouter(
     tags=["search"],
-    dependencies=[Security(autogpt_auth_lib.requires_user)],
+    dependencies=[
+        Security(autogpt_auth_lib.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 
 

@@ -782,3 +782,24 @@ async def test_expert_preset_trigger_fails_closed_when_tenancy_lookup_fails(mock
 
     get_graph.assert_not_awaited()
     add_exec.assert_not_awaited()
+
+
+@pytest.mark.parametrize("paywalled", [True, False])
+def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
+    if paywalled:
+        request.getfixturevalue("paywalled_user")
+    node = MagicMock()
+    node.input_default = {}
+    webhook = _make_webhook(ProviderName("generic_webhook"), triggered_nodes=[node])
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=_manager(webhook.provider),
+        )
+    ]
+    with ExitStack() as stack:
+        _, _, _, reward, run_node, _, _ = [stack.enter_context(p) for p in patches]
+        resp = _post("generic_webhook")
+
+    assert resp.status_code == 200, resp.text
+    assert reward.await_count == run_node.await_count == (0 if paywalled else 1)

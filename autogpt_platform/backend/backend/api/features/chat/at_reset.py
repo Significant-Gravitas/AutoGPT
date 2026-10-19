@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Response, Security
 from pydantic import BaseModel, Field, model_validator
 
 from backend.api.features.chat.routes import (
@@ -24,7 +24,7 @@ from backend.copilot.at_reset import (
 )
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.rate_limit import RateLimitUnavailable, enforce_payment_paywall
 from backend.executor.scheduler import CopilotTurnJobInfo, SchedulerClient
 from backend.util.clients import get_scheduler_client
 
@@ -77,7 +77,7 @@ class AtResetTurnsResponse(BaseModel):
 @router.post(
     "/sessions/{session_id}/at-reset",
     summary="Schedule turn at budget reset",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found, or not writable"},
         409: {

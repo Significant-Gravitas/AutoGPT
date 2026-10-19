@@ -515,6 +515,41 @@ describe("ConnectToolsPanel — inline API key flow", () => {
   });
 });
 
+describe("ConnectToolsPanel — without a plan", () => {
+  it("points to the plans instead of reporting a failed save", async () => {
+    stubPanel();
+    server.use(
+      http.post(CREATE_CREDENTIALS_URL, () =>
+        HttpResponse.json(
+          { detail: "A subscription is required." },
+          { status: 402 },
+        ),
+      ),
+    );
+
+    renderPanel();
+    const user = await openGithub();
+    await user.click(screen.getByRole("button", { name: /API Key/ }));
+    await user.type(await screen.findByLabelText("Name"), "Work key");
+    await user.type(
+      screen.getByLabelText("API key", { selector: "input" }),
+      "<test-api-key>",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Connecting a service needs an active plan",
+        }),
+      ),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't save API key" }),
+    );
+  });
+});
+
 describe("ConnectToolsPanel — inline OAuth flow", () => {
   it("runs the whole OAuth exchange without leaving the panel", async () => {
     stubPanel();
