@@ -7918,6 +7918,56 @@
         }
       }
     },
+    "/api/experts/{expert_id}/mode": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Mode",
+        "description": "Set the approval mode new web chats with this expert start on.\n\nThreads already open keep the mode stored on them, and the composer's\nselector still overrides it per thread. Routines, scheduled follow-ups\nand chats driven from a linked chat platform are not gated by it.",
+        "operationId": "update_expert_mode",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertModeUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Approval modes are not enabled for this account"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/onboarding": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -15671,7 +15721,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.  409 means the delete could not be ordered with another\nchange to the owner's skills; nothing was deleted, so try again.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16473,6 +16523,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -21943,6 +21994,16 @@
             "type": "boolean",
             "title": "Expert Kickoff",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           }
         },
         "additionalProperties": false,
@@ -23695,6 +23756,16 @@
             ],
             "title": "Learning Paused At"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
@@ -23975,7 +24046,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Job Title"
           },
-          "is_archived": { "type": "boolean", "title": "Is Archived" }
+          "is_archived": { "type": "boolean", "title": "Is Archived" },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
         },
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
@@ -24003,6 +24084,24 @@
         "type": "object",
         "required": ["learning_paused"],
         "title": "ExpertLearningPolicyRequest"
+      },
+      "ExpertModeUpdate": {
+        "properties": {
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          }
+        },
+        "type": "object",
+        "required": ["autopilot_mode"],
+        "title": "ExpertModeUpdate",
+        "description": "Set the approval mode new web chats with an expert start on.\n\n``None`` clears it back to the platform default. The field is required,\nso an empty body cannot clear it by accident."
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -24410,6 +24509,16 @@
               { "type": "null" }
             ],
             "title": "Learning Paused At"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

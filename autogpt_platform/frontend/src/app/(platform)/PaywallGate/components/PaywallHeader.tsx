@@ -13,7 +13,7 @@ export function PaywallHeader() {
         Choose a plan to keep working
       </Text>
       <Text variant="body" className="!text-zinc-500">
-        Your chats, agents and files are saved.
+        Your chats, workflows and files are saved.
       </Text>
       <Link
         href="/tour/chat?utm_source=platform_paywall"

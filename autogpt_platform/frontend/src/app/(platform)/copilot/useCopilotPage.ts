@@ -32,6 +32,7 @@ import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
+import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -262,29 +263,11 @@ export function useCopilotPage({
   // turn — see onSend.
   const isLocalStreamSettled =
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
-  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
-  isLocalStreamSettledRef.current = isLocalStreamSettled;
-  // Each waiter learns whether the stream settled (send now) or the hook
-  // went away first (the chat host unmounts on a chat switch and on reload;
-  // the follow-up then stays in sessionStorage, see below).
-  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
-  useEffect(() => {
-    if (!isLocalStreamSettled) return;
-    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
-  }, [isLocalStreamSettled]);
-  useEffect(
-    () => () => {
-      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
-    },
-    [],
-  );
-
-  function waitForLocalSettle() {
-    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      settleWaitersRef.current.push(resolve);
-    });
-  }
+  // A held follow-up learns whether the stream settled (send now) or the
+  // hook went away first (the chat host unmounts on a chat switch and on
+  // reload; the follow-up then stays in sessionStorage, see below).
+  const { waitUntilSettled: waitForLocalSettle, markUnsettled } =
+    useSettleGate(isLocalStreamSettled);
 
   // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
   // the backend-buffered ones, since from the user's side they are the same
@@ -456,7 +439,7 @@ export function useCopilotPage({
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
-      isLocalStreamSettledRef.current = false;
+      markUnsettled();
     }
     if (heldForLocalSettle && sessionId) {
       releaseFollowUp(sessionId, trimmed);
