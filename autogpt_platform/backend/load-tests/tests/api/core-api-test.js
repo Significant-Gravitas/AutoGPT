@@ -2,7 +2,7 @@
 import http from "k6/http";
 import { check } from "k6";
 import { getEnvironmentConfig } from "../../configs/environment.js";
-import { getPreAuthenticatedHeaders } from "../../configs/pre-authenticated-tokens.js";
+import { authHeaders, authSetupTimeout, setupAuth } from "../../lib/auth.js";
 
 const config = getEnvironmentConfig();
 
@@ -23,31 +23,22 @@ export const options = {
     name: "AutoGPT Platform - Core API Validation Test",
   },
   // Timeout configurations to prevent early termination
-  setupTimeout: "60s",
+  setupTimeout: authSetupTimeout(),
   teardownTimeout: "60s",
   noConnectionReuse: false,
   userAgent: "k6-load-test/1.0",
 };
 
-export default function () {
+export function setup() {
+  return setupAuth();
+}
+
+export default function (data) {
   // Get load multiplier - how many concurrent requests each VU should make
   const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
+  const headers = authHeaders(data);
 
   try {
-    // Step 1: Get pre-authenticated headers (no auth API calls during test)
-    const headers = getPreAuthenticatedHeaders(__VU);
-
-    // Handle missing token gracefully
-    if (!headers || !headers.Authorization) {
-      console.log(
-        `⚠️ VU ${__VU} has no valid pre-authenticated token - skipping core API test`,
-      );
-      check(null, {
-        "Core API: Failed gracefully without crashing VU": () => true,
-      });
-      return; // Exit iteration gracefully without crashing
-    }
-
     console.log(
       `🚀 VU ${__VU} making ${requestsPerVU} concurrent API requests...`,
     );
@@ -59,19 +50,19 @@ export default function () {
       // Add core API requests that represent realistic user workflows
       requests.push({
         method: "GET",
-        url: `${config.API_BASE_URL}/api/credits`,
+        url: `${config.API_BASE_URL}/credits`,
         params: { headers },
       });
 
       requests.push({
         method: "GET",
-        url: `${config.API_BASE_URL}/api/graphs`,
+        url: `${config.API_BASE_URL}/graphs`,
         params: { headers },
       });
 
       requests.push({
         method: "GET",
-        url: `${config.API_BASE_URL}/api/blocks`,
+        url: `${config.API_BASE_URL}/blocks`,
         params: { headers },
       });
     }

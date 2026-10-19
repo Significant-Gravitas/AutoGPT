@@ -9,7 +9,7 @@ const PRIVACY_COPY =
 
 export function PrivacyNote() {
   return (
-    <div className="fixed inset-x-0 bottom-20 flex items-center justify-center gap-2 px-4">
+    <div className="flex items-center justify-center gap-2 px-4">
       <Icon icon={LockIcon} size={14} className="shrink-0 text-zinc-400" />
       <Text
         variant="small"

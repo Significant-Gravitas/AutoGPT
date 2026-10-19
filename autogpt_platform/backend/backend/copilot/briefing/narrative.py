@@ -39,6 +39,7 @@ from backend.copilot.dream.llm import (
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
+from backend.copilot.trial_cost_context import attributed_usage
 
 from .models import BriefingContent, BriefingRunItem
 
@@ -87,6 +88,7 @@ class NarrativeResponse(BaseModel):
     narrative: str
 
 
+@attributed_usage
 async def compose_narrative(user_id: str, content: BriefingContent) -> str | None:
     """Write the briefing's opening paragraph, or ``None`` to fall back.
 

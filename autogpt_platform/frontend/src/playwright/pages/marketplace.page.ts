@@ -38,7 +38,7 @@ export class MarketplacePage extends BasePage {
 
   async getMarketplaceTitle(page: Page) {
     const { getText } = getSelectors(page);
-    return getText("Explore AI agents", { exact: false });
+    return getText("Explore AI workflows", { exact: false });
   }
 
   async getCreatorsSection(page: Page) {
@@ -231,7 +231,7 @@ export class MarketplacePage extends BasePage {
     await expect(publishAgentModal).toBeVisible();
     await expect(
       publishAgentModal.getByText(
-        "Pick the saved agent version you want to send to marketplace review.",
+        "Pick the saved workflow version you want to send to marketplace review.",
       ),
     ).toBeVisible();
 
@@ -246,7 +246,7 @@ export class MarketplacePage extends BasePage {
       .click();
 
     await expect(
-      publishAgentModal.getByText("Write a bit of details about your agent"),
+      publishAgentModal.getByText("Write a bit of details about your workflow"),
     ).toBeVisible();
 
     const suffix = Date.now().toString().slice(-6);

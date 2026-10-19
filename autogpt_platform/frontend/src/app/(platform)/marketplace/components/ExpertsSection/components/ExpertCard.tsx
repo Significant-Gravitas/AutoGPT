@@ -1,5 +1,6 @@
 import {
   expertPastel,
+  getCategoryHex,
   getExpertTopicHex,
 } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
@@ -67,7 +68,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
           avatarUrl={expert.avatar_url}
           size={88}
           backgroundColor={topicColor}
-          className="rounded-full ring-4 ring-white"
+          className="rounded-full border border-[#e3e3e3] ring-4 ring-white"
         />
 
         <div>
@@ -76,6 +77,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
             role={expert.role}
             jobTitle={expert.job_title}
             nameAlign="baseline"
+            areaColor={getCategoryHex(area)}
           />
           {area ? <CategoryTag category={area} className="mt-2" /> : null}
           <ExpertTagline tagline={expert.tagline} compact />

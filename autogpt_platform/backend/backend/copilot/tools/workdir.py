@@ -17,6 +17,7 @@ from backend.copilot.context import (
     resolve_sandbox_path,
 )
 from backend.copilot.tools.sandbox import make_session_path
+from backend.util.sandbox_login import run_internal
 
 from .models import ErrorResponse
 
@@ -107,7 +108,7 @@ async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
-            await sandbox.commands.run(f"rm -f {quoted}")
+            await run_internal(sandbox, f"rm -f {quoted}")
             return []
     except Exception:
         logger.warning(
@@ -152,7 +153,7 @@ async def set_executable(
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
-            await sandbox.commands.run(f"chmod {'+' if executable else '-'}x {quoted}")
+            await run_internal(sandbox, f"chmod {'+' if executable else '-'}x {quoted}")
             return []
     except Exception:
         logger.warning(

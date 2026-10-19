@@ -17,6 +17,8 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import service_rpc_models_test_support as rpc_models
+from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -33,6 +35,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
     get_service_client,
+    resolve_type_hints,
 )
 
 TEST_SERVICE_PORT = 8765
@@ -129,6 +132,11 @@ class ServiceTest(AppService):
         """Method that always fails - for testing no retry when disabled"""
         raise RuntimeError("Intended error for testing")
 
+    # Exposed functions defined in another module that uses
+    # ``from __future__ import annotations`` (string annotations).
+    echo_record = expose(rpc_models.echo_record)
+    list_records = expose(rpc_models.list_records)
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -144,6 +152,24 @@ class ServiceTestClient(AppServiceClient):
     add_async = endpoint_to_async(ServiceTest.add)
     list_reviews_async = endpoint_to_async(ServiceTest.list_reviews)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
+    echo_record = endpoint_to_async(ServiceTest.echo_record)
+    list_records = endpoint_to_async(ServiceTest.list_records)
+
+
+@pytest.mark.asyncio
+async def test_rpc_resolves_future_annotations_for_request_and_return(server):
+    """A model-valued argument and a ``Model | None`` return declared with
+    string annotations in another module must round-trip as models, not
+    raw dicts, and ``None`` must survive."""
+    with ServiceTest():
+        client = get_service_client(ServiceTestClient)
+        echoed = await client.echo_record(rpc_models.SampleRecord(id="r1", count=2))
+        assert isinstance(echoed, rpc_models.SampleRecord)
+        assert echoed.count == 3
+        assert await client.echo_record(rpc_models.SampleRecord(id="missing")) is None
+        listed = await client.list_records(["a", "b"])
+        assert [r.id for r in listed] == ["a", "b"]
+        assert all(isinstance(r, rpc_models.SampleRecord) for r in listed)
 
 
 @pytest.mark.asyncio
@@ -1098,6 +1124,10 @@ class TestForwardRefReturnAnnotation:
         with pytest.raises(ValidationError):
             adapter.validate_python([{"id": "0"}, {"id": "1"}])
 
+        resolved = resolve_type_hints(_returns_at_most_one_review)["return"]
+        with pytest.raises(ValidationError):
+            TypeAdapter(resolved).validate_python([{"id": "0"}, {"id": "1"}])
+
     def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
         """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""
 
@@ -1153,3 +1183,59 @@ async def test_forward_ref_return_is_deserialized_over_the_async_rpc():
 
     assert reviews == [ReviewLike(id="0")]
     assert isinstance(reviews[0], ReviewLike)
+
+
+def _client_recording_requests(
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> tuple[Any, list[httpx.Request]]:
+    """A client built as in production, with only its network layer swapped
+    for one that records each request and answers 8."""
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json=8)
+
+    client = get_service_client(ServiceTestClient)
+    inner = cast(Any, client)
+    sync_client = inner._create_sync_client()
+    sync_client._transport = httpx.MockTransport(answer)
+    inner._sync_clients[ServiceTest.__name__] = sync_client
+    async_client = inner._create_async_client()
+    async_client._transport = httpx.MockTransport(answer)
+    inner._async_clients[loop] = async_client
+    return client, sent
+
+
+def test_an_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests()
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+    assert f"sentry-trace_id={transaction.trace_id}" in request.headers["baggage"]
+
+
+@pytest.mark.asyncio
+async def test_an_async_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests(asyncio.get_running_loop())
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert await client.add_async(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+
+
+def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
+    """Without a transaction the service starts a trace of its own rather than
+    joining whatever trace the calling thread last saw."""
+    client, sent = _client_recording_requests()
+
+    assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert "sentry-trace" not in request.headers
+    assert "baggage" not in request.headers

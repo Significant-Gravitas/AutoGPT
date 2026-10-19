@@ -6,6 +6,8 @@ import { TourEvent } from "@/services/analytics/posthog-events";
 // The tour is public and pre-signup: nothing here may carry an identifier.
 
 export type TourCtaLabel =
+  | "free-trial"
+  | "signup"
   | "pricing"
   | "another-scenario"
   | "self-host"
