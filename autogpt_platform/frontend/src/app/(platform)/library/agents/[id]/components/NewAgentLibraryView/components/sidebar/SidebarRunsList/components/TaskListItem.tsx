@@ -27,37 +27,40 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
-    <IconWrapper className="border-red-50 bg-red-50">
+    <IconWrapper className="border-red-50 bg-red-50" label="Task incomplete">
       <Icon icon={AlertCircleIcon} size={16} className="text-red-700" />
     </IconWrapper>
   ),
   QUEUED: (
-    <IconWrapper className="border-yellow-50 bg-yellow-50">
+    <IconWrapper className="border-yellow-50 bg-yellow-50" label="Task queued">
       <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   RUNNING: (
-    <IconWrapper className="border-yellow-50 bg-yellow-50">
+    <IconWrapper className="border-yellow-50 bg-yellow-50" label="Task running">
       <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper className="border-yellow-50 bg-yellow-50">
+    <IconWrapper
+      className="border-yellow-50 bg-yellow-50"
+      label="Task awaiting review"
+    >
       <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   COMPLETED: (
-    <IconWrapper className="border-green-50 bg-green-50">
+    <IconWrapper className="border-green-50 bg-green-50" label="Task completed">
       <Icon icon={CheckmarkCircle02Icon} size={16} className="text-green-700" />
     </IconWrapper>
   ),
   TERMINATED: (
-    <IconWrapper className="border-slate-50 bg-slate-50">
+    <IconWrapper className="border-slate-50 bg-slate-50" label="Task stopped">
       <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />
     </IconWrapper>
   ),
   FAILED: (
-    <IconWrapper className="border-red-50 bg-red-50">
+    <IconWrapper className="border-red-50 bg-red-50" label="Task failed">
       <Icon icon={CancelCircleIcon} size={16} className="text-red-700" />
     </IconWrapper>
   ),
