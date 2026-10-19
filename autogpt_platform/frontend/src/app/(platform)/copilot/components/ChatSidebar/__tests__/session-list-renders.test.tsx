@@ -44,6 +44,18 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
+const exportChat = vi.fn();
+vi.mock("../../../helpers/exportChatAsMarkdown", () => ({
+  fetchAndExportChat: (id: string, title: string | null | undefined) =>
+    exportChat(id, title),
+}));
+
+vi.mock("../../../sharing/ShareChatDialog", () => ({
+  ShareChatDialog: ({ sessionId }: { sessionId: string }) => (
+    <div role="dialog" aria-label={`Share ${sessionId}`} />
+  ),
+}));
+
 vi.mock("../../UsageLimits/UsagePopover/UsagePopover", () => ({
   UsagePopover: () => null,
 }));
@@ -229,6 +241,58 @@ describe("ChatSidebar — session rows while editing and as they age", () => {
     ]);
     expect(screen.getByText("Yesterday")).toBeDefined();
     expect(screen.getAllByText("Today")).toHaveLength(1);
+  });
+});
+
+describe("ChatSidebar — shared row callbacks", () => {
+  async function openActionsFor(title: string) {
+    const row = (await screen.findByText(title)).closest("div.group");
+    if (!row) throw new Error(`row not found for ${title}`);
+    fireEvent.pointerDown(
+      within(row as HTMLElement).getByRole("button", { name: /more actions/i }),
+      { button: 0 },
+    );
+  }
+
+  it("runs each row action on that row's own session", async () => {
+    const renames: string[] = [];
+    serveList();
+    server.use(
+      http.patch("*/api/chat/sessions/:id/title", ({ params }) => {
+        renames.push(String(params.id));
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    exportChat.mockClear();
+    renderSidebar();
+
+    await openActionsFor("Third chat");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /export chat/i }),
+    );
+    await waitFor(() =>
+      expect(exportChat).toHaveBeenCalledWith("s3", "Third chat"),
+    );
+
+    await openActionsFor("Second chat");
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /share chat/i }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Share s2" }),
+    ).toBeDefined();
+
+    await openActionsFor("First chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename/i }));
+    const input = await screen.findByLabelText("Rename chat");
+    fireEvent.change(input, { target: { value: "Never saved" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.blur(input);
+    await settle();
+
+    expect(screen.queryByLabelText("Rename chat")).toBeNull();
+    expect(screen.getByText("First chat")).toBeDefined();
+    expect(renames).toEqual([]);
   });
 });
 
