@@ -162,7 +162,7 @@ Initial evaluation checks:
   into a fresh graph. It inspects stored relationships for six concrete details.
 - Black, isort, Ruff, and scoped Pyright passed. Full application E2E was not run.
 
-The review follow-up passed **339 unit tests** with one pre-existing xfail.
+The first review follow-up passed **339 unit tests** with one pre-existing xfail.
 New tests invoke graphiti-core's real node/edge extraction entry points and reject
 an inactive dispatcher. Four assertion regressions were reproduced before fixing
 row-order dependence and cross-fact matches. Detail checks now match individual
@@ -170,6 +170,16 @@ facts and require each dispatch day in a dispatch-related fact. CI's complete
 Python 3.11/3.12/3.13 reports validate after registering the three intentional
 paid-test skips. The paid run above predates the stricter assertions; it was not
 repeated after the provider's daily quota was exhausted.
+
+The next assertion review passed **364 unit tests** with one pre-existing xfail.
+Sixteen false passes were reproduced before adding exact payment-value checks
+and scenario-specific checks for invented signing claims and explicit company
+misattribution. Positive controls allow negated signing statements, source
+instructions, and supplier briefs naming the counterparty. These pattern checks
+cover the demonstrated wording; they are not a general semantic judge. Offline
+replay of four saved migrated-Luna runs of the incidental-detail scenario passed
+the tightened checks. This replay made no new model calls and does not replace
+a fresh three-source paid integration run.
 
 The full pre-commit invocation encountered local Windows/WSL tooling failures:
 Bash could not resolve the Windows worktree metadata or find Poetry/Node, and the

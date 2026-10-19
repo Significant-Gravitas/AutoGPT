@@ -1,14 +1,14 @@
 import pytest
 
-from .extraction_quality_integration_test import _missing_details
+from .extraction_quality_integration_test import _extraction_issues
 
 _FACTS = {
-    "payment": ["Elm Studio uses net 45 payment terms."],
-    "year": ["Elm Studio's financial year ends in September."],
-    "font": ["Elm Studio uses Lato for documents."],
-    "warehouse": ["Elm Studio dispatches from its Omaha warehouse."],
-    "days": ["Elm Studio dispatches on Mondays and Wednesdays."],
-    "minimum": ["Elm Studio's minimum order is 18 cartons."],
+    "payment": ["Jordan Rivera's organization uses net 45 payment terms."],
+    "year": ["Jordan Rivera's organization's financial year ends in September."],
+    "font": ["Jordan Rivera requests Lato for the supplier brief documents."],
+    "warehouse": ["Jordan Rivera's organization dispatches from its Omaha warehouse."],
+    "days": ["Jordan Rivera's organization dispatches on Mondays and Wednesdays."],
+    "minimum": ["Jordan Rivera's organization's minimum order is 18 cartons."],
 }
 
 
@@ -18,16 +18,20 @@ _FACTS = {
         ({}, []),
         (
             {
-                "payment": ["Elm Studio's payment term is forty-five days."],
-                "minimum": ["Elm Studio's minimum order is eighteen cartons."],
+                "payment": [
+                    "Jordan Rivera's organization's payment term is forty-five days."
+                ],
+                "minimum": [
+                    "Jordan Rivera's organization's minimum order is eighteen cartons."
+                ],
             },
             [],
         ),
         pytest.param(
             {
                 "days": [
-                    "Elm Studio ships on Wednesdays.",
-                    "Elm Studio ships on Mondays.",
+                    "Jordan Rivera's organization ships on Wednesdays.",
+                    "Jordan Rivera's organization ships on Mondays.",
                 ]
             },
             [],
@@ -39,7 +43,7 @@ _FACTS = {
         pytest.param(
             {
                 "payment": [
-                    "Elm Studio's payment term",
+                    "Jordan Rivera's organization's payment term",
                     "45 days remain until the audit.",
                 ]
             },
@@ -53,4 +57,82 @@ _FACTS = {
 )
 def test_details_require_coherent_facts_without_row_order(replacement, expected):
     facts = [fact for detail in (_FACTS | replacement).values() for fact in detail]
-    assert _missing_details(facts) == expected
+    assert _extraction_issues(facts) == expected
+
+
+@pytest.mark.parametrize(
+    "term",
+    [
+        "net 450 days",
+        "payment term is 450 days",
+        "payment term is 145 days",
+        "net 45.5 days",
+    ],
+)
+def test_payment_term_rejects_near_misses(term: str):
+    facts = [
+        fact for key, details in _FACTS.items() if key != "payment" for fact in details
+    ]
+    facts.append(f"Jordan Rivera's organization has a {term}.")
+    assert _extraction_issues(facts) == ["payment term"]
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Elm Studio has already signed an agreement.",
+        "Jordan Rivera signed an agreement with Elm Studio.",
+        "The agreement with Elm Studio has been signed.",
+        "Elm Studio signed the agreement but has not paid.",
+        "Elm Studio has not paid but has signed the agreement.",
+        "No agreement was signed yesterday, but Elm Studio signed today.",
+    ],
+)
+def test_extraction_rejects_invented_signature_claims(claim: str):
+    facts = [fact for details in _FACTS.values() for fact in details]
+    assert _extraction_issues([*facts, claim]) == ["unsupported signed-status claim"]
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        "Elm Studio has not signed an agreement.",
+        "Elm Studio hasn't yet signed an agreement.",
+        "Elm Studio has never signed an agreement.",
+        "No agreement has been signed with Elm Studio.",
+        "Elm Studio signed no agreement.",
+        "Jordan Rivera requested a brief without claiming anything has already been signed.",
+        "Jordan Rivera asked not to claim the agreement has already been signed.",
+        "Jordan Rivera instructed that the supplier brief for Elm Studio must not claim that anything has already been signed.",
+    ],
+)
+def test_extraction_allows_negated_signature_claims(fact: str):
+    facts = [fact for details in _FACTS.values() for fact in details]
+    assert _extraction_issues([*facts, fact]) == []
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        "Elm Studio uses net 45 payment terms.",
+        "Elm Studio's financial year ends in September.",
+        "Elm Studio uses Lato for documents.",
+        "Elm Studio dispatches from its Omaha warehouse.",
+        "Elm Studio dispatches on Mondays and Wednesdays.",
+        "Elm Studio's minimum order is 18 cartons.",
+    ],
+)
+def test_extraction_rejects_counterparty_details(fact: str):
+    facts = [fact for details in _FACTS.values() for fact in details]
+    assert _extraction_issues([*facts, fact]) == ["misattributed company details"]
+
+
+def test_supplier_brief_can_name_elm_studio_without_assigning_its_terms():
+    facts = [
+        (
+            "Elm Studio's supplier brief must use Lato and list Jordan Rivera's payment "
+            "term of net 45 days, September financial year end, Omaha warehouse, "
+            "Monday and Wednesday dispatches, and minimum order of 18 cartons."
+        )
+    ]
+    assert _extraction_issues(facts) == []
