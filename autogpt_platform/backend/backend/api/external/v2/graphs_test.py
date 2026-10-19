@@ -24,6 +24,8 @@ from backend.util.test import SpinTestServer
 from .graphs import (
     create_graph,
     get_graph,
+    list_graph_blocks,
+    list_graph_credential_requirements,
     list_graph_versions,
     set_active_version,
     update_graph,
@@ -448,6 +450,34 @@ async def _preset_version_once_v2_is_active(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_graph_read_without_a_version_is_of_the_active_one(
+    server: SpinTestServer,
+) -> None:
+    auth = await _new_user_auth()
+    graph_id = await _active_v1_and_a_newer_draft(auth)
+
+    graph = await get_graph(graph_id, version=None, auth=auth)
+
+    assert graph.version == 1
+
+
+@pytest.mark.parametrize(
+    "read", [list_graph_blocks, list_graph_credential_requirements]
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_page_read_of_a_graph_is_of_its_active_version(
+    server: SpinTestServer, read
+) -> None:
+    auth = await _new_user_auth()
+    graph_id = await _active_v1_and_a_newer_draft(auth)
+
+    page = await read(graph_id, page=PageRequest(limit=10), auth=auth)
+
+    # The active v1 has no nodes; the draft's code block needs credentials.
+    assert page.items == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_activating_a_draft_deactivates_the_version_that_was_active(
     server: SpinTestServer, mocker: pytest_mock.MockFixture
 ) -> None:
@@ -463,6 +493,24 @@ async def test_activating_a_draft_deactivates_the_version_that_was_active(
     await _save_inactive_then_activate(v1.id, _REQUEST, auth)
 
     assert [call.args[0].version for call in deactivate.await_args_list] == [1]
+
+
+async def _new_user_auth() -> TenantContext:
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    return _AUTH.model_copy(update={"user_id": user_id})
+
+
+async def _active_v1_and_a_newer_draft(auth: TenantContext) -> str:
+    v1 = await create_graph(_REQUEST, auth=auth)
+    draft = GraphCreateRequest(
+        name="Agent",
+        nodes=[GraphNode(id="code", block_id=ExecuteCodeBlock().id)],
+        links=[],
+        is_active=False,
+    )
+    await update_graph(v1.id, draft, auth=auth)
+    return v1.id
 
 
 async def _parent_of_a_sub_graph(user_id: str) -> graph_db.GraphModel:

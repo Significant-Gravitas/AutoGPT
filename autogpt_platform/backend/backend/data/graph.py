@@ -1858,6 +1858,19 @@ async def get_graph_all_versions(
     return versions
 
 
+async def get_active_graph_version(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int | None:
+    """The version marked active. `get_graph(version=None)` returns the newest."""
+    graph = await AgentGraph.prisma().find_first(
+        where={
+            **await _graph_versions_where(graph_id, user_id, None, organization_id),
+            "isActive": True,
+        },
+    )
+    return graph.version if graph else None
+
+
 async def count_graph_versions(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int:

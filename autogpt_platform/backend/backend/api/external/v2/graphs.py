@@ -92,12 +92,8 @@ async def get_graph(
     Returns the active version by default. Pass `version` to retrieve
     a specific version instead.
     """
-    graph = await graph_db.get_graph(
-        graph_id,
-        version,
-        user_id=auth.user_id,
-        include_subgraphs=True,
-        organization_id=auth.organization_id,
+    graph = await _get_graph_version(
+        graph_id, version, auth.user_id, organization_id=auth.organization_id
     )
     if not graph:
         raise HTTPException(
@@ -431,12 +427,8 @@ async def list_graph_blocks(
     """List the unique blocks used by a graph."""
     from backend.blocks import get_block
 
-    graph = await graph_db.get_graph(
-        graph_id,
-        version=None,
-        user_id=auth.user_id,
-        include_subgraphs=True,
-        organization_id=auth.organization_id,
+    graph = await _get_graph_version(
+        graph_id, None, auth.user_id, organization_id=auth.organization_id
     )
     if not graph:
         raise HTTPException(
@@ -472,12 +464,8 @@ async def list_graph_credential_requirements(
     ),
 ) -> Page[CredentialRequirement]:
     """List credential requirements for a graph and matching user credentials."""
-    graph = await graph_db.get_graph(
-        graph_id=graph_id,
-        version=None,
-        user_id=auth.user_id,
-        include_subgraphs=True,
-        organization_id=auth.organization_id,
+    graph = await _get_graph_version(
+        graph_id, None, auth.user_id, organization_id=auth.organization_id
     )
     if not graph:
         raise HTTPException(
@@ -551,3 +539,20 @@ async def _writable_organizations(
     )
     await graph_db.assert_graph_within(graph_id, auth.user_id, organization_ids)
     return organization_ids
+
+
+async def _get_graph_version(
+    graph_id: str, version: Optional[int], user_id: str, organization_id: str
+) -> Optional[graph_db.GraphModel]:
+    """`version`, or else the active one, with its sub-graphs."""
+    if version is None:
+        version = await graph_db.get_active_graph_version(
+            graph_id, user_id, organization_id=organization_id
+        )
+    return await graph_db.get_graph(
+        graph_id,
+        version,
+        user_id=user_id,
+        include_subgraphs=True,
+        organization_id=organization_id,
+    )

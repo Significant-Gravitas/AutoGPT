@@ -6,6 +6,8 @@ the internal API's: anything that runs compute, calls an outside service or
 stores new files or rows needs a plan.
 """
 
+import inspect
+
 import fastapi
 import fastapi.testclient
 import pytest
@@ -22,8 +24,8 @@ from backend.api.external.v2.tenancy import (
     require_paid_permission,
 )
 
-# Named from a live instance, so renaming the check cannot hide every route.
-PLAN_CHECK = require_paid_permission().__qualname__
+# Every route's check is a closure over this one code object.
+PLAN_CHECK = require_paid_permission().__code__
 
 OPEN_WHILE_PAYWALLED = {
     # Reading the account's own data, or the catalog.
@@ -150,7 +152,7 @@ def _routes():
 
 def _depends_on_plan_check(dependant: Dependant) -> bool:
     return any(
-        getattr(dep.call, "__qualname__", None) == PLAN_CHECK
+        (inspect.isfunction(dep.call) and dep.call.__code__ is PLAN_CHECK)
         or _depends_on_plan_check(dep)
         for dep in dependant.dependencies
     )
