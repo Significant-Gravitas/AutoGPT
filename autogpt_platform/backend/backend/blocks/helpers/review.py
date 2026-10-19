@@ -32,6 +32,44 @@ class HITLReviewHelper:
         return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
+    async def get_existing_decision(
+        node_exec_id: str, user_id: str
+    ) -> Optional[ReviewDecision]:
+        """The approval or rejection already recorded for this node execution.
+
+        It binds whatever the node's safe mode is now and outranks node-wide
+        auto-approvals. Returns None when no review exists or it is still
+        waiting. Read-only: ``handle_review_decision`` marks the review
+        processed as before; the safe-mode-off callers need not, since the
+        decision is read again on every run of the node either way.
+        """
+        reviews = (
+            await get_database_manager_async_client().get_reviews_by_node_exec_ids(
+                [node_exec_id], user_id
+            )
+        )
+        review = reviews.get(node_exec_id)
+        if review is None or review.status == ReviewStatus.WAITING:
+            return None
+        should_proceed = review.status == ReviewStatus.APPROVED
+        return ReviewDecision(
+            should_proceed=should_proceed,
+            message=review.review_message
+            or (
+                "Execution approved by reviewer"
+                if should_proceed
+                else "Execution rejected by reviewer"
+            ),
+            review_result=ReviewResult(
+                data=review.payload,
+                status=review.status,
+                message=review.review_message or "",
+                processed=review.processed,
+                node_exec_id=node_exec_id,
+            ),
+        )
+
+    @staticmethod
     async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
         """Create or retrieve a human review from the database."""
         return await get_database_manager_async_client().get_or_create_human_review(
@@ -202,6 +240,18 @@ class HITLReviewHelper:
             ReviewDecision if review is complete (approved/rejected),
             None if execution should pause (awaiting review)
         """
+        # This node execution's own answer outranks any blanket approval: an
+        # "approve future" given on one iteration of the node must not run
+        # another iteration the human rejected.
+        if decision := await HITLReviewHelper.get_existing_decision(
+            node_exec_id=node_exec_id, user_id=user_id
+        ):
+            if not decision.review_result.processed:
+                await HITLReviewHelper.update_review_processed_status(
+                    node_exec_id=node_exec_id, processed=True
+                )
+            return decision
+
         review_result = await HITLReviewHelper._handle_review_request(
             input_data=input_data,
             user_id=user_id,

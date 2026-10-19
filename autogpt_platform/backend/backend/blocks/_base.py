@@ -853,35 +853,42 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        if not (
-            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
-        ):
+        if not self.is_irreversible_action:
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
 
-        # Handle the review request and get decision
-        decision = await HITLReviewHelper.handle_review_decision(
-            input_data=input_data,
-            user_id=user_id,
-            node_id=node_id,
-            node_exec_id=node_exec_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            block_name=self.name,
-            editable=True,
-            is_graph_execution=is_graph_execution,
-            organization_id=execution_context.organization_id,
-            team_id=execution_context.team_id,
-            chat_session_id=(
-                None if is_graph_execution else execution_context.session_id
-            ),
-        )
-
-        if decision is None:
-            # We're awaiting review - pause execution
-            return True, input_data
+        if execution_context.sensitive_action_safe_mode:
+            # Handle the review request and get decision
+            decision = await HITLReviewHelper.handle_review_decision(
+                input_data=input_data,
+                user_id=user_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                block_name=self.name,
+                editable=True,
+                is_graph_execution=is_graph_execution,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
+                chat_session_id=(
+                    None if is_graph_execution else execution_context.session_id
+                ),
+            )
+            if decision is None:
+                # We're awaiting review - pause execution
+                return True, input_data
+        else:
+            # Safe mode is re-read from the graph settings on resume, so it
+            # can be off by the time a node held for review runs again. A
+            # decision a human already made on this node still binds it.
+            decision = await HITLReviewHelper.get_existing_decision(
+                node_exec_id=node_exec_id, user_id=user_id
+            )
+            if decision is None:
+                return False, input_data
 
         if not decision.should_proceed:
             # Review was rejected, raise an error to stop execution
