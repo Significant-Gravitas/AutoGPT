@@ -352,7 +352,7 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
         later.reassign_ids(user_id=user_id, reassign_graph_id=False)
         await graph_db.create_graph(later, user_id)
     resolve = mocker.patch.object(
-        graph_db, "get_sub_graphs", wraps=graph_db.get_sub_graphs
+        graph_db, "get_sub_graphs_of_each", wraps=graph_db.get_sub_graphs_of_each
     )
     auth = _AUTH.model_copy(update={"user_id": user_id})
 
@@ -363,7 +363,10 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
 
     assert [v.version for v in newest.items + older.items] == [3, 2]
     assert newest.total_count == 3
-    assert resolve.await_count == 2
+    assert [[g.version for g in call.args[0]] for call in resolve.await_args_list] == [
+        [3],
+        [2],
+    ]
 
 
 _ACTIVATING_V2 = pytest.mark.parametrize(
