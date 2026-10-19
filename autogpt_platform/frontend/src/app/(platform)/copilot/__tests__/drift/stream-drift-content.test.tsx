@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STREAM_PATHS, TEST_BACKEND_BASE_URL } from "../sse-helpers";
 import {
   createBackendSim,
@@ -56,6 +57,7 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
 
 const toolTurn = loadRecordedTurn("baseline-tool-turn");
 const textTurn = loadRecordedTurn("dummy-text-turn");
+const heldTurn = loadRecordedTurn("sdk-held-result-turn");
 // Frame 6 is the first block's second delta, 12 the tool's output, and
 // 13-17 the whole second text block.
 const SECOND_DELTA = 6;
@@ -148,6 +150,48 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           // times and ends on "Unable to reconnect. Please refresh the page."
           { today: path === "stream runtime" ? [] : ["connectionToast"] },
         );
+      },
+    );
+
+    it(
+      "approval wake: an approved call's result never paints as the user's message",
+      { timeout: 60_000 },
+      async () => {
+        const [prompt] = heldTurn.rows;
+        const sim = createBackendSim([{ turn: heldTurn }]);
+        sim.beginRunning();
+        renderAgainst(sim);
+        const painted = sampleTranscripts();
+        await waitForConnections(sim, 1);
+        sim.publish();
+
+        const labelled = await screen
+          .findByText(
+            'Approval answered: Read "mcp.example.com". Result sent to Otto.',
+            undefined,
+            { timeout: 15_000 },
+          )
+          .then(
+            () => true,
+            () => false,
+          );
+        const report = await reportDrift({
+          sim,
+          turns: [heldTurn],
+          painted,
+          toast: toastMock,
+        });
+        const otherUserBubbles = painted.samples
+          .flat()
+          .filter(
+            (entry) =>
+              entry.role === "user" &&
+              !entry.text.startsWith(String(prompt.content)),
+          )
+          .map((entry) => entry.text.slice(0, 80));
+        expect(otherUserBubbles).toEqual([]);
+        expect(labelled).toBe(true);
+        expectDrift(report, {});
       },
     );
 

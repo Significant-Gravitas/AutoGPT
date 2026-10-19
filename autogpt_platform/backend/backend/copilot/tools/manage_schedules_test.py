@@ -452,6 +452,53 @@ async def test_expert_cannot_pause_another_experts_schedule():
     mock_client.pause_schedule.assert_not_awaited()
 
 
+def _at_reset_info(kind: str) -> CopilotTurnJobInfo:
+    """A resume or send the user set on a chat for the budget reset."""
+    info = _make_copilot_info(schedule_id=f"at-reset-{kind}-session-xyz")
+    return info.model_copy(update={"purpose": kind})
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_leaves_out_turns_at_the_budget_reset(list_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _make_copilot_info(),
+            _at_reset_info("resume"),
+            _at_reset_info("send"),
+        ]
+    )
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [schedule.schedule_id for schedule in result.schedules] == ["cop-1"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [
+        (DeleteScheduleTool(), "delete_schedule"),
+        (PauseScheduleTool(), "pause_schedule"),
+        (ResumeScheduleTool(), "resume_schedule"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_agent_cannot_touch_a_turn_at_the_budget_reset(tool, method, session):
+    """Not even personal AutoPilot, which manages every other schedule."""
+    job = _at_reset_info("resume")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[job])
+    setattr(mock_client, method, AsyncMock())
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(user_id=_USER, session=session, schedule_id=job.id)
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    getattr(mock_client, method).assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_list_schedules_marks_paused_entries(list_tool, session):
     paused = _make_graph_info(schedule_id="paused-job")

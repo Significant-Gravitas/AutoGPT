@@ -1,3 +1,4 @@
+import { environment } from "@/services/environment";
 import { Button } from "../atoms/Button/Button";
 import { Text } from "../atoms/Text/Text";
 
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function WaitlistErrorContent(props: Props) {
+  if (!environment.isCloud()) return <SelfHostedNotAllowed {...props} />;
   return (
     <div className="flex flex-col items-center gap-6">
       <Text variant="h3">We&apos;re in closed beta</Text>
@@ -51,6 +53,25 @@ export function WaitlistErrorContent(props: Props) {
           </a>
         </Text>
       </div>
+    </div>
+  );
+}
+
+// A self-hosted instance's allowlist belongs to its operator, not to AutoGPT's
+// waitlist, so point the user at whoever runs it.
+function SelfHostedNotAllowed(props: Props) {
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <Text variant="h3">This email can&apos;t sign up here</Text>
+      <Text variant="large" className="text-center">
+        This instance only allows approved emails. Ask your administrator to add
+        yours, or sign up with an email they have already approved.
+      </Text>
+      {props.onBackToLogin ? (
+        <Button variant="secondary" onClick={props.onBackToLogin}>
+          Back to Login
+        </Button>
+      ) : null}
     </div>
   );
 }

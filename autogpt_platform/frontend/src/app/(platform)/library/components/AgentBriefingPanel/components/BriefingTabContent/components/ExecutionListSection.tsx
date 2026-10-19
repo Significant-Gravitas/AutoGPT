@@ -21,7 +21,9 @@ export function ExecutionListSection({ activeTab, agents }: Props) {
   const filtered = allItems.filter((item) => {
     if (activeTab === "running") return item.priority === "running";
     if (activeTab === "attention") return item.priority === "error";
-    if (activeTab === "completed") return item.priority === "success";
+    if (activeTab === "completed") {
+      return item.priority === "success" || item.priority === "warning";
+    }
     return false;
   });
 
