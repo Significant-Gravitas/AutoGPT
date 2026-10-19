@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import {
+  createComponentsMerger,
   MessageResponse,
   type MessageResponseProps,
 } from "@/components/ai-elements/message";
@@ -17,13 +18,6 @@ type StreamdownComponents = NonNullable<MessageResponseProps["components"]>;
 
 const NO_COMPONENTS: StreamdownComponents = {};
 
-// A new `img` per render would make Streamdown re-parse every block and remount
-// every image on each streamed chunk, so it is built once per `components`.
-const componentsWithBadges = new WeakMap<
-  StreamdownComponents,
-  StreamdownComponents
->();
-
 function createImageRenderer(Image: StreamdownComponents["img"]) {
   return function renderImage(imageProps: React.JSX.IntrinsicElements["img"]) {
     const provider = credentialMentionImageProvider(imageProps.src);
@@ -39,14 +33,12 @@ function createImageRenderer(Image: StreamdownComponents["img"]) {
   };
 }
 
-function withCredentialBadges(components = NO_COMPONENTS) {
-  let merged = componentsWithBadges.get(components);
-  if (!merged) {
-    merged = { ...components, img: createImageRenderer(components.img) };
-    componentsWithBadges.set(components, merged);
-  }
-  return merged;
-}
+// A new `img` per render would make Streamdown re-parse every block and remount
+// every image on each streamed chunk, so it is built once per `components`.
+const withCredentialBadges = createComponentsMerger((components) => ({
+  ...components,
+  img: createImageRenderer(components.img),
+}));
 
 export function CredentialMentionMarkdown({
   children,
@@ -54,7 +46,10 @@ export function CredentialMentionMarkdown({
   ...props
 }: Props) {
   return (
-    <MessageResponse {...props} components={withCredentialBadges(components)}>
+    <MessageResponse
+      {...props}
+      components={withCredentialBadges(components ?? NO_COMPONENTS)}
+    >
       {credentialMentionsToMarkdown(children)}
     </MessageResponse>
   );

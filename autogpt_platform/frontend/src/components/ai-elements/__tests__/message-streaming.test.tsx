@@ -101,4 +101,37 @@ describe("MessageResponse while a reply streams in", () => {
     );
     expect(container.querySelector(".overflow-x-auto")).toBeNull();
   });
+
+  it("picks up a component the caller replaced in place on the same map", async () => {
+    function FirstTable({ children }: { children?: React.ReactNode }) {
+      return <table data-testid="first-table">{children}</table>;
+    }
+    function SecondTable({ children }: { children?: React.ReactNode }) {
+      return <table data-testid="second-table">{children}</table>;
+    }
+    const components: Record<string, typeof FirstTable> = {
+      table: FirstTable,
+    };
+    const { container, rerender } = render(
+      <MessageResponse components={components}>{TABLE}</MessageResponse>,
+    );
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="first-table"]'),
+      ).toBeTruthy(),
+    );
+
+    components.table = SecondTable;
+    rerender(
+      <MessageResponse components={components}>
+        {`${TABLE}\n\nDone.`}
+      </MessageResponse>,
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="second-table"]'),
+      ).toBeTruthy(),
+    );
+  });
 });

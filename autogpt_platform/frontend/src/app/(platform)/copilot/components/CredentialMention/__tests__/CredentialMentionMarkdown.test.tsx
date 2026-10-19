@@ -65,4 +65,30 @@ describe("credential badges in messages", () => {
     expect(screen.getByTestId("framed-image")).toBe(framed);
     expect(container.querySelector('img[src*="google"]')).toBe(badge);
   });
+
+  it("uses an image component the caller replaced in place on the same map", async () => {
+    function FirstImage({ src }: ComponentProps<"img">) {
+      return <span data-testid="first-image" data-src={src} />;
+    }
+    function SecondImage({ src }: ComponentProps<"img">) {
+      return <span data-testid="second-image" data-src={src} />;
+    }
+    const components: { img: typeof FirstImage } = { img: FirstImage };
+    const reply = "See ![chart](https://example.com/chart.png)";
+    const { rerender } = render(
+      <CredentialMentionMarkdown components={components}>
+        {reply}
+      </CredentialMentionMarkdown>,
+    );
+    expect(await screen.findByTestId("first-image")).toBeTruthy();
+
+    components.img = SecondImage;
+    rerender(
+      <CredentialMentionMarkdown components={components}>
+        {`${reply} and more text`}
+      </CredentialMentionMarkdown>,
+    );
+
+    expect(await screen.findByTestId("second-image")).toBeTruthy();
+  });
 });
