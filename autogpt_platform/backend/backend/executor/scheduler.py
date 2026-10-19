@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import uuid
@@ -2684,9 +2685,15 @@ class Scheduler(AppService):
     _schedule_index: ScheduleIndex | None = None
     _schedule_index_ready: bool = False
     _schedule_index_failure_version: int = 0
+    _throwaway_dir: tempfile.TemporaryDirectory | None = None
 
-    def __init__(self, register_system_tasks: bool = True):
+    def __init__(
+        self, register_system_tasks: bool = True, throwaway_jobstores: bool = False
+    ):
         self.register_system_tasks = register_system_tasks
+        # Test servers: jobs a real scheduler saved in the platform database
+        # must not run in them, and their tests' schedules must not land there.
+        self.throwaway_jobstores = throwaway_jobstores
 
     @classmethod
     def get_port(cls) -> int:
@@ -2725,7 +2732,7 @@ class Scheduler(AppService):
         )
         _event_loop_thread.start()
 
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        db_schema, db_url = self._jobstore_database()
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
@@ -2994,6 +3001,16 @@ class Scheduler(AppService):
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
+    def _jobstore_database(self) -> tuple[str | None, str]:
+        """Schema and URL of the jobstores and schedule index: the platform
+        database, or a SQLite file of this process's own, removed at cleanup."""
+        if not self.throwaway_jobstores:
+            return _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        self._throwaway_dir = tempfile.TemporaryDirectory(
+            prefix="scheduler-jobstores-", ignore_cleanup_errors=True
+        )
+        return None, f"sqlite:///{self._throwaway_dir.name}/jobs.sqlite"
+
     def _register_idle_credential_sweep(self) -> None:
         """Keep an existing daily job's overdue run or explicit pause intact."""
         job_id = "refresh_near_expiry_credentials"
@@ -3052,6 +3069,11 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        # Explicitly: a forked service process ends in os._exit, which skips the
+        # directory's own finalizer.
+        if self._throwaway_dir is not None:
+            self._throwaway_dir.cleanup()
 
         super().cleanup()
 
