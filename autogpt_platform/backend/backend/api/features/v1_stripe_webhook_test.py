@@ -389,11 +389,13 @@ async def test_stripe_webhook_refund_or_dispute_matching_no_top_up(
     invoice: str | None,
     status_code: int,
     released: bool,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A refund or dispute matching no active top-up is acknowledged with its
     dedup claim kept only when it paid a subscription invoice; otherwise it may
     be a Checkout top-up not yet fulfilled, so it answers 500 and releases the
-    claim for Stripe's retry."""
+    claim for Stripe's retry. An acknowledged dispute is logged at ERROR, the
+    lowest level Sentry raises an event for."""
     mocker.patch(
         "stripe.PaymentIntent.retrieve_async",
         new_callable=AsyncMock,
@@ -458,6 +460,13 @@ async def test_stripe_webhook_refund_or_dispute_matching_no_top_up(
         )
         == 0
     )
+    acknowledgments = [
+        record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith(f"Ignoring {data_object['id']}")
+    ]
+    expected = "ERROR" if data_object["object"] == "dispute" else "WARNING"
+    assert acknowledgments == ([] if released else [expected])
 
 
 # ---------------------------------------------------------------------------

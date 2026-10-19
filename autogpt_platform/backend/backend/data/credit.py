@@ -1093,9 +1093,11 @@ class UserCredit(UserCreditBase):
                 f"No active top-up matches {request.id} (payment intent "
                 f"{request.payment_intent}); retrying until one is fulfilled"
             )
-        logger.warning(
-            f"Ignoring {request.id}: payment intent {request.payment_intent} "
-            "paid a subscription invoice, which grants no credits"
+        # A dispute is a chargeback someone must answer in Stripe; only ERROR reaches Sentry.
+        log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+        log(
+            f"Ignoring {request.id} (${request.amount / 100:.2f}): payment intent "
+            f"{request.payment_intent} paid a subscription invoice, which grants no credits"
         )
         return None
 
