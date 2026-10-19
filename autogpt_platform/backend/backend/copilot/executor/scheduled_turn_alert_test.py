@@ -18,7 +18,11 @@ from backend.copilot.executor.utils import (
     ScheduledTurnOrigin,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamTextDelta, StreamToolOutputAvailable
+from backend.copilot.response_model import (
+    StreamError,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
 from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
@@ -37,6 +41,15 @@ def mock_stream_publication(mocker):
     mocker.patch(
         "backend.copilot.executor.processor.stream_registry.publish_chunk",
         new_callable=AsyncMock,
+    )
+
+
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
     )
 
 
@@ -293,6 +306,21 @@ async def test_executor_alerts_when_a_scheduled_turns_run_agent_fails():
     sentry.capture_message.assert_called_once_with(
         "Scheduled copilot turn failed: run_agent returned an error", level="error"
     )
+
+
+@pytest.mark.asyncio
+async def test_executor_alerts_a_scheduled_turns_error_by_its_code():
+    spending_limit = StreamError(
+        errorText="This turn reached its spending limit. Start a new turn.",
+        code="max_budget_exhausted",
+    )
+
+    sentry = await _run_turn(_entry(_weekly()), [spending_limit])
+
+    scope = sentry.new_scope.return_value.__enter__.return_value
+    _, context = scope.set_context.call_args.args
+    assert context["turn_error_type"] == "max_budget_exhausted"
+    assert "spending limit" not in str(sentry.mock_calls)
 
 
 @pytest.mark.asyncio

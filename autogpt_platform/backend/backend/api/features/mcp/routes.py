@@ -40,6 +40,7 @@ from backend.blocks.mcp.helpers import (
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
@@ -57,7 +58,10 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 settings = Settings()
-router = fastapi.APIRouter(tags=["mcp"])
+# Every route here reaches a server the user names.
+router = fastapi.APIRouter(
+    tags=["mcp"], dependencies=[fastapi.Depends(enforce_payment_paywall)]
+)
 creds_manager = IntegrationCredentialsManager()
 
 # Verifying a token is best-effort; it must never outlast a user's patience.

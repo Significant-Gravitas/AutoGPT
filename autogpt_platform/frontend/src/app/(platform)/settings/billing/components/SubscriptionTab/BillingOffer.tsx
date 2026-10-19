@@ -39,7 +39,7 @@ export function BillingOffer({ controller }: Props) {
       <SupportOffer
         eyebrow="AutoGPT Pro"
         title="Pro is active"
-        description="Pro is active. Pick up where you left off with your conversations and agents."
+        description="Pro is active. Pick up where you left off with your conversations and workflows."
         label="Back to your work"
         href="/copilot"
         ready
@@ -79,7 +79,7 @@ export function BillingOffer({ controller }: Props) {
   const benefits = isTrial
     ? [
         "A full daily and weekly allowance once payment goes through",
-        "Your chats, agents and files stay where they are",
+        "Your chats, workflows and files stay where they are",
       ]
     : target === "Max"
       ? [
@@ -90,7 +90,7 @@ export function BillingOffer({ controller }: Props) {
         ]
       : [
           "Experts for content, sales and research, with Otto coordinating",
-          "Agents that keep working in the background on a schedule",
+          "Workflows that keep working in the background on a schedule",
         ];
   const quiet =
     isTrial &&
@@ -127,7 +127,11 @@ export function BillingOffer({ controller }: Props) {
           ? () => activation.start("/settings/billing")
           : controller?.onUpgrade
       }
-      disabled={isTrial ? activation.isBusy : controller?.isUpdatingTier}
+      disabled={
+        isTrial
+          ? activation.isBusy
+          : controller?.isUpdatingTier || controller?.isRedirecting
+      }
       caption={
         isTrial
           ? "Starting now ends your trial early. You’ll review the charge first."

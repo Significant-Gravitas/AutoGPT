@@ -161,6 +161,7 @@ vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
 }));
 vi.mock("../components/JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../components/CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: () => null,

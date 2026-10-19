@@ -122,12 +122,16 @@ def test_edit_builtin_blocked():
 
 
 def test_glob_within_workspace_allowed():
-    result = _validate_tool_access("Glob", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD)
+    result = _validate_tool_access(
+        "Glob", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+    )
     assert result == {}
 
 
 def test_grep_within_workspace_allowed():
-    result = _validate_tool_access("Grep", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD)
+    result = _validate_tool_access(
+        "Grep", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+    )
     assert result == {}
 
 
@@ -156,7 +160,7 @@ def test_traversal_attack_denied():
 
 def test_no_path_allowed():
     """Glob/Grep without a path argument defaults to cwd — should pass."""
-    result = _validate_tool_access("Glob", {}, sdk_cwd=SDK_CWD)
+    result = _validate_tool_access("Glob", {}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED)
     assert result == {}
 
 
@@ -169,26 +173,30 @@ def test_read_no_cwd_denies_absolute():
 # -- Tool-results directory --------------------------------------------------
 
 
-def test_read_tool_results_allowed():
+def test_native_read_tool_results_blocked():
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/12345.txt"
     # is_allowed_local_path requires the session's encoded cwd to be set
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
-        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert result == {}
+        result = _validate_tool_access(
+            "Read", {"file_path": path}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+        )
+        assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 
 
-def test_read_tool_outputs_allowed():
-    """tool-outputs/ paths should be allowed, same as tool-results/."""
+def test_native_read_tool_outputs_blocked():
+    """SDK artifacts are read through the MCP handler, not native Read."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/12345.txt"
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
-        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert result == {}
+        result = _validate_tool_access(
+            "Read", {"file_path": path}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+        )
+        assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 

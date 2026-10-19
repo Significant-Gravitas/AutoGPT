@@ -30,10 +30,10 @@ export function usagePresentation(
       noticeTitle: title,
       description: payment
         ? (formatPaymentDue(experience.payment)?.description ??
-          "Review your billing details to continue. Your chats, agents and results are saved.")
+          "Review your billing details to continue. Your chats, workflows and results are saved.")
         : canceled
-          ? "Your trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan."
-          : "Your chats, agents and results are saved. Choose a plan to keep going.",
+          ? "Your trial won’t turn into a paid subscription. Your chats, workflows and results are saved whenever you’re ready to choose a plan."
+          : "Your chats, workflows and results are saved. Choose a plan to keep going.",
       supportLabel: "Contact support",
       secondary: "Back to my work",
       trialSpent: false,
@@ -60,12 +60,14 @@ export function usagePresentation(
     description: trialSpent
       ? experience.freshProUsage
         ? formatTrialStartDescription(experience.trialEndsAt)
-        : "Choose your next plan to continue. Your chats, agents and results are saved."
+        : "Choose your next plan to continue. Your chats, workflows and results are saved."
       : isTopTier
-        ? "Your chats, agents and results are saved."
-        : tier === "PRO"
-          ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
-          : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
+        ? "Your chats, workflows and results are saved."
+        : !experience.resetsAt
+          ? "Choose a plan to continue. Your chats, workflows and results are saved."
+          : tier === "PRO"
+            ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
+            : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
     supportLabel:
       tier === "ENTERPRISE"
         ? "Contact your account team"
@@ -76,7 +78,9 @@ export function usagePresentation(
       ? experience.freshProUsage && trialDate
         ? `Wait until ${trialDate}`
         : "Back to my work"
-      : "Wait for reset",
+      : experience.resetsAt
+        ? "Wait for reset"
+        : "Back to my work",
     trialSpent,
   };
 }

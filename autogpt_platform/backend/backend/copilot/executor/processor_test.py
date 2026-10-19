@@ -33,7 +33,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import is_turn_impersonated
+from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
@@ -64,6 +64,15 @@ def no_trial_attribution(mocker):
     )
     mocker.patch(
         "backend.copilot.usage_activation.pro_activation_db", return_value=store
+    )
+
+
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
     )
 
 
@@ -224,6 +233,7 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["unattended"] = is_unattended_turn()
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
+            seen["trace_id"] = turn_trace_id()
             return MagicMock()
 
         with (
@@ -266,13 +276,23 @@ class TestExecuteAsyncScheduledTurnContext:
 
         seen = await self._seen_by_the_turn(entry)
 
-        assert seen == {"unattended": True, "pins": {"exa": pin}, "impersonated": False}
+        assert seen == {
+            "unattended": True,
+            "pins": {"exa": pin},
+            "impersonated": False,
+            "trace_id": "turn-1",
+        }
 
     @pytest.mark.asyncio
     async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
         seen = await self._seen_by_the_turn(_make_entry())
 
-        assert seen == {"unattended": False, "pins": {}, "impersonated": False}
+        assert seen == {
+            "unattended": False,
+            "pins": {},
+            "impersonated": False,
+            "trace_id": "turn-1",
+        }
 
     @pytest.mark.asyncio
     async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
@@ -281,6 +301,15 @@ class TestExecuteAsyncScheduledTurnContext:
         seen = await self._seen_by_the_turn(entry)
 
         assert seen["impersonated"] is True
+
+    @pytest.mark.asyncio
+    async def test_the_turn_id_is_the_trace_of_its_llm_calls(self) -> None:
+        """Every model call of one reply groups into one PostHog trace."""
+        entry = _make_entry().model_copy(update={"turn_id": "turn-42"})
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "turn-42"
 
 
 class TestExecuteAsyncAclose:
