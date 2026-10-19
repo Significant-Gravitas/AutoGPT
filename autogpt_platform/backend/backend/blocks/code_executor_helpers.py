@@ -135,7 +135,9 @@ def build_variable_injection(
         raise ValueError(
             f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
         ) from e
-    if language is ProgrammingLanguage.JAVASCRIPT:
+    if language is ProgrammingLanguage.JAVASCRIPT and (
+        "NaN" in serialized or "Infinity" in serialized
+    ):
         # JSON.parse rejects the NaN/Infinity that json.dumps writes; turn them
         # into null, as JavaScript's own JSON.stringify does.
         serialized = json.dumps(json.loads(serialized, parse_constant=lambda _: None))
