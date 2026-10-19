@@ -263,7 +263,9 @@ def test_every_event_a_client_sends_carries_the_revision(
     monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
     sent: list[dict] = []
     # Returning None drops each event after the client has built it.
-    client = posthog_client.new_posthog_client(before_send=sent.append, sync_mode=True)
+    client = posthog_client.new_posthog_client(
+        super_properties={"cohort": "beta"}, before_send=sent.append, sync_mode=True
+    )
     assert client is not None
 
     posthog_client.capture("user-1", PostHogEvent.AI_METRIC, client=client)
@@ -271,9 +273,9 @@ def test_every_event_a_client_sends_carries_the_revision(
     client.shutdown()
 
     assert [
-        {k: v for k, v in event["properties"].items() if k == "revision"}
+        {k: v for k, v in event["properties"].items() if k in ("revision", "cohort")}
         for event in sent
-    ] == [expected, expected]
+    ] == [{"cohort": "beta", **expected}] * 2
 
 
 def test_no_client_of_its_own_when_analytics_is_off(

@@ -59,14 +59,18 @@ Every event must carry:
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
-| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one. |
+| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
 Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies `environment` and `source`
 last, so a caller cannot overwrite them. `revision` is a super property of
 every backend PostHog client instead (`revision_properties()`), so the flag
-client's `$feature_flag_called` carries it too. The browser registers all
-three once as PostHog super properties
+client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
+is the exception: OpenRouter builds it from the request rather than through
+our client, so it carries no `revision` until #15604 adds `trace.revision`,
+which arrives as `metadata_revision`. #15605's `$ai_trace` and `$ai_span` go
+through `capture()`, so they carry `revision` as soon as they ship. The
+browser registers all three once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
 at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a

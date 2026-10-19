@@ -57,10 +57,14 @@ def new_posthog_client(**options: Any) -> Posthog | None:
     settings = Settings()
     if not settings.secrets.posthog_api_key:
         return None
+    super_properties = {
+        **(options.pop("super_properties", None) or {}),
+        **revision_properties(settings),
+    }
     return Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
-        super_properties=revision_properties(settings),
+        super_properties=super_properties,
         **options,
     )
 
