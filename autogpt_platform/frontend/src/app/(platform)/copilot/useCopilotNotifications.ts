@@ -8,6 +8,7 @@ import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
+const SEEN_RECHECK_MS = 2_000;
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
@@ -80,9 +81,17 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     clearIfSeen();
     document.addEventListener("visibilitychange", clearIfSeen);
     window.addEventListener("focus", clearIfSeen);
+    // Coming back by clicking straight into an embedded frame (the desktop
+    // preview) fires no event in this document, so re-check while the open
+    // chat is still on the list. Clearing it ends the interval.
+    const recheck =
+      activeSessionID && completedSessionIDs.has(activeSessionID)
+        ? window.setInterval(clearIfSeen, SEEN_RECHECK_MS)
+        : undefined;
     return () => {
       document.removeEventListener("visibilitychange", clearIfSeen);
       window.removeEventListener("focus", clearIfSeen);
+      window.clearInterval(recheck);
     };
   }, [activeSessionID, completedSessionIDs]);
 

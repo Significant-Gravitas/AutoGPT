@@ -252,6 +252,31 @@ describe("useCopilotNotifications — focus inside an iframe", () => {
   });
 });
 
+describe("useCopilotNotifications — returning into an embedded frame", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("notices the user is back even when no focus event reaches the page", async () => {
+    vi.useFakeTimers();
+    setVisibility("visible");
+    setFocused(false);
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+
+    // Focus returns straight into an iframe: the document has focus again,
+    // but neither "focus" nor "visibilitychange" fires here.
+    setFocused(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+  });
+});
+
 describe("useCopilotNotifications — tab title", () => {
   it("leaves the tab title alone when sessions finish", async () => {
     document.title = "AutoPilot";
