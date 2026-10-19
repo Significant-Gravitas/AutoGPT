@@ -9,13 +9,13 @@ packages = [{ include = "backend", format = "sdist" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
-async-timeout = {version = "^5.0.1", python = "<3.11"}
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
 agentmail = ">=0.4.5,<0.6.0"
 anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
+async-timeout = {version = "^5.0.1", python = "<3.11"}
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bcrypt = "^5.0.0"
 bleach = { extras = ["css"], version = "^6.2.0" }
@@ -123,7 +123,7 @@ pyright = "^1.1.407"
 pytest-cov = "^7.1.0"
 pytest-mock = "^3.15.1"
 pytest-watcher = "^0.6.3"
-ruff = ">=0.15,<0.17"
+ruff = ">=0.15,<0.18"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
