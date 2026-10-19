@@ -7,13 +7,14 @@ import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_downloaded
@@ -231,7 +232,10 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def post_user_review_for_agent(
     username: str,
@@ -462,7 +466,10 @@ def _parse_status_filter(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
@@ -501,7 +508,10 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_submission(
     store_listing_version_id: str,
@@ -567,7 +577,10 @@ def get_store_media(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
@@ -723,7 +736,10 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def generate_image(
     graph_id: str,
