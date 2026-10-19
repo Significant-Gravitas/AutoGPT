@@ -7,6 +7,12 @@ and a `$sentry_url` pointing to that exact event in Sentry. Sentry receives
 `PostHog Recording URL` tag. Anonymous visitors use their current PostHog ID;
 signed-in visitors use the identified user ID.
 
+Both SDKs deliver independently. Mirroring runs before Sentry's transport
+acknowledges the event. Sentry rate limits, quota rejection, or network failure
+can leave a PostHog exception with a Sentry link that has no stored event.
+PostHog delivery can also fail independently. Event counts and billed usage
+can therefore differ; a correlation ID does not confirm storage in both products.
+
 Forwarding and links require analytics consent and an initialized, opted-in
 PostHog client. Consent is checked for each error. Early startup errors and
 errors without consent still go to Sentry, but are not queued for later mirroring.
