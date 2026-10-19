@@ -86,6 +86,7 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
+    pending_message_text,
 )
 from backend.copilot.permissions import denied_tool_names
 from backend.copilot.prompting import (
@@ -1227,6 +1228,8 @@ async def _baseline_tool_executor(
                 tool_call_id=tool_call_id,
                 tool_name=called_name,
                 content=tool_output,
+                is_error=not result.success,
+                image_blocks=[result.image.anthropic()] if result.image else [],
             )
         )
     except Exception as e:
@@ -1287,6 +1290,28 @@ def _mutate_openai_messages(
                     "content": tr.content,
                 }
             )
+        image_content = [
+            block
+            for tr in tool_results
+            if tr.image_blocks
+            for block in (
+                {
+                    "type": "text",
+                    "text": f"Image returned by {tr.tool_name} ({tr.tool_call_id}):",
+                },
+                *[
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image['source']['media_type']};base64,{image['source']['data']}"
+                        },
+                    }
+                    for image in tr.image_blocks
+                ],
+            )
+        ]
+        if image_content:
+            messages.append({"role": "user", "content": image_content})
     elif response.response_text:
         messages.append({"role": "assistant", "content": response.response_text})
 
@@ -1340,7 +1365,11 @@ def _record_turn_to_transcript(
             # assistant(tool_use) → user(tool_result)
             transcript_builder.append_tool_result(
                 tool_use_id=tr.tool_call_id,
-                content=tr.content,
+                content=(
+                    [{"type": "text", "text": tr.content}, *tr.image_blocks]
+                    if tr.image_blocks
+                    else tr.content
+                ),
             )
     elif response.response_text:
         transcript_builder.append_assistant(
@@ -2622,7 +2651,7 @@ async def stream_chat_completion_baseline(
                     }
 
                     def _formatted(pm: PendingMessage) -> str:
-                        return formatted_by_pm[id(pm)]["content"]
+                        return pending_message_text(pm)
 
                     _openai_anchor = len(openai_messages)
                     for pm in pending:

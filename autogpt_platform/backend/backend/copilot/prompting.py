@@ -47,6 +47,15 @@ After `write_workspace_file`, embed the `download_url` in Markdown:
 - Image: `![chart](workspace://file_id#image/png)`
 - Video: `![recording](workspace://file_id#video/mp4)`
 
+### Viewing images
+Use `read_workspace_file` for workspace images and `read_file` for working-directory
+images: they return image blocks you can see (PNG/JPEG/GIF/WebP, up to 3 MiB and
+2000 pixels per side, first frame only). To inspect a PDF or video, copy it to the
+working directory, render the needed pages or extract frames, then read the images.
+If `read_file` is unavailable, save the images with `write_workspace_file(source_path=...)`
+and read them with `read_workspace_file`. If a read fails, explain the limitation;
+do not guess what an unseen image contains or claim to have watched a video.
+
 ### Handling binary/image data in tool outputs — CRITICAL
 When a tool output contains base64-encoded binary data (images, PDFs, etc.):
 1. **NEVER** try to inline or render the base64 content in your response.

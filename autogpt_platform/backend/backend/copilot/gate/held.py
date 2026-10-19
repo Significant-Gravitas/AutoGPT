@@ -22,6 +22,7 @@ from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import chat_db, review_db
@@ -340,13 +341,28 @@ async def _deliver(
             user_id, session, call, get_tool(call.tool_name), card
         )
     shown = _card_copy(card)
+    image_result = parse_held_image(output) if outcome == "approved" else None
+    if image_result is not None:
+        output = image_result.text
     try:
-        return _result_row(call, cap(output), outcome, shown)
+        return _result_row(
+            call,
+            cap(output),
+            outcome,
+            shown,
+            image=image_result.image if image_result else None,
+        )
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
-        return _result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome, shown)
+        return _result_row(
+            call,
+            output[: _MAX_RESULT_CHARS // 2],
+            outcome,
+            shown,
+            image=image_result.image if image_result else None,
+        )
 
 
 async def _recover(
@@ -378,8 +394,10 @@ def _result_row(
     output: str,
     outcome: Outcome,
     shown: dict[str, Any] | None = None,
+    image: ToolImage | None = None,
 ) -> PendingMessage:
     return HeldResult(
+        model_image=image,
         content=(
             f'<held_call_result tool="{call.tool_name}" '
             f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'
@@ -449,6 +467,13 @@ async def _outcome(
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
+    if result.image is not None:
+        text = (
+            result.output
+            if isinstance(result.output, str)
+            else json.dumps(result.output)
+        )
+        return "approved", HeldImage(text=text, image=result.image).model_dump_json()
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)

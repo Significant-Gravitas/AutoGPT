@@ -17,6 +17,12 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import (
+    IMAGE_EXTENSIONS,
+    IMAGE_READ_DESCRIPTION,
+    MAX_IMAGE_BYTES,
+    prepare_image,
+)
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
     save_to_workdir,
@@ -149,8 +155,6 @@ _TEXT_MIME_PREFIXES = (
     "application/x-python",
     "application/x-sh",
 )
-
-_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
 def _is_text_mime(mime_type: str) -> bool:
@@ -552,7 +556,7 @@ def _folder_subtree(
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
+    MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
     @property
@@ -563,8 +567,9 @@ class ReadWorkspaceFileTool(BaseTool):
     def description(self) -> str:
         return (
             "Read a file from persistent workspace. Specify file_id or path. "
-            "Small text/image files return inline; large/binary return metadata+URL. "
-            "Use save_to_path to copy to working dir for processing. "
+            "Small text files return inline; large/binary files return metadata+URL. "
+            + IMAGE_READ_DESCRIPTION
+            + "Use save_to_path to copy to working dir for processing. "
             "Use offset/length for paginated reads. "
             "Paths resolve in the current session; use /sessions/<id>/... or "
             "file_id to reach elsewhere. An expert chat reads its own "
@@ -689,6 +694,40 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
+            is_image = (
+                file_info.mime_type.startswith("image/")
+                or os.path.splitext(file_info.name)[1].lower() in IMAGE_EXTENSIONS
+            )
+            if is_image and (char_offset > 0 or char_length is not None):
+                return ErrorResponse(
+                    message="Image not shown: offset/length only apply to text. Read the whole image.",
+                    session_id=session_id,
+                )
+            if is_image and not force_download_url:
+                try:
+                    if file_info.size_bytes > MAX_IMAGE_BYTES:
+                        raise ValueError(
+                            "Image not shown: exceeds 3 MiB. Resize or compress it and read it again."
+                        )
+                    image = prepare_image(
+                        cached_content
+                        if cached_content is not None
+                        else await manager.read_file_by_id(target_file_id)
+                    )
+                except ValueError as exc:
+                    return ErrorResponse(message=str(exc), session_id=session_id)
+                return WorkspaceFileMetadataResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type=image.mime_type,
+                    size_bytes=file_info.size_bytes,
+                    download_url=f"workspace://{target_file_id}",
+                    message=f"Viewed {file_info.name} as an image (first frame only)."
+                    + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                    session_id=session_id,
+                ).with_image(image)
+
             # Ranged read: return a character slice directly.
             if char_offset > 0 or char_length is not None:
                 raw = cached_content or await manager.read_file_by_id(target_file_id)
@@ -719,10 +758,8 @@ class ReadWorkspaceFileTool(BaseTool):
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
-            is_image = file_info.mime_type in _IMAGE_MIME_TYPES
 
-            # Inline content for small text/image files
-            if is_small and (is_text or is_image) and not force_download_url:
+            if is_small and is_text and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
@@ -762,9 +799,12 @@ class ReadWorkspaceFileTool(BaseTool):
             if save_to_path:
                 msg += f" — saved to {save_to_path}"
             else:
-                msg += (
-                    " — use read_workspace_file with this file_id to retrieve content"
-                )
+                msg += " — use save_to_path to copy this file to the working directory for processing"
+            if (
+                file_info.mime_type == "application/pdf"
+                or file_info.mime_type.startswith("video/")
+            ):
+                msg += ". This file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images."
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
                 name=file_info.name,

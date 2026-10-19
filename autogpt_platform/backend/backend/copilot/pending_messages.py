@@ -30,6 +30,7 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
@@ -106,6 +107,7 @@ class PendingMessage(BaseModel):
     # session sent).  Set only by internal callers; the HTTP pending route
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
+    model_image: ToolImage | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -617,6 +619,12 @@ async def drain_and_format_for_injection(
         return ""
     if not pending:
         return ""
+    for message in pending:
+        if message.model_image is not None:
+            await push_pending_message(session_id, message)
+    pending = [message for message in pending if message.model_image is None]
+    if not pending:
+        return ""
     logger.info(
         "%s Injected %d user follow-up(s) into tool output (session=%s)",
         log_prefix,
@@ -634,6 +642,16 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     message into the conversation.  Context/file metadata (if any) is
     embedded into the content so the model sees everything in one block.
     """
+    text = pending_message_text(message)
+    content = (
+        [{"type": "text", "text": text}, message.model_image.openai()]
+        if message.model_image
+        else text
+    )
+    return {"role": "user", "content": content}
+
+
+def pending_message_text(message: PendingMessage) -> str:
     parts: list[str] = [message.content]
     if message.context:
         if message.context.url:
@@ -646,4 +664,4 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
             + "\n".join(f"- file_id={fid}" for fid in message.file_ids)
             + "\nUse read_workspace_file with the file_id to access file contents."
         )
-    return {"role": "user", "content": "".join(parts)}
+    return "".join(parts)

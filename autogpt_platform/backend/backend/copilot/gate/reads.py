@@ -31,6 +31,7 @@ from backend.api.features.graph_executions.review.model import PendingHumanRevie
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import parse_held_image
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
@@ -167,6 +168,11 @@ async def release_held_read(
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
+        )
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
+        return Release(
+            output=_stub(tool_name, source, _EXPIRED, session), success=False
         )
     return held_bytes(review)
 
@@ -309,12 +315,10 @@ def _opened_path(output: str) -> str | None:
 
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
-    """The text and images a model can read out of a registry tool's output.
-
-    A workspace read hands the model its file base64-encoded; the judge gets
-    the decoded text or image beside it, and nothing for a binary it cannot
-    read, so that result is not judged.
-    """
+    """The text and images a model can read out of a registry tool's output."""
+    held_image = parse_held_image(output)
+    if held_image is not None:
+        return held_image.text, (Image(**held_image.image.model_dump()),)
     try:
         data = json.loads(output)
     except ValueError:

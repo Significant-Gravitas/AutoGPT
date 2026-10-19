@@ -5691,6 +5691,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         attachments = await _prepare_file_attachments(
             file_ids or [], user_id or "", session_id, sdk_cwd
         )
+        attachments.image_blocks.extend(
+            pm.model_image.anthropic()
+            for pm in continued_pending or []
+            if pm.model_image
+        )
+        if pending_messages and persisted_ok:
+            attachments.image_blocks.extend(
+                pm.model_image.anthropic() for pm in pending_messages if pm.model_image
+            )
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 

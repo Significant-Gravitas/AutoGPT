@@ -44,6 +44,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
+from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
     TOOL_REGISTRY,
@@ -361,7 +362,8 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text}]
+        + ([result.image.mcp()] if result.image is not None else []),
         "isError": not result.success,
     }
 
@@ -862,7 +864,7 @@ def _make_truncating_wrapper(
                 return released
 
         result = await run(args)
-        truncated = truncate(result, _MCP_MAX_CHARS)
+        truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:
             truncated = await screen_non_registry_read(

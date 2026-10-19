@@ -1,0 +1,203 @@
+import io
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from PIL import Image
+from prisma.enums import ReviewStatus
+
+from backend.copilot import pending_message_helpers, pending_messages
+from backend.copilot.gate import held
+from backend.copilot.gate.content import ContentVerdict
+from backend.copilot.gate.reads_test import _Fetch, _session, rows
+from backend.copilot.pending_messages import (
+    PendingMessage,
+    format_pending_as_user_message,
+)
+from backend.copilot.sdk.tool_adapter import (
+    _make_truncating_wrapper,
+    cap_late_tool_result,
+    create_tool_handler,
+    set_execution_context,
+)
+from backend.copilot.tool_image import ToolImage, prepare_image
+from backend.copilot.tools.models import ToolResponseBase
+from backend.copilot.transcript_builder import TranscriptBuilder
+
+rows = rows
+
+
+class _ImageRead(_Fetch):
+    def __init__(self, image: ToolImage):
+        super().__init__("Image returned", name="read_workspace_file")
+        self.image = image
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return (await super()._execute(user_id, session, **kwargs)).with_image(
+            self.image
+        )
+
+
+@pytest.fixture
+def image():
+    output = io.BytesIO()
+    Image.effect_noise((512, 512), 100).convert("RGB").save(output, format="PNG")
+    return prepare_image(output.getvalue())
+
+
+@pytest.mark.parametrize("engine", ["sdk", "baseline"])
+@pytest.mark.parametrize("delivery", ["repeat_read", "late_result"])
+async def test_approved_image_is_delivered_once_without_refetch(
+    rows, image, engine, delivery
+):
+    session = _session()
+    set_execution_context("user-1", session)
+    tool = _ImageRead(image)
+    wrapper = _make_truncating_wrapper(create_tool_handler(tool), tool.name)
+    judge = AsyncMock(return_value=ContentVerdict(held=True))
+    with patch("backend.copilot.gate.reads.judge_content", judge):
+        if engine == "sdk":
+            result = await wrapper({"file_id": "f"})
+            assert result["isError"]
+            assert all(block["type"] != "image" for block in result["content"])
+        else:
+            result = await tool.execute("user-1", session, "call-image", file_id="f")
+            assert not result.success
+            assert result.image is None
+    assert judge.call_args.kwargs["images"][0].data_base64 == image.data_base64
+    (review,) = rows.rows.values()
+    assert image.data_base64 in review.payload["content"]
+    rows.answer(ReviewStatus.APPROVED)
+    if delivery == "late_result":
+        late = await held._deliver(
+            "user-1",
+            session,
+            rows.held[0],
+            cap_late_tool_result if engine == "sdk" else str,
+        )
+        assert late.model_image == image
+        assert len(late.content) < 2000
+        retried = PendingMessage.model_validate_json(late.model_dump_json())
+        assert retried.model_image == image
+        model_message = format_pending_as_user_message(retried)
+        assert model_message["content"][1] == image.openai()
+    elif engine == "sdk":
+        released = await wrapper({"file_id": "f"})
+        assert released["content"][-1] == image.mcp()
+    else:
+        released = await tool.execute("user-1", session, "call-next", file_id="f")
+        assert released.image == image
+    assert tool.runs == 1
+    assert rows.rows == {}
+
+
+@pytest.mark.parametrize("answer", ["rejected", "expired"])
+async def test_unapproved_image_never_reaches_late_model_message(rows, image, answer):
+    session = _session()
+    tool = _ImageRead(image)
+    with patch(
+        "backend.copilot.gate.reads.judge_content",
+        AsyncMock(return_value=ContentVerdict(held=True)),
+    ):
+        await tool.execute("user-1", session, "call-image", file_id="f")
+    rows.answer(
+        ReviewStatus.REJECTED if answer == "rejected" else ReviewStatus.APPROVED
+    )
+    (review,) = rows.rows.values()
+    if answer == "expired":
+        review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
+    late = await held._deliver("user-1", session, rows.held[0], cap_late_tool_result)
+    assert late.model_image is None
+    assert image.data_base64 not in late.content
+    assert tool.runs == 1
+
+
+async def test_sandbox_image_survives_content_gate_and_late_approval(rows, image):
+    session = _session()
+    set_execution_context("user-1", session)
+    reader = AsyncMock(
+        return_value={
+            "content": [{"type": "text", "text": "Rendered page"}, image.mcp()],
+            "isError": False,
+        }
+    )
+    wrapper = _make_truncating_wrapper(reader, "read_file")
+    judge = AsyncMock(return_value=ContentVerdict(held=True))
+    with patch("backend.copilot.gate.reads.judge_content", judge):
+        result = await wrapper({"file_path": "/home/user/page.png"})
+    assert result["isError"]
+    assert judge.call_args.kwargs["images"][0].data_base64 == image.data_base64
+    rows.answer(ReviewStatus.APPROVED)
+    late = await held._deliver("user-1", session, rows.held[0], cap_late_tool_result)
+    assert late.model_image == image
+    assert reader.await_count == 1
+
+
+async def test_expired_image_is_not_released_on_identical_read(rows, image):
+    session = _session()
+    tool = _ImageRead(image)
+    with patch(
+        "backend.copilot.gate.reads.judge_content",
+        AsyncMock(return_value=ContentVerdict(held=True)),
+    ):
+        await tool.execute("user-1", session, "call-image", file_id="f")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+    review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
+    result = await tool.execute("user-1", session, "call-retry", file_id="f")
+    assert not result.success
+    assert result.image is None
+    assert tool.runs == 1
+
+
+async def test_text_only_hook_defers_pixels_until_a_multimodal_turn(monkeypatch, image):
+    image_message = PendingMessage(content="Approved image", model_image=image)
+    text_message = PendingMessage(content="Also check the totals")
+    monkeypatch.setattr(
+        pending_messages,
+        "drain_pending_messages",
+        AsyncMock(return_value=[image_message, text_message]),
+    )
+    requeue = AsyncMock()
+    stash = AsyncMock()
+    monkeypatch.setattr(pending_messages, "push_pending_message", requeue)
+    monkeypatch.setattr(pending_messages, "stash_pending_for_persist", stash)
+    result = await pending_messages.drain_and_format_for_injection(
+        "session", log_prefix="test"
+    )
+    assert text_message.content in result
+    assert image_message.content not in result
+    requeue.assert_awaited_once_with("session", image_message)
+    stash.assert_awaited_once_with("session", [text_message])
+
+
+@pytest.mark.parametrize("persisted", [True, False])
+async def test_pending_image_persistence_keeps_pixels_out_of_chat_rows(
+    monkeypatch, image, persisted
+):
+    session = _session()
+    session.messages = []
+    transcript = TranscriptBuilder()
+    message = PendingMessage(content="Approved image", model_image=image)
+
+    async def persist(session, log_prefix):
+        if persisted:
+            session.messages[-1].sequence = 0
+        return session
+
+    requeue = AsyncMock()
+    monkeypatch.setattr(pending_message_helpers, "persist_session_safe", persist)
+    monkeypatch.setattr(pending_message_helpers, "push_pending_message", requeue)
+    result = await pending_message_helpers.persist_pending_as_user_rows(
+        session, transcript, [message], log_prefix="test"
+    )
+    assert result is persisted
+    assert image.data_base64 not in session.model_dump_json()
+    if persisted:
+        assert session.messages[-1].content == message.content
+        assert image.data_base64 in transcript.to_jsonl()
+        requeue.assert_not_awaited()
+    else:
+        assert not session.messages
+        assert image.data_base64 not in transcript.to_jsonl()
+        requeue.assert_awaited_once_with(session.session_id, message)

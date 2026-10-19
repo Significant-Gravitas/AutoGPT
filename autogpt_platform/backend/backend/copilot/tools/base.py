@@ -10,6 +10,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
@@ -542,7 +543,7 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
-            )
+            ).with_image(result.image)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")
@@ -636,12 +637,13 @@ class BaseTool:
             )
         if release is None:
             return None
+        image_result = parse_held_image(release.output) if release.released else None
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
-            output=release.output,
+            output=image_result.text if image_result else release.output,
             success=release.success,
-        )
+        ).with_image(image_result.image if image_result else None)
 
     async def _screen_read(
         self,
@@ -666,6 +668,9 @@ class BaseTool:
         if view is not None:
             seen = view(seen, result.success)
         text, images = readable_parts(seen)
+        if result.image is not None:
+            seen = HeldImage(text=seen, image=result.image).model_dump_json()
+            text, images = readable_parts(seen)
         stub = await screen_read(
             self.name,
             kwargs,
