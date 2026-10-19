@@ -1,5 +1,8 @@
+import asyncio
 import base64
 import io
+import threading
+import time
 import zipfile
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
@@ -10,6 +13,7 @@ import pytest
 from fpdf import FPDF
 from PIL import Image
 
+from backend.api.features.workspace import preview as preview_module
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
 
@@ -72,13 +76,32 @@ def _pdf_bytes() -> bytes:
     return bytes(pdf.output())
 
 
-def _zip_bytes(*, with_thumbnail: bool) -> bytes:
+def _zip_bytes(*, with_thumbnail: bool, thumbnail: bytes | None = None) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as archive:
         if with_thumbnail:
-            archive.writestr("docProps/thumbnail.png", _png_bytes(120, 90))
+            archive.writestr("docProps/thumbnail.png", thumbnail or _png_bytes(120, 90))
         archive.writestr("ppt/presentation.xml", "<p/>")
     return buf.getvalue()
+
+
+def _oversized_png() -> bytes:
+    # A source well above the render budget (~50 MP), kept cheap on disk and in
+    # memory by using a single-channel solid image.
+    side = int((preview_module.MAX_RENDER_PIXELS * 1.1) ** 0.5)
+    out = io.BytesIO()
+    Image.new("L", (side, side)).save(out, format="PNG")
+    return out.getvalue()
+
+
+def _large_page_pdf() -> bytes:
+    # A page far larger than a thumbnail; a fixed render scale would rasterise it
+    # to a bitmap many times the budget.
+    pdf = FPDF(unit="mm", format=(3000, 3000))
+    pdf.add_page()
+    pdf.set_font("helvetica", size=24)
+    pdf.cell(40, 10, "Hello preview")
+    return bytes(pdf.output())
 
 
 def _mock_lookups(mocker, file: WorkspaceFile) -> None:
@@ -288,3 +311,103 @@ def test_image_preview_cache_hit_skips_retrieve(mocker):
     assert response.status_code == 200
     assert response.content == cached
     storage.retrieve.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Render budget: a thumbnail never rasterises more than MAX_RENDER_PIXELS, so
+# each renderer stays within the budget whatever the source's dimensions.
+# ---------------------------------------------------------------------------
+
+
+def test_render_scale_keeps_a_large_page_within_budget():
+    # A ~3000 mm page is ~8503 pt on a side.
+    page_pt = 3000 / 25.4 * 72
+    scale = preview_module._render_scale(page_pt, page_pt, 400)
+
+    rendered_pixels = (page_pt * scale) ** 2
+    assert rendered_pixels <= preview_module.MAX_RENDER_PIXELS
+
+    # Without the budget, a fixed render scale rasterises the whole page and
+    # blows past it — this is what the budget exists to prevent.
+    fixed_scale = max(1, min(3, round(400 / page_pt)))
+    assert (page_pt * fixed_scale) ** 2 > preview_module.MAX_RENDER_PIXELS
+
+
+def test_pdf_preview_renders_a_large_page_as_a_thumbnail(mocker):
+    _mock_lookups(mocker, _make_file(mime_type="application/pdf"))
+    _mock_storage(mocker, _large_page_pdf())
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?w=200")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    with Image.open(io.BytesIO(response.content)) as rendered:
+        assert max(rendered.size) <= 200 * 4
+
+
+def test_image_preview_declines_an_oversized_source(mocker):
+    _mock_lookups(mocker, _make_file(mime_type="image/png"))
+    _mock_storage(mocker, _oversized_png())
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?w=100")
+
+    assert response.status_code == 413
+
+
+def test_office_preview_declines_an_oversized_thumbnail(mocker):
+    _mock_lookups(mocker, _make_file(mime_type=PPTX_MIME))
+    _mock_storage(mocker, _zip_bytes(with_thumbnail=True, thumbnail=_oversized_png()))
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 413
+
+
+async def test_preview_render_concurrency_is_bounded(mocker):
+    # Instrument the rasteriser (it runs in a worker thread) to record the peak
+    # number of simultaneous renders, then fire more previews than the cap.
+    peak = 0
+    in_flight = 0
+    lock = threading.Lock()
+
+    def instrumented(_content: bytes, _width: int) -> bytes:
+        nonlocal peak, in_flight
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        time.sleep(0.1)
+        with lock:
+            in_flight -= 1
+        return b"RIFFfake-webp"
+
+    mocker.patch.object(preview_module, "_resize_webp", instrumented)
+
+    storage = mocker.MagicMock()
+    storage.retrieve = AsyncMock(return_value=b"image-bytes")
+    mocker.patch.object(
+        preview_module, "get_workspace_storage", AsyncMock(return_value=storage)
+    )
+    redis = mocker.MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock(return_value=None)
+    mocker.patch.object(
+        preview_module, "get_redis_async", AsyncMock(return_value=redis)
+    )
+
+    files = [
+        _make_file(id=f"file-{i}", mime_type="image/png", checksum=f"sum-{i}")
+        for i in range(10)
+    ]
+
+    await asyncio.gather(
+        *(
+            preview_module.build_preview_response(f, width=100, max_bytes=4096)
+            for f in files
+        )
+    )
+
+    assert peak > 1  # the renders really did overlap
+    assert peak <= preview_module.MAX_CONCURRENT_RENDERS
