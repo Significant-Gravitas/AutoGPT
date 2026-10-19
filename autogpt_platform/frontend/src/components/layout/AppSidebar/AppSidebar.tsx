@@ -9,6 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -43,7 +44,7 @@ type NavLink = {
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Workflows", href: "/library", icon: GridViewIcon },
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
@@ -165,6 +166,7 @@ type Props = ComponentProps<typeof Sidebar>;
 export function AppSidebar(props: Props) {
   const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
+  const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
@@ -200,7 +202,9 @@ export function AppSidebar(props: Props) {
 
         <motion.div
           variants={sidebarContainerVariants}
-          initial="hidden"
+          // On mobile the sheet's slide is the entrance; a blurred stagger on
+          // top of it delays the items and costs frames on phones.
+          initial={isMobile ? false : "hidden"}
           animate="show"
           className="flex shrink-0 flex-col gap-2"
         >

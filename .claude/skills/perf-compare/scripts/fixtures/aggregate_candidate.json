@@ -1,0 +1,10 @@
+{
+ "headers": {},
+ "body": {
+  "data": [
+   {"transaction": "GET /api/library/agents", "count()": 1450, "p50(span.duration)": 150.6, "p95(span.duration)": 246.8, "p99(span.duration)": 301.9, "failure_rate()": 0.029655172413793104},
+   {"transaction": "GET /api/store/agents", "count()": 35, "p50(span.duration)": 305.0, "p95(span.duration)": 655.1, "p99(span.duration)": 690.3, "failure_rate()": 0.0}
+  ],
+  "meta": {"fields": {"transaction": "string", "count()": "integer", "p50(span.duration)": "duration", "p95(span.duration)": "duration", "p99(span.duration)": "duration", "failure_rate()": "percentage"}, "units": {"transaction": null, "count()": null, "p50(span.duration)": "millisecond", "p95(span.duration)": "millisecond", "p99(span.duration)": "millisecond", "failure_rate()": null}, "dataset": "spans"}
+ }
+}

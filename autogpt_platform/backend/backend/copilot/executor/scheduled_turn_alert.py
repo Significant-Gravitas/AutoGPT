@@ -16,7 +16,11 @@ from pydantic import BaseModel
 
 from backend.copilot import stream_registry
 from backend.copilot.permissions import SDK_BUILTIN_TOOL_NAMES
-from backend.copilot.response_model import StreamBaseResponse, StreamToolOutputAvailable
+from backend.copilot.response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamToolOutputAvailable,
+)
 from backend.copilot.tools.models import ResponseType
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
 
@@ -36,13 +40,14 @@ class ToolFailure(BaseModel):
 
 
 class ScheduledTurnWatch:
-    """Collects a scheduled turn's tool errors while it streams, then reports
-    once the turn has ended."""
+    """Collects a scheduled turn's error code and tool errors while it streams,
+    then reports once the turn has ended."""
 
     def __init__(self, entry: CoPilotExecutionEntry, origin: ScheduledTurnOrigin):
         self._entry = entry
         self._origin = origin
         self.tool_failures: list[ToolFailure] = []
+        self._turn_error_code: str | None = None
 
     @classmethod
     def for_entry(cls, entry: CoPilotExecutionEntry) -> "ScheduledTurnWatch | None":
@@ -51,6 +56,9 @@ class ScheduledTurnWatch:
         return cls(entry, entry.scheduled)
 
     def observe(self, chunk: StreamBaseResponse) -> None:
+        if isinstance(chunk, StreamError):
+            self._turn_error_code = chunk.code
+            return
         if not isinstance(chunk, StreamToolOutputAvailable):
             return
         error_type = tool_error_type(chunk.output)
@@ -104,7 +112,9 @@ class ScheduledTurnWatch:
             "cron": self._origin.cron,
             "session_id": self._entry.session_id,
             "turn_id": self._entry.turn_id,
-            "turn_error_type": error_type(turn_error) if turn_error else None,
+            "turn_error_type": (
+                error_type(self._turn_error_code or turn_error) if turn_error else None
+            ),
             "tool_failures": [f.model_dump() for f in self.tool_failures],
         }
         failed_tools = ", ".join(

@@ -222,7 +222,7 @@ export const AgentInfo = ({
           <div className="mt-3 flex w-full items-center justify-between gap-2">
             <div className="flex items-center gap-0">
               <Text variant="body" className="text-neutral-500">
-                Want to use this agent locally?
+                Want to use this workflow locally?
               </Text>
               <Button
                 variant="ghost"

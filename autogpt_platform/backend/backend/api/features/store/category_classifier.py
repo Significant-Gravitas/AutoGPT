@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Picking one label off a fixed list of eight is a matching task, not a writing
 # one, so it runs on the fast model — same choice as the brain-dump recommender.
-_MODEL = os.environ.get("STORE_CATEGORY_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("STORE_CATEGORY_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 _MAX_DESCRIPTION_CHARS = 2000
 

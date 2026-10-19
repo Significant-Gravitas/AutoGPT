@@ -19,7 +19,7 @@ const dsn = environment.getSentryDSN();
 Sentry.init({
   dsn,
 
-  environment: environment.getEnvironmentStr(),
+  environment: environment.getSentryEnvironment(),
 
   enabled: Boolean(dsn),
 
@@ -92,12 +92,12 @@ Sentry.init({
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
-  // Set profilesSampleRate to 1.0 to profile every transaction.
-  // Since profilesSampleRate is relative to tracesSampleRate,
-  // the final profiling rate can be computed as tracesSampleRate * profilesSampleRate
-  // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
-  // result in 25% of transactions being profiled (0.5*0.5=0.25)
-  profilesSampleRate: 1.0,
+  // Profiling samples the main thread every 10 ms for as long as a transaction
+  // lasts (up to 30 s a page load), so profiling every transaction slowed every
+  // session down. It is relative to tracesSampleRate, so with every transaction
+  // traced, 1 in 10 is profiled. Traces stay at 100%: the backend's
+  // traces_sampler follows the browser's decision for the requests it receives.
+  profilesSampleRate: 0.1,
   enableLogs: true,
 });
 

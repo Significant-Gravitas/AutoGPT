@@ -1,52 +1,59 @@
-"""Tests for ReadRSSFeedBlock polling behaviour.
-
-Regression coverage for the run-once case: the block must not wait out its
-polling interval when it is only going to run a single time.
-"""
-
-from __future__ import annotations
-
 import asyncio
-from unittest.mock import AsyncMock
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, call
 
 import pytest
 
-from backend.blocks.rss import ReadRSSFeedBlock
+from backend.blocks.rss import ReadRSSFeedBlock, RSSEntry
 
 
-class _StopLoop(Exception):
-    """Raised by the sleep mock to break the continuous loop after one poll."""
-
-
-async def _drain(agen) -> None:
-    async for _ in agen:
-        pass
-
-
-async def test_run_once_does_not_sleep(monkeypatch):
-    """run_continuously=False must return without waiting the polling interval."""
+@pytest.mark.parametrize("has_entries", [False, True])
+@pytest.mark.parametrize("polling_rate", [0, 60, 300])
+async def test_run_once_does_not_sleep(monkeypatch, has_entries, polling_rate):
+    """Run once emits its results and finishes without a polling wait."""
     block = ReadRSSFeedBlock()
+    published = datetime.now(timezone.utc).replace(microsecond=0)
+    entry = {
+        "title": "Example RSS item",
+        "link": "https://example.com/article",
+        "published_parsed": published.timetuple(),
+    }
+    parse_feed = AsyncMock(return_value={"entries": [entry] if has_entries else []})
     sleep = AsyncMock()
-    monkeypatch.setattr(block, "parse_feed", AsyncMock(return_value={"entries": []}))
-    monkeypatch.setattr(asyncio, "sleep", sleep)
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
-        polling_rate=60,
+        polling_rate=polling_rate,
         run_continuously=False,
     )
-    await _drain(block.run(input_data))
+    outputs = [output async for output in block.run(input_data)]
 
-    sleep.assert_not_awaited()
+    expected_entry = RSSEntry(
+        title=entry["title"],
+        link=entry["link"],
+        description="",
+        pub_date=published,
+        author="",
+        categories=[],
+    )
+    assert outputs == (
+        [("entry", expected_entry), ("entries", [expected_entry])]
+        if has_entries
+        else [("entries", [])]
+    )
+    parse_feed.assert_awaited_once_with(input_data.rss_url)
+    sleep.assert_not_called()
 
 
 async def test_continuous_mode_sleeps_between_polls(monkeypatch):
-    """run_continuously=True must still wait the polling interval between polls."""
+    """Continuous mode waits between polls and remains cancellable."""
     block = ReadRSSFeedBlock()
-    # Break the (otherwise infinite) loop after the first wait is observed.
-    sleep = AsyncMock(side_effect=_StopLoop)
-    monkeypatch.setattr(block, "parse_feed", AsyncMock(return_value={"entries": []}))
-    monkeypatch.setattr(asyncio, "sleep", sleep)
+    parse_feed = AsyncMock(side_effect=[{"entries": []}, {"entries": []}])
+    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
@@ -54,7 +61,13 @@ async def test_continuous_mode_sleeps_between_polls(monkeypatch):
         run_continuously=True,
     )
 
-    with pytest.raises(_StopLoop):
-        await _drain(block.run(input_data))
+    outputs = []
+    with pytest.raises(asyncio.CancelledError):
+        async for output in block.run(input_data):
+            outputs.append(output)
+            assert parse_feed.await_count == len(outputs)
+            assert sleep.await_count == len(outputs) - 1
 
-    sleep.assert_awaited_once_with(42)
+    assert outputs == [("entries", []), ("entries", [])]
+    assert parse_feed.await_args_list == [call(input_data.rss_url)] * 2
+    assert sleep.await_args_list == [call(42)] * 2
