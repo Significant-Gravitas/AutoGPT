@@ -1,9 +1,12 @@
 import { createElement } from "react";
 import {
-  createComponentsMerger,
   MessageResponse,
   type MessageResponseProps,
 } from "@/components/ai-elements/message";
+import {
+  createComponentsMerger,
+  type StreamdownComponents,
+} from "@/components/ai-elements/streamdown-components";
 import { CredentialMentionBadge } from "./CredentialMentionBadge";
 import {
   credentialMentionImageProvider,
@@ -13,8 +16,6 @@ import {
 interface Props extends Omit<MessageResponseProps, "children"> {
   children: string;
 }
-
-type StreamdownComponents = NonNullable<MessageResponseProps["components"]>;
 
 const NO_COMPONENTS: StreamdownComponents = {};
 
