@@ -9,8 +9,8 @@
 //
 // setup() signs the run's accounts in, seeds each with graphs, runs and chat
 // sessions (lib/seed.js), and confirms the copilot engine before any turn is
-// sent. teardown() deletes what the run created where the API allows it
-// (lib/cleanup.js) and cancels its Stripe test-mode subscriptions. The
+// sent. teardown() cancels its Stripe test-mode subscriptions and deletes
+// the graph runs and library agents it created (lib/cleanup.js). The
 // summary goes to results/<RUN_ID>.json.
 import { Trend } from "k6/metrics";
 

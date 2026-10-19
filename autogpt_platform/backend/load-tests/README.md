@@ -25,7 +25,7 @@ Docker is the only requirement. `./k6.sh` runs k6 in a container with this direc
    LOAD_PROFILE=baseline ./k6.sh run tests/workload.js
    ```
 
-Each run prints a report and writes `results/<RUN_ID>.json` (see [The summary](#the-summary)); the log says why any journey skipped (`K6_LOG_OUTPUT=file=results/<RUN_ID>.log` keeps it). The run signs up its own accounts and seeds its own data, and its teardown deletes what the API lets it delete (see [Seeding](#seeding)). Previews paywall new accounts, so for graph runs and chat sessions export `STRIPE_TEST_SECRET_KEY`, a test-mode key of the Stripe account previews use: the run then subscribes its accounts in Stripe test mode and cancels the subscriptions at the end (see [Paywalled targets](#paywalled-targets)). Copilot turns are opt-in, for a target that runs the dummy engine; a preview does not, so `copilot_turn` skips there and chat latency comes from Sentry's `copilot.turn` traces instead (see [Copilot and model spend](#copilot-and-model-spend)). Comment `!undeploy` when you are done with the preview.
+Each run prints a report and writes `results/<RUN_ID>.json` (see [The summary](#the-summary)); the log says why any journey skipped (`K6_LOG_OUTPUT=file=results/<RUN_ID>.log` keeps it). The run signs up its own accounts and seeds its own data, and its teardown deletes the graph runs and library agents it created (see [Seeding](#seeding)). Previews paywall new accounts, so for graph runs and chat sessions export `STRIPE_TEST_SECRET_KEY`, a test-mode key of the Stripe account previews use: the run then subscribes its accounts in Stripe test mode and cancels the subscriptions at the end (see [Paywalled targets](#paywalled-targets)). Copilot turns are opt-in, for a target that runs the dummy engine; a preview does not, so `copilot_turn` skips there and chat latency comes from Sentry's `copilot.turn` traces instead (see [Copilot and model spend](#copilot-and-model-spend)). Comment `!undeploy` when you are done with the preview.
 
 ## The workload
 
@@ -126,14 +126,15 @@ The target's marketplace is discovered, not created: a listing needs a creator p
 
 The journeys read what the seed created: the library journey opens the run's agents, the graph journey runs them, the copilot journeys open the run's sessions. An account the seed could not get something for (a `402`, a failed request) sits out the journeys that need it, and the summary's `coverage` says how many accounts ran each. The seed counts are in the summary.
 
-`teardown()` then cancels the run's Stripe test-mode subscriptions (see [Paywalled targets](#paywalled-targets)) and deletes what the run created, through the routes the app deletes with: every run of the seeded graphs (the seed's and the graph journey's), the library agents the seed created or added, the seeded chat sessions, and, when the turn journey ran, the chat sessions the accounts started during the run. The backend soft-deletes runs and library agents, as it does for a user, and deletes chat sessions outright. A request the target cannot answer for the moment (no answer, or `502` to `504` while a pod restarts) is sent again a few times before the delete counts as failed; the summary counts the deletes and the failures. Some of what a run creates cannot be deleted through the API, and stays:
+`teardown()` then cancels the run's Stripe test-mode subscriptions (see [Paywalled targets](#paywalled-targets)) and deletes what the run created, through the routes the app deletes with: every run of the seeded graphs (the seed's and the graph journey's), and the library agents the seed created or added. The backend soft-deletes both, as it does for a user. A request the target cannot answer for the moment (no answer, or `502` to `504` while a pod restarts) is sent again a few times before the delete counts as failed; the summary counts the deletes and the failures. The rest stays:
 
 - the graphs: the backend does not delete a graph that a library entry refers to, and a deleted library agent still does;
+- the chat sessions, seeded or started by the turn journey: deleting one also starts the copilot's browser cleanup for it on the backend, work a teardown should not add to the target it has just measured;
 - the onboarding steps the seed completed and the credits they granted;
 - the Stripe test-mode customers the backend created (teardown cancels their subscriptions);
 - the throwaway accounts.
 
-On a preview they go with the preview. Under `LOAD_TEST_ACCOUNTS` they add up across runs: a few graphs per account per run, hidden from its library.
+On a preview they go with the preview. Under `LOAD_TEST_ACCOUNTS` they add up across runs: a few graphs per account per run, hidden from its library, and `SEED_SESSIONS` chat sessions per account per run, so set it lower there.
 
 ### Paywalled targets
 
