@@ -341,3 +341,51 @@ What stands out:
 | `Primitive.div props:children` | 12 |
 | `r$ props:state,children` | 12 |
 | `rV props:state,children` | 12 |
+
+## library-running-events · baseline — median of 3 runs
+
+Added after the table above, so it was measured on `dev` at `a1578ad9a` (2026-10-19), on the same machine. The websocket is mocked; each run prints what it saw, and all three printed the same: 80 events in 20 s caused 1,600 `subscribe_graph_executions` frames (all 20 workflows on every event) and 80 `GET /executions` refetches. Each refetch re-renders the whole card grid.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 243 | 243 – 243 | 0.0% |
+| total renders | 143,052 | 143,052 – 143,052 | 0.0% |
+| renders per commit | 588.7 | 588.7 – 588.7 | 0.0% |
+| max renders in one commit | 1,768 | 1,768 – 1,768 | 0.0% |
+| script time (ms) | 8,017 | 7,733 – 8,482 | 9.3% |
+| task time (ms) | 9,992 | 9,667 – 10,482 | 8.2% |
+| layout time (ms) | 53 | 51 – 56 | 9.9% |
+| style recalc time (ms) | 125 | 119 – 157 | 30.4% |
+| long tasks (≥ 50 ms) | 80 | 79 – 80 | 1.3% |
+| long task total (ms) | 7,870 | 7,538 – 8,320 | 9.9% |
+| heap used after GC (MB) | 43.5 | 43.5 – 43.7 | 0.4% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon` | 9,760 |
+| `Icon` | 9,760 |
+| `Presence` | 8,642 |
+| `Dialog` | 6,881 |
+| `Text` | 5,440 |
+| `motion.div` | 4,880 |
+| `DialogPortal` | 3,441 |
+| `DialogPortalProvider` | 3,441 |
+| `DialogProvider` | 3,441 |
+| `BaseContent` | 3,440 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon parent-same-props<-Icon` | 9,760 |
+| `Presence props:children` | 8,642 |
+| `Icon parent-same-props<-motion.div` | 4,800 |
+| `Dialog props:onOpenChange,children` | 3,441 |
+| `DialogPortal props:children` | 3,441 |
+| `DialogPortalProvider props:children` | 3,441 |
+| `DialogProvider props:children` | 3,441 |
+| `BaseContent props:children` | 3,440 |
+| `DialogWrap props:styling,handleOpen,handleClose,children` | 3,440 |
+| `LinkComponent props:children` | 3,200 |
