@@ -27,7 +27,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocalDay } from "@/hooks/useLocalDay";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
@@ -49,6 +48,7 @@ import { HeaderAction } from "./components/HeaderAction";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import { sessionAgeDays, useSessionAgeClock } from "./useSessionAgeClock";
 import {
   Files01Icon,
   PlusSignCircleIcon,
@@ -75,7 +75,6 @@ export function ChatSidebar() {
   );
 
   const queryClient = useQueryClient();
-  const today = useLocalDay();
 
   const {
     sessions,
@@ -319,6 +318,7 @@ export function ChatSidebar() {
     [sessions, isPinningEnabled],
   );
   const sessionSections = isExpertsEnabled && showHeaders ? groups : null;
+  const ageClock = useSessionAgeClock(sessions);
 
   function renderSessionRow(
     session: SessionSummaryResponse,
@@ -352,7 +352,7 @@ export function ChatSidebar() {
         showCompleted={
           completedSessionIDs.has(session.id) && session.id !== sessionId
         }
-        dayKey={today}
+        ageDays={sessionAgeDays(session.updated_at, ageClock)}
         onSelect={handleSelectSession}
         onEditingTitleChange={setEditingTitle}
         onRenameCancel={handleRenameCancel}

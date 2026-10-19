@@ -55,6 +55,7 @@ interface SessionSeed {
   id: string;
   title: string;
   is_pinned?: boolean;
+  updated_at?: string;
 }
 
 function toSummary(seed: SessionSeed) {
@@ -66,7 +67,7 @@ function toSummary(seed: SessionSeed) {
     chat_status: "idle",
     // `Z`-suffixed, so the API client turns them into `Date`s as in the app.
     created_at: "2026-01-05T09:00:00Z",
-    updated_at: "2026-01-05T09:00:00Z",
+    updated_at: seed.updated_at ?? "2026-01-05T09:00:00Z",
   };
 }
 
@@ -184,7 +185,7 @@ describe("ChatSidebar — session rows", () => {
   });
 });
 
-describe("ChatSidebar — session rows while editing and over midnight", () => {
+describe("ChatSidebar — session rows while editing and as they age", () => {
   it("does not re-render sibling rows while a title is being edited", async () => {
     serveList();
     renderSidebar();
@@ -206,22 +207,28 @@ describe("ChatSidebar — session rows while editing and over midnight", () => {
     expect(blockRenders).not.toHaveBeenCalled();
   });
 
-  it("re-renders every row once at local midnight so 'Today' moves on", async () => {
-    vi.setSystemTime(new Date(2026, 9, 19, 23, 59, 0));
+  it("re-renders a row when its 'Today' label turns into 'Yesterday'", async () => {
+    // The rows were updated at 09:00 UTC; one becomes a day old first.
+    listed = [
+      { id: "s1", title: "First chat", updated_at: "2026-01-05T09:00:00Z" },
+      { id: "s2", title: "Second chat", updated_at: "2026-01-05T15:00:00Z" },
+    ];
+    vi.setSystemTime(new Date("2026-01-06T08:59:00Z"));
     serveList();
     renderSidebar();
-    await screen.findByText("Third chat");
+    await screen.findByText("Second chat");
+    expect(screen.getAllByText("Today")).toHaveLength(2);
     await settle();
     blockRenders.mockClear();
 
-    await tick(60_000);
+    await tick(2 * 60_000);
     await settle();
 
-    expect(blockRenders.mock.calls.map(([title]) => title).sort()).toEqual([
+    expect(blockRenders.mock.calls.map(([title]) => title)).toEqual([
       "First chat",
-      "Second chat",
-      "Third chat",
     ]);
+    expect(screen.getByText("Yesterday")).toBeDefined();
+    expect(screen.getAllByText("Today")).toHaveLength(1);
   });
 });
 

@@ -39,9 +39,10 @@ interface Props {
   isLearningEnabled: boolean;
   showProcessing: boolean;
   showCompleted: boolean;
-  /** Changes at local midnight, so the memoised row re-renders its relative
-   *  date label ("Today", "Yesterday") even when the session did not change. */
-  dayKey: string;
+  /** Whole days since the last update (see `sessionAgeDays`). It changes
+   *  exactly when the relative date label ("Today", "Yesterday", "N days ago")
+   *  does, so the memoised row re-renders then even if the session did not. */
+  ageDays: number;
   /** The callbacks below are shared by every row and take the row's session,
    *  so a parent re-render passes the same props and the row skips its own. */
   onSelect: (id: string, expertId: string | null) => void;
