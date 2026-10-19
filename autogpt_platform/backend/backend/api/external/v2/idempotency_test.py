@@ -6,6 +6,7 @@ whether it started. These pin the three outcomes a client needs to be able to
 tell apart: the run started, the run already started, and it is still starting.
 """
 
+import asyncio
 import json
 from typing import Optional
 from unittest import mock
@@ -209,32 +210,38 @@ async def test_a_replay_is_scoped_to_the_key_s_tenant(
 
 
 async def test_the_same_key_in_two_organizations_claims_twice(
-    mocker: pytest_mock.MockFixture,
+    key_store: dict[str, str],
 ) -> None:
     """A run in one org is a 404 to the same user's other org, so a shared key
     must not replay it there."""
-    store: dict[str, str] = {}
-
-    async def set_(name: str, value: str, nx: bool = False, ex: int = 0) -> bool:
-        if nx and name in store:
-            return False
-        store[name] = value
-        return True
-
-    mocker.patch(
-        "backend.api.external.v2.idempotency.get_redis_async",
-        new_callable=mock.AsyncMock,
-        return_value=mock.Mock(
-            set=mock.AsyncMock(side_effect=set_),
-            get=mock.AsyncMock(side_effect=store.get),
-        ),
-    )
     other_org = _tenant().model_copy(update={"organization_id": "org-2"})
 
     async with idempotent_run(KEY, _tenant(), REQUEST) as claim:
         await claim.record("run-1")
     async with idempotent_run(KEY, other_org, REQUEST) as claim:
         assert claim.existing_run_id is None
+
+
+async def test_a_cancelled_request_releases_its_key(
+    key_store: dict[str, str],
+) -> None:
+    """A client disconnect cancels the request before any run exists; a key left
+    in flight would answer every retry with a 409 for 24 hours."""
+    claimed = asyncio.Event()
+
+    async def request() -> None:
+        async with idempotent_run(KEY, _tenant(), REQUEST):
+            claimed.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(request())
+    await claimed.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    async with idempotent_run(KEY, _tenant(), REQUEST) as retry:
+        assert retry.holds_key
 
 
 @pytest.mark.parametrize(
@@ -249,6 +256,32 @@ def test_the_run_endpoint_accepts_the_header() -> None:
 
     post = v2_app.openapi()["paths"]["/library/agents/{agent_id}/runs"]["post"]
     assert IDEMPOTENCY_HEADER in {p["name"] for p in post.get("parameters", [])}
+
+
+@pytest.fixture
+def key_store(mocker: pytest_mock.MockFixture) -> dict[str, str]:
+    """A key store that keeps what it is given."""
+    store: dict[str, str] = {}
+
+    async def set_(name: str, value: str, nx: bool = False, ex: int = 0) -> bool:
+        if nx and name in store:
+            return False
+        store[name] = value
+        return True
+
+    async def delete(name: str) -> None:
+        store.pop(name, None)
+
+    mocker.patch(
+        "backend.api.external.v2.idempotency.get_redis_async",
+        new_callable=mock.AsyncMock,
+        return_value=mock.Mock(
+            set=mock.AsyncMock(side_effect=set_),
+            get=mock.AsyncMock(side_effect=store.get),
+            delete=mock.AsyncMock(side_effect=delete),
+        ),
+    )
+    return store
 
 
 @pytest.fixture

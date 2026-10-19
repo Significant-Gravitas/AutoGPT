@@ -215,7 +215,7 @@ async def test_run_outputs_of_an_agent_in_another_organization_are_not_found():
         )
 
     assert agent is None
-    assert error == "Library agent 'agent-1' not found"
+    assert error == "Library workflow 'agent-1' not found"
 
 
 @pytest.mark.parametrize("external_caller", [True, False])

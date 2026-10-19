@@ -37,9 +37,14 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
+
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
@@ -242,9 +247,7 @@ async def _best_effort_cleanup(pass_id: str) -> None:
         )
 
 
-async def _release_lock(
-    user_id: str, pass_id: str, expert_id: str | None = None
-) -> None:
+async def _release_lock(user_id: str, pass_id: str, expert_id: str | None) -> None:
     """Release the disowned dream lock with the ownership token persisted
     alongside the input bundle. Must run before ``delete_input_bundle`` —
     the token rides on that key. A missing token (bundle TTL'd out,
@@ -265,7 +268,16 @@ async def _release_lock(
                 "leaving the lock to its TTL",
                 pass_id,
             )
-    await release_dream_lock(user_id, token, expert_id)
+    try:
+        scope = MemoryScope.build(user_id, expert_id)
+    except ValueError:
+        logger.warning(
+            "Invalid memory scope for disowned dream lock of user %s — "
+            "leaving it for the TTL to clear",
+            user_id[:12],
+        )
+        return
+    await release_dream_lock(scope, token)
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +286,48 @@ async def _release_lock(
 
 
 async def handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    with ExitStack() as attribution:
+        try:
+            raw_context = payload.get("cost_context")
+            if raw_context is None:
+                raise UsageActivationUnavailable("Dream batch has no usage attribution")
+            context = TrialCostContext.model_validate(raw_context)
+            attribution.enter_context(restore_cost_context(user_id, context))
+        except (UsageActivationUnavailable, ValueError):
+            await _fail_unattributed_pass(payload)
+            raise
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _fail_unattributed_pass(payload: dict[str, Any]) -> None:
+    """Close a dead-end batch without charging against a new usage context."""
+    pass_id = str(payload["pass_id"])
+    await _mark_job_errored_best_effort(
+        str(payload.get("job_id") or ""), "batch usage attribution unavailable"
+    )
+    try:
+        input_bundle = await read_input_bundle(pass_id)
+        if input_bundle is not None:
+            await _release_lock(input_bundle.user_id, pass_id, input_bundle.expert_id)
+    except Exception:
+        logger.exception(
+            "Unattributed dream batch lock cleanup failed for pass=%s", pass_id
+        )
+    await _best_effort_cleanup(pass_id)
+
+
+async def _handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
     """BatchExecutor entry — called once per finished phase batch.
@@ -403,7 +457,7 @@ async def _handle_phase_result(
     *,
     rows: list[BatchResultRow],
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -498,7 +552,7 @@ async def _handle_phase_result(
 async def _chain_next_phase(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -633,7 +687,7 @@ async def _claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "er
 async def _finalize_complete(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -749,10 +803,9 @@ async def _finalize_complete(
         # every other user's pending batch. See
         # ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``.
         apply_stats = await apply_operations(
-            user_id,
+            MemoryScope.build(user_id, expert_id),
             pass_id,
             ops,
-            expert_id=expert_id,
             known_fact_uuids=input_bundle.known_fact_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
@@ -842,7 +895,7 @@ async def _finalize_complete(
 async def _fail_pass(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],

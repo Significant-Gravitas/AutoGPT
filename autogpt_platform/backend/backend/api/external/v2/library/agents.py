@@ -197,6 +197,11 @@ async def fork_library_agent(
             "model": ErrorResponse,
             "description": "The `Idempotency-Key`'s run has not been recorded yet",
         },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "model": ErrorResponse,
+            "description": "Invalid inputs, or an `Idempotency-Key` already used "
+            "for a different request",
+        },
         status.HTTP_503_SERVICE_UNAVAILABLE: {
             "model": ErrorResponse,
             "description": "The `Idempotency-Key` cannot be checked right now",
@@ -215,6 +220,7 @@ async def execute_agent(
 
     Send an `Idempotency-Key` to make a retry safe: a second request carrying the
     same key returns the run the first one started rather than starting another.
+    Reusing a key for a different agent or body is a 422.
 
     **Rate limit:** 60 requests per minute per user.
     """

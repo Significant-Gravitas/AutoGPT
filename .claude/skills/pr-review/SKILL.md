@@ -50,7 +50,7 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 
 **Security:** input validation at boundaries, no injection (command, XSS, SQL), secrets not logged, file paths sanitized (`os.path.basename()` in error messages).
 
-**Code quality:** apply rules from backend/frontend CLAUDE.md files.
+**Code quality:** apply rules from backend/frontend CLAUDE.md files and root `AGENTS.md`, including its "User-facing copy" section (text a person reads says workflow, never agent or graph).
 
 **Architecture:** DRY, single responsibility, modular functions. `Security()` vs `Depends()` for FastAPI auth. `data:` for SSE events, `: comment` for heartbeats. `transaction=True` for Redis pipelines.
 

@@ -53,7 +53,7 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
           </Text>
 
           <Text variant="body" className="mb-2 text-zinc-700">
-            AI-generated agents may take actions that affect your data or
+            AI-generated workflows may take actions that affect your data or
             external systems.
           </Text>
 

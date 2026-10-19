@@ -34,7 +34,7 @@ async def store_workspace_upload(
 
     Raises `fastapi.HTTPException` with the status each failure earns: 400 for
     a virus, 409 for a name conflict, 413 for size or quota, 500 for a scanner
-    outage.
+    outage or a storage failure, whose details stay out of the response.
     """
     filename = _sanitized_filename(file)
     content = await read_within_size_limit(file, Config().max_file_size_mb)
@@ -49,6 +49,11 @@ async def store_workspace_upload(
         raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
     except VirusScanError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
+    except OSError as e:
+        logger.exception("Failed to store uploaded workspace file")
+        raise fastapi.HTTPException(
+            status_code=500, detail="Unable to store file. Please try again."
+        ) from e
     except ValueError as e:
         # write_file raises ValueError for path-conflict, size-limit, and
         # storage-quota cases; map each to its correct HTTP status.

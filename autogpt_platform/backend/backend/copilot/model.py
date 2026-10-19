@@ -29,13 +29,16 @@ from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
     NotFoundError,
     RedisError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
+from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -64,7 +67,6 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
-AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -536,6 +538,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -556,6 +559,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1282,13 +1286,18 @@ async def _save_session_to_db(
 
 
 async def append_and_save_message(
-    session_id: str, message: ChatMessage
+    session_id: str, message: ChatMessage, *, dedupe_content: bool = True
 ) -> ChatSession | None:
     """Atomically append a message to a session and persist it.
 
     Returns the updated session, or None if the message was detected as a
     duplicate (idempotency guard). Callers must check for None and skip any
     downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
+
+    ``dedupe_content=False`` skips the trailing same-content collapse (layer 2
+    below) for a message that is the same text every time it is sent, such as
+    a continuation note; that caller has to rule out double sends itself. The
+    id check (layer 1) still applies.
 
     Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
     The idempotency check below provides a last-resort guard when the lock degrades.
@@ -1333,8 +1342,10 @@ async def append_and_save_message(
         # permanently.  The fix is to ensure failed turns always write
         # an error/timeout assistant message so the session always ends
         # on an assistant turn.
-        if message.content is not None and is_message_duplicate(
-            session.messages, message.role, message.content
+        if (
+            dedupe_content
+            and message.content is not None
+            and is_message_duplicate(session.messages, message.role, message.content)
         ):
             return None  # duplicate — caller should skip enqueue
 
@@ -1388,6 +1399,8 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+    inherited_autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1412,6 +1425,17 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the chat starts on. An explicit
+            value wins; otherwise an expert session starts on the expert's
+            own default, and anything else on the platform default. Stored
+            on the session, so a later change to the expert's default never
+            rewrites an open thread. Ignored while the approval-mode flag
+            is off, like the per-thread override.
+        inherited_autopilot_mode: The mode a delegated thread must start on,
+            already decided by the caller from the parent chat and the
+            target expert (``gate.policy.child_autopilot_mode``). Stored
+            as-is: it is a constraint rather than a pick, so the flag does
+            not drop it and the expert is not read a second time.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1422,6 +1446,9 @@ async def create_chat_session(
         organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
             user_id, expert_id
         )
+    autopilot_mode = await _resolve_new_session_autopilot_mode(
+        user_id, expert_id, autopilot_mode, origin, inherited_autopilot_mode
+    )
 
     session = ChatSession.new(
         user_id,
@@ -1438,6 +1465,7 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
     )
 
     # Create in database first - fail fast if this fails
@@ -1471,6 +1499,30 @@ async def create_chat_session(
     return session
 
 
+async def _resolve_new_session_autopilot_mode(
+    user_id: str,
+    expert_id: str | None,
+    requested: AutopilotMode | None,
+    origin: ChatSessionOrigin,
+    inherited: AutopilotMode | None = None,
+) -> AutopilotMode | None:
+    """Inherited > explicit request > the expert's default > None (platform default).
+
+    The expert default is for threads a person drives: a routine, a
+    scheduled follow-up or a block-opened session is not gated, so it is
+    not looked up for one.
+    """
+    if inherited is not None:
+        return inherited
+    if requested is None and (expert_id is None or origin != "interactive"):
+        return None
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return None
+    if requested is not None or expert_id is None:
+        return requested
+    return await experts_db().get_autopilot_mode(user_id, expert_id)
+
+
 def expert_kickoff_session_id(
     user_id: str,
     expert_id: str,
@@ -1494,8 +1546,13 @@ async def get_or_create_expert_kickoff_session(
     team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
-    """Atomically create or adopt the canonical expert kickoff session."""
+    """Atomically create or adopt the canonical expert kickoff session.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted
+    kickoff keeps the mode it already has.
+    """
     sessions, _ = await get_user_sessions(
         user_id,
         limit=1,
@@ -1523,6 +1580,7 @@ async def get_or_create_expert_kickoff_session(
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
     except DatabaseError:
         existing = await get_chat_session(session_id, user_id)
@@ -1536,6 +1594,7 @@ async def get_or_create_builder_session(
     graph_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1578,6 +1637,7 @@ async def get_or_create_builder_session(
             builder_graph_id=graph_id,
             organization_id=organization_id,
             team_id=team_id,
+            autopilot_mode=autopilot_mode,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1659,29 +1719,25 @@ async def delete_chat_session(
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Best-effort embedding cleanup so deleted sessions stop appearing in
-    # /search/global hits. Only attempt when we have a user_id since the
-    # embedding row is user-scoped; without it the user-filter would miss
-    # and the orphan row (if any) gets cleaned up by the periodic embedder.
-    if user_id:
-        try:
-            from backend.copilot.chat_session_embeddings import (
-                delete_chat_session_embedding,
-            )
-
-            await delete_chat_session_embedding(session_id, user_id)
-        except Exception as e:
-            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
-
-    # Shut down any local browser daemon for this session (best-effort).
-    # Inline import required: all tool modules import ChatSession from this
+    # Inline imports required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
-    try:
-        from .tools.agent_browser import close_browser_session
+    from backend.copilot.chat_session_embeddings import delete_chat_session_embedding
 
-        await close_browser_session(session_id, user_id=user_id)
-    except Exception as e:
-        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+    from .tools.agent_browser import close_browser_session
+
+    # The cleanups below are best-effort and log their own failures, so they
+    # run after the caller gets its answer instead of holding it up.
+    # The embedding row is user-scoped; without a user_id the filter would
+    # miss and the periodic embedder sweeps the orphan row instead.
+    if user_id:
+        spawn_background_task(
+            delete_chat_session_embedding(session_id, user_id),
+            name=f"chat-embedding-delete-{session_id[:12]}",
+        )
+    spawn_background_task(
+        close_browser_session(session_id, user_id=user_id),
+        name=f"browser-close-{session_id[:12]}",
+    )
 
     return True
 

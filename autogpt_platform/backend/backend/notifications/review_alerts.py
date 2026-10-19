@@ -69,7 +69,7 @@ async def sync_awaiting_review(
         else:
             assert graph_id
             metadata = await get_graph_metadata(graph_id=graph_id)
-            agent = metadata.name if metadata else f"Agent {graph_id[:8]}"
+            agent = metadata.name if metadata else f"Workflow {graph_id[:8]}"
             cta_path = f"/library/agents/{graph_id}/reviews"
         cause = AwaitingReviewCause(
             cta_path=cta_path,

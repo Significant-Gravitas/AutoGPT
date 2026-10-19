@@ -29,6 +29,7 @@ from backend.api.external.v2.mcp_server import (
     protected_resource_metadata,
 )
 from backend.api.external.v2.rate_limit import file_upload_limiter
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
@@ -70,6 +71,9 @@ def no_tenancy_lookups(mocker: pytest_mock.MockerFixture) -> mock.AsyncMock:
         "backend.api.external.v2.mcp_server.check_ids_in_tenant",
         new_callable=mock.AsyncMock,
     )
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 
 async def test_the_server_carries_every_opted_in_tool_with_its_scopes():

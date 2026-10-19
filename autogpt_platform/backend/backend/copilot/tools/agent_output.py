@@ -226,7 +226,7 @@ class AgentOutputTool(BaseTool):
                 logger.warning(f"Failed to get library agent by ID: {e}")
                 agent = None
             if agent is None or not in_tenant(agent.organization_id, tenant):
-                return None, f"Library agent '{library_agent_id}' not found"
+                return None, f"Library workflow '{library_agent_id}' not found"
             return agent, None
 
         # Priority 2: Store slug (username/agent-name)
@@ -234,14 +234,14 @@ class AgentOutputTool(BaseTool):
             username, agent_slug = store_slug.split("/", 1)
             graph, _ = await fetch_graph_from_store_slug(username, agent_slug)
             if not graph:
-                return None, f"Agent '{store_slug}' not found in marketplace"
+                return None, f"Workflow '{store_slug}' not found in marketplace"
 
             # Find in user's library by graph_id
             agent = await lib_db.get_library_agent_by_graph_id(user_id, graph.id)
             if not agent or not in_tenant(agent.organization_id, tenant):
                 return (
                     None,
-                    f"Agent '{store_slug}' is not in your library. "
+                    f"Workflow '{store_slug}' is not in your library. "
                     "Add it first to see outputs.",
                 )
             return agent, None
@@ -258,7 +258,7 @@ class AgentOutputTool(BaseTool):
                 if not response.agents:
                     return (
                         None,
-                        f"No agents matching '{agent_name}' found in your library",
+                        f"No workflows matching '{agent_name}' found in your library",
                     )
 
                 # Return best match (first result from search)
@@ -268,11 +268,11 @@ class AgentOutputTool(BaseTool):
                 # AutoPilot's model reads the text to recover; an External
                 # API client gets none, as `error_detail` gives it none.
                 detail = "an internal error" if external_caller else str(e)
-                return None, f"Error searching for agent: {detail}"
+                return None, f"Error searching for workflow: {detail}"
 
         return (
             None,
-            "Please specify an agent name, library_agent_id, or store_slug",
+            "Please specify a workflow name, library_agent_id, or store_slug",
         )
 
     async def _get_execution(
@@ -372,7 +372,7 @@ class AgentOutputTool(BaseTool):
 
         if not execution:
             return AgentOutputResponse(
-                message=f"No completed executions found for agent '{agent.name}'",
+                message=f"No completed executions found for workflow '{agent.name}'",
                 session_id=session_id,
                 agent_name=agent.name,
                 agent_id=agent.graph_id,
@@ -422,7 +422,7 @@ class AgentOutputTool(BaseTool):
 
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
-            message = f"Found execution outputs for agent '{agent.name}'"
+            message = f"Found execution outputs for workflow '{agent.name}'"
             health_warning = build_run_health_warning(
                 execution.outputs,
                 node_failures,
@@ -438,12 +438,12 @@ class AgentOutputTool(BaseTool):
                     )
                 message += f". {health_warning}"
         elif execution.status == ExecutionStatus.FAILED:
-            message = f"Execution for agent '{agent.name}' failed"
+            message = f"Execution for workflow '{agent.name}' failed"
         elif execution.status == ExecutionStatus.TERMINATED:
-            message = f"Execution for agent '{agent.name}' was terminated"
+            message = f"Execution for workflow '{agent.name}' was terminated"
         elif execution.status == ExecutionStatus.REVIEW:
             message = (
-                f"Execution for agent '{agent.name}' is awaiting human review. "
+                f"Execution for workflow '{agent.name}' is awaiting human review. "
                 "The user needs to approve it before it can continue."
             )
         elif execution.status in (
@@ -452,11 +452,11 @@ class AgentOutputTool(BaseTool):
             ExecutionStatus.INCOMPLETE,
         ):
             message = (
-                f"Execution for agent '{agent.name}' is still {execution.status.value}. "
+                f"Execution for workflow '{agent.name}' is still {execution.status.value}. "
                 "Results may be incomplete. Use wait_if_running to wait for completion."
             )
         else:
-            message = f"Found execution for agent '{agent.name}' (status: {execution.status.value})"
+            message = f"Found execution for workflow '{agent.name}' (status: {execution.status.value})"
 
         if len(available_executions) > 1:
             message += (
@@ -551,11 +551,13 @@ class AgentOutputTool(BaseTool):
             if not agent or not in_tenant(agent.organization_id, tenant):
                 return NoResultsResponse(
                     message=(
-                        f"Execution found but agent not in your library. "
+                        f"Execution found but workflow not in your library. "
                         f"Graph ID: {execution.graph_id}"
                     ),
                     session_id=session_id,
-                    suggestions=["Add the agent to your library to see more details"],
+                    suggestions=[
+                        "Add the workflow to your library to see more details"
+                    ],
                 ).from_outside()
 
             return self._build_response(agent, execution, [], session_id)
@@ -572,11 +574,11 @@ class AgentOutputTool(BaseTool):
 
         if error or not agent:
             return NoResultsResponse(
-                message=error or "Agent not found",
+                message=error or "Workflow not found",
                 session_id=session_id,
                 suggestions=[
-                    "Check the agent name or ID",
-                    "Make sure the agent is in your library",
+                    "Check the workflow name or ID",
+                    "Make sure the workflow is in your library",
                 ],
             )
 

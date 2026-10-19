@@ -58,7 +58,7 @@ export function CopilotPendingReviews(props: Props) {
     if (graphExecId) {
       onSend(
         `All pending reviews have been processed. ` +
-          `The agent execution will resume automatically for approved reviews. ` +
+          `The workflow execution will resume automatically for approved reviews. ` +
           `Use view_agent_output with execution_id="${graphExecId}" to check the result.`,
       );
     } else {

@@ -177,7 +177,9 @@ async def _resolve_host(hostname: str) -> list[str]:
     except socket.gaierror:
         raise ValueError(f"Unable to resolve IP address for hostname {hostname}")
 
-    ip_list = [info[4][0] for info in infos]
+    # AF_INET/AF_INET6 sockaddrs start with the address string; anything else is not
+    # an IP we could validate or connect to.
+    ip_list = [addr for info in infos if isinstance(addr := info[4][0], str)]
     ipv4 = [ip for ip in ip_list if ":" not in ip]
     ipv6 = [ip for ip in ip_list if ":" in ip]
     ip_addresses = ipv4 + ipv6
