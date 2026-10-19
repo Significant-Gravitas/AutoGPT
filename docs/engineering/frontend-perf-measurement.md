@@ -112,6 +112,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
 | `library-running-events` | Open the same library at `/library?sort=updatedAt`, with the websocket mocked | Push a `graph_execution_event` for one of the 20 runs every 250 ms, 80 in all; print the `subscribe_graph_executions` frames and `GET /executions` requests seen | 20 s of events + 2 s |
 | `builder-run-events` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 40 node execution events over the websocket, one every 50 ms: the 10 unfinished nodes go RUNNING then COMPLETED, each event sent twice. The execution GET returns what has been sent so far, as the backend would | 2 s after the last event |
+| `copilot-resize-drag` | Open the 200-message chat and click "Open files" so the files panel docks on the right | Drag the panel's resize handle 120 px wider with 60 pointer moves over 1 s | 1 s after the drop |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
