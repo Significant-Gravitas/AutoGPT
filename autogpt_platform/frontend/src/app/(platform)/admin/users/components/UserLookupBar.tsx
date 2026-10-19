@@ -22,7 +22,10 @@ export function UserLookupBar({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!initialValue) inputRef.current?.focus();
+    // Only where it can't pop up a touch keyboard over the page.
+    if (!initialValue && window.matchMedia("(pointer: fine)").matches) {
+      inputRef.current?.focus();
+    }
   }, [initialValue]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -41,7 +44,10 @@ export function UserLookupBar({
           ref={inputRef}
           value={value}
           onChange={setValue}
-          placeholder="User ID or email"
+          placeholder="User ID or email…"
+          name="user"
+          autoComplete="off"
+          spellCheck={false}
           aria-label="User ID or email"
           disabled={isLoading}
           size="small"

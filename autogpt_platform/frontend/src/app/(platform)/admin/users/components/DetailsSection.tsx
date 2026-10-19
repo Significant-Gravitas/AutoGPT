@@ -24,8 +24,16 @@ export function DetailsSection({ user }: Props) {
   );
 
   async function copyUserID() {
-    await navigator.clipboard.writeText(user.id);
-    toast({ title: "User ID copied" });
+    try {
+      await navigator.clipboard.writeText(user.id);
+      toast({ title: "User ID copied" });
+    } catch {
+      toast({
+        title: "Couldn't copy the user ID",
+        description: "Select it and copy it by hand.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
@@ -33,7 +41,10 @@ export function DetailsSection({ user }: Props) {
       <dl className="flex flex-col gap-3">
         <Row label="User ID">
           <span className="flex items-start gap-1">
-            <span className="min-w-0 break-all font-mono text-[13px]">
+            <span
+              className="min-w-0 break-all font-mono text-[13px]"
+              translate="no"
+            >
               {user.id}
             </span>
             <Button
@@ -42,13 +53,15 @@ export function DetailsSection({ user }: Props) {
               aria-label="Copy user ID"
               onClick={() => void copyUserID()}
             >
-              <Icon icon={Copy01Icon} size={14} />
+              <Icon icon={Copy01Icon} size={14} aria-hidden />
             </Button>
           </span>
         </Row>
         <Row label="Email">
           <span className="flex flex-wrap items-center gap-1.5">
-            <span className="break-all">{user.email}</span>
+            <span className="break-all" translate="no">
+              {user.email}
+            </span>
             {user.emailVerified ? (
               <Badge variant="success" size="small">
                 Verified

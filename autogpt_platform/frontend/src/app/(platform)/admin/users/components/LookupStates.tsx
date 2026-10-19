@@ -11,7 +11,12 @@ import { getSpendingSearchHref } from "../helpers";
 export function EmptyState() {
   return (
     <div className="flex flex-col items-center gap-2 py-16 text-center">
-      <Icon icon={UserSearch01Icon} size={32} className="text-zinc-400" />
+      <Icon
+        icon={UserSearch01Icon}
+        size={32}
+        className="text-zinc-400"
+        aria-hidden
+      />
       <Text variant="large-medium" as="h2">
         Look up a user
       </Text>
@@ -25,7 +30,12 @@ export function EmptyState() {
 export function NotFoundState({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center gap-2 py-16 text-center">
-      <Icon icon={UserQuestion01Icon} size={32} className="text-zinc-400" />
+      <Icon
+        icon={UserQuestion01Icon}
+        size={32}
+        className="text-zinc-400"
+        aria-hidden
+      />
       <Text variant="large-medium" as="h2" className="break-all">
         No user matches <span className="font-medium">{query}</span>
       </Text>

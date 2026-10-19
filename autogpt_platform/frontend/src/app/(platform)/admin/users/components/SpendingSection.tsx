@@ -29,6 +29,7 @@ export function SpendingSection({ userId }: Props) {
                 icon={ArrowUpRight01Icon}
                 size={16}
                 className="text-zinc-500"
+                aria-hidden
               />
             </Link>
           </li>

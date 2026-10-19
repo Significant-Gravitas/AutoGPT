@@ -51,6 +51,7 @@ export function OrganisationsSection({ userId }: Props) {
                   variant="small"
                   as="span"
                   className="font-mono text-zinc-500"
+                  translate="no"
                 >
                   {organisation.slug}
                 </Text>

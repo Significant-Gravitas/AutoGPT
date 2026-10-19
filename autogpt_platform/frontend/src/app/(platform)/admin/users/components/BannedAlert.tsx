@@ -23,5 +23,5 @@ export function BannedAlert({ user }: Props) {
 }
 
 function BannedIcon({ className }: { className?: string }) {
-  return <Icon icon={UserBlock01Icon} className={className} />;
+  return <Icon icon={UserBlock01Icon} className={className} aria-hidden />;
 }
