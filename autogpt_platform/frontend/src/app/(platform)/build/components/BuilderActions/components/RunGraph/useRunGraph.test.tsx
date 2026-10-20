@@ -167,7 +167,6 @@ describe("useRunGraph", () => {
 
     expect(mockSendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
       id: "graph-1",
-      name: "",
       surface: "builder",
     });
   });

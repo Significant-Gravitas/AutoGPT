@@ -18,20 +18,17 @@ import { analytics } from "@/services/analytics";
 export type AgentRunSurface = "library" | "builder" | "rerun";
 export type ScheduleSurface = "library" | "builder";
 
-interface AgentRef {
-  id: string;
-  name?: string | null;
-}
-
-export function trackAgentRunGoal(agent: AgentRef, surface: AgentRunSurface) {
-  sendGoal("run_agent", { id: agent.id, name: agent.name ?? "", surface });
+// Only the graph ID goes to DataFast: workflow names are written by people
+// and may hold personal data.
+export function trackAgentRunGoal(graphID: string, surface: AgentRunSurface) {
+  sendGoal("run_agent", { id: graphID, surface });
 }
 
 export function trackScheduleCreatedGoal(
-  agent: AgentRef,
+  graphID: string,
   surface: ScheduleSurface,
 ) {
-  sendGoal("schedule_agent", { id: agent.id, name: agent.name ?? "", surface });
+  sendGoal("schedule_agent", { id: graphID, surface });
 }
 
 function sendGoal(name: string, metadata: Record<string, string>) {
