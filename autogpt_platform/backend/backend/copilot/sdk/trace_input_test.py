@@ -16,7 +16,11 @@ from backend.copilot.response_model import StreamTextDelta, StreamToolInputAvail
 from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.sdk.service import (
+    _BUILDING_MODE_CONTINUATION,
     PreparedAttachments,
+    _apply_building_mode_restart,
+    _BuildingModeRestart,
+    _fresh_adapter,
     _RetryState,
     _run_stream_attempt,
     _StreamContext,
@@ -47,13 +51,31 @@ _PROMPT = 'What is in these pictures?\n日本語 "test"'
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("image_count", "file_count"),
-    [(0, 0), (1, 1), (2, 2), (1, 2), (0, 1)],
-    ids=["text-only", "one-image", "two-images", "mixed-files", "document-only"],
+    ("image_count", "file_count", "restart"),
+    [
+        pytest.param(0, 0, None, id="text-only"),
+        pytest.param(1, 1, None, id="one-image"),
+        pytest.param(2, 2, None, id="two-images"),
+        pytest.param(1, 2, None, id="mixed-files"),
+        pytest.param(0, 1, None, id="document-only"),
+        pytest.param(
+            1,
+            1,
+            "building-mode",
+            id="building-mode-restart",
+        ),
+        pytest.param(
+            1,
+            1,
+            "rebuilt-query",
+            id="rebuilt-query-retry",
+        ),
+    ],
 )
 async def test_turn_exports_prompt_and_references_without_image_bytes(
     image_count: int,
     file_count: int,
+    restart: str | None,
     traced_client: type[_ScriptedClient],
     posted_runs: list[RunTree],
     trace_receiver: _TraceServer,
@@ -105,9 +127,18 @@ async def test_turn_exports_prompt_and_references_without_image_bytes(
         transcript_builder=TranscriptBuilder(),
         usage=_TokenUsage(),
     )
-    client = traced_client(options=state.options)
+    clients: list[_ScriptedClient] = []
+
+    def make_client(options: ClaudeAgentOptions) -> _ScriptedClient:
+        client = traced_client(options=options)
+        clients.append(client)
+        return client
+
+    sent_queries = [_PROMPT]
+    events = []
     with (
-        patch(f"{_SVC}.ClaudeSDKClient", return_value=client),
+        patch(f"{_SVC}.ClaudeSDKClient", side_effect=make_client),
+        patch.object(traced_client, "interrupt", new=AsyncMock(), create=True),
         patch(
             "backend.copilot.sdk.trace_input.get_client", return_value=langfuse_client
         ),
@@ -116,7 +147,47 @@ async def test_turn_exports_prompt_and_references_without_image_bytes(
         tracing_context(enabled=True, client=MagicMock()),
         langfuse_client.start_as_current_span(name="copilot-sdk-turn") as span,
     ):
-        events = [event async for event in _run_stream_attempt(ctx, state)]
+        if restart == "building-mode":
+            with pytest.raises(_BuildingModeRestart):
+                async for event in _run_stream_attempt(ctx, state):
+                    events.append(event)
+                    if isinstance(event, StreamToolInputAvailable):
+                        session.building_mode_requested = True
+            with (
+                patch(
+                    f"{_SVC}.build_builder_system_prompt_suffix",
+                    new=AsyncMock(
+                        return_value="<building_guide>GUIDE</building_guide>"
+                    ),
+                ),
+                patch(
+                    f"{_SVC}.build_expert_identity_suffix",
+                    new=AsyncMock(return_value=""),
+                ),
+            ):
+                await _apply_building_mode_restart(
+                    session=session,
+                    state=state,
+                    sdk_options=state.options,
+                    base_system_prompt="BASE",
+                    delegation_supplement="",
+                    oversight_supplement="",
+                    team_building_supplement="",
+                    graphiti_supplement="",
+                    auto_mode_supplement="",
+                    use_e2b=False,
+                    session_id=session.session_id,
+                    message_id=ctx.message_id,
+                    log_prefix=ctx.log_prefix,
+                )
+            assert state.query_message == _BUILDING_MODE_CONTINUATION
+        elif restart == "rebuilt-query":
+            events.extend([event async for event in _run_stream_attempt(ctx, state)])
+            state.query_message = f"Rebuilt context for retry\n\n{_PROMPT}"
+            _fresh_adapter(state, ctx.message_id, session.session_id)
+        if restart:
+            sent_queries.append(state.query_message)
+        events.extend([event async for event in _run_stream_attempt(ctx, state)])
 
     langfuse_client.flush()
     exported = [
@@ -141,19 +212,23 @@ async def test_turn_exports_prompt_and_references_without_image_bytes(
     assert "private-image-payload" not in str([run.inputs for run in posted_runs])
 
     assert any(isinstance(event, StreamToolInputAvailable) for event in events)
+    assert "".join(
+        event.delta for event in events if isinstance(event, StreamTextDelta)
+    ) == "done" * (2 if restart == "rebuilt-query" else 1)
+    expected_turns = 3 if restart == "building-mode" else 2 * len(clients)
     assert (
-        "".join(event.delta for event in events if isinstance(event, StreamTextDelta))
-        == "done"
+        len([run for run in posted_runs if run.name == "claude.assistant.turn"])
+        == expected_turns
     )
-    assert len([run for run in posted_runs if run.name == "claude.assistant.turn"]) == 2
     if image_count:
-        client._transport.write.assert_awaited_once()
-        sent = json.loads(client._transport.write.call_args.args[0])
-        assert sent["message"]["content"] == [
-            *image_blocks,
-            {"type": "text", "text": _PROMPT},
-        ]
-        assert sent["session_id"] == session.session_id
+        for client, query in zip(clients, sent_queries, strict=True):
+            client._transport.write.assert_awaited_once()
+            sent = json.loads(client._transport.write.call_args.args[0])
+            assert sent["message"]["content"] == [
+                *image_blocks,
+                {"type": "text", "text": query},
+            ]
+            assert sent["session_id"] == session.session_id
     else:
         conversation = next(
             run for run in posted_runs if run.name == "claude.conversation"
