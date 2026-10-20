@@ -72,7 +72,20 @@ async def _reconcile(task: BackgroundTask) -> None:
             )
         return
     if task.outcome is None:
-        if now >= task.deadline:
+        completion = (
+            await stream_registry.get_session(task.child_session_id)
+            if status == "idle" and task.started_at is not None
+            else None
+        )
+        if completion and (
+            completion.user_id,
+            completion.turn_id,
+            completion.status,
+        ) == (task.user_id, task.child_turn_id, "completed"):
+            await background_task_db().finish_background_turn(
+                task.user_id, task.child_session_id, task.child_turn_id, None
+            )
+        elif now >= task.deadline:
             await background_task_db().complete_background_task(
                 task.id, task.user_id, "timed_out"
             )
@@ -128,8 +141,9 @@ async def _deliver(task: BackgroundTask, now: datetime) -> None:
         queued = await background_task_db().enqueue_background_followup(
             task.id, task.user_id, followup_message(task), metadata
         )
-    if queued == "queued":
+    if queued in ("queued", "delivered"):
         await invalidate_session_cache(task.parent_session_id)
+    if queued == "queued":
         await dispatch_next_for_user(task.user_id)
 
 

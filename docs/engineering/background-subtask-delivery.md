@@ -40,6 +40,9 @@ Normal worker completion saves the child result before closing its stream. Each
 stage has a durable execution claim: Rabbit redelivery cannot start the same
 model work again. Interrupted work fails closed rather than replaying possible
 side effects. Delivery retries reuse one stable message/turn ID.
+If the outcome write failed but Redis still records successful completion for
+the same owner and claimed child turn, recovery saves its original result.
+Missing or mismatched completion records are not evidence of success.
 
 The saved result is limited to the child's original turn, capped at 24,000
 characters, and linked to its full chat. A follow-up is synthetic input, not a
@@ -51,6 +54,8 @@ Ownership, organization/team, expert, and account-route checks run before
 acceptance, delivery, and execution. Deleted or changed-scope destinations do
 not receive a result. The database worker's recovery listing is internal and
 global; operations on individual tasks require the recorded owner.
+If only the chat's connection changes before delivery, its next idle opportunity
+gets one fixed notice linking to the subtask, without running a model follow-up.
 
 Dispatch records the active turn identity in session metadata in Postgres.
 If Redis stream metadata is lost, parent Stop cancels that turn's children and

@@ -208,11 +208,19 @@ async def enqueue_background_followup(
         task = rows[0]
         if task.outcome is None or task.wake_suppressed:
             return "closed"
-        if not _matches(parent, task):
+        if not _matches_scope(parent, task):
             await _close(tx, task_id, user_id)
             return "closed"
         if parent is None or parent.chatStatus != "idle":
             return "busy"
+        if not _matches(parent, task):
+            message = (
+                "Otto's background follow-up couldn't run because this chat's "
+                "connection changed. "
+                f"[Open the subtask](/copilot?sessionId={task.child_session_id}) for details."
+            )
+            metadata = {"background_task_notice": task.id}
+            terminal = True
         if terminal:
             await _append(
                 tx,
@@ -463,10 +471,17 @@ async def _lock_session(tx: Prisma, session_id: str) -> ChatSession | None:
 
 
 def _matches(session: ChatSession | None, task: BackgroundTask) -> bool:
-    if session is None:
+    if session is None or not _matches_scope(session, task):
         return False
     route = ChatSessionMetadata.model_validate(session.metadata)
-    return (
+    return (route.llm_auth_provider, route.llm_credential_id) == (
+        task.context.llm_auth_provider,
+        task.context.llm_credential_id,
+    )
+
+
+def _matches_scope(session: ChatSession | None, task: BackgroundTask) -> bool:
+    return session is not None and (
         session.userId,
         session.organizationId,
         session.teamId,
@@ -476,12 +491,6 @@ def _matches(session: ChatSession | None, task: BackgroundTask) -> bool:
         task.context.organization_id,
         task.context.team_id,
         task.context.expert_id,
-    ) and (
-        route.llm_auth_provider,
-        route.llm_credential_id,
-    ) == (
-        task.context.llm_auth_provider,
-        task.context.llm_credential_id,
     )
 
 

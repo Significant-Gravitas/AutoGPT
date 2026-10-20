@@ -384,6 +384,71 @@ async def test_scope_change_and_other_owner_cannot_receive_or_claim(world: World
     assert stored and stored.followup_state == "suppressed"
 
 
+@pytest.mark.parametrize("credential_only", [False, True])
+async def test_connection_change_posts_one_notice_without_running_a_followup(
+    world: World, credential_only: bool
+):
+    if credential_only:
+        assert await model.update_session_llm_route(
+            world.parent.session_id, world.user_id, "codex", "original-connection"
+        )
+        parent = await model.get_chat_session(world.parent.session_id, world.user_id)
+        assert parent
+        world.parent = parent
+    task = await world.launch()
+    assert await model.update_session_llm_route(
+        world.parent.session_id, world.user_id, "codex", "new-connection"
+    )
+    await world.finish_child(task)
+    cached = await model.get_chat_session(world.parent.session_id, world.user_id)
+    assert cached and not any(m.id == task.wake_id for m in cached.messages)
+
+    await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "waiting"
+    assert not await DbMessage.prisma().find_unique(where={"id": task.wake_id})
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "suppressed"
+    assert len(world.published.await_args_list) == 1
+    refreshed = await model.get_chat_session(world.parent.session_id, world.user_id)
+    assert refreshed
+    notices = [m for m in refreshed.messages if m.id == task.wake_id]
+    assert len(notices) == 1 and notices[0].role == "assistant"
+    assert "connection changed" in (notices[0].content or "")
+    assert f"/copilot?sessionId={task.child_session_id}" in (notices[0].content or "")
+    assert "The answer is 42." not in (notices[0].content or "")
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
+
+
+@pytest.mark.parametrize("scope", ["organization_id", "team_id", "expert_id"])
+async def test_changed_scope_does_not_receive_a_connection_notice(
+    world: World, scope: str
+):
+    task = await world.launch()
+    await world.finish_parent()
+    await world.finish_child(task)
+    context = task.context.model_copy(update={scope: str(uuid4())})
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatBackgroundTask" SET context=$2::jsonb WHERE id=$1',
+        task.id,
+        context.model_dump_json(),
+    )
+    assert await model.update_session_llm_route(
+        world.parent.session_id, world.user_id, "codex", "new-connection"
+    )
+
+    await background_delivery.reconcile_background_subtasks()
+
+    assert not await DbMessage.prisma().find_unique(where={"id": task.wake_id})
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "suppressed"
+    assert len(world.published.await_args_list) == 1
+
+
 async def test_launch_retry_and_worker_redelivery_do_not_duplicate_work(world: World):
     first = await world.launch()
     repeated = await world.launch()
@@ -637,6 +702,100 @@ async def test_worker_to_durable_handoff_to_parent_reply(
         where={"sessionId": task.parent_session_id, "role": "assistant"}
     )
     assert [reply.content for reply in replies] == ["Your background subtask found 42."]
+
+
+@pytest.mark.parametrize(
+    "completion",
+    [
+        "matching",
+        "expired",
+        "wrong_turn",
+        "wrong_owner",
+        "failed",
+        "missing",
+        "cancelled",
+        "unstarted",
+    ],
+)
+async def test_recovery_preserves_only_a_matching_success_after_a_completion_write_fails(
+    world: World, monkeypatch: pytest.MonkeyPatch, completion: str
+):
+    task = await world.launch()
+    await world.finish_parent()
+
+    async def scripted_model(**_kwargs: Any):
+        await append_and_save_message(
+            task.child_session_id,
+            ChatMessage(role="assistant", content="The answer is 42."),
+        )
+        yield StreamTextDelta(id=str(uuid4()), delta="The answer is 42.")
+
+    monkeypatch.setattr(processor, "ChatConfig", lambda: MagicMock(test_mode=True))
+    engine = MagicMock(side_effect=scripted_model)
+    monkeypatch.setattr(processor, "stream_chat_completion_dummy", engine)
+    monkeypatch.setattr(processor, "refusal_for", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        processor, "close_browser_daemon", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(
+        processor,
+        "finish_background_execution",
+        AsyncMock(side_effect=ConnectionError("Completion write unavailable")),
+    )
+
+    assert await processor.CoPilotProcessor()._execute_async(
+        world.entry(task.child_session_id),
+        threading.Event(),
+        MagicMock(),
+        CoPilotLogMetadata(logging.getLogger("background-test")),
+    )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome is None
+    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
+    active = await stream_registry.get_session(task.child_session_id)
+    assert active and active.status == "completed"
+    redis = await get_redis_async()
+    key = stream_registry.get_session_meta_key(task.child_session_id)
+    if completion == "expired":
+        await db.execute_raw_with_schema(
+            'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
+            task.id,
+            datetime.now(UTC) - timedelta(seconds=1),
+        )
+    elif completion == "wrong_turn":
+        await redis.hset(key, "turn_id", str(uuid4()))
+    elif completion == "wrong_owner":
+        await redis.hset(key, "user_id", str(uuid4()))
+    elif completion == "failed":
+        await redis.hset(key, "status", "failed")
+    elif completion == "missing":
+        await redis.delete(key)
+    elif completion == "cancelled":
+        await background_task_db.cancel_background_tasks(
+            world.user_id, task.child_session_id
+        )
+    elif completion == "unstarted":
+        await db.execute_raw_with_schema(
+            'UPDATE {schema_prefix}"ChatBackgroundTask" SET "startedAt"=NULL WHERE id=$1',
+            task.id,
+        )
+
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    expected = (
+        "completed"
+        if completion in ("matching", "expired")
+        else "cancelled" if completion == "cancelled" else "failed"
+    )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == expected
+    if expected == "completed":
+        assert stored.result == "The answer is 42."
+    wake = world.entry(world.parent.session_id)
+    assert f'"outcome": "{expected}"' in wake.message
+    engine.assert_called_once()
+    assert len(world.published.await_args_list) == 2
 
 
 async def test_completed_work_persists_even_when_cleanup_crosses_the_deadline(
