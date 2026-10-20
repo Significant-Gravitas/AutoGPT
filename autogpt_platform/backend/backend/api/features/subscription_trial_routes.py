@@ -40,6 +40,7 @@ from backend.data.subscription_trial_checkout import (
     resolve_trial_price,
 )
 from backend.data.subscription_trial_config import get_trial_offer
+from backend.data.subscription_trial_invoice import get_trial_payment_due
 from backend.data.user import get_user_by_id
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
@@ -83,6 +84,13 @@ async def get_trial_status(
             allowance_used_percent=min(
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
+            usage_policy=(
+                "lifetime"
+                if trial.offer.daily_cost_limit >= trial.offer.total_cost_limit
+                and trial.offer.weekly_cost_limit >= trial.offer.total_cost_limit
+                else "rolling"
+            ),
+            payment_due=await get_trial_payment_due(trial),
         )
     offer = await get_trial_offer(user_id, country=country)
     if offer is None or not await trial_seat_available(offer):

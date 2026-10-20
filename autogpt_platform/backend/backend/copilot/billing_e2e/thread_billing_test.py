@@ -8,7 +8,8 @@ charged the whole chat's spend so far until #15342.
 The provider keeps its own invoice; the ledger records what the platform
 charged. Each turn must charge the user's spend counters and the turn tree
 once, for the turn's own calls, and write one cost-log row whose tokens are
-the provider's.
+the provider's. A turn billed to credits charges the credit balance instead
+of the spend counters.
 
 The SDK scenarios run the bundled Claude Code CLI, so they skip where there is
 none (the Windows wheel ships without one); CI runs them on Linux.
@@ -26,6 +27,7 @@ from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
 
 from .audit import audit_thread
 from .baseline_turns import BaselineTurns
+from .credit_turns import CreditBilledTurns
 from .ledger import PlatformLedger
 from .m365_turns import MICROSOFT_365_CREDENTIAL_ID, Microsoft365Turns
 from .provider import FakeProvider
@@ -52,6 +54,8 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         pytest.skip("No Claude Code CLI binary available")
     provider.generation_lookups_fail = scenario.generation_lookups_fail
     provider.faults = [scenario.fault] if scenario.fault else []
+    if scenario.credits is not None:
+        ledger.fund(scenario.credits)
     run_turn = _turn_runner(scenario, provider, tmp_path, monkeypatch)
     session = _session(scenario)
     usage_by_turn: list[list[Usage]] = []
@@ -69,8 +73,9 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         if isinstance(run_turn, SdkTurns)
         else None
     )
+    metered = run_turn.metered if isinstance(run_turn, SdkTurns) else None
     findings = audit_thread(
-        scenario, provider, ledger, session, usage_by_turn, cli_resumed
+        scenario, provider, ledger, session, usage_by_turn, cli_resumed, metered
     )
     gap = scenario.known_gap
     unexplained = [f.message for f in findings if gap is None or f.check != gap.check]
@@ -97,11 +102,20 @@ def _turn_runner(
             base_url=f"{provider.url}{scenario.client_path}",
             model=scenario.model,
         )
+    config = _config(sdk_service.config, scenario, provider)
+    if scenario.credits is not None:
+        return CreditBilledTurns(
+            tmp_path,
+            monkeypatch,
+            provider,
+            config,
+            cli_max_retries=scenario.cli_max_retries,
+        )
     return SdkTurns(
         tmp_path,
         monkeypatch,
         provider,
-        _config(sdk_service.config, scenario, provider),
+        config,
         codex=scenario.codex,
         cli_max_retries=scenario.cli_max_retries,
     )

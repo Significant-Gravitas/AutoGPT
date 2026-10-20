@@ -129,6 +129,7 @@ vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
 }));
 vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: (props: object) => (
@@ -226,6 +227,30 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     );
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 
   it("keeps the backend's status lines out of the thinking indicator", () => {
@@ -981,6 +1006,41 @@ describe("ChatMessagesContainer — readOnly mode", () => {
           title: "Daily briefing",
         },
       ]);
+    },
+  );
+
+  it.each([false, true])(
+    "shows a scheduled chat's note to its owner alone (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "notice-1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Skipped: daily usage limit reached" },
+              ],
+              metadata: {
+                kind: "scheduled_chat_notice",
+                reason: "no_plan",
+                headline: "Skipped: daily usage limit reached",
+                body: "“Briefing” didn't run.",
+                actions: [],
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByTestId("scheduled-chat-notice")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(
+        screen.queryAllByText("Skipped: daily usage limit reached"),
+      ).toHaveLength(readOnly ? 0 : 1);
     },
   );
 

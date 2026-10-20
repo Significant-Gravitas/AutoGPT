@@ -1,11 +1,18 @@
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ReviewRequest } from "@/app/api/__generated__/models/reviewRequest";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { PendingReviewsList } from "../PendingReviewsList";
+
+const { toastSpy } = vi.hoisted(() => ({ toastSpy: vi.fn() }));
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: toastSpy,
+  useToast: () => ({ toast: toastSpy, dismiss: vi.fn() }),
+}));
 
 function makeReview(
   overrides: Partial<PendingHumanReviewModel> = {},
@@ -187,4 +194,66 @@ test("an AutoPilot action's card neither calls it a workflow nor offers an edit"
   ).toBeDefined();
   expect(screen.queryByText(/edit it if needed/)).toBeNull();
   expect(screen.queryByText(/Node #/)).toBeNull();
+});
+
+// The JSON editor keeps a half-typed draft on screen. Approving must not send
+// the last valid JSON in its place: with a trailing comma left behind,
+// "b@x.com" would still go out while the reviewer sees it deleted.
+test.each([
+  ["a draft that doesn't parse", '[\n  "a@x.com",\n]'],
+  ["an emptied draft", ""],
+])(
+  "approving %s is blocked instead of sending stale data",
+  async (_, draft) => {
+    const captured = captureReviewAction();
+    render(
+      <PendingReviewsList
+        reviews={[
+          makeReview({
+            payload: [
+              "a@x.com",
+              "b@x.com",
+            ] as unknown as PendingHumanReviewModel["payload"],
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+      target: { value: draft },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Invalid JSON" }),
+      ),
+    );
+    expect(captured.body).toBeUndefined();
+  },
+);
+
+test("rejecting goes through while the JSON draft doesn't parse", async () => {
+  const captured = captureReviewAction();
+  const payload = ["a@x.com", "b@x.com"];
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          payload: payload as unknown as PendingHumanReviewModel["payload"],
+        }),
+      ]}
+    />,
+  );
+
+  fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+    target: { value: '[\n  "a@x.com",\n]' },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews[0]).toMatchObject({
+    approved: false,
+    reviewed_data: payload,
+  });
 });

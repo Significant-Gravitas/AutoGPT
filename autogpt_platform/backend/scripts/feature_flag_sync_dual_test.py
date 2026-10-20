@@ -276,11 +276,17 @@ def _posthog() -> Posthog:
     client.feature_flags = flags
     client.cohorts = {str(ids[p["name"]]): p["filters"]["properties"] for p in payloads}
     client._get_flags_decision = _no_remote_flags
+    # Each read reports a $feature_flag_called event, which would post to PostHog.
+    client.capture = _no_events
     return client
 
 
 def _no_remote_flags(*args, **kwargs):
     raise ConnectionError("only an in-process answer counts here")
+
+
+def _no_events(*args, **kwargs) -> None:
+    return None
 
 
 def _record_posthog_reads(monkeypatch) -> dict[str, tuple[Any, bool]]:

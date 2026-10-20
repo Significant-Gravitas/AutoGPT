@@ -3,6 +3,7 @@ import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
+import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 
 // React 18.3 only ships `cache` under the `react-server` export condition.
 // Vitest doesn't set that condition, so any module that imports `cache` from
@@ -41,5 +42,8 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  // The checkout redirect is page-wide state that outlives a render; a
+  // redirect left by one test would disable the next test's buttons.
+  resetCheckoutRedirect();
 });
 afterAll(() => server.close());
