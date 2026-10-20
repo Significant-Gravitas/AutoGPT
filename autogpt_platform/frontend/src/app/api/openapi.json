@@ -7,6 +7,96 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/account/deletion": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Delete account",
+        "operationId": "postAccountDelete account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": { "description": "That email doesn't match your account." },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "We couldn't cancel your plan. Nothing was deleted. Try again."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/feedback": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Send exit feedback",
+        "operationId": "postAccountSend exit feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/blocks/cost-estimates": {
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
@@ -2747,6 +2837,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
@@ -3093,47 +3225,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/auth/user/email": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Update user email",
-        "operationId": "postV1Update user email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "type": "string", "title": "Email" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": { "type": "string" },
-                  "type": "object",
-                  "title": "Response Postv1Update User Email"
-                }
               }
             }
           },
@@ -3815,28 +3906,6 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/chat/health": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Health Check",
-        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
-        "operationId": "getV2HealthCheck",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Getv2Healthcheck"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/chat/model-tiers": {
@@ -6822,7 +6891,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -12518,7 +12595,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
-        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "description": "Hand back the user's own recording, for as long as it is kept.\n\nMeant for a take that failed: \"your recording is safe\" has to be\ntrue, and this is what makes it checkable. A transcribed take has no\nrecording left, since only the transcript is kept. A failed take's\nrecording is deleted within 48 hours (see ``retention.py``), and one\nthat is due is refused even before the sweep reaches it; a signed URL\nfor one that is gone would only fail at the bucket, so say so here\ninstead.",
         "operationId": "download_brain_dump_recording",
         "responses": {
           "200": {
@@ -14706,6 +14783,78 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/paused": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List scheduled chats paused after failing the same way",
+        "description": "A paused job drops out of the follow-ups list above, so the chats a\nfailure streak paused are listed here, each once however many fire times\nit has, with why and what Resume takes.",
+        "operationId": "listPausedScheduledChats",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PausedScheduledChat"
+                  },
+                  "type": "array",
+                  "title": "Response Listpausedscheduledchats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/resume": {
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Resume a scheduled chat paused after failing the same way",
+        "operationId": "resumeScheduledChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeScheduledChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/schedules/{schedule_id}": {
@@ -18734,6 +18883,35 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AccountDeletionRequestBody": {
+        "properties": {
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Confirm Email"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["settings", "paywall"],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": ["confirm_email", "source"],
+        "title": "AccountDeletionRequestBody"
+      },
+      "AccountDeletionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "scheduled",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "AccountDeletionResponse"
+      },
       "AccuracyAlertData": {
         "properties": {
           "graph_id": { "type": "string", "title": "Graph Id" },
@@ -18810,7 +18988,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",
@@ -21551,6 +21730,11 @@
             "title": "Limits Retry Count",
             "default": 0
           },
+          "usage_wait_count": {
+            "type": "integer",
+            "title": "Usage Wait Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -22616,6 +22800,63 @@
         "type": "object",
         "required": ["success"],
         "title": "DeleteLinkResponse"
+      },
+      "DeletionFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["opened", "answer", "alternative_clicked"],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "privacy",
+                  "cost",
+                  "not_using",
+                  "missing_capability",
+                  "limits",
+                  "other",
+                  "skipped"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Text"
+          },
+          "alternative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manage_apps",
+                  "disconnect_all",
+                  "billing",
+                  "keep_account"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "DeletionFeedbackRequest",
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
       },
       "DemotionSummary": {
         "properties": {
@@ -24938,7 +25179,8 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "self-serve-account-deletion"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -24967,7 +25209,8 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "SELF_SERVE_ACCOUNT_DELETION"
         ]
       },
       "FrontendFlagValues": {
@@ -29333,6 +29576,40 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
+      "PausedScheduledChat": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "reason": { "type": "string", "title": "Reason" },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "summary": { "type": "string", "title": "Summary" },
+          "paused_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paused At"
+          },
+          "routine": { "type": "boolean", "title": "Routine", "default": false }
+        },
+        "type": "object",
+        "required": [
+          "schedule_key",
+          "title",
+          "session_id",
+          "reason",
+          "provider",
+          "summary",
+          "paused_at"
+        ],
+        "title": "PausedScheduledChat",
+        "description": "A scheduled chat its failure streak paused, as the lists show it."
+      },
       "PeekPendingMessagesResponse": {
         "properties": {
           "messages": {
@@ -31137,6 +31414,12 @@
         "type": "object",
         "required": ["version_id"],
         "title": "RestoreVersionRequest"
+      },
+      "ResumeScheduledChatResponse": {
+        "properties": { "resumed": { "type": "boolean", "title": "Resumed" } },
+        "type": "object",
+        "required": ["resumed"],
+        "title": "ResumeScheduledChatResponse"
       },
       "ReviewItem": {
         "properties": {

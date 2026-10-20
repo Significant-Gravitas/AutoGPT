@@ -1,12 +1,14 @@
 {{ content.headline }}
 
-{{ content.intro }} {{ content.preheader }} If you didn't request this, you can safely ignore this email.
+{{ content.intro }} {{ content.preheader }}{% if content.action %} If you didn't request this, you can safely ignore this email.{% elif content.note %} {{ content.note }}{% endif +%}
 
+{% if content.action %}
 {{ content.action }}:
 {{ action_url }}
+{% endif %}
 {% if content.expiry %}
 The link expires in {{ content.expiry }}.
-{% endif %}{% if content.note %}
+{% endif %}{% if content.action and content.note %}
 {{ content.note }}
 {% endif %}
 {{ content.reason }}

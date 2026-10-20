@@ -2,9 +2,10 @@
 
 import asyncio
 import base64
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -1005,7 +1006,12 @@ class TestGetBillingEmailRecipient:
         )
         row.name = "User"
 
-        with patch.object(user_module, "prisma") as mock_prisma:
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module, "is_account_closed", new=AsyncMock(return_value=False)
+            ),
+        ):
             mock_prisma.user.find_first = AsyncMock(return_value=row)
             recipient = await get_billing_email_recipient("cus_123")
 
@@ -1020,6 +1026,31 @@ class TestGetBillingEmailRecipient:
             marketing_opt_out_at=opted_out_at,
             timezone="Europe/London",
         )
+
+    @pytest.mark.asyncio
+    async def test_a_closed_account_gets_no_billing_mail(self):
+        """A Stripe event in flight or redelivered after the deletion (a final
+        notice, a welcome) must not email an account that is closed."""
+        row = MagicMock(
+            id="user-1",
+            email="user@example.com",
+            welcomeEmailSentAt=None,
+            marketingOptOutAt=None,
+            timezone="Europe/London",
+        )
+        row.name = "User"
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module, "is_account_closed", new=AsyncMock(return_value=True)
+            ) as closed,
+        ):
+            mock_prisma.user.find_first = AsyncMock(return_value=row)
+            recipient = await get_billing_email_recipient("cus_123")
+
+        assert recipient is None
+        closed.assert_awaited_once_with("user-1")
 
 
 def _credentials_tx(mocker) -> MagicMock:
@@ -1689,6 +1720,35 @@ class TestGetAuthUserFlagFields:
             fields = await user_module.get_auth_user_flag_fields("ghost")
 
         assert fields is None
+
+
+class TestIsUserBanned:
+    """The ban states themselves are driven through the real dependencies in
+    ``api/banned_account_test.py``; these pin what those can't reach."""
+
+    @pytest.mark.asyncio
+    async def test_a_missing_auth_row_is_not_a_ban(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            assert await user_module.is_auth_user_banned("no-auth-row") is False
+
+    @pytest.mark.asyncio
+    async def test_the_answer_is_shared_until_it_expires(self, mocker):
+        """Every request asks, so a hit must not reach the database."""
+        mocker.patch("backend.data.db.is_connected", return_value=True)
+        user_id = f"cached-{uuid.uuid4()}"
+        now = datetime.now(timezone.utc)
+        row = MagicMock(banned=True, banExpires=now + timedelta(days=1))
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            find_unique = AsyncMock(return_value=row)
+            mock_auth_user.prisma.return_value.find_unique = find_unique
+            assert await user_module.is_user_banned(user_id) is True
+            assert await user_module.is_user_banned(user_id) is True
+        user_module.is_user_banned.cache_delete(user_id)
+
+        find_unique.assert_awaited_once_with(where={"id": user_id})
 
 
 class TestGetUserDefaultChatRoute:

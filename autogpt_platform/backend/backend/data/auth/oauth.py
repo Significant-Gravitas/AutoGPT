@@ -25,6 +25,9 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.db import transaction
+from backend.data.user import is_user_banned
+
 from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
@@ -652,6 +655,10 @@ async def refresh_tokens(
     if rt.expiresAt < now:
         raise InvalidGrantError("refresh token expired")
 
+    # Before the revoke, so the app's grant still works once a ban is lifted.
+    if await is_user_banned(rt.userId):
+        raise InvalidGrantError("the account this token belongs to is banned")
+
     # Revoke old refresh token
     await PrismaOAuthRefreshToken.prisma().update(
         where={"token": token_hash},
@@ -721,6 +728,43 @@ async def revoke_refresh_token(
 
 
 # ============================================================================
+# User-wide Revocation
+# ============================================================================
+
+
+async def revoke_user_oauth_tokens(user_id: str) -> dict[str, int]:
+    """
+    Revoke every OAuth grant issued for a user, across all applications.
+
+    In one transaction: deletes the user's unused authorization codes (a code
+    has no revoked state, and a used one is already spent) and revokes every
+    access and refresh token that isn't revoked yet. Tokens revoked earlier
+    keep their original ``revokedAt``. Applications the user owns as a
+    developer, and tokens other users granted them, are left alone.
+
+    Returns a dict with counts by type, like ``cleanup_expired_oauth_tokens``.
+    """
+    now = datetime.now(timezone.utc)
+    async with transaction() as tx:
+        codes = await PrismaOAuthAuthorizationCode.prisma(tx).delete_many(
+            where={"userId": user_id, "usedAt": None}
+        )
+        refresh = await PrismaOAuthRefreshToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+        access = await PrismaOAuthAccessToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+    return {
+        "authorization_codes": codes,
+        "access_tokens": access,
+        "refresh_tokens": refresh,
+    }
+
+
+# ============================================================================
 # Token Introspection
 # ============================================================================
 
@@ -739,6 +783,8 @@ async def introspect_token(
     if token_type_hint != "refresh_token":
         try:
             token_info, app = await validate_access_token(token)
+            if await is_user_banned(token_info.user_id):
+                return TokenIntrospectionResult(active=False)
             return TokenIntrospectionResult(
                 active=True,
                 scopes=list(s.value for s in token_info.scopes),
@@ -759,7 +805,9 @@ async def introspect_token(
     if refresh_token and refresh_token.revokedAt is None:
         # Check if valid (not expired)
         now = datetime.now(timezone.utc)
-        if refresh_token.expiresAt > now:
+        if refresh_token.expiresAt > now and not await is_user_banned(
+            refresh_token.userId
+        ):
             app = await get_oauth_application_by_id(refresh_token.applicationId)
             return TokenIntrospectionResult(
                 active=True,

@@ -25,6 +25,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -63,6 +64,21 @@ def _unavailable_denial() -> TurnDenial:
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
     )
+
+
+async def _check_ban(user_id: str) -> TurnDenial | None:
+    """Fail closed on lookup failure, as the paywall check does."""
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(
+            f"evaluate_turn_gate: ban lookup failed for ...{user_id[-8:]}",
+            exc_info=True,
+        )
+        return _unavailable_denial()
+    if not banned:
+        return None
+    return TurnDenial(reason="banned", message="This account has been banned.")
 
 
 async def _check_paywall(user_id: str) -> TurnDenial | None:
@@ -132,14 +148,18 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
 
 
 async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
-    """Apply the same subscription paywall + usage rate limits as the web UI.
+    """Apply the same ban, subscription paywall and usage limits as the web UI.
 
     The bot enqueues turns directly into the executor, bypassing the
     route-level paywall dependency and the dispatcher's rate-limit check, so
     without this a NO_TIER / over-cap user would get unmetered free usage.
     Returns a :class:`TurnDenial` to surface, or None when the turn may run.
     """
-    return await _check_paywall(user_id) or await _check_usage_limits(user_id)
+    return (
+        await _check_ban(user_id)
+        or await _check_paywall(user_id)
+        or await _check_usage_limits(user_id)
+    )
 
 
 async def resolve_owner(
@@ -148,16 +168,23 @@ async def resolve_owner(
     """Resolve the AutoGPT user that owns a platform conversation.
 
     Server context → server owner. DM context → the DM-linked user.
+
+    A closed account's links count as unlinked (``open_only``): account
+    deletion unlinks the chat platforms only best effort, and the bot's turn
+    gate checks the plan and usage, not a closed account, so a link that
+    outlived the close must not run turns as the deleted user.
     """
     db = platform_linking_db()
 
     if platform_server_id:
-        owner = await db.find_server_link_owner(platform, platform_server_id)
+        owner = await db.find_server_link_owner(
+            platform, platform_server_id, open_only=True
+        )
         if owner is None:
             raise NotFoundError("This server is not linked to an AutoGPT account.")
         return owner
 
-    owner = await db.find_user_link_owner(platform, platform_user_id)
+    owner = await db.find_user_link_owner(platform, platform_user_id, open_only=True)
     if owner is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
     return owner
@@ -434,7 +461,7 @@ async def list_user_chats(
     server — so a caller can only ever see their own conversations.
     """
     owner_user_id = await platform_linking_db().find_user_link_owner(
-        platform.value, platform_user_id
+        platform.value, platform_user_id, open_only=True
     )
     if owner_user_id is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")

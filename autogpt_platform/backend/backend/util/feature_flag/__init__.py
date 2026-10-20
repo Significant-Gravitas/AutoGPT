@@ -73,6 +73,10 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # The gate answers the review pauses of workflows AutoPilot started, and
+    # its yes satisfies a direct block call's own review. A rollout control
+    # that defaults ON by decision; off restores the two approval layers.
+    COPILOT_UNIFIED_APPROVALS = "copilot-unified-approvals"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable
@@ -144,6 +148,13 @@ class Flag(str, Enum):
     # browse and install end-to-end: the routes 404 when off, so the dark
     # launch is not reachable by URL with the shelf hidden. Fail-closed.
     SKILLS_HUB = "skills-hub"
+
+    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
+    # deleting an account from Settings > Account and the paywall: the
+    # deletion and feedback routes 404 when off. Stays off until the data
+    # erasure routine (SECRT-2854) runs in production, since a closed
+    # account is only erased by it. Fail-closed (default False).
+    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
 
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the

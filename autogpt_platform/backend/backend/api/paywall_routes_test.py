@@ -34,6 +34,9 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open.
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",
@@ -43,7 +46,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/api-keys/{key_id}/suspend",
     "POST /api/auth/user",
     "POST /api/auth/user/consent",
-    "POST /api/auth/user/email",
     "GET /api/auth/user/preferences",
     "POST /api/auth/user/preferences",
     "GET /api/auth/user/timezone",
@@ -220,6 +222,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/session/{chat_session_id}",
     "GET /api/schedules",
     "GET /api/schedules/followups",
+    "GET /api/schedules/followups/paused",
     "GET /api/skill-learning/decisions",
     "GET /api/skill-learning/history",
     "GET /api/skill-learning/skills/{name}",
@@ -293,7 +296,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/email/send",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
-    "GET /api/chat/health",
     "GET /api/chat/schema/tool-responses",
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",

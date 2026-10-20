@@ -40,6 +40,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -59,6 +60,7 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot.scheduled_chats.service import record_scheduled_run
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
@@ -154,6 +156,8 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
+    record_gate_approval,
+    reopen_review,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -198,6 +202,7 @@ from backend.data.user import (
     get_user_notification_preference,
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
+    is_auth_user_banned,
     is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
@@ -409,6 +414,8 @@ class DatabaseManager(AppService):
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Background work skips a banned owner in Prisma-less workers too.
+    is_auth_user_banned = _(is_auth_user_banned)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -434,6 +441,8 @@ class DatabaseManager(AppService):
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
+    record_gate_approval = _(record_gate_approval)
+    reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -469,6 +478,9 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    clear_brain_dump_audio_paths = _(
+        onboarding_dump_db.clear_audio_paths, name="clear_brain_dump_audio_paths"
+    )
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -769,6 +781,10 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
     append_plain_session_message = _(chat_db.append_plain_session_message)
+    # And to tell a scheduled chat why its run was skipped, in that chat.
+    append_session_message = _(chat_db.append_session_message)
+    # The copilot executor counts each scheduled run toward a failure streak.
+    record_scheduled_run = _(record_scheduled_run)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -923,6 +939,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    is_auth_user_banned = d.is_auth_user_banned
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -940,6 +957,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
+    record_gate_approval = d.record_gate_approval
+    reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -978,6 +997,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
+    append_session_message = d.append_session_message
+    record_scheduled_run = d.record_scheduled_run
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings
@@ -1017,6 +1038,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    clear_brain_dump_audio_paths = d.clear_brain_dump_audio_paths
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens

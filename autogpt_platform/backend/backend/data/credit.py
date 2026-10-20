@@ -3,7 +3,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit, urlunsplit
 
 import stripe
@@ -42,6 +42,7 @@ from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
+    expire_all_open_checkouts,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -973,13 +974,9 @@ class UserCredit(UserCreditBase):
             )
             return
 
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(request.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(request)
+        if not transaction:
+            return
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
                 f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
@@ -1019,13 +1016,9 @@ class UserCredit(UserCreditBase):
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(dispute.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(dispute)
+        if not transaction:
+            return
         user_id = transaction.userId
         amount = dispute.amount
         balance = await self.get_credits(user_id)
@@ -1080,6 +1073,47 @@ class UserCredit(UserCreditBase):
             "uncategorized_text": evidence_text[:20000],
         }
         await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+    async def _find_top_up(
+        self, request: stripe.Refund | stripe.Dispute
+    ) -> CreditTransaction | None:
+        transaction = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": str(request.payment_intent),
+                "isActive": True,
+                "type": CreditTransactionType.TOP_UP,
+            }
+        )
+        if transaction:
+            return transaction
+        # A Checkout top-up stays keyed by its session until fulfilled, so a miss
+        # raises (Stripe retries) unless the payment cannot have bought credits.
+        if not request.payment_intent or not await self._paid_invoice_without_credits(
+            str(request.payment_intent)
+        ):
+            raise RuntimeError(
+                f"No active top-up matches {request.id} (payment intent "
+                f"{request.payment_intent}); retrying until one is fulfilled"
+            )
+        # A dispute is a chargeback someone must answer in Stripe; only ERROR reaches Sentry.
+        log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+        log(
+            f"Ignoring {request.id} (${request.amount / 100:.2f}): payment intent "
+            f"{request.payment_intent} paid a subscription invoice, which grants no credits"
+        )
+        return None
+
+    async def _paid_invoice_without_credits(self, payment_intent_id: str) -> bool:
+        # With the grant on, a paid subscription invoice buys credits too.
+        if settings.config.enable_subscription_credit_grant:
+            return False
+        # Pinned: 2025-03-31.basil dropped PaymentIntent.invoice for InvoicePayment.
+        payment_intent = await stripe_call(
+            stripe.PaymentIntent.retrieve_async,
+            payment_intent_id,
+            stripe_version="2025-02-24.acacia",
+        )
+        return bool(payment_intent.invoice)
 
     async def _top_up_credits(
         self,
@@ -1622,6 +1656,52 @@ def invalidate_subscription_caches(user_id: str) -> None:
 # balance could not cover. This comment on that cancel is what lets the
 # ``customer.subscription.deleted`` handler report it as involuntary churn.
 PAYMENT_FAILURE_CANCELLATION_COMMENT = "autogpt:payment_failed"
+# On the immediate cancel made when the user deletes their account. The webhooks
+# it sets off still sync the tier, but skip the ended emails, the MailerLite
+# moves and the person-level analytics: the account sends its own confirmation
+# and its PostHog person is erased.
+ACCOUNT_DELETION_CANCELLATION_COMMENT = "autogpt:account_deleted"
+
+# Every status Stripe can still cancel. ``incomplete_expired`` and ``canceled``
+# are terminal: Stripe refuses to cancel them, so they are never listed.
+CancellableSubscriptionStatus = Literal[
+    "active", "trialing", "past_due", "unpaid", "paused", "incomplete"
+]
+# A deleted account ends all of them, unpaid ones included: cancelling stops
+# Stripe collecting their open invoices, so what is still owed is written off.
+_ACCOUNT_DELETION_STATUSES: tuple[CancellableSubscriptionStatus, ...] = get_args(
+    CancellableSubscriptionStatus
+)
+
+
+def is_account_deletion_cancellation(subscription: dict) -> bool:
+    """Whether this subscription was ended because its account was deleted."""
+    details = subscription.get("cancellation_details") or {}
+    return details.get("comment") == ACCOUNT_DELETION_CANCELLATION_COMMENT
+
+
+async def cancel_all_subscriptions_now(user_id: str) -> int:
+    """End every subscription Stripe can still cancel now, for a deleted account:
+    trials, paid plans, and past-due, unpaid, paused or incomplete ones.
+
+    No invoice, no proration and no refund; Stripe stops collecting the open
+    invoices of what it cancels. The customer's open Checkouts expire first, so
+    one finished later in another tab can't subscribe or charge the closed
+    account, and one that completes meanwhile is listed and cancelled below.
+    Returns how many subscriptions were cancelled: 0 for a user without a
+    Stripe customer, which this never creates. Raises stripe.StripeError so
+    the caller can stop before closing the account.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return 0
+    await expire_all_open_checkouts(user.stripe_customer_id)
+    return await _cancel_customer_subscriptions(
+        user.stripe_customer_id,
+        at_period_end=False,
+        cancellation_comment=ACCOUNT_DELETION_CANCELLATION_COMMENT,
+        statuses=_ACCOUNT_DELETION_STATUSES,
+    )
 
 
 async def _cancel_customer_subscriptions(
@@ -1629,6 +1709,7 @@ async def _cancel_customer_subscriptions(
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
     cancellation_comment: str | None = None,
+    statuses: tuple[CancellableSubscriptionStatus, ...] = ("active", "trialing"),
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1645,15 +1726,23 @@ async def _cancel_customer_subscriptions(
     ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
     immediate cancel, where the subscription's deletion webhook can read it.
 
+    ``statuses`` are the ones listed and cancelled; widen them only for an
+    immediate cancel. Every status but ``trialing`` takes the paid road.
+
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
-    # Query active and trialing separately; Stripe's list API accepts a single status
-    # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
+    # Query each status separately; Stripe's list API accepts a single status
+    # filter at a time (no OR), and by default we skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
     seen_ids: set[str] = set()
     try:
         await _cancel_listed_subscriptions(
-            customer_id, seen_ids, exclude_sub_id, at_period_end, cancellation_comment
+            customer_id,
+            seen_ids,
+            exclude_sub_id,
+            at_period_end,
+            cancellation_comment,
+            statuses,
         )
     finally:
         if seen_ids:
@@ -1667,8 +1756,9 @@ async def _cancel_listed_subscriptions(
     exclude_sub_id: str | None,
     at_period_end: bool,
     cancellation_comment: str | None,
+    statuses: tuple[CancellableSubscriptionStatus, ...],
 ) -> None:
-    for status in ("active", "trialing"):
+    for status in statuses:
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
             customer=customer_id,
@@ -2875,7 +2965,8 @@ async def sync_subscription_from_stripe(
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
-    covers those users.
+    covers those users. Nor is it refreshed for a cancel made by an account
+    deletion: that would only update the PostHog person the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -2890,7 +2981,7 @@ async def sync_subscription_from_stripe(
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-    if track_lifecycle:
+    if track_lifecycle and not is_account_deletion_cancellation(stripe_subscription):
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
         )

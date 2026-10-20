@@ -33,6 +33,7 @@ def test_concurrent_initialization_reuses_one_client(
     settings = Mock()
     settings.secrets.posthog_api_key = "test-key"
     settings.secrets.posthog_host = "https://example.com"
+    settings.config.sentry_release = ""
     factory = Mock(side_effect=create_client)
     monkeypatch.setattr(posthog_client, "_client", None)
     monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
@@ -52,7 +53,9 @@ def test_concurrent_initialization_reuses_one_client(
         assert first.result(timeout=5) is client
         assert second.result(timeout=5) is client
 
-    factory.assert_called_once_with("test-key", host="https://example.com")
+    factory.assert_called_once_with(
+        "test-key", host="https://example.com", super_properties={}
+    )
 
 
 def test_disabled_analytics_does_not_create_a_client(
@@ -231,6 +234,7 @@ def test_a_client_of_its_own_gets_the_options_the_shared_one_lacks(
     settings = Mock()
     settings.secrets.posthog_api_key = "test-key"
     settings.secrets.posthog_host = "https://example.com"
+    settings.config.sentry_release = ""
     factory = Mock()
     on_error = Mock()
     monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
@@ -238,10 +242,40 @@ def test_a_client_of_its_own_gets_the_options_the_shared_one_lacks(
 
     assert posthog_client.new_posthog_client(on_error=on_error) is factory.return_value
     factory.assert_called_once_with(
-        "test-key", host="https://example.com", on_error=on_error
+        "test-key", host="https://example.com", super_properties={}, on_error=on_error
     )
     # The shared client is not created or replaced on the way.
     assert posthog_client._client is None
+
+
+@pytest.mark.parametrize(
+    ("sentry_release", "expected"),
+    [("0123abcd\n", {"revision": "0123abcd"}), ("", {})],
+    ids=["revision set", "no revision"],
+)
+def test_every_event_a_client_sends_carries_the_revision(
+    monkeypatch: pytest.MonkeyPatch, sentry_release: str, expected: dict[str, str]
+) -> None:
+    settings = Mock()
+    settings.secrets.posthog_api_key = "phc_test"
+    settings.secrets.posthog_host = "http://127.0.0.1:9"
+    settings.config.sentry_release = sentry_release
+    monkeypatch.setattr(posthog_client, "Settings", Mock(return_value=settings))
+    sent: list[dict] = []
+    # Returning None drops each event after the client has built it.
+    client = posthog_client.new_posthog_client(
+        super_properties={"cohort": "beta"}, before_send=sent.append, sync_mode=True
+    )
+    assert client is not None
+
+    posthog_client.capture("user-1", PostHogEvent.AI_METRIC, client=client)
+    client.set(distinct_id="user-1", properties={"plan": "pro"})
+    client.shutdown()
+
+    assert [
+        {k: v for k, v in event["properties"].items() if k in ("revision", "cohort")}
+        for event in sent
+    ] == [{"cohort": "beta", **expected}] * 2
 
 
 def test_no_client_of_its_own_when_analytics_is_off(
@@ -348,3 +382,95 @@ def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     assert kwargs["uuid"] == str(
         uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
     )
+
+
+def test_capture_anonymous_sends_a_random_id_and_no_person(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+        {"reason": "cost", "plan_state": "pro"},
+    )
+
+    kwargs = client.capture.call_args.kwargs
+    assert uuid.UUID(kwargs["distinct_id"]).version == 4
+    assert kwargs["event"] == "account_deletion_feedback"
+    assert kwargs["properties"] == {
+        "reason": "cost",
+        "plan_state": "pro",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "platform",
+    }
+
+
+def test_capture_anonymous_uses_a_new_id_for_every_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    first, second = (c.kwargs["distinct_id"] for c in client.capture.call_args_list)
+    assert first != second
+
+
+def test_capture_anonymous_base_properties_win_over_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_ALTERNATIVE_CLICKED,
+        {
+            "alternative": "billing",
+            "$process_person_profile": True,
+            "environment": "caller",
+            "source": "caller",
+        },
+        source="web_relay",
+    )
+
+    assert client.capture.call_args.kwargs["properties"] == {
+        "alternative": "billing",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "web_relay",
+    }
+
+
+def test_capture_anonymous_is_a_noop_when_analytics_is_off(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    assert not caplog.records
+
+
+def test_capture_anonymous_swallows_a_client_error_and_logs_no_properties(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = Mock()
+    client.capture.side_effect = RuntimeError("rejected: I am leaving because of X")
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(
+            PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+            {"reason": "other", "text": "I am leaving because of X"},
+        )
+
+    assert "account_deletion_feedback" in caplog.text
+    assert "leaving because of X" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)

@@ -4,6 +4,11 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
+from autogpt_libs.auth.closed_accounts import (
+    ACCOUNT_CLOSED_DETAIL,
+    AccountState,
+    get_account_state,
+)
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -17,7 +22,7 @@ from backend.api.model import (
 )
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID
+from backend.data.user import DEFAULT_USER_ID, is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
@@ -27,6 +32,8 @@ from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+ACCOUNT_BANNED_CLOSE_CODE = 4004
 
 
 @asynccontextmanager
@@ -83,14 +90,30 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     try:
         payload = await parse_jwt_token_async(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
-            return ""
-        return user_id
     except ValueError:
         await websocket.close(code=4003, reason="Invalid token")
         return ""
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4002, reason="Invalid token")
+        return ""
+    # A token minted before the account closed still verifies.
+    if await get_account_state(user_id) is AccountState.CLOSED:
+        await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
+        return ""
+
+    # Refused when the ban can't be read, as a request to a signed-in route is;
+    # 1011 rather than the ban's code, so an outage never reads as a ban.
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return ""
+    return user_id
 
 
 # ===================== Message Handlers ===================== #
@@ -242,6 +265,10 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # The socket outlives its token, so a ban ends it at the next message.
+            if await _banned_now(user_id):
+                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+                break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
@@ -330,6 +357,15 @@ async def websocket_router(
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
+
+
+async def _banned_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
+        return False
 
 
 @app.get("/")

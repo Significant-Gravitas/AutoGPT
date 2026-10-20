@@ -18,7 +18,9 @@ from prisma.models import User as PrismaUser
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -244,6 +246,25 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
     )
 
 
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_banned(user_id: str) -> bool:
+    """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
+
+    Works in any process; the cache is read before the DatabaseManager is.
+    Lookup errors propagate, and ``@cached`` stores no call that raised.
+    """
+    return await user_db().is_auth_user_banned(user_id)
+
+
+async def is_auth_user_banned(user_id: str) -> bool:
+    """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
+    and a missing auth row are not bans."""
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not user.banned:
+        return False
+    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
+
+
 class OrphanedAuthIdentity(BaseModel):
     """An auth identity (Better Auth user) with no platform ``User`` row."""
 
@@ -377,25 +398,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
         order={"email": "asc"},
     )
     return [(u.id, u.email) for u in users]
-
-
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
 
 
 async def create_default_user() -> Optional[User]:
@@ -996,7 +998,7 @@ async def record_signup_consent(
             # would let a checkout opened right after signup through.
             _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
-            await _unsubscribe_from_marketing(user_id, current.email)
+            await unsubscribe_from_marketing(user_id, current.email)
 
         user = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if user is None:
@@ -1047,7 +1049,7 @@ async def _write_signup_consent(
     return terms_stamped, opted_out
 
 
-async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
+async def unsubscribe_from_marketing(user_id: str, email: str) -> None:
     """Queue the change that marks an existing MailerLite subscriber
     unsubscribed (it never creates one). The refusal is already stored, so a
     failure here is logged rather than raised: the consumer re-reads it before
@@ -1260,12 +1262,14 @@ async def get_billing_email_recipient(
     stripe_customer_id: str,
 ) -> BillingEmailRecipient | None:
     """The account behind a Stripe customer, or None for a deleted or unknown
-    one — better to skip than to email into the void."""
+    one — better to skip than to email into the void. A closed account counts
+    as deleted: its row stays until the erasure, but only the deletion
+    confirmation may reach it."""
     try:
         row = await prisma.user.find_first(
             where={"stripeCustomerId": stripe_customer_id}
         )
-        if row is None:
+        if row is None or await is_account_closed(row.id):
             return None
         return BillingEmailRecipient(
             id=row.id,

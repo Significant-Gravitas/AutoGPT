@@ -6,6 +6,10 @@ export interface TodoItem {
   activeForm?: string;
 }
 
+// Shared by every chat with no task list, so the bar's props keep their
+// identity from one streamed flush to the next.
+export const EMPTY_TODOS: TodoItem[] = [];
+
 function isTodoItem(value: unknown): value is TodoItem {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -18,8 +22,8 @@ function isTodoItem(value: unknown): value is TodoItem {
 }
 
 // Walks the message history backwards for the most recent TodoWrite tool call
-// and returns its task list (the copilot's live plan).
-export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
+// and returns its task list (the copilot's live plan), or EMPTY_TODOS.
+export function getLatestTaskList(messages: UIMessage[]): TodoItem[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i]?.parts;
     if (!parts) continue;
@@ -44,7 +48,21 @@ export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
       if (filtered.length > 0) return filtered;
     }
   }
-  return null;
+  return EMPTY_TODOS;
+}
+
+// Same tasks in the same order and states: the bar would draw the same thing.
+export function haveSameTodos(a: TodoItem[], b: TodoItem[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((todo, i) => {
+    const other = b[i];
+    return (
+      todo.content === other.content &&
+      todo.status === other.status &&
+      todo.activeForm === other.activeForm
+    );
+  });
 }
 
 export function countCompleted(todos: TodoItem[]): number {

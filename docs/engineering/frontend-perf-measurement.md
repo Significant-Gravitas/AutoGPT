@@ -72,6 +72,17 @@ If `window.__renderCounter` is missing, the script stops and tells you to restar
 
 Leave out `--scenario` to compare every scenario that has runs under both labels.
 
+When the change adds the scenario it is measured with (as `copilot-tool-wait` was), the commit before it has no such scenario. Stay on the branch, so `scripts/perf/` keeps the scenario and its fixture, and swap only the app files back to the base for the `before` runs:
+
+```bash
+git checkout origin/dev -- <app files the change touches>   # e.g. the files under src/
+pnpm perf --scenario copilot-tool-wait --label before
+git checkout HEAD -- <the same files>
+pnpm perf --scenario copilot-tool-wait --label after
+```
+
+The dev server hot-reloads each swap, and the default warm-up run absorbs the recompile. Swap only files under `src/`, never `scripts/perf/`.
+
 The output has three tables (metrics, top components and top render causes), each with `before`, `after` and `Δ` columns, followed by the raw runs in a collapsed block. Every value is the median of the runs, not the average.
 
 Tips for numbers you can trust:
@@ -108,7 +119,17 @@ Names come from the component function. Third-party code bundled already minifie
 | `copilot-switch-threads` | Open the 200-message chat and list the 200 / 50 / 10-message chats in the sidebar | Click 50 → 10 → 200, three rounds, 2 s on each | Until done |
 | `builder-drag-running` | Open a 50-node workflow whose run is RUNNING (the page polls it every second) | Drag one node for 2 s with 60 pointer moves | 2 s |
 | `library-running` | Open the library with 20 workflows, all with a RUNNING run | Nothing | 30 s |
+| `copilot-stream-code` | Open the 10-message chat | Type "go", press Enter, stream a reply that is one 130-line code block (`fixtures/reply-long-code.sse`) at about 33 chunks a second | Until the last line of the reply is on screen and the page has refetched the session, + 1 s |
 | `builder-connect-edge` | Open the same 50-node workflow with no run (nothing polls) | Drag one new edge from StoreValue node 4's `output` to Calculator node 5's `a` input, 20 pointer moves over 0.6 s | 2 s after the drop |
+| `library-running-events` | Open the same library at `/library?sort=updatedAt`, with the websocket mocked | Push a `graph_execution_event` for one of the 20 runs every 250 ms, 80 in all; print the `subscribe_graph_executions` frames and `GET /executions` requests seen | 20 s of events + 2 s |
+| `builder-run-events` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 40 node execution events over the websocket, one every 50 ms: the 10 unfinished nodes go RUNNING then COMPLETED, each event sent twice. The execution GET returns what has been sent so far, as the backend would | 2 s after the last event |
+| `copilot-tool-wait` | Open the 200-message chat, send "go", and wait until the reply's one tool call shows "Running Perf lookup…". The reply then sends only `: heartbeat` comments, so the turn stays on that tool | Nothing | 20 s |
+| `copilot-resize-drag` | Open the 200-message chat and click "Open files" so the files panel docks on the right | Drag the panel's resize handle 120 px wider with 60 pointer moves over 1 s | 1 s after the drop |
+| `builder-run-beads` | Open the same 50-node workflow with its RUNNING run; the harness answers the websocket subscribe for that run itself | 10 new node executions over the websocket (a second, finished run of nodes 30 to 39 with new `node_exec_id`s), one every 150 ms, so each edge into one of those StoreValue nodes gets a new bead that travels the edge and is removed on arrival | 2 s after the last event |
+| `library-agent-runs` | Open a workflow's page with 20 runs; the newest is RUNNING and selected, so its detail polls every 1.5 s. The websocket is mocked | Three new RUNNING runs arrive at the top of the list, 2.5 s apart: each is pushed as a `graph_execution_event`, the list refetches and the scenario waits for its row; prints the run-list and run-detail `GET`s seen | 1 s after the last run's 2.5 s |
+| `builder-type-field` | Open the same 50-node workflow with no run, click the first node's text field and clear it | Type 20 characters, 50 ms apart | 2 s after the last key |
+| `builder-block-menu-search` | Open the same 50-node workflow with no run and open the block menu | Type "text" into its search, 120 ms a key, wait for the first result, then scroll the results 6 times (800 px, 400 ms apart) so more pages load. Results come from the real backend's block search | 2 s after the last scroll |
+| `builder-load-graph` | Open a 1-node workflow | Switch to a saved 100-node workflow with `history.pushState`, as opening another workflow does, until its last node is on the canvas | 2 s after the last node appears |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
@@ -153,6 +174,7 @@ The copilot scenarios do not need an LLM:
 
 - `fixtures/session-200.json`: 200 message rows (text, code blocks, tables, lists and tool calls). The 50- and 10-message chats are its first 50 and 10 rows.
 - `fixtures/reply-20-lines.sse`: one streamed reply in the backend's SSE format, one word per `text-delta`.
+- `fixtures/reply-long-code.sse`: a reply that is mostly one 130-line TypeScript block, streamed the same way, so nearly every chunk lands inside an open code fence.
 - `lib/stream-server.ts`: a small local HTTP server that replays the `.sse` file one frame every N ms. The stream request is redirected there with `route.continue({ url })`, so the reply arrives at a steady, repeatable pace. The copilot's own word-by-word smoothing (`copilotStreamSmoothing.ts`) then runs on top, as it does in production.
 - `lib/copilot-fixture.ts` keeps state: once a streamed turn ends, the session GET returns the new user and assistant rows, as the backend would. Without that, the page's refetch after each turn would wipe the reply it just streamed.
 
