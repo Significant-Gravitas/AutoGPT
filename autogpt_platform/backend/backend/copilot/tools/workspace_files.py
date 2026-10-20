@@ -1,5 +1,6 @@
 """CoPilot tools for workspace file operations."""
 
+import asyncio
 import base64
 import logging
 import mimetypes
@@ -711,10 +712,13 @@ class ReadWorkspaceFileTool(BaseTool):
                 try:
                     if file_info.size_bytes > MAX_IMAGE_BYTES:
                         raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
-                    image = prepare_image(
-                        cached_content
-                        if cached_content is not None
-                        else await manager.read_file_by_id(target_file_id)
+                    image = await asyncio.to_thread(
+                        prepare_image,
+                        (
+                            cached_content
+                            if cached_content is not None
+                            else await manager.read_file_by_id(target_file_id)
+                        ),
                     )
                 except ValueError as exc:
                     return ErrorResponse(

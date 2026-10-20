@@ -739,6 +739,32 @@ async def test_text_hook_leaves_image_and_later_messages_in_order(fake_redis):
     assert remaining[0].model_image == image.model_image
 
 
+@pytest.mark.parametrize("malformed", ["not JSON", '{"model_image":"invalid"}'])
+async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
+    fake_redis, malformed
+):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    before = PendingMessage(content="before")
+    after = PendingMessage(content="after")
+    await fake_redis.rpush(
+        pm_module._buffer_key("images"),
+        malformed,
+        before.model_dump_json(),
+        image.model_dump_json(),
+        after.model_dump_json(),
+    )
+
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await peek_pending_count("images") == 2
+    assert await drain_pending_for_persist("images") == [before]
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert await drain_pending_messages("images") == [image, after]
+
+
 async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
     await push_pending_message("images", PendingMessage(content="before"))
     monkeypatch.setattr(

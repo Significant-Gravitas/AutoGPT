@@ -320,7 +320,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         is_sdk_tool_path(file_path) if sandbox_active else _is_allowed_local(file_path)
     )
     if local_check:
-        result = _read_local(file_path, offset, limit if "limit" in args else None)
+        result = await asyncio.to_thread(
+            _read_local, file_path, offset, limit if "limit" in args else None
+        )
         if not result.get("isError"):
             sandbox = _get_sandbox()
             if sandbox is not None:
@@ -355,7 +357,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                 )
             raw: bytes = await sandbox.files.read(remote, format="bytes")
             if ext in IMAGE_EXTENSIONS:
-                return _image_result(raw, offset, args.get("limit"))
+                return await asyncio.to_thread(
+                    _image_result, raw, offset, args.get("limit")
+                )
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
@@ -378,7 +382,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     assert resolved is not None
 
     if os.path.splitext(resolved)[1].lower() in IMAGE_EXTENSIONS:
-        return _read_local_image(resolved, offset, args.get("limit"))
+        return await asyncio.to_thread(
+            _read_local_image, resolved, offset, args.get("limit")
+        )
 
     if _is_likely_binary(resolved):
         return _mcp(
