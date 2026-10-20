@@ -9,6 +9,7 @@ import {
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
   stripLogUserPII,
+  stripSpanDataPII,
   stripSpanPII,
   stripUserPII,
 } from "@/lib/sentry-filters";
@@ -58,6 +59,7 @@ Sentry.init({
       ? null
       : stripSpanPII(stripUserPII(event));
   },
+  beforeSendSpan: stripSpanDataPII,
   beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features

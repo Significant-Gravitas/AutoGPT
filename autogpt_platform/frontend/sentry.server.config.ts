@@ -5,6 +5,7 @@
 import {
   stripLogUserPII,
   stripRequestCredentials,
+  stripSpanDataPII,
   stripSpanPII,
   stripUserPII,
 } from "@/lib/sentry-filters";
@@ -41,6 +42,7 @@ Sentry.init({
       ? null
       : stripSpanPII(stripUserPII(stripRequestCredentials(event)));
   },
+  beforeSendSpan: stripSpanDataPII,
   beforeSendLog: stripLogUserPII,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.

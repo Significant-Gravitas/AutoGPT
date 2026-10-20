@@ -233,6 +233,35 @@ describe.each([
     });
   });
 
+  it("sends standalone spans with no IP address, email or name", async () => {
+    await load();
+
+    const { beforeSendSpan } = initMock.mock.calls[0][0];
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      description: "GET /library",
+      data: {
+        user: "ada@example.com",
+        "user.email": "ada@example.com",
+        "user.id": "user-1",
+        "http.client_ip": "203.0.113.7",
+        "client.address": "203.0.113.7",
+        "net.peer.ip": "203.0.113.7",
+        "http.route": "/library",
+        "server.address": "platform.agpt.co",
+      },
+    });
+
+    expect(span.description).toBe("GET /library");
+    expect(span.data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/library",
+      "server.address": "platform.agpt.co",
+    });
+  });
+
   it("sends logs with the user id only, and no email, name or IP address", async () => {
     await load();
 

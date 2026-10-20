@@ -40,13 +40,19 @@ type SentPayload = Sentry.Event & {
   sdk?: { settings?: { infer_ip?: string } };
 };
 
+interface SentSpan {
+  data?: Record<string, unknown>;
+}
+
 interface SentLog {
   body: string;
   attributes: Record<string, { value: unknown }>;
 }
 
-// Errors, transactions and logs as the production client config would send them.
+// Errors, transactions, standalone spans and logs as the production client
+// config would send them.
 const sent: SentPayload[] = [];
+const sentSpans: SentSpan[] = [];
 const sentLogs: SentLog[] = [];
 
 beforeAll(async () => {
@@ -59,6 +65,9 @@ beforeAll(async () => {
         if (header.type === "event" || header.type === "transaction") {
           sent.push(payload as SentPayload);
         }
+        if (header.type === "span") {
+          sentSpans.push(payload as SentSpan);
+        }
         if (header.type === "log") {
           sentLogs.push(...(payload as { items: SentLog[] }).items);
         }
@@ -70,6 +79,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   sent.length = 0;
+  sentSpans.length = 0;
   sentLogs.length = 0;
 });
 
@@ -164,6 +174,30 @@ describe("a signed-in user in Sentry", () => {
     });
     expect(JSON.stringify(transaction)).not.toContain(IP);
     expect(JSON.stringify(transaction)).not.toContain(EMAIL);
+  });
+
+  it("sends standalone spans, like web vitals, with no IP address or email", async () => {
+    Sentry.startInactiveSpan({
+      name: "interaction",
+      experimental: { standalone: true },
+      attributes: {
+        user: EMAIL,
+        "user.email": EMAIL,
+        "user.id": "user-1",
+        "client.address": IP,
+        "sentry.exclusive_time": 120,
+      },
+    }).end();
+    await Sentry.flush(2000);
+
+    expect(sentSpans).toHaveLength(1);
+    const [span] = sentSpans;
+    expect(span.data).toMatchObject({
+      "user.id": "user-1",
+      "sentry.exclusive_time": 120,
+    });
+    expect(JSON.stringify(span)).not.toContain(IP);
+    expect(JSON.stringify(span)).not.toContain(EMAIL);
   });
 
   it("is identified by id only in logs, whatever other code puts on the scope", async () => {

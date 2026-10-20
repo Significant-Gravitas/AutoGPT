@@ -121,14 +121,16 @@ export function stripUserPII<T extends Event>(event: T): T {
 }
 
 // The SDK copies the scope's user id, email and username into every log's and
-// span's attributes, and the HTTP instrumentation records the visitor's
-// address on server spans. An IP address can arrive as `client.address`,
-// `http.client_ip`, `net.peer.ip`, `net.host.ip`, `net.sock.peer.addr`,
-// `network.peer.address`, `user.ip_address` or a bare `ip`.
+// span's attributes, web vital spans name the user by email in a bare `user`,
+// and the HTTP instrumentation records the visitor's address on server spans.
+// An IP address can arrive as `client.address`, `http.client_ip`,
+// `net.peer.ip`, `net.host.ip`, `net.sock.peer.addr`, `network.peer.address`,
+// `user.ip_address` or a bare `ip`.
 const IP_ATTRIBUTE =
   /(^|\.)(ip|ip_address|client_ip|client\.address|sock\.peer\.addr|network\.peer\.address)$/i;
 
 function isPrivateAttribute(name: string) {
+  if (name === "user") return true;
   if (name.startsWith("user.")) return name !== "user.id";
   return IP_ATTRIBUTE.test(name);
 }
@@ -139,9 +141,9 @@ function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
   );
 }
 
-type SentryLog = Parameters<
-  NonNullable<NonNullable<Parameters<typeof init>[0]>["beforeSendLog"]>
->[0];
+type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
+type SentryLog = Parameters<NonNullable<SentryOptions["beforeSendLog"]>>[0];
+type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
 
 // Logs are known to Sentry by the user id only, like errors and transactions.
 export function stripLogUserPII(log: SentryLog): SentryLog {
@@ -156,8 +158,13 @@ export function stripLogUserPII(log: SentryLog): SentryLog {
 export function stripSpanPII<T extends Event>(event: T): T {
   const trace = event.contexts?.trace;
   if (trace?.data) trace.data = withoutPrivateAttributes(trace.data);
-  for (const span of event.spans ?? []) {
-    if (span.data) span.data = withoutPrivateAttributes(span.data);
-  }
+  event.spans?.forEach(stripSpanDataPII);
   return event;
+}
+
+// Standalone spans, such as the browser's web vitals, skip
+// beforeSendTransaction and pass through beforeSendSpan only.
+export function stripSpanDataPII(span: SentrySpan): SentrySpan {
+  if (span.data) span.data = withoutPrivateAttributes(span.data);
+  return span;
 }
