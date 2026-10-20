@@ -21,6 +21,10 @@ _ENV_VARS_TO_CLEAR = (
     "GRAPHITI_LLM_MODEL",
     "GRAPHITI_RERANKER_MODEL",
     "GRAPHITI_EMBEDDER_MODEL",
+    "GRAPHITI_LLM_BASE_URL",
+    "GRAPHITI_EMBEDDER_BASE_URL",
+    "GRAPHITI_LLM_API_KEY",
+    "GRAPHITI_EMBEDDER_API_KEY",
 )
 
 
@@ -182,6 +186,103 @@ class TestResolveEmbedderBaseUrl:
         )
         cfg = GraphitiConfig(embedder_base_url="")
         assert cfg.resolve_embedder_base_url() == "http://ollama.lan:11434/v1"
+
+
+def _cloud_chat_cfg() -> ChatConfig:
+    return ChatConfig(
+        use_openrouter=True,
+        api_key="or-key",
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+
+class TestResolveRerankerRoute:
+    """A new chat's first turn waits on the slowest reranker call, and
+    OpenRouter's are the slow ones: the default model goes to OpenAI
+    directly whenever the embedder does too."""
+
+    @pytest.mark.parametrize("model", ["gpt-6-luna", "openai/gpt-6-luna"])
+    def test_the_default_model_goes_to_openai_with_the_embedders_key(
+        self, monkeypatch: pytest.MonkeyPatch, model: str
+    ) -> None:
+        _patch_chat_cfg(monkeypatch, _cloud_chat_cfg())
+        monkeypatch.setenv("CHAT_API_KEY", "autopilot-router-key")
+        monkeypatch.setenv("CHAT_OPENAI_API_KEY", "autopilot-openai-key")
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", model)
+
+        route = GraphitiConfig().resolve_reranker_route()
+
+        assert route.base_url is None
+        assert route.api_key == "autopilot-openai-key"
+        assert route.model == "gpt-6-luna"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            pytest.param({}, id="no OpenAI key"),
+            pytest.param(
+                {"OPENAI_API_KEY": "k", "GRAPHITI_LLM_BASE_URL": "https://llm.lan/v1"},
+                id="graphiti's LLM pointed elsewhere",
+            ),
+            pytest.param(
+                {
+                    "OPENAI_API_KEY": "k",
+                    "GRAPHITI_EMBEDDER_BASE_URL": "https://embed.lan/v1",
+                },
+                id="embedder pointed elsewhere",
+            ),
+            pytest.param(
+                {
+                    "OPENAI_API_KEY": "k",
+                    "GRAPHITI_RERANKER_MODEL": "google/gemini-3-flash",
+                },
+                id="another vendor's model",
+            ),
+            pytest.param(
+                {
+                    "OPENAI_API_KEY": "k",
+                    "GRAPHITI_RERANKER_MODEL": "openai/gpt-oss-120b",
+                },
+                id="an openai/ model OpenAI's API doesn't serve",
+            ),
+            pytest.param(
+                {"OPENAI_API_KEY": "k", "GRAPHITI_RERANKER_MODEL": "gpt-4.1-nano"},
+                id="a model pinned in place of the default",
+            ),
+        ],
+    )
+    def test_otherwise_it_goes_where_extraction_goes(
+        self, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+    ) -> None:
+        _patch_chat_cfg(monkeypatch, _cloud_chat_cfg())
+        monkeypatch.setenv("CHAT_API_KEY", "autopilot-router-key")
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        cfg = GraphitiConfig()
+
+        route = cfg.resolve_reranker_route()
+
+        assert route.base_url == cfg.resolve_llm_base_url()
+        assert route.api_key == "autopilot-router-key"
+        assert route.model == cfg.reranker_model
+
+    def test_local_transport_keeps_it_on_the_local_backend(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_chat_cfg(
+            monkeypatch,
+            _local_chat_cfg(api_key="ollama-z", base_url="http://ollama.lan:11434/v1"),
+        )
+        monkeypatch.setenv("OPENAI_API_KEY", "stray-cloud-key")
+        # Luna by name, but local: the cloud-default rewrite leaves a prefixed
+        # name alone, so only the transport check keeps it on the backend.
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "openai/gpt-6-luna")
+
+        route = GraphitiConfig().resolve_reranker_route()
+
+        assert route.base_url == "http://ollama.lan:11434/v1"
+        assert route.api_key == "ollama-z"
+        assert route.model == "openai/gpt-6-luna"
 
 
 class TestApplyLocalGraphitiModels:

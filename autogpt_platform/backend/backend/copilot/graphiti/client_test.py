@@ -4,11 +4,13 @@ import asyncio
 import threading
 from unittest.mock import AsyncMock, MagicMock
 
+import graphiti_core
 import pytest
 
 from backend.copilot.config import ChatConfig
 
 from . import client as client_mod
+from . import config as config_mod
 from . import falkordb_driver
 from .client import (
     derive_group_id,
@@ -388,3 +390,48 @@ class TestMakeFlexGraphitiClient:
         assert flex_sentinel.called, "expected FlexOpenAIClient under openrouter"
         assert not regular_sentinel.called
         assert captured["llm_client"] is flex_sentinel.return_value
+
+
+class TestBuildGraphitiReranker:
+    """The reranker is built from ``resolve_reranker_route``: the classifier
+    calls a new chat's first turn waits on go to OpenAI directly."""
+
+    def test_the_reranker_calls_openai_with_the_embedders_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+            ),
+        )
+        # The OpenAI SDK falls back to OPENAI_BASE_URL when given no base URL,
+        # as the embedder's client does too.
+        for name in (
+            "GRAPHITI_LLM_BASE_URL",
+            "GRAPHITI_EMBEDDER_BASE_URL",
+            "OPENAI_BASE_URL",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("CHAT_API_KEY", "autopilot-router-key")
+        monkeypatch.setenv("CHAT_OPENAI_API_KEY", "autopilot-openai-key")
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "openai/gpt-6-luna")
+        monkeypatch.setattr(config_mod, "_graphiti_config", None)
+        built: dict = {}
+        monkeypatch.setattr(
+            graphiti_core, "Graphiti", lambda **kwargs: built.update(kwargs)
+        )
+
+        client_mod._build_graphiti(
+            "group",
+            llm_client=MagicMock(name="llm"),
+            embedder=MagicMock(name="embedder"),
+            graph_driver=MagicMock(name="driver"),
+        )
+
+        reranker = built["cross_encoder"]
+        assert reranker.client.base_url.host == "api.openai.com"
+        assert reranker.client.api_key == "autopilot-openai-key"
+        assert reranker.config.model == "gpt-6-luna"
