@@ -670,6 +670,7 @@ async def dispatch_turn(
     # Exception`` would miss); the ``committed`` flag distinguishes the
     # happy path from any failure / cancellation.
     committed = False
+    registration_started = False
     try:
         # Inside the try on purpose: the admit above already incremented the
         # tree's node count, so anything that can raise between there and the
@@ -678,7 +679,10 @@ async def dispatch_turn(
         if user_id and not await chat_db().record_chat_session_turn(
             session_id, user_id, turn_id
         ):
+            # Stop already released this slot; rollback must not release its successor.
+            slot.keep()
             raise RuntimeError("The turn is no longer running.")
+        registration_started = True
         await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,
@@ -717,7 +721,10 @@ async def dispatch_turn(
             if admitted_here:
                 await release_turn(envelope)
             try:
-                await stream_registry.delete_session_meta(session_id)
+                if registration_started:
+                    await stream_registry.delete_session_meta(
+                        session_id, turn_id=turn_id
+                    )
             except BaseException:
                 # Already in a failure path — log + swallow so the
                 # original exception/cancellation isn't masked.

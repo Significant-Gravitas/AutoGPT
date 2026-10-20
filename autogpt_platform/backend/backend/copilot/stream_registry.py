@@ -35,7 +35,11 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import as_str, hash_compare_and_set
+from backend.data.redis_helpers import (
+    as_str,
+    hash_compare_and_delete,
+    hash_compare_and_set,
+)
 from backend.util import tracing
 
 from .config import ChatConfig
@@ -322,19 +326,22 @@ Used by `publish_chunk` to avoid refreshing on every single chunk
 _META_TTL_REFRESH_INTERVAL = 60  # seconds
 
 
-async def delete_session_meta(session_id: str) -> None:
+async def delete_session_meta(session_id: str, *, turn_id: str) -> None:
     """Delete a session's Redis meta entry — used by the dispatcher's
     rollback path when ``create_session`` succeeded but the subsequent
     RabbitMQ enqueue failed.  Without this, the session sits with
     ``status='running'`` in Redis until TTL and ``is_turn_in_flight``
     keeps reporting True even though no executor will pick the turn up.
+    The turn-ID fence preserves a successor that registered during rollback.
 
     Best-effort: a Redis error here only delays the cleanup to TTL
     expiry, which is the same window we had before this helper existed.
     """
     try:
         redis = await get_redis_async()
-        await redis.delete(_get_session_meta_key(session_id))
+        await hash_compare_and_delete(
+            redis, _get_session_meta_key(session_id), "turn_id", expected=turn_id
+        )
     except RedisError as exc:
         logger.warning(
             "delete_session_meta: redis cleanup failed for session=%s: %s",

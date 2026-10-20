@@ -25,6 +25,7 @@ from backend.copilot import (
     tree,
     turn_queue,
 )
+from backend.copilot.active_turns import TurnSlot
 from backend.copilot.background_execution import (
     claim_background_execution,
     finish_background_execution,
@@ -542,6 +543,106 @@ async def test_late_cancellation_leaves_a_new_user_turn_queued(world: World):
         world.user_id, task.child_session_id
     )
     assert await chat_db().get_chat_session_status(task.child_session_id) == "queued"
+
+
+@pytest.mark.parametrize(
+    "failure_stage", ["before_meta", "after_meta", "replaced_meta"]
+)
+async def test_failed_dispatch_only_cleans_up_its_own_stream_metadata(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+):
+    failed_turn_id = str(uuid4())
+    replacement_turn_id = str(uuid4())
+    slot = TurnSlot(world.user_id, world.parent.session_id)
+    slot.admitted = True
+    if failure_stage == "before_meta":
+        monkeypatch.setattr(
+            utils,
+            "chat_db",
+            lambda: MagicMock(record_chat_session_turn=AsyncMock(return_value=False)),
+        )
+
+    async def fail_publish(**_kwargs):
+        if failure_stage == "replaced_meta":
+            await stream_registry.create_session(
+                session_id=world.parent.session_id,
+                user_id=world.user_id,
+                tool_call_id="replacement",
+                tool_name="chat",
+                turn_id=replacement_turn_id,
+            )
+        raise RuntimeError("publish failed")
+
+    monkeypatch.setattr(utils, "enqueue_copilot_turn", fail_publish)
+    with pytest.raises(RuntimeError):
+        await utils.dispatch_turn(
+            slot,
+            session_id=world.parent.session_id,
+            user_id=world.user_id,
+            turn_id=failed_turn_id,
+            message="Work",
+            envelope=world.envelope,
+        )
+    active = await stream_registry.get_session(world.parent.session_id)
+    if failure_stage == "after_meta":
+        assert active is None
+    else:
+        expected = (
+            replacement_turn_id
+            if failure_stage == "replaced_meta"
+            else world.envelope.tree_id
+        )
+        assert active and active.turn_id == expected
+
+
+async def test_dispatch_cancelled_before_recording_cannot_release_a_successor(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    await world.finish_parent()
+    failed_turn_id = str(uuid4())
+    winner: str | None = None
+    actual_db = chat_db()
+
+    async def interrupted_record(session_id: str, user_id: str, turn_id: str):
+        nonlocal winner
+        if turn_id != failed_turn_id:
+            return await actual_db.record_chat_session_turn(
+                session_id, user_id, turn_id
+            )
+        await actual_db.update_chat_session_status(
+            session_id=session_id,
+            user_id=user_id,
+            status="idle",
+            expect_status="running",
+        )
+        recorded = await actual_db.record_chat_session_turn(
+            session_id, user_id, turn_id
+        )
+        assert not recorded
+        winner = await utils.schedule_chat_turn(
+            session_id=session_id,
+            user_id=user_id,
+            message="A newer request",
+        )
+        return recorded
+
+    monkeypatch.setattr(
+        utils, "chat_db", lambda: MagicMock(record_chat_session_turn=interrupted_record)
+    )
+    with pytest.raises(RuntimeError, match="no longer running"):
+        await utils.schedule_turn(
+            session_id=world.parent.session_id,
+            user_id=world.user_id,
+            turn_id=failed_turn_id,
+            message="A cancelled request",
+        )
+    assert winner
+    assert await actual_db.get_chat_session_status(world.parent.session_id) == "running"
+    active = await stream_registry.get_session(world.parent.session_id)
+    assert active and active.turn_id == winner
 
 
 async def test_busy_parent_past_delivery_window_gets_one_notice_when_idle(world: World):
