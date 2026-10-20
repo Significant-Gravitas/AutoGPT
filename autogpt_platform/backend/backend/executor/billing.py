@@ -227,7 +227,9 @@ def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
     - REVIEW: the run that parked the block returned without doing anything,
       and ``on_node_execution`` reconciled it as a COMPLETED run with empty
       stats. That settled the charge down to the block's price for empty
-      stats: the run price for per-run blocks, 0 for usage-priced ones. That
+      stats: the run price for per-run blocks, 0 for usage-priced ones. (A
+      SECOND-priced park would have settled to 1 credit, since a sub-second
+      run bills one unit; no block that can pause is SECOND-priced.) That
       price is returned, so the resumed run settles to one run's cost.
     - RUNNING: the pod died before reconciling, so the pre-flight charge still
       stands. ``None`` makes reconciliation read the block's pre-flight price,

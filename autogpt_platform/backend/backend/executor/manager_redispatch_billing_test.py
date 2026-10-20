@@ -17,6 +17,7 @@ import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import (
     ExecutionContext,
@@ -24,8 +25,10 @@ from backend.data.execution import (
     GraphExecutionEntry,
     NodeExecutionEntry,
 )
+from backend.data.graph import Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.executor.manager import ExecutionProcessor
+from backend.executor.utils import NodeExecutionProgress
 from backend.util.decorator import TimingInfo
 
 USER_ID = "user-1"
@@ -238,3 +241,44 @@ def test_a_redelivery_after_a_pod_died_bills_the_block_once(harness, costs, bill
     harness.dispatch(_runs(harness.row))
 
     assert harness.wallet.total == billed, harness.wallet.spent
+
+
+async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():
+    """The premise ``_parks_for_review`` stubs, through the real block run: a
+    block that parks for review yields nothing and its run reports COMPLETED."""
+    block = StoreValueBlock()
+    block.is_irreversible_action = True
+    row = NodeRow()
+    processor = ExecutionProcessor()
+    processor.creds_manager = MagicMock()
+    progress = NodeExecutionProgress()
+    stats = NodeExecutionStats()
+
+    with (
+        patch("backend.data.graph.get_block", return_value=block),
+        patch("backend.executor.manager.async_update_node_execution_status"),
+        patch.object(
+            HITLReviewHelper, "handle_review_decision", AsyncMock(return_value=None)
+        ) as review,
+    ):
+        _, status = await processor._on_node_execution(
+            node=Node(id=row.entry.node_id, block_id=block.id),
+            node_exec=row.to_node_execution_entry(
+                ExecutionContext(
+                    graph_exec_id=GRAPH_EXEC_ID, sensitive_action_safe_mode=True
+                )
+            ),
+            node_exec_progress=progress,
+            stats=stats,
+            db_client=MagicMock(
+                upsert_execution_output=AsyncMock(),
+                get_node_execution=AsyncMock(return_value=None),
+            ),
+            log_metadata=MagicMock(),
+        )
+
+    review.assert_awaited_once()
+    assert status == ExecutionStatus.COMPLETED
+    assert not progress.output
+    assert stats.error is None
+    assert stats.provider_cost is None
