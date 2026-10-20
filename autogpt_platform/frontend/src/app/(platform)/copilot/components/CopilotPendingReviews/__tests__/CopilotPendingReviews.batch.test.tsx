@@ -64,6 +64,29 @@ test("Close and continue starts the turn with what is answered and folds the box
   ).toBeNull();
 });
 
+test("an answer waiting on the chat's other cards keeps Close and continue after a reload", async () => {
+  const chat = serveChat([folder("a", "Alpha"), folder("b", "Beta")]);
+  const first = mountChat();
+  const box = await screen.findByRole("region", { name: "Waiting for you" });
+  await userEvent.click(
+    within(box).getAllByRole("button", { name: "Approve" })[0],
+  );
+  await within(box).findByRole("button", { name: "Close and continue" });
+  first.unmount();
+
+  mountChat();
+  const reloaded = await screen.findByRole("region", {
+    name: "Waiting for you",
+  });
+  await within(reloaded).findByText("· Approved");
+  await userEvent.click(
+    await within(reloaded).findByRole("button", { name: "Close and continue" }),
+  );
+
+  await waitFor(() => expect(chat.continues).toBe(1));
+  expect(chat.answered).toEqual([[id("a")]]);
+});
+
 test("the review dialog's last verdict follows the turn at once, and closing it sends nothing more", async () => {
   const user = userEvent.setup();
   const chat = serveChat([folder("a", "Alpha"), folder("b", "Beta")]);
@@ -118,6 +141,8 @@ test("closing the review dialog with nothing answered sends nothing", async () =
 // chat's queue, and an answer says when it waits for the others.
 function serveChat(reviews: PendingHumanReviewModel[]) {
   const waiting = new Map(reviews.map((r) => [r.node_exec_id, r]));
+  // Answered cards whose calls have not run, until a turn runs them.
+  const unrun = new Map<string, PendingHumanReviewModel>();
   const chat = {
     answered: [] as string[][],
     waited: [] as (boolean | undefined)[],
@@ -134,6 +159,14 @@ function serveChat(reviews: PendingHumanReviewModel[]) {
       };
       const ids = body.reviews.map((r) => r.node_exec_id);
       chat.waited.push(body.wait_for_other_cards);
+      body.reviews.forEach(({ node_exec_id, approved }) => {
+        const row = waiting.get(node_exec_id);
+        if (row)
+          unrun.set(node_exec_id, {
+            ...row,
+            status: approved ? "APPROVED" : "REJECTED",
+          });
+      });
       ids.forEach((reviewId) => waiting.delete(reviewId));
       chat.answered.push(ids);
       return HttpResponse.json({
@@ -143,12 +176,24 @@ function serveChat(reviews: PendingHumanReviewModel[]) {
         awaiting_other_cards: waiting.size > 0,
       });
     }),
+    http.get(`*/api/review/session/${CHAT_SESSION}/answered`, () =>
+      HttpResponse.json([...unrun.values()]),
+    ),
     http.post(`*/api/review/session/${CHAT_SESSION}/continue`, () => {
       chat.continues += 1;
+      unrun.clear();
       return new HttpResponse(null, { status: 204 });
     }),
   );
   return chat;
+}
+
+function mountChat() {
+  return render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+    </CopilotChatActionsProvider>,
+  );
 }
 
 function renderChat() {

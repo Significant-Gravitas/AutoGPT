@@ -24,6 +24,8 @@ interface Props {
   items: ApprovalItem[];
   // The same cards as rows, which the review dialog reads; none, no dialog.
   reviews?: PendingHumanReviewModel[];
+  // Cards answered before this mount whose calls have not run yet.
+  answered?: PendingHumanReviewModel[];
   // The chat's Expert, or null in a chat with Otto.
   expertName?: string | null;
   expert?: HomeExpert | null;
@@ -37,12 +39,13 @@ export const COMPACT_FROM = 4;
 export function ApprovalQueue({
   items,
   reviews = [],
+  answered,
   expertName = null,
   expert = null,
   onAnswered,
   onContinued,
 }: Props) {
-  const queue = useApprovalQueue({ items, onAnswered, onContinued });
+  const queue = useApprovalQueue({ items, answered, onAnswered, onContinued });
   const review = useChatReview({ queue, reviews, expert });
   const { pending, receipts, leaving } = queue;
   const dialogOpen = review.carousel.open;

@@ -167,6 +167,22 @@ async def forget(session_id: str, review_id: str) -> None:
 async def answered(user_id: str, session_id: str) -> list[HeldCall]:
     """Held calls whose card has been answered, oldest first."""
     held = await _held(session_id)
+    return [
+        held[review_id] for review_id, _ in await _answered(user_id, session_id, held)
+    ]
+
+
+async def answered_cards(
+    user_id: str, session_id: str
+) -> "list[PendingHumanReviewModel]":
+    """The answered cards whose held calls have not run yet, oldest first."""
+    held = await _held(session_id)
+    return [row for _, row in await _answered(user_id, session_id, held)]
+
+
+async def _answered(
+    user_id: str, session_id: str, held: dict[str, HeldCall]
+) -> "list[tuple[str, PendingHumanReviewModel]]":
     if not held:
         return []
     try:
@@ -178,11 +194,11 @@ async def answered(user_id: str, session_id: str) -> list[HeldCall]:
         return []
     return sorted(
         (
-            held[review_id]
+            (review_id, row)
             for review_id, row in rows.items()
             if row.session_id == session_id and row.status != ReviewStatus.WAITING
         ),
-        key=lambda call: call.held_at,
+        key=lambda answered: held[answered[0]].held_at,
     )
 
 

@@ -8,6 +8,7 @@ from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
+from backend.copilot.gate.held import answered_cards as held_answered_cards
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.copilot.gate.workflow import (
@@ -190,6 +191,20 @@ async def list_pending_reviews_for_chat_session(
     id yields an empty list.
     """
     return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
+
+
+@router.get(
+    "/session/{chat_session_id}/answered",
+    summary="Get Answered Reviews Waiting to Run for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+)
+async def list_answered_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """The chat's answered cards whose calls have not run yet, oldest first, so
+    its box still shows them as answered, with Close and continue, after a reload."""
+    return await held_answered_cards(user_id, chat_session_id)
 
 
 @router.post(

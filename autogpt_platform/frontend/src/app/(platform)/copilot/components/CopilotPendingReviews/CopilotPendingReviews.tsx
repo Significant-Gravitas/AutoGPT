@@ -33,7 +33,8 @@ export function CopilotPendingReviews(props: Props) {
   const graphExecId = "graphExecId" in props ? props.graphExecId : "";
   const expertName = "expertName" in props ? props.expertName : null;
   const expert = ("expert" in props ? props.expert : null) ?? null;
-  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
+  const { pendingReviews, answeredReviews, refetch } =
+    useCopilotPendingReviews(props);
 
   const heldReviews = pendingReviews
     .filter(isGateReview)
@@ -78,6 +79,7 @@ export function CopilotPendingReviews(props: Props) {
       <ApprovalQueue
         items={heldReviews.map(toApprovalItem)}
         reviews={heldReviews}
+        answered={answeredReviews}
         expertName={expertName}
         expert={
           expert

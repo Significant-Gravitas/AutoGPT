@@ -1736,3 +1736,36 @@ async def test_an_answer_from_outside_the_chat_starts_its_turn_at_once(
     dispatch.assert_awaited_once()
     row = await _row(waiting, test_user_id)
     assert row is not None and row.status == ReviewStatus.WAITING
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_lists_its_answered_cards_until_their_calls_run(
+    client: httpx.AsyncClient, setup_test_user: str, test_user_id: str
+) -> None:
+    """What lets the chat's box show an answer it waits on after a reload."""
+    session = await _new_session(test_user_id)
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch("backend.copilot.tools.get_tool", return_value=_Post()),
+    ):
+        answered, waiting = [await _hold(session, test_user_id, t) for t in "ab"]
+        response = await client.post(
+            "/api/review/action",
+            json={
+                "reviews": [{"node_exec_id": answered, "approved": True}],
+                "wait_for_other_cards": True,
+            },
+        )
+        assert response.json()["awaiting_other_cards"] is True
+
+        listed = await client.get(f"/api/review/session/{session.session_id}/answered")
+        pending = await client.get(f"/api/review/session/{session.session_id}")
+        # The next turn runs the answered call, which takes it off the list.
+        await _resolved(test_user_id, session)
+        after = await client.get(f"/api/review/session/{session.session_id}/answered")
+
+    assert [(r["node_exec_id"], r["status"]) for r in listed.json()] == [
+        (answered, "APPROVED")
+    ]
+    assert [r["node_exec_id"] for r in pending.json()] == [waiting]
+    assert after.json() == []

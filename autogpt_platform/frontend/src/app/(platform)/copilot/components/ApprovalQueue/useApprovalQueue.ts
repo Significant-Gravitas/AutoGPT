@@ -1,5 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { usePostV2ContinueChatWithAnsweredReviews } from "@/app/api/__generated__/endpoints/executions/executions";
+import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import type { HeldReceipt } from "@/app/(platform)/home/components/NeedsYou/useHeldReview";
@@ -11,6 +13,7 @@ import {
   type ChatRule,
   type RuleScope,
   isHeldRead,
+  toApprovalItem,
 } from "./helpers";
 
 export interface Receipt extends HeldReceipt {
@@ -19,6 +22,7 @@ export interface Receipt extends HeldReceipt {
 
 interface Args {
   items: ApprovalItem[];
+  answered?: PendingHumanReviewModel[];
   // Whether the chat's turn starts now; false while other cards still wait.
   onAnswered: (turnFollows: boolean) => void;
   onContinued?: () => void;
@@ -28,7 +32,12 @@ interface Args {
 const LINGER_MS = 1000;
 const FADE_MS = 200;
 
-export function useApprovalQueue({ items, onAnswered, onContinued }: Args) {
+export function useApprovalQueue({
+  items,
+  answered,
+  onAnswered,
+  onContinued,
+}: Args) {
   const outcomes = useContext(HeldOutcomesContext);
   const { processReviews } = useProcessReviews();
   const { mutateAsync: continueChat, isPending: isContinuing } =
@@ -47,6 +56,29 @@ export function useApprovalQueue({ items, onAnswered, onContinued }: Args) {
   const [reviewing, setReviewing] = useState(false);
   const seen = useRef(new Map<string, ApprovalItem>());
   const answeredHere = useRef(new Set<string>());
+  const seeded = useRef(false);
+
+  // Answers given before a reload keep their receipts, and with them Close and continue.
+  useEffect(() => {
+    if (seeded.current || answered === undefined) return;
+    seeded.current = true;
+    setReceipts((prev) => [
+      ...answered
+        .filter(
+          (row) => !prev.some((r) => r.item.reviewId === row.node_exec_id),
+        )
+        .map((row) => {
+          const item = toApprovalItem(row);
+          const approved = row.status === ReviewStatus.APPROVED;
+          return {
+            item,
+            outcome: approved ? ("approved" as const) : ("rejected" as const),
+            text: receiptText(item, approved),
+          };
+        }),
+      ...prev,
+    ]);
+  }, [answered]);
 
   // A card that leaves the poll without an answer from here was answered on Home or another tab.
   useEffect(() => {
