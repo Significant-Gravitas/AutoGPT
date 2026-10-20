@@ -414,7 +414,11 @@ class StoreReview(pydantic.BaseModel):
 
 class StoreReviewCreate(pydantic.BaseModel):
     store_listing_version_id: str
-    score: int
+    score: int = pydantic.Field(
+        ge=1,
+        le=5,
+        description="Star rating from 1 (worst) to 5 (best).",
+    )
     comments: str | None = None
 
 

@@ -3,6 +3,7 @@ import pytest
 
 from .model import (
     SUB_HEADING_MAX_LENGTH,
+    StoreReviewCreate,
     StoreSubmissionEditRequest,
     StoreSubmissionRequest,
 )
@@ -53,6 +54,27 @@ def test_sub_heading_has_no_default(model):
             }
         )
     assert any(e["loc"] == ("sub_heading",) for e in exc.value.errors())
+
+
+@pytest.mark.parametrize(
+    ("score", "error_type"),
+    [
+        (0, "greater_than_equal"),
+        (-5, "greater_than_equal"),
+        (6, "less_than_equal"),
+        (1_000_000, "less_than_equal"),
+    ],
+)
+def test_store_review_score_outside_one_to_five_is_rejected(score, error_type):
+    with pytest.raises(pydantic.ValidationError) as exc:
+        StoreReviewCreate(store_listing_version_id="version-1", score=score)
+    assert exc.value.errors()[0]["type"] == error_type
+
+
+@pytest.mark.parametrize("score", [1, 5])
+def test_store_review_score_at_the_bounds_is_accepted(score):
+    review = StoreReviewCreate(store_listing_version_id="version-1", score=score)
+    assert review.score == score
 
 
 def build(model: type[pydantic.BaseModel], sub_heading: str):
