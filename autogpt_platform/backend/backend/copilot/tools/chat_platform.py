@@ -402,6 +402,8 @@ class PostToChatPlatformTool(BaseTool):
             return ErrorResponse(
                 message=_error_message(result.error, platform_name),
                 error=result.error or "chat_platform_post_failed",
+                # A scheduled chat's failure streak reads which platform.
+                details={"provider": platform_name},
                 session_id=session_id,
             )
 
@@ -571,6 +573,7 @@ class EditChatPlatformMessageTool(BaseTool):
             return ErrorResponse(
                 message=_error_message(result.error, platform_name),
                 error=result.error or "chat_platform_edit_failed",
+                details={"provider": platform_name},
                 session_id=session_id,
             )
         return ChatPlatformEditedResponse(
