@@ -57,8 +57,12 @@ async def _fetch(scope: MemoryScope, message: str) -> str | None:
         EDGE_HYBRID_SEARCH_CROSS_ENCODER,
     )
 
+    from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
+
+    _perf_legs.mark("wc_start")
     group_id = scope.group_id
     client = await get_graphiti_client(group_id)
+    _perf_legs.mark("wc_client")
 
     # P-1.4: warm context is the single most-impactful retrieval per
     # session — the one place where the cross-encoder rerank earns its
@@ -72,16 +76,16 @@ async def _fetch(scope: MemoryScope, message: str) -> str | None:
         update={"limit": graphiti_config.context_max_facts}
     )
     edge_results, episodes = await asyncio.gather(
-        client.search_(
+        _perf_legs.timed("wc_search", client.search_(
             query=message,
             config=search_config,
             group_ids=[group_id],
-        ),
-        client.retrieve_episodes(
+        )),
+        _perf_legs.timed("wc_episodes", client.retrieve_episodes(
             reference_time=datetime.now(timezone.utc),
             group_ids=[group_id],
             last_n=5,
-        ),
+        )),
     )
     edges = edge_results.edges if edge_results is not None else []
 

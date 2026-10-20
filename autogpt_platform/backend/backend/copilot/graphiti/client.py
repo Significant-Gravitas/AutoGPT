@@ -242,6 +242,13 @@ def _build_graphiti(
             password=graphiti_config.falkordb_password or None,
             database=group_id,
         )
+    from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
+
+    _perf_legs.wrap_async_method(embedder, "create", "embed")
+    _perf_legs.wrap_async_method(embedder, "create_batch", "embedb")
+    _perf_legs.wrap_async_method(cross_encoder, "rank", "rerank")
+    _perf_legs.wrap_async_method(graph_driver, "execute_query", "falkor")
+    _perf_legs.mark("wc_client_built")
     return Graphiti(
         llm_client=llm_client,
         embedder=embedder,

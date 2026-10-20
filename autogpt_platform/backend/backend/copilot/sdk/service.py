@@ -3,6 +3,7 @@
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
 import time as _perf_time
+from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
 import asyncio
 import contextlib
 import contextvars
@@ -5109,34 +5110,47 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The E2B leg runs as its own task: if a sibling leg fails first, the
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
-        e2b_task = asyncio.create_task(_setup_e2b())
+        _legs: dict = {}  # do-not-merge probe (#15739)
+        _legs_since = _perf_time.time()
+        _perf_legs.LEG_MARKS.set(_legs)
+        e2b_task = asyncio.create_task(_perf_legs.timed("e2b_leg", _setup_e2b()))
         try:
             (
                 (base_system_prompt, understanding),
                 (graphiti_enabled, warm_ctx),
                 _restore,
             ) = await asyncio.gather(
-                _build_system_prompt(user_id if not has_history else None),
-                _fetch_graphiti_context(user_id, session, message),
+                _perf_legs.timed(
+                    "sysprompt", _build_system_prompt(user_id if not has_history else None)
+                ),
+                _perf_legs.timed(
+                    "graphiti", _fetch_graphiti_context(user_id, session, message)
+                ),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
-                _restore_cli_session_for_turn(
-                    user_id,
-                    session_id,
-                    session,
-                    sdk_cwd,
-                    transcript_builder,
-                    log_prefix,
+                _perf_legs.timed(
+                    "restore",
+                    _restore_cli_session_for_turn(
+                        user_id,
+                        session_id,
+                        session,
+                        sdk_cwd,
+                        transcript_builder,
+                        log_prefix,
+                    ),
                 ),
             )
             yield StreamStatus(message=f"perf:gather:{int(_perf_time.time() * 1000) % 100000000}")
         except BaseException:
             with contextlib.suppress(BaseException):
                 e2b_sandbox = await e2b_task
+            _perf_legs.LEG_MARKS.set(None)
             raise
         e2b_sandbox = await e2b_task
+        _perf_legs.LEG_MARKS.set(None)
         yield StreamStatus(message=f"perf:e2b:{int(_perf_time.time() * 1000) % 100000000}")
+        yield StreamStatus(message=_perf_legs.render(_legs, _legs_since))
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -6909,6 +6923,7 @@ async def _fetch_graphiti_context(
     is anonymous.
     """
     enabled = await is_enabled_for_user(user_id)
+    _perf_legs.mark("graphiti_flag")  # do-not-merge probe (#15739)
     if not enabled:
         return False, ""
     if not (user_id and len(session.messages) <= 1):
