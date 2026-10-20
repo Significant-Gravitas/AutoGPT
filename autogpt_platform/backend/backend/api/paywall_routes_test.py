@@ -219,6 +219,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/session/{chat_session_id}",
     "GET /api/schedules",
     "GET /api/schedules/followups",
+    "GET /api/schedules/followups/paused",
     "GET /api/skill-learning/decisions",
     "GET /api/skill-learning/history",
     "GET /api/skill-learning/skills/{name}",

@@ -12,10 +12,10 @@ keeps it out of everything the model reads (``hidden_rows``).
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.copilot.hidden_rows import HIDDEN_FROM_MODEL_KEY
 from backend.copilot.turn_queue import TurnRefusal
@@ -30,7 +30,20 @@ INTEGRATIONS_PATH = "/settings/integrations"
 _MESSAGE_NAMESPACE = uuid.UUID("5d0a3a4e-2f3b-5c8e-9a51-6e7c0b1d2f43")
 _TITLE_MAX = 60
 
-NoticeReason = Literal["usage", "no_plan", "codex_access"]
+# Skipped before it started: a used-up limit, no plan, a lost ChatGPT plan.
+# Failed after it started (``failure_notices``): a connection, an unlinked chat
+# platform, the run's own spending or step limit, any other error, and the
+# note that a paused chat was resumed.
+NoticeReason = Literal[
+    "usage",
+    "no_plan",
+    "codex_access",
+    "connection",
+    "chat_link",
+    "budget",
+    "error",
+    "resumed",
+]
 # What became of the skipped run: a repeating schedule keeps its next time, a
 # one-shot either waits for its usage window to reset or is gone.
 SkippedRun = Literal["recurring", "waits_for_reset", "dropped"]
@@ -44,13 +57,34 @@ class NoticeLink(BaseModel):
     href: str
 
 
+class NoticeResume(BaseModel):
+    """A button that resumes the paused scheduled chat the note is about."""
+
+    kind: Literal["resume"] = "resume"
+    label: str = "Resume"
+
+
+class NoticeReconnect(BaseModel):
+    """A button that opens the connect dialog for one provider, and resumes
+    the scheduled chat once the connection is made."""
+
+    kind: Literal["reconnect"] = "reconnect"
+    label: str
+    provider: str
+
+
+NoticeAction = Annotated[
+    Union[NoticeLink, NoticeResume, NoticeReconnect], Field(discriminator="kind")
+]
+
+
 class ScheduledChatNotice(BaseModel):
     reason: NoticeReason
     headline: str
     body: str
     # When the schedule runs again by itself, where it does.
     resumes_at: datetime | None = None
-    actions: list[NoticeLink]
+    actions: list[NoticeAction]
     # Names the window this note covers, so a schedule says it once per
     # window: part of the message id.
     window_key: str

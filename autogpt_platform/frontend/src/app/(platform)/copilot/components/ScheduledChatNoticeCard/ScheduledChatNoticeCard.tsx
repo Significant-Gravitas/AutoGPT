@@ -2,27 +2,82 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import {
+  Alert01Icon,
+  CheckmarkCircle02Icon,
   Clock01Icon,
   CreditCardIcon,
+  PauseIcon,
   PlugSocketIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import type { ScheduledChatNotice } from "./helpers";
+import type { NoticeAction, ScheduledChatNotice } from "./helpers";
+import { useScheduledChatNoticeCard } from "./useScheduledChatNoticeCard";
 
 interface Props {
   notice: ScheduledChatNotice;
+  sessionID?: string | null;
 }
 
 const REASON_ICONS: Record<string, IconSvgElement> = {
   usage: Clock01Icon,
   no_plan: CreditCardIcon,
   codex_access: PlugSocketIcon,
+  connection: PlugSocketIcon,
+  chat_link: PlugSocketIcon,
+  budget: PauseIcon,
+  error: Alert01Icon,
+  resumed: CheckmarkCircle02Icon,
 };
 
-export function ScheduledChatNoticeCard({ notice }: Props) {
+export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
+  const card = useScheduledChatNoticeCard({
+    scheduleKey: notice.scheduleKey,
+    sessionID,
+  });
   const icon = REASON_ICONS[notice.reason] ?? Clock01Icon;
   const showActions = notice.actions.length > 0;
+
+  function renderAction(action: NoticeAction) {
+    if (action.kind === "link") {
+      return (
+        <Button
+          key={`link-${action.href}`}
+          as="NextLink"
+          href={action.href}
+          variant="secondary"
+          size="small"
+        >
+          {action.label}
+        </Button>
+      );
+    }
+    if (action.kind === "reconnect") {
+      return (
+        <Button
+          key={`reconnect-${action.provider}`}
+          variant="secondary"
+          size="small"
+          onClick={() => card.openConnect(action.provider)}
+        >
+          {action.label}
+        </Button>
+      );
+    }
+    return (
+      <Button
+        key="resume"
+        variant="secondary"
+        size="small"
+        loading={card.isResuming}
+        disabled={card.resumed}
+        onClick={card.resume}
+      >
+        {card.resumed ? "Resumed" : action.label}
+      </Button>
+    );
+  }
 
   return (
     <div
@@ -36,21 +91,21 @@ export function ScheduledChatNoticeCard({ notice }: Props) {
           <p className="mt-1 text-sm text-zinc-500">{notice.body}</p>
           {showActions ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {notice.actions.map((action) => (
-                <Button
-                  key={action.href}
-                  as="NextLink"
-                  href={action.href}
-                  variant="secondary"
-                  size="small"
-                >
-                  {action.label}
-                </Button>
-              ))}
+              {notice.actions.map(renderAction)}
             </div>
           ) : null}
         </div>
       </div>
+      {card.connectProvider ? (
+        <ConnectServiceDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) card.closeConnect();
+          }}
+          initialProviderId={card.connectProvider}
+          onConnected={card.handleConnected}
+        />
+      ) : null}
     </div>
   );
 }

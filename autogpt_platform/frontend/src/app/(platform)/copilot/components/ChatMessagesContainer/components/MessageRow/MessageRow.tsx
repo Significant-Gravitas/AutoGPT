@@ -125,7 +125,7 @@ export const MessageRow = memo(function MessageRow({
         className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
-          <ScheduledChatNoticeCard notice={notice} />
+          <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
       </Message>
     );

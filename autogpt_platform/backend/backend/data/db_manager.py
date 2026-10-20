@@ -60,6 +60,7 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot.scheduled_chats.service import record_scheduled_run
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
@@ -782,6 +783,8 @@ class DatabaseManager(AppService):
     append_plain_session_message = _(chat_db.append_plain_session_message)
     # And to tell a scheduled chat why its run was skipped, in that chat.
     append_session_message = _(chat_db.append_session_message)
+    # The copilot executor counts each scheduled run toward a failure streak.
+    record_scheduled_run = _(record_scheduled_run)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -995,6 +998,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
     append_session_message = d.append_session_message
+    record_scheduled_run = d.record_scheduled_run
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings

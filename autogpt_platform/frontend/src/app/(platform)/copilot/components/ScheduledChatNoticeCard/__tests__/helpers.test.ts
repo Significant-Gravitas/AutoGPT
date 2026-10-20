@@ -16,6 +16,7 @@ describe("getScheduledChatNotice", () => {
       reason: "usage",
       headline: "Skipped: daily usage limit reached",
       body: "“Briefing” didn't run.",
+      scheduleKey: null,
       actions: [{ kind: "link", label: "Upgrade", href: "/settings/billing" }],
     });
   });
@@ -28,7 +29,7 @@ describe("getScheduledChatNotice", () => {
     ).toBeNull();
   });
 
-  it("keeps only buttons that stay on the platform", () => {
+  it("keeps only links that stay on the platform", () => {
     const notice = getScheduledChatNotice({
       ...NOTICE,
       actions: [
@@ -37,11 +38,40 @@ describe("getScheduledChatNotice", () => {
         { kind: "link", label: "Protocol-relative", href: "//example.com" },
         { kind: "link", label: "Backslash", href: "/\\example.com" },
         { kind: "link", label: "Script", href: "javascript:alert(1)" },
-        { kind: "resume", label: "Resume" },
         "not an action",
       ],
     });
 
     expect(notice?.actions.map((action) => action.label)).toEqual(["Upgrade"]);
+  });
+
+  it("reads a paused chat's reconnect and resume", () => {
+    const notice = getScheduledChatNotice({
+      ...NOTICE,
+      reason: "connection",
+      schedule_key: "routine-1",
+      actions: [
+        { kind: "reconnect", label: "Reconnect Twitter", provider: "twitter" },
+        { kind: "resume", label: "Resume" },
+      ],
+    });
+
+    expect(notice?.scheduleKey).toBe("routine-1");
+    expect(notice?.actions).toEqual([
+      { kind: "reconnect", label: "Reconnect Twitter", provider: "twitter" },
+      { kind: "resume", label: "Resume" },
+    ]);
+  });
+
+  it("drops a resume it could not send anywhere", () => {
+    const notice = getScheduledChatNotice({
+      ...NOTICE,
+      actions: [
+        { kind: "resume", label: "Resume" },
+        { kind: "reconnect", label: "Reconnect" },
+      ],
+    });
+
+    expect(notice?.actions).toEqual([]);
   });
 });

@@ -54,6 +54,15 @@ def test_the_audience_consumer_can_read_the_opt_out() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")
 
 
+def test_the_executor_can_record_a_scheduled_run() -> None:
+    """The copilot executor has no Prisma of its own. A run's outcome, the
+    deepest payload here, crosses this RPC; a schema that cannot be built
+    would only show as a warning in the executor's log."""
+    assert hasattr(DatabaseManagerAsyncClient, "record_scheduled_run")
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.record_scheduled_run)
+
+
 def test_the_scheduler_can_post_a_note_into_a_chat() -> None:
     """The scheduler has no Prisma of its own; a skipped run's note goes
     through this RPC."""
