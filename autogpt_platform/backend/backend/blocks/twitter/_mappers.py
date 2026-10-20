@@ -29,14 +29,6 @@ REPLY_SETTINGS_FRONTEND_TO_BACKEND_MAPPING = {
 }
 
 
-# TweetUserFields
-def get_backend_reply_setting(frontend_key: str) -> str:
-    result = REPLY_SETTINGS_FRONTEND_TO_BACKEND_MAPPING.get(frontend_key)
-    if result is None:
-        raise KeyError(f"Invalid reply setting key: {frontend_key}")
-    return result
-
-
 USER_FIELDS_FRONTEND_TO_BACKEND_MAPPING = {
     "Account_Creation_Date": "created_at",
     "User_Bio": "description",
