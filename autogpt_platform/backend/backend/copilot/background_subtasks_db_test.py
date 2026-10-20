@@ -1060,14 +1060,22 @@ async def test_expired_followup_is_recovered_once(
     clock = MagicMock(wraps=datetime)
     clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
     monkeypatch.setattr(background_delivery, "datetime", clock)
+    if state == "queued_with_pending":
+        await background_delivery.reconcile_background_subtasks()
+        stored = await background_task_db.get_background_task(task.id, world.user_id)
+        assert stored and stored.followup_state == "queued"
+        assert (
+            await chat_db().get_chat_session_status(task.parent_session_id) == "queued"
+        )
+        assert await turn_queue.cancel_queued_turn(
+            user_id=world.user_id, session_id=task.parent_session_id
+        )
     for _ in range(3):
         assert await model.get_chat_session(task.parent_session_id, world.user_id)
         await background_delivery.reconcile_background_subtasks()
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "finished"
-    assert await chat_db().get_chat_session_status(world.parent.session_id) == (
-        "queued" if state == "queued_with_pending" else "idle"
-    )
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
     messages = await DbMessage.prisma().find_many(
         where={"sessionId": world.parent.session_id}
     )
@@ -1075,7 +1083,7 @@ async def test_expired_followup_is_recovered_once(
     assert len(notices) == 1 and notices[0].role == "assistant"
     assert (notices[0].content or "").startswith(
         "Otto couldn't complete the background follow-up."
-        if running
+        if running or state == "queued_with_pending"
         else "Otto couldn't complete the background follow-up within its limits."
     )
     assert task.child_session_id in (notices[0].content or "")
@@ -1083,6 +1091,65 @@ async def test_expired_followup_is_recovered_once(
 
     session = await model.get_chat_session(task.parent_session_id, world.user_id)
     assert session and any(m.content == notices[0].content for m in session.messages)
+
+
+@pytest.mark.parametrize("stream_lost", [False, True])
+async def test_expiry_losing_queue_cancellation_keeps_the_followup_recoverable(
+    world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
+    await background_delivery.reconcile_background_subtasks()
+    envelope = await background_task_db.get_background_followup_envelope(
+        task.id, world.user_id
+    )
+    assert envelope and envelope.deadline_at
+    cancel = background_delivery.cancel_queued_turn
+
+    async def promote_before_cancel(**kwargs):
+        assert await turn_queue.dispatch_next_for_user(world.user_id)
+        return await cancel(**kwargs)
+
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
+    monkeypatch.setattr(background_delivery, "datetime", clock)
+    monkeypatch.setattr(background_execution, "datetime", clock)
+    monkeypatch.setattr(
+        background_delivery, "cancel_queued_turn", promote_before_cancel
+    )
+
+    await background_delivery.reconcile_background_subtasks()
+
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == "running"
+    wake = world.entry(task.parent_session_id)
+    if stream_lost:
+        await stream_registry.delete_session_meta(
+            task.parent_session_id, turn_id=task.wake_id
+        )
+        await background_delivery.reconcile_background_subtasks()
+    else:
+        worker = processor.CoPilotProcessor()
+        worker.execution_loop = asyncio.get_running_loop()
+        run_turn = AsyncMock()
+        monkeypatch.setattr(worker, "_run_turn", run_turn)
+        with pytest.raises(TimeoutError, match=BACKGROUND_TIMEOUT_MESSAGE):
+            await asyncio.to_thread(
+                worker.execute, wake, threading.Event(), MagicMock()
+            )
+        run_turn.assert_not_awaited()
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == "idle"
+    notices = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(notices) == 1
+    assert len(world.published.await_args_list) == 2
 
 
 @pytest.mark.parametrize("stream_lost", [False, True])

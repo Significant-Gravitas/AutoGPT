@@ -172,11 +172,13 @@ async def _recover_followup(task: BackgroundTask, now: datetime) -> None:
         return
     if envelope.deadline_at is not None and now >= envelope.deadline_at:
         if status == "queued":
-            await cancel_queued_turn(
+            if not await cancel_queued_turn(
                 user_id=task.user_id,
                 session_id=task.parent_session_id,
                 expected_turn_id=task.wake_id,
-            )
+            ):
+                await dispatch_next_for_user(task.user_id)
+                return
             await background_task_db().finish_background_turn(
                 task.user_id,
                 task.parent_session_id,
