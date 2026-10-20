@@ -23,7 +23,7 @@ from prisma.models import (
 
 from backend.api.features.experts import routines
 from backend.copilot import db as copilot_db
-from backend.copilot.scheduled_chats import reconnect, service
+from backend.copilot.scheduled_chats import forget, reconnect, service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.reconnect import resume_after_reconnect
 from backend.copilot.scheduled_chats.service import (
@@ -907,7 +907,7 @@ async def test_a_deleted_chat_leaves_no_paused_ghost(
             await record_scheduled_run(_run(user_id, session_id, failed))
             await record_scheduled_run(_run(other_id, other_session, failed))
 
-        await service.forget_scheduled_chat(user_id, "sched-1")
+        await forget.forget_scheduled_chat(user_id, "sched-1")
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
         assert await list_paused_scheduled_chats(user_id) == []
@@ -939,7 +939,7 @@ async def test_forgetting_a_routines_id_leaves_its_pause_alone(
         for job in ("job-a", "job-b", "job-a"):
             await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
 
-        await service.forget_scheduled_chat(user_id, routine.id)
+        await forget.forget_scheduled_chat(user_id, routine.id)
 
         paused = await list_paused_scheduled_chats(user_id)
         assert [p.schedule_key for p in paused] == [routine.id]
@@ -971,7 +971,7 @@ async def test_a_key_naming_someone_elses_routine_is_a_follow_up(
         [paused] = await list_paused_scheduled_chats(user_id)
         assert paused.routine is False
 
-        await service.forget_scheduled_chat(user_id, foreign.id)
+        await forget.forget_scheduled_chat(user_id, foreign.id)
 
         assert await list_paused_scheduled_chats(user_id) == []
     finally:
