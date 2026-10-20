@@ -49,11 +49,11 @@ class TestRecentEpisodes:
         driver = _driver_returning(
             [_episode_record("newest", "b"), _episode_record("older", "a")]
         )
-        open_driver = MagicMock(return_value=driver)
-        with patch.object(recall, "open_driver", open_driver):
+        get_client = AsyncMock(return_value=MagicMock(driver=driver))
+        with patch.object(recall, "get_graphiti_client", get_client):
             episodes = await recall.recent_episodes(_SCOPE, 5)
 
-        open_driver.assert_called_once_with(_SCOPE)
+        get_client.assert_awaited_once_with(_SCOPE.group_id)
         query = driver.execute_query.await_args.args[0]
         kwargs = driver.execute_query.await_args.kwargs
         assert query.startswith(recall.forgotten_facts_clause())
@@ -63,17 +63,22 @@ class TestRecentEpisodes:
         assert kwargs["limit"] == 5
         assert kwargs["source"] is None, "recall reads every source"
         assert [ep.uuid for ep in episodes] == ["older", "newest"]
-        driver.close.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_closes_driver_when_the_read_fails(self) -> None:
+    async def test_reads_on_the_cached_clients_driver_and_leaves_it_open(
+        self,
+    ) -> None:
+        """No connection per read: the scope's cached client is shared with
+        the fact search and the recheck, so the read must not close it, even
+        when it fails."""
         driver = AsyncMock()
         driver.execute_query.side_effect = RuntimeError("falkordb down")
-        with patch.object(recall, "open_driver", MagicMock(return_value=driver)):
+        get_client = AsyncMock(return_value=MagicMock(driver=driver))
+        with patch.object(recall, "get_graphiti_client", get_client):
             with pytest.raises(RuntimeError):
                 await recall.recent_episodes(_SCOPE, 5)
 
-        driver.close.assert_awaited_once()
+        driver.close.assert_not_awaited()
 
 
 class TestPreviousEpisodeUuids:
