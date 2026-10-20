@@ -13,7 +13,7 @@ from pydantic_settings import (
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
-from .models import DEFAULT_LLM_MODEL
+from .models import DEFAULT_LLM_MODEL, is_luna_model
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
@@ -338,25 +338,28 @@ class GraphitiConfig(BaseSettings):
         A new chat's first turn waits on the slowest of up to
         2 * ``context_max_facts`` calls, and through OpenRouter those calls
         have a long tail (on a preview in October 2026, 5-10% took over 2 s,
-        against 0.6% sent to OpenAI). So an OpenAI model goes to OpenAI
-        directly, with the embedder's key, whenever the embedder does too
-        and graphiti's LLM endpoint is the OpenRouter default (``base_url=None``:
-        the OpenAI SDK's default, which honours ``OPENAI_BASE_URL`` exactly as
-        the embedder's client does). Otherwise
-        (local transport, a custom ``llm_base_url`` or ``embedder_base_url``,
-        no OpenAI key, another vendor's model) it goes where extraction
-        goes, as before.
+        against 0.6% sent to OpenAI). So the default model, GPT-6 Luna (bare
+        or ``openai/``-prefixed), goes to OpenAI directly, with the
+        embedder's key, whenever the embedder does too and graphiti's LLM
+        endpoint is the OpenRouter default (``base_url=None``: the OpenAI
+        SDK's default, which honours ``OPENAI_BASE_URL`` exactly as the
+        embedder's client does). Any other model goes where extraction goes,
+        as before: an ``openai/`` name on OpenRouter needn't be one OpenAI's
+        own API serves (``openai/gpt-oss-120b``). So does Luna under local
+        transport, a custom ``llm_base_url`` or ``embedder_base_url``, or
+        with no OpenAI key.
         """
         openai_key = self.resolve_embedder_api_key()
-        provider, _, name = self.reranker_model.rpartition("/")
         if (
             not self.llm_base_url
             and not self.embedder_base_url
             and openai_key
-            and provider in ("", "openai")
+            and is_luna_model(self.reranker_model)
             and self._chat_local_fallback() is None
         ):
-            return RerankerRoute(api_key=openai_key, base_url=None, model=name)
+            return RerankerRoute(
+                api_key=openai_key, base_url=None, model=DEFAULT_LLM_MODEL
+            )
         return RerankerRoute(
             api_key=self.resolve_llm_api_key(),
             base_url=self.resolve_llm_base_url(),
