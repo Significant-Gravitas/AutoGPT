@@ -48,6 +48,25 @@ def span_end(name: str, started: float) -> None:
     marks[f"{name}_sum"] = marks.get(f"{name}_sum", 0.0) + (now - started)
 
 
+def note(name: str, value: int | str) -> None:
+    marks = LEG_MARKS.get()
+    if marks is not None:
+        marks[f"{name}_v"] = value
+
+
+def note_in_set(name: str, value: str) -> None:
+    marks = LEG_MARKS.get()
+    if marks is not None:
+        marks.setdefault(f"{name}_set", set()).add(value)
+
+
+def call_span(name: str, started: float) -> None:
+    """One call's start and end; rendered as start+duration in start order."""
+    marks = LEG_MARKS.get()
+    if marks is not None:
+        marks.setdefault(f"{name}_calls", []).append((started, time.time()))
+
+
 def render(marks: dict, since: float) -> str:
     parts = []
     for key, value in marks.items():
@@ -55,6 +74,16 @@ def render(marks: dict, since: float) -> str:
             parts.append(f"{key}={int(value)}")
         elif key.endswith("_sum"):
             parts.append(f"{key}={int(value * 1000)}")
+        elif key.endswith("_v"):
+            parts.append(f"{key[:-2]}={value}")
+        elif key.endswith("_set"):
+            parts.append(f"{key[:-4]}={'/'.join(sorted(value))}")
+        elif key.endswith("_calls"):
+            spans = "|".join(
+                f"{int((start - since) * 1000)}+{int((end - start) * 1000)}"
+                for start, end in sorted(value)
+            )
+            parts.append(f"{key[:-6]}={spans}")
         else:
             parts.append(f"{key}={int((value - since) * 1000)}")
     return "perf-legs:" + ",".join(parts)

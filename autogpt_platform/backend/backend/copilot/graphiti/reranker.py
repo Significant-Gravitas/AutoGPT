@@ -6,13 +6,15 @@ probabilities supply relevance scores. Unusable responses score zero.
 
 from __future__ import annotations
 
+import itertools
 import logging
+import time
 from typing import Any
 
 import numpy as np
 import openai
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
-from graphiti_core.helpers import semaphore_gather
+from graphiti_core.helpers import SEMAPHORE_LIMIT, semaphore_gather
 from graphiti_core.llm_client import LLMConfig, RateLimitError
 from openai.types.chat import (
     ChatCompletionMessageParam,
@@ -20,9 +22,13 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
+from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
+
 from .models import DEFAULT_LLM_MODEL, is_luna_model
 
 logger = logging.getLogger(__name__)
+
+_PROBE_RANKS = itertools.count()
 
 MIN_COMPLETION_TOKENS = 16
 
@@ -66,19 +72,42 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             ]
             for passage in passages
         ]
+        # do-not-merge probe (#15739): every other pair of ranks runs as one
+        # wave (#15492's cap) instead of graphiti's default of 20 at a time,
+        # and each classifier call's start and duration is recorded.
+        one_wave = (next(_PROBE_RANKS) // 2) % 2 == 1
+        cap = max(1, min(len(passages), 64)) if one_wave else None
+        _perf_legs.note("rr_passages", len(passages))
+        _perf_legs.note("rr_cap", cap or SEMAPHORE_LIMIT)
+
+        async def _probe_call(call):
+            started = time.time()
+            try:
+                response = await call
+                provider = (getattr(response, "model_extra", None) or {}).get(
+                    "provider"
+                )
+                _perf_legs.note_in_set("rr_provider", str(provider))
+                return response
+            finally:
+                _perf_legs.call_span("rr", started)
+
         try:
             responses = await semaphore_gather(
                 *[
-                    self.client.chat.completions.create(
-                        model=model,
-                        messages=openai_messages,
-                        temperature=0,
-                        logprobs=True,
-                        top_logprobs=2,
-                        **options,
+                    _probe_call(
+                        self.client.chat.completions.create(
+                            model=model,
+                            messages=openai_messages,
+                            temperature=0,
+                            logprobs=True,
+                            top_logprobs=2,
+                            **options,
+                        )
                     )
                     for openai_messages in openai_messages_list
-                ]
+                ],
+                max_coroutines=cap,
             )
 
             responses_top_logprobs = [
