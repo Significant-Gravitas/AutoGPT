@@ -139,6 +139,8 @@ async def test_an_approved_review_resumes_the_run_inside_its_tree(
     resumed = await _approve(client, test_user_id, graph_exec_id, published)
 
     assert _spawner_envelope_from(resumed) == tree
+    # The run's identity also comes off the row (#15300), beside the tree.
+    assert resumed.graph_exec_id == graph_exec_id
 
 
 @pytest.mark.asyncio(loop_scope="session")
