@@ -1,8 +1,15 @@
 import type { PostHog } from "posthog-js";
 import { useSyncExternalStore } from "react";
 
+interface Snapshot {
+  resolved: boolean;
+  omissionsResolved: boolean;
+  evaluatedKeys: ReadonlySet<string>;
+}
+
 interface Resolution {
-  snapshot: { resolved: boolean };
+  snapshot: Snapshot;
+  response?: Snapshot;
   listeners: Set<() => void>;
   observers: number;
   unsubscribe?: () => void;
@@ -15,7 +22,7 @@ function getResolution(client: PostHog) {
   const existing = resolutions.get(client);
   if (existing) return existing;
   const resolution: Resolution = {
-    snapshot: { resolved: false },
+    snapshot: unresolved,
     listeners: new Set(),
     observers: 0,
     subscribe(listener) {
@@ -34,31 +41,78 @@ function getResolution(client: PostHog) {
 export function trackPostHogFlagResolution(client: PostHog) {
   const resolution = getResolution(client);
   if (resolution.observers++ === 0) {
+    const restoreReceiver = observeResponses(client, resolution);
     let subscribing = true;
-    resolution.unsubscribe = client.onFeatureFlags(
-      (_flags, _variants, context) => {
-        // hasLoadedFlags includes failures; immediate replay omits context.
-        if (subscribing && context?.errorsLoading === undefined) return;
-        resolution.snapshot = {
-          resolved:
-            context?.errorsLoading === undefined
-              ? resolution.snapshot.resolved
-              : !context.errorsLoading,
-        };
-        resolution.listeners.forEach((listener) => listener());
-      },
-    );
+    const unsubscribe = client.onFeatureFlags((_flags, _variants, context) => {
+      // hasLoadedFlags includes failures; immediate replay omits context.
+      if (subscribing && context?.errorsLoading === undefined) return;
+      resolution.snapshot = resolution.response ?? {
+        resolved:
+          context?.errorsLoading === undefined
+            ? resolution.snapshot.resolved
+            : !context.errorsLoading,
+        omissionsResolved:
+          context?.errorsLoading === undefined &&
+          resolution.snapshot.omissionsResolved,
+        evaluatedKeys:
+          context?.errorsLoading === undefined
+            ? resolution.snapshot.evaluatedKeys
+            : new Set(),
+      };
+      resolution.listeners.forEach((listener) => listener());
+    });
     subscribing = false;
+    resolution.unsubscribe = () => {
+      unsubscribe();
+      restoreReceiver();
+    };
   }
   return () => {
     if (--resolution.observers === 0) {
       resolution.unsubscribe?.();
       resolution.unsubscribe = undefined;
+      resolution.snapshot = unresolved;
     }
   };
 }
 
-const unresolved = { resolved: false };
+// onFeatureFlags drops partial-evaluation metadata; retain it before the SDK
+// merges the response into its cache and notifies React.
+function observeResponses(client: PostHog, resolution: Resolution) {
+  const featureFlags = client.featureFlags;
+  const original = featureFlags.receivedFeatureFlags;
+  const receive: typeof original = function (response, errorsLoading) {
+    const flags = response.flags ?? response.featureFlags;
+    const hasFlags =
+      flags !== null && typeof flags === "object" && !Array.isArray(flags);
+    const previous = resolution.response;
+    resolution.response = {
+      resolved: errorsLoading === false,
+      omissionsResolved:
+        errorsLoading === false &&
+        response.errorsWhileComputingFlags === false &&
+        hasFlags,
+      evaluatedKeys: new Set(hasFlags ? Object.keys(flags) : []),
+    };
+    try {
+      return original.call(featureFlags, response, errorsLoading);
+    } finally {
+      resolution.response = previous;
+    }
+  };
+  featureFlags.receivedFeatureFlags = receive;
+  return () => {
+    if (featureFlags.receivedFeatureFlags === receive) {
+      featureFlags.receivedFeatureFlags = original;
+    }
+  };
+}
+
+const unresolved: Snapshot = {
+  resolved: false,
+  omissionsResolved: false,
+  evaluatedKeys: new Set(),
+};
 
 function subscribeWithoutClient() {
   return () => {};
@@ -70,5 +124,5 @@ export function usePostHogFlagResolution(client: PostHog | undefined) {
     () => (client ? getResolution(client).snapshot : unresolved),
     () => unresolved,
   );
-  return Boolean(client?.featureFlags?.hasLoadedFlags && snapshot.resolved);
+  return client?.featureFlags?.hasLoadedFlags ? snapshot : unresolved;
 }

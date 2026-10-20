@@ -1,8 +1,14 @@
 import { PostHogProvider } from "@posthog/react";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { PostHog, type PostHogConfig } from "posthog-js";
 import { type ReactNode, useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "posthog";
@@ -13,9 +19,18 @@ vi.hoisted(() => {
 
 import { trackPostHogFlagResolution } from "../backends/posthog-resolution";
 import { Flag, useFlagStatus, useGetFlag } from "../use-get-flag";
+import { MemoryPageAccess } from "@/app/(platform)/settings/memory/components/MemoryPageAccess";
+
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
 
 const cleanups: Array<() => void> = [];
 let clientNumber = 0;
+
+beforeEach(() => router.push.mockClear());
 
 afterEach(() => {
   cleanups.splice(0).forEach((cleanup) => cleanup());
@@ -50,6 +65,7 @@ function withClient(client: PostHog) {
 function receive(client: PostHog, flags: Record<string, boolean>) {
   client.featureFlags.receivedFeatureFlags(
     {
+      errorsWhileComputingFlags: false,
       flags: Object.fromEntries(
         Object.entries(flags).map(([key, enabled]) => [
           key,
@@ -98,8 +114,7 @@ describe("real PostHog SDK resolution", () => {
     });
   });
 
-  it("honors an omitted inactive flag without claiming authority", () => {
-    vi.useFakeTimers();
+  it("resolves an omitted inactive flag after a complete response", () => {
     const client = createClient();
     receive(client, {});
 
@@ -108,15 +123,8 @@ describe("real PostHog SDK resolution", () => {
     });
     expect(result.current).toEqual({
       enabled: false,
-      ready: false,
-      answered: false,
-    });
-
-    act(() => vi.advanceTimersByTime(5000));
-    expect(result.current).toEqual({
-      enabled: false,
       ready: true,
-      answered: false,
+      answered: true,
     });
   });
 
@@ -244,6 +252,155 @@ describe("real PostHog SDK resolution", () => {
     });
 
     expect(result.current.answered).toBe(false);
+  });
+
+  it.each([false, true])(
+    "keeps cached %s without authority when a partial response omits it",
+    (cached) => {
+      const client = createClient();
+      receive(client, { [Flag.GRAPHITI_MEMORY]: cached });
+      const { result } = renderHook(() => useFlagStatus(Flag.GRAPHITI_MEMORY), {
+        wrapper: withClient(client),
+      });
+      expect(result.current.answered).toBe(true);
+
+      act(() =>
+        client.featureFlags.receivedFeatureFlags(
+          { flags: {}, errorsWhileComputingFlags: true },
+          false,
+        ),
+      );
+
+      expect(result.current).toMatchObject({
+        enabled: cached,
+        answered: false,
+      });
+
+      act(() =>
+        client.featureFlags.receivedFeatureFlags(
+          {
+            featureFlags: { [Flag.GRAPHITI_MEMORY]: false },
+            errorsWhileComputingFlags: true,
+          },
+          false,
+        ),
+      );
+      expect(result.current).toMatchObject({ enabled: false, answered: true });
+    },
+  );
+
+  it.each([
+    { flags: {}, errorsWhileComputingFlags: false },
+    { featureFlags: {}, errorsWhileComputingFlags: false },
+  ])(
+    "finishes the memory route guard after a complete omission: %j",
+    (response) => {
+      const client = createClient();
+      render(
+        <MemoryPageAccess>
+          <div>Memory contents</div>
+        </MemoryPageAccess>,
+        { wrapper: withClient(client) },
+      );
+      expect(screen.getByRole("status")).toBeTruthy();
+
+      act(() => client.featureFlags.receivedFeatureFlags(response, false));
+
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByText("Memory contents")).toBeNull();
+      expect(router.push).toHaveBeenCalledWith("/404");
+    },
+  );
+
+  it.each([
+    { response: { flags: {}, errorsWhileComputingFlags: true }, failed: false },
+    { response: { flags: {} }, failed: false },
+    { response: { errorsWhileComputingFlags: false }, failed: false },
+    { response: { flags: {}, errorsWhileComputingFlags: false }, failed: true },
+  ])(
+    "does not deny memory access on an uncertain omission: %j",
+    ({ response, failed }) => {
+      vi.useFakeTimers();
+      const client = createClient();
+      render(
+        <MemoryPageAccess>
+          <div>Memory contents</div>
+        </MemoryPageAccess>,
+        { wrapper: withClient(client) },
+      );
+
+      act(() => client.featureFlags.receivedFeatureFlags(response, failed));
+      act(() => vi.advanceTimersByTime(10_000));
+
+      expect(screen.getByRole("status")).toBeTruthy();
+      expect(router.push).not.toHaveBeenCalled();
+      expect(screen.queryByText("Memory contents")).toBeNull();
+
+      act(() => receive(client, { [Flag.GRAPHITI_MEMORY]: true }));
+
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByText("Memory contents")).toBeTruthy();
+      expect(router.push).not.toHaveBeenCalled();
+    },
+  );
+
+  it("restores the SDK receiver after the last observer and distrusts untracked responses", () => {
+    const original = new PostHog().featureFlags.receivedFeatureFlags;
+    const client = createClient();
+    const tracked = client.featureFlags.receivedFeatureFlags;
+    const stopSecond = trackPostHogFlagResolution(client);
+    receive(client, {});
+
+    cleanups.pop()?.();
+    expect(client.featureFlags.receivedFeatureFlags).toBe(tracked);
+    stopSecond();
+    expect(client.featureFlags.receivedFeatureFlags).toBe(original);
+
+    client.featureFlags.receivedFeatureFlags(
+      { flags: {}, errorsWhileComputingFlags: true },
+      false,
+    );
+    cleanups.push(trackPostHogFlagResolution(client));
+    const { result } = renderHook(() => useFlagStatus(Flag.GRAPHITI_MEMORY), {
+      wrapper: withClient(client),
+    });
+    expect(result.current.answered).toBe(false);
+
+    act(() => receive(client, {}));
+    expect(result.current).toEqual({
+      enabled: false,
+      ready: true,
+      answered: true,
+    });
+  });
+
+  it("does not carry live authority into a contextless update after reset", () => {
+    const client = createClient();
+    receive(client, { [Flag.GRAPHITI_MEMORY]: true });
+    const { result } = renderHook(() => useFlagStatus(Flag.GRAPHITI_MEMORY), {
+      wrapper: withClient(client),
+    });
+    expect(result.current.answered).toBe(true);
+
+    act(() => {
+      client.reset();
+      client.featureFlags.receivedFeatureFlags({
+        featureFlags: { [Flag.GRAPHITI_MEMORY]: true },
+        errorsWhileComputingFlags: false,
+      });
+    });
+
+    expect(result.current).toMatchObject({ enabled: true, answered: false });
+  });
+
+  it("preserves a later SDK receiver replacement during cleanup", () => {
+    const client = createClient();
+    const replacement = vi.fn();
+    client.featureFlags.receivedFeatureFlags = replacement;
+
+    cleanups.pop()?.();
+
+    expect(client.featureFlags.receivedFeatureFlags).toBe(replacement);
   });
 
   it("uses the vendor's search terms payload", () => {

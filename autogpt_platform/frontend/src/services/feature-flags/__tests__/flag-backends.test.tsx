@@ -12,6 +12,13 @@ const postHog = vi.hoisted(() => ({
   // Whether /flags has answered live this page load, and how.
   loaded: true,
   errorsLoading: false,
+  listeners: new Set<
+    (
+      flags: string[],
+      variants: Record<string, unknown>,
+      context?: { errorsLoading?: boolean },
+    ) => void
+  >(),
 }));
 const postHogClient = vi.hoisted(() => ({
   capture: (...args: unknown[]) => postHog.capture(...args),
@@ -21,6 +28,11 @@ const postHogClient = vi.hoisted(() => ({
     get hasLoadedFlags() {
       return postHog.loaded;
     },
+    receivedFeatureFlags: (_response: unknown, errorsLoading?: boolean) => {
+      postHog.listeners.forEach((callback) =>
+        callback([], {}, { errorsLoading }),
+      );
+    },
   },
   onFeatureFlags: (
     callback: (
@@ -29,10 +41,20 @@ const postHogClient = vi.hoisted(() => ({
       context?: { errorsLoading?: boolean },
     ) => void,
   ) => {
+    postHog.listeners.add(callback);
     if (postHog.loaded) {
-      callback([], {}, { errorsLoading: postHog.errorsLoading });
+      const enabled = postHog.enabled("hire-experts");
+      postHogClient.featureFlags.receivedFeatureFlags(
+        {
+          featureFlags:
+            enabled === undefined ? {} : { "hire-experts": enabled },
+        },
+        postHog.errorsLoading,
+      );
     }
-    return () => {};
+    return () => {
+      postHog.listeners.delete(callback);
+    };
   },
 }));
 

@@ -48,9 +48,11 @@ that omits the key means off; an incomplete or failed response omitting the key
 uses the fallback without authority. Valid per-key answers, including false,
 still win in partial responses. Unselected flags, payloads, and experiment reads
 retain their existing path and fallback semantics.
-In direct browser PostHog mode, the public SDK cannot distinguish inactive
-omissions from partial evaluation omissions: after a successful response an
-omitted mature boolean is conservatively false with `answered=false`. HTTP failures
+In direct browser PostHog mode, the public subscription callback drops partial
+evaluation metadata. A scoped adapter at the SDK's typed `receivedFeatureFlags`
+boundary preserves that metadata before subscribers run and restores the receiver
+when tracking ends. A complete response omitting a mature boolean answers false;
+partial or unknown completeness keeps `answered=false` for that omission. HTTP failures
 retain usable cached values; when none is available, or the provider is
 unconfigured, the selected fallback applies. The backend-served mode
 remains the default.

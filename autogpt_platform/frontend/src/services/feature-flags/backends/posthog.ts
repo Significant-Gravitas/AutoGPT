@@ -7,18 +7,19 @@ import { usePostHogFlagResolution } from "./posthog-resolution";
 
 export function usePostHogFlag(key: string): FlagSourceResult {
   const posthog = usePostHog();
-  const resolved = usePostHogFlagResolution(posthog);
+  const resolution = usePostHogFlagResolution(posthog);
   const enabled = posthog?.isFeatureEnabled(key);
   const payload = posthog?.getFeatureFlagPayload(key);
+  const mature = resolveFlagValue(key as Flag, undefined) === true;
+  const resolved =
+    resolution.resolved &&
+    (!mature ||
+      resolution.omissionsResolved ||
+      resolution.evaluatedKeys.has(key));
 
-  // The SDK omits inactive flags, but also hides partial evaluation errors.
-  // Honor the off switch without calling an omitted value authoritative.
-  if (
-    resolved &&
-    enabled === undefined &&
-    resolveFlagValue(key as Flag, undefined) === true
-  ) {
-    return { value: false, resolved: false };
+  // Only a complete response makes an omitted mature flag authoritatively off.
+  if (resolution.resolved && enabled === undefined && mature) {
+    return { value: false, resolved: resolution.omissionsResolved };
   }
 
   // An explicit off wins over a payload, as on the backend.

@@ -9,6 +9,7 @@ const posthog = vi.hoisted(() => ({
   init: vi.fn(),
   register: vi.fn(),
   onFeatureFlags: vi.fn(() => () => {}),
+  featureFlags: { receivedFeatureFlags: vi.fn() },
 }));
 const credentials = vi.hoisted(() => ({
   key: "phc_test" as string,
