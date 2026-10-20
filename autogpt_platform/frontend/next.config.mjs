@@ -238,17 +238,20 @@ const configWithSentry = skipSentryPlugin
       automaticVercelMonitors: true,
     });
 
+// Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they
+// stay out of the browser bundle. Named apart from the backend's public
+// POSTHOG_API_KEY so the two keys can't be mixed up.
 const postHogUploadConfigured = Boolean(
   process.env.NODE_ENV === "production" &&
     enableSourceMaps &&
-    process.env.POSTHOG_API_KEY &&
-    process.env.POSTHOG_PROJECT_ID,
+    process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
+    process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
 );
 
 export default postHogUploadConfigured
   ? withPostHogConfig(configWithSentry, {
-      personalApiKey: process.env.POSTHOG_API_KEY,
-      projectId: process.env.POSTHOG_PROJECT_ID,
+      personalApiKey: process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY,
+      projectId: process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
       sourcemaps: {
         enabled: enableSourceMaps,
