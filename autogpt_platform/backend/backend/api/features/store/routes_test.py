@@ -508,6 +508,8 @@ def test_get_creators_pagination(
 
 
 def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
+
     # Test with invalid page number
     response = client.get("/creators?page=-1")
     assert response.status_code == 422
@@ -515,13 +517,13 @@ def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
     # Test with invalid page size
     response = client.get("/creators?page_size=0")
     assert response.status_code == 422
+    response = client.get("/creators?page_size=101")
+    assert response.status_code == 422
 
     # Test with non-numeric values
     response = client.get("/creators?page=abc&page_size=def")
     assert response.status_code == 422
 
-    # Verify no DB calls were made
-    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
     mock_db_call.assert_not_called()
 
 

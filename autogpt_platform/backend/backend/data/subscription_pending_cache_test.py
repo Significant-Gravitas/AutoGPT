@@ -219,6 +219,7 @@ async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
     )
     renewal = {
         "id": "in_renewal",
+        "status": "open",
         "customer": fake_stripe.subscription["customer"],
         "amount_due": 5000,
         "billing_reason": "subscription_cycle",
@@ -228,6 +229,8 @@ async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
         patch.object(worker_a, "User", users),
         patch.object(worker_a, "UserCredit", MagicMock(return_value=balance)),
         patch.object(worker_a, "set_subscription_tier", AsyncMock()) as set_tier,
+        patch.object(worker_a, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(stripe.Invoice, "retrieve_async", AsyncMock(return_value=renewal)),
     ):
         await worker_a.handle_subscription_payment_failure(renewal)
 

@@ -188,3 +188,28 @@ async def mark_greeting_seen(user_id: str) -> None:
             "update": {"greetingSeen": True},
         },
     )
+
+
+# Postgres caps a statement at 32,767 bind parameters, and the first sweep
+# after this shipped clears every recording ever stored.
+_CLEAR_AUDIO_BATCH = 1000
+
+
+async def clear_audio_paths(audio_paths: list[str]) -> int:
+    """Forget recordings that are about to be deleted from storage.
+
+    Only ``audioPath`` goes: the transcript is kept while the account
+    exists, and the size and duration say nothing about what was said.
+    Returns how many rows pointed at one of ``audio_paths``.
+    """
+    batches = [
+        audio_paths[start : start + _CLEAR_AUDIO_BATCH]
+        for start in range(0, len(audio_paths), _CLEAR_AUDIO_BATCH)
+    ]
+    cleared = 0
+    for batch in batches:
+        cleared += await OnboardingBrainDump.prisma().update_many(
+            where={"audioPath": {"in": batch}},
+            data={"audioPath": None},
+        )
+    return cleared

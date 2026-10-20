@@ -27,7 +27,17 @@ from backend.util.feature_flag import (
     mock_flag_variation,
     shutdown_launchdarkly,
 )
-from backend.util.settings import AppEnvironment
+from backend.util.settings import AppEnvironment, FeatureFlagBackend
+
+
+@pytest.fixture(autouse=True)
+def launchdarkly_serves(mocker):
+    # This file covers the LaunchDarkly path, which is no longer the default.
+    mocker.patch.object(
+        feature_flag_module.settings.config,
+        "feature_flag_backend",
+        FeatureFlagBackend.LAUNCHDARKLY,
+    )
 
 
 @pytest.fixture
