@@ -1043,11 +1043,53 @@ async def test_expired_followup_is_recovered_once(
     assert session and any(m.content == notices[0].content for m in session.messages)
 
 
-async def test_recovery_does_not_cancel_a_newer_parent_turn(world: World):
+@pytest.mark.parametrize("stream_lost", [False, True])
+async def test_recovery_during_promotion_preserves_the_unstarted_followup(
+    world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    claim = turn_queue.claim_queued_session
+    recovered = False
+
+    async def recover_after_claim(session, *, sub_work):
+        nonlocal recovered
+        result = await claim(session, sub_work=sub_work)
+        if result == "admitted" and session.session_id == task.parent_session_id:
+            if stream_lost:
+                await stream_registry.delete_session_meta(
+                    task.parent_session_id, turn_id=task.launch_turn_id
+                )
+            await background_delivery.reconcile_background_subtasks()
+            recovered = True
+        return result
+
+    monkeypatch.setattr(turn_queue, "claim_queued_session", recover_after_claim)
+    await background_delivery.reconcile_background_subtasks()
+
+    assert recovered
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "queued"
+    wake = world.entry(task.parent_session_id)
+    assert wake.turn_id == task.wake_id
+    assert await claim_background_execution(wake)
+    assert not await claim_background_execution(wake)
+    await finish_background_execution(wake, None)
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+
+
+@pytest.mark.parametrize("stream_lost", [False, True])
+async def test_recovery_does_not_cancel_a_newer_parent_turn(
+    world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
+):
     task = await world.launch()
     await world.finish_child(task)
     await world.finish_parent()
     await background_delivery.reconcile_background_subtasks()
+    wake = world.entry(task.parent_session_id)
+    assert wake.envelope and wake.envelope.deadline_at
     await stream_registry.mark_session_completed(
         task.parent_session_id, turn_id=task.wake_id
     )
@@ -1057,14 +1099,47 @@ async def test_recovery_does_not_cancel_a_newer_parent_turn(world: World):
         message="Start the next task.",
     )
     assert next_turn
+    if stream_lost:
+        await stream_registry.delete_session_meta(
+            task.parent_session_id, turn_id=next_turn
+        )
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = wake.envelope.deadline_at + timedelta(seconds=10)
+    monkeypatch.setattr(background_delivery, "datetime", clock)
 
     await background_delivery.reconcile_background_subtasks()
 
     stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "suppressed"
+    assert stored and stored.followup_state == "queued"
     active = await stream_registry.get_session(task.parent_session_id)
-    assert active and active.turn_id == next_turn and active.status == "running"
+    if stream_lost:
+        assert active is None
+    else:
+        assert active and active.turn_id == next_turn and active.status == "running"
     assert await chat_db().get_chat_session_status(task.parent_session_id) == "running"
+
+    if stream_lost:
+        assert await chat_db().update_chat_session_status(
+            session_id=task.parent_session_id,
+            user_id=world.user_id,
+            expect_status="running",
+            status="idle",
+        )
+    else:
+        await stream_registry.mark_session_completed(
+            task.parent_session_id, turn_id=next_turn
+        )
+    for _ in range(2):
+        await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    notices = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(notices) == 1
+    assert (notices[0].content or "").startswith(
+        "Otto couldn't complete the background follow-up."
+    )
 
 
 async def test_recovery_envelope_remains_owner_and_route_scoped(world: World):

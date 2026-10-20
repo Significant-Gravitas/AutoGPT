@@ -275,11 +275,8 @@ async def get_background_followup_envelope(
         "sessionId": parent.id,
         "role": "user",
     }
-    if parent.chatStatus != "queued" and (
-        _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
-        != task.wake_id
-    ):
-        return None
+    # Admission marks the session running before dispatch records its turn ID.
+    # Read bounds by wake ID; cancellation separately fences the active turn.
     message = await ChatMessage.prisma().find_first(where=where)
     if message is None:
         return None
