@@ -8,7 +8,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
 import { SetupAnalytics } from "../index";
-import { VercelAnalyticsWrapper } from "../VercelAnalyticsWrapper";
+import { VercelSpeedInsights } from "../VercelSpeedInsights";
 
 vi.mock("next/script", () => ({
   default: ({
@@ -35,9 +35,6 @@ vi.mock("next/script", () => ({
   ),
 }));
 
-vi.mock("@vercel/analytics/next", () => ({
-  Analytics: () => <div data-testid="vercel-analytics" />,
-}));
 vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => <div data-testid="vercel-speed-insights" />,
 }));
@@ -66,13 +63,13 @@ describe("without NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     render(
       <>
         <SetupAnalytics host="platform.agpt.co" ga={GA} />
-        <VercelAnalyticsWrapper />
+        <VercelSpeedInsights />
       </>,
     );
 
     expect(queryScript("_custom-ga")).toBeNull();
     expect(queryScript(DATAFAST_SRC)).toBeNull();
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
   });
 
   it("keeps the Google tag off locally even for an opted-in browser", () => {
@@ -120,21 +117,21 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     delete (window as unknown as { dataLayer?: unknown }).dataLayer;
   });
 
-  it("starts DataFast and Vercel Analytics when the visitor accepts, without a reload", () => {
+  it("starts DataFast and Vercel Speed Insights when the visitor accepts, without a reload", () => {
     installCookiebot();
     render(
       <>
         <SetupAnalytics host="platform.agpt.co" ga={GA} />
-        <VercelAnalyticsWrapper />
+        <VercelSpeedInsights />
       </>,
     );
     expect(queryScript(DATAFAST_SRC)).toBeNull();
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
 
     act(() => answerCookiebot({ statistics: true }));
 
     expect(queryScript(DATAFAST_SRC)).not.toBeNull();
-    expect(screen.getByTestId("vercel-analytics")).toBeDefined();
+    expect(screen.getByTestId("vercel-speed-insights")).toBeDefined();
   });
 
   it("loads the Google tag locally once the visitor accepts statistics", () => {
@@ -150,14 +147,14 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     expect(queryScript("_custom-ga")).not.toBeNull();
   });
 
-  it("stops rendering Vercel Analytics when the visitor declines", () => {
+  it("stops rendering Vercel Speed Insights when the visitor declines", () => {
     installCookiebot({ statistics: true });
-    render(<VercelAnalyticsWrapper />);
-    expect(screen.getByTestId("vercel-analytics")).toBeDefined();
+    render(<VercelSpeedInsights />);
+    expect(screen.getByTestId("vercel-speed-insights")).toBeDefined();
 
     act(() => answerCookiebot({}));
 
-    expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+    expect(screen.queryByTestId("vercel-speed-insights")).toBeNull();
   });
 });
 
