@@ -194,7 +194,6 @@
         "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/components/TailSpacer.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/components/useTTSButton.ts",
-        "src/app/(platform)/copilot/components/ChatSearchModal/useChatSearch.ts",
         "src/app/(platform)/copilot/components/ClarificationQuestionsCard/ClarificationQuestionsCard.tsx",
         "src/app/(platform)/copilot/components/CopilotPendingReviews/useCopilotPendingReviews.ts",
         "src/app/(platform)/copilot/components/CredentialMention/useCredentialMentionEditor.ts",
