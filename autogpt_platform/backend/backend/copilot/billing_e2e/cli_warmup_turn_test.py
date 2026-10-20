@@ -171,6 +171,6 @@ async def _one_turn(
         (turn, launch == session.session_id) for turn, launch in run_turn.resumed
     ]
     findings = audit_thread(
-        SCENARIO, provider, ledger, session, [session.usage], resumed
+        SCENARIO, provider, ledger, session, [session.usage], resumed, run_turn.metered
     )
     assert not findings, "\n".join(f.message for f in findings)
