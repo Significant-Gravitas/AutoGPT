@@ -3342,6 +3342,7 @@ async def _resume_and_capture_entry(mocker: MockerFixture, graph_exec, graph=Non
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_edb.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_edb.update_graph_execution_stats = mocker.AsyncMock(
         return_value=graph_exec.model_copy(update={"status": ExecutionStatus.QUEUED})
     )
