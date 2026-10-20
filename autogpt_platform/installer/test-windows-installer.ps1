@@ -461,6 +461,13 @@ try {
 	Assert-Contains 'Selected release -> v2.3.4 -> docker.io/significantgravitas/autogpt:v2.3.4' $result.Output
 	$result = Invoke-Installer @{} @('-ResolveOnly', '-Release:v3.4.5')
 	Assert-Contains 'Selected release -> v3.4.5 -> docker.io/significantgravitas/autogpt:v3.4.5' $result.Output
+	# Run inside a session instead of with -File, PowerShell splits -Name:value differently.
+	$inSession = "& '$installer' -ResolveOnly -Release:v4.5.6"
+	$result = Invoke-Program $powerShellExe @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $inSession) @{}
+	Assert-Contains 'Selected release -> v4.5.6 -> docker.io/significantgravitas/autogpt:v4.5.6' $result.Output
+	$sessionDir = Join-Path $root 'session-dir'
+	$result = Invoke-Program $powerShellExe @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "& '$installer' -CheckDirOnly -Dir:$sessionDir") @{}
+	Assert-Contains "Validated install directory: $sessionDir" $result.Output
 	Assert-FailsWith 'Expected autogpt-platform-beta-vX.Y.Z or vX.Y.Z' (Invoke-Installer @{} @('-ResolveOnly', '-Release', 'latest'))
 	Assert-FailsWith 'Expected autogpt-platform-beta-vX.Y.Z or vX.Y.Z' (Invoke-Installer @{} @('-ResolveOnly', '-Release', 'V1.2.3'))
 	Assert-FailsWith 'needs a non-empty value' (Invoke-Installer @{} @('-ResolveOnly', '--release='))

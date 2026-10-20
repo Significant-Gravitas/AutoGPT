@@ -135,6 +135,8 @@ $Dir = $Dir.TrimEnd('\') + '\AutoGPT'
 for ($index = 0; $index -lt $ScriptArgs.Count; $index++) {
 	$argument = [string]$ScriptArgs[$index]
 	$flag = $argument.ToLowerInvariant()
+	# Run inside a PowerShell session, -Name:value arrives as '-Name:' and 'value'.
+	if ($flag -match '^-[a-z]+:$') { $flag = $flag.TrimEnd(':') }
 	$inline = $null
 	if ($argument -match '^(--[A-Za-z-]+)=(.*)$') {
 		$flag = $Matches[1].ToLowerInvariant()
