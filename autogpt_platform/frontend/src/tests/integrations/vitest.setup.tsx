@@ -11,6 +11,18 @@ import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 // up with "cache is not a function" the moment its file is evaluated. Shim it
 // to identity here — the cache contract degrades to "no deduplication," which
 // is the correct semantics in a unit-test context.
+// Sign-ups look up their domain's MX (lib/auth/disposable-email.ts); no test
+// does that on the network.
+vi.mock("node:dns/promises", async (importActual) => {
+  const actual = await importActual<typeof import("node:dns/promises")>();
+  class Resolver {
+    async resolveMx() {
+      return [];
+    }
+  }
+  return { ...actual, default: { ...actual, Resolver }, Resolver };
+});
+
 vi.mock("react", async (importActual) => {
   const actual = await importActual<typeof import("react")>();
   return {

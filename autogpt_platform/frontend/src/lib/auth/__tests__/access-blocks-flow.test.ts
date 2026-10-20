@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SIGN_IN_BLOCKED_CODE, SIGN_UP_BLOCKED_CODE } from "../access-blocks";
+import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
 
 // Runs the real Better Auth handler with this app's auth options, as
 // email-verification-flow.test.ts does, to prove the hooks refuse and log
@@ -156,6 +157,27 @@ describe("IP and email domain blocks", () => {
       "new@mail.blocked.example",
       "192.0.2.1",
     );
+
+    expect(await refusal(response)).toEqual({
+      status: 403,
+      code: SIGN_UP_BLOCKED_CODE,
+    });
+  });
+
+  it("refuses a sign-up on a disposable email domain", async () => {
+    const response = await signUp(handler, "new@mailinator.com", "192.0.2.1");
+
+    expect(await refusal(response)).toEqual({
+      status: 403,
+      code: DISPOSABLE_EMAIL_CODE,
+    });
+    expect(testDB.current.UserAuthIdentity).toHaveLength(0);
+  });
+
+  it("answers an admin's domain block before the disposable list", async () => {
+    blocks.domains = ["mailinator.com"];
+
+    const response = await signUp(handler, "new@mailinator.com", "192.0.2.1");
 
     expect(await refusal(response)).toEqual({
       status: 403,

@@ -10,6 +10,7 @@ import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
@@ -180,6 +181,7 @@ export const auth = betterAuth({
             email: user.email,
             ipAddress: getRequestIp(ctx),
           });
+          await assertNotDisposableEmail(user.email);
         },
         // Writes the platform `User` row (see provision-platform-user.ts). An
         // unverified identity gets it from /auth/callback?method=email instead.
