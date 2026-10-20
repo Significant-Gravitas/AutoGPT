@@ -131,7 +131,10 @@ export function shouldClearKickoffParam(
 // It reads as an instruction, not as something the user typed, so the thread
 // never shows it. The backend marks the persisted row hidden for the same
 // reason.
+// Returns `messages` itself when there is nothing to hide, so memoised
+// consumers keyed on the array see no change.
 export function hideKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
+  if (!messages.some(isKickoffMessage)) return messages;
   return messages.filter((message) => !isKickoffMessage(message));
 }
 

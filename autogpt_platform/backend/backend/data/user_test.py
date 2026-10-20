@@ -2,9 +2,10 @@
 
 import asyncio
 import base64
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -1691,6 +1692,35 @@ class TestGetAuthUserFlagFields:
         assert fields is None
 
 
+class TestIsUserBanned:
+    """The ban states themselves are driven through the real dependencies in
+    ``api/banned_account_test.py``; these pin what those can't reach."""
+
+    @pytest.mark.asyncio
+    async def test_a_missing_auth_row_is_not_a_ban(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            assert await user_module.is_auth_user_banned("no-auth-row") is False
+
+    @pytest.mark.asyncio
+    async def test_the_answer_is_shared_until_it_expires(self, mocker):
+        """Every request asks, so a hit must not reach the database."""
+        mocker.patch("backend.data.db.is_connected", return_value=True)
+        user_id = f"cached-{uuid.uuid4()}"
+        now = datetime.now(timezone.utc)
+        row = MagicMock(banned=True, banExpires=now + timedelta(days=1))
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            find_unique = AsyncMock(return_value=row)
+            mock_auth_user.prisma.return_value.find_unique = find_unique
+            assert await user_module.is_user_banned(user_id) is True
+            assert await user_module.is_user_banned(user_id) is True
+        user_module.is_user_banned.cache_delete(user_id)
+
+        find_unique.assert_awaited_once_with(where={"id": user_id})
+
+
 class TestGetUserDefaultChatRoute:
     @pytest.mark.asyncio
     async def test_returns_the_saved_route(self):
@@ -1964,7 +1994,7 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
     never expires."""
     token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    with pytest.raises(DatabaseError) as exc:
+    with pytest.raises(ValueError) as exc:
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)

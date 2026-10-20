@@ -9,7 +9,6 @@ interface Props {
   quiet?: boolean;
   description?: string;
   price: string | null;
-  isTrialOffer?: boolean;
   benefits: string[];
   actionLabel: string;
   caption: string;
@@ -23,7 +22,6 @@ export function BillingPlanOffer({
   quiet = false,
   description,
   price,
-  isTrialOffer = false,
   benefits,
   actionLabel,
   caption,
@@ -63,7 +61,6 @@ export function BillingPlanOffer({
         <div className="flex flex-wrap items-baseline gap-1.5">
           <Text
             variant="h2"
-            unmask={!isTrialOffer}
             as="span"
             className="font-sans text-[36px] font-semibold leading-10 tracking-[-0.045em]"
           >
@@ -94,7 +91,6 @@ export function BillingPlanOffer({
         className="mt-auto w-full"
         onClick={onAction}
         disabled={disabled}
-        unmask={!isTrialOffer}
       >
         {actionLabel}
       </Button>

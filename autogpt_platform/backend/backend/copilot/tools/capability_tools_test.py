@@ -417,6 +417,7 @@ async def test_find_capability_kind_emptied_list_never_suggests_an_mcp_server(
     slack = [c for c in result.other_kinds if "Slack" in c["name"]]
     assert slack and all(c["connected"] is True for c in slack)
     assert "search again without kind" in result.message
+    assert "Call describe_capability" not in result.message
     assert "MCP server" not in result.message
 
     nothing = await _find(full_index, SLACK_STATE, query="zzqx", kind="mcp_server")

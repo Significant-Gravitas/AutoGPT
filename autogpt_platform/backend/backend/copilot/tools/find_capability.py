@@ -233,11 +233,12 @@ def _message(
     text = " ".join(parts) + "."
     if fallback:
         text += f" {fallback} generic fallback(s) listed separately."
-    text += (
-        " Call describe_capability(id) before first use, then "
-        "run_capability(id, input). connected=false means the user must sign in "
-        "first: run_capability returns the sign-in card."
-    )
+    if hits or fallback:
+        text += (
+            " Call describe_capability(id) before first use, then "
+            "run_capability(id, input). connected=false means the user must sign in "
+            "first: run_capability returns the sign-in card."
+        )
     if needs_grant:
         text += (
             f" connected='{NEEDS_EXPERT_GRANT}' means the account already has "

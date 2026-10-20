@@ -18,7 +18,7 @@ export function TrialDetails({ offer }: Props) {
           <Text as="dt" variant="body">
             Today
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatPlanAmount(0, offer.currency)}
           </Text>
         </div>
@@ -26,7 +26,7 @@ export function TrialDetails({ offer }: Props) {
           <Text as="dt" variant="body">
             After {offer.duration_days} days
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatTrialPrice(offer)}
           </Text>
         </div>
