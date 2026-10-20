@@ -578,6 +578,9 @@ class CoPilotProcessor:
                     return
                 raise
             except concurrent.futures.TimeoutError:
+                if future.done() and not future.cancelled():
+                    future.result()
+                    return
                 if cancel.is_set() and not cancel_requested:
                     request_cancel()
                 elif cancel_requested and cancel_started_at is not None:

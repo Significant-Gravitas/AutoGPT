@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,6 +47,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.tree import TurnEnvelope
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -1422,6 +1424,49 @@ class TestSyncFailCloseSession:
     ``mark_session_completed`` via the processor's long-lived
     ``execution_loop`` (cross-thread submit) and must swallow Redis
     failures so a transient outage doesn't propagate out of the finally."""
+
+    def test_background_deadline_leaves_sync_wait_and_closes_session(
+        self, exec_loop
+    ) -> None:
+        proc = CoPilotProcessor()
+        proc.execution_loop = exec_loop
+        entry = _make_entry().model_copy(
+            update={
+                "message_metadata": {"background_task_id": "background-task"},
+                "envelope": TurnEnvelope(
+                    tree_id="tree",
+                    depth=1,
+                    deadline_at=datetime.now(UTC) + timedelta(milliseconds=25),
+                ),
+            }
+        )
+        cluster_lock = MagicMock()
+        cluster_lock.refresh.side_effect = AssertionError(
+            "The worker polled a completed deadline error instead of exiting"
+        )
+        mark_completed = AsyncMock()
+
+        async def silent_work(*_args):
+            await asyncio.sleep(0.3)
+            pytest.fail("The background deadline did not stop the turn")
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.claim_background_execution",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(proc, "_run_turn", silent_work),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                mark_completed,
+            ),
+            pytest.raises(TimeoutError),
+        ):
+            proc.execute(entry, threading.Event(), cluster_lock)
+
+        cluster_lock.refresh.assert_not_called()
+        mark_completed.assert_awaited_once()
+        assert mark_completed.await_args.kwargs["turn_id"] == entry.turn_id
 
     def test_invokes_mark_session_completed_with_shutdown_message(
         self, exec_loop
