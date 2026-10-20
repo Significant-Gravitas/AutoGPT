@@ -216,12 +216,19 @@ async def test_custom_server_connection_respects_expert_grants(
 
 
 @pytest.mark.parametrize(
-    "options", [{"context": "graph"}, {"kind": "skill"}, {"kind": "block"}]
+    "options",
+    [
+        {"context": "graph"},
+        {"context": "graph", "kind": "block"},
+        {"kind": "skill"},
+        {"kind": "block"},
+        {"kind": "tool"},
+    ],
 )
-async def test_custom_servers_respect_search_filters(
+async def test_custom_servers_respect_context_and_report_kind_alternatives(
     options: dict[str, str], registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
-    """Custom MCP entries obey capability kind and execution-context filters."""
+    """Context excludes direct-only MCPs; kind filters report connected alternatives."""
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.load_connection_state",
         AsyncMock(return_value=ConnectionState(server_urls=frozenset({SERVER_URL}))),
@@ -231,7 +238,15 @@ async def test_custom_servers_respect_search_filters(
         USER, make_session(USER), query="custom-payments", **options
     )
 
-    assert isinstance(result, NoResultsResponse)
+    if options.get("context") == "graph":
+        assert isinstance(result, NoResultsResponse)
+        return
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities == []
+    assert result.count == 0
+    assert result.fallback == []
+    assert [entry["id"] for entry in result.other_kinds] == [SERVER_URL]
+    assert result.other_kinds[0]["connected"] is True
 
 
 @pytest.mark.parametrize(
