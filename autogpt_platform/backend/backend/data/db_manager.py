@@ -201,6 +201,7 @@ from backend.data.user import (
     get_user_notification_preference,
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
+    is_auth_user_banned,
     is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
@@ -412,6 +413,8 @@ class DatabaseManager(AppService):
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Background work skips a banned owner in Prisma-less workers too.
+    is_auth_user_banned = _(is_auth_user_banned)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -933,6 +936,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    is_auth_user_banned = d.is_auth_user_banned
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
