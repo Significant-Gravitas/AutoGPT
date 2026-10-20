@@ -4,7 +4,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { markdownRenderer } from "../MarkdownRenderer";
 import { videoRenderer } from "../VideoRenderer";
 
@@ -156,5 +156,41 @@ describe("YouTube links in run output", () => {
         ?.textContent,
     ).toBe("Channel");
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  describe("when the output around the player re-renders", () => {
+    const markdown = `# Demo\n\n![Demo](${WATCH_URL})`;
+
+    function renderInParent(pass: number) {
+      return (
+        <div data-pass={pass}>
+          {markdownRenderer.render(markdown, { mimeType: "text/markdown" })}
+        </div>
+      );
+    }
+
+    it("keeps the same player element", () => {
+      configureCookiebot();
+      installCookiebot({ marketing: true });
+      const { container, rerender } = render(renderInParent(1));
+      const player = container.querySelector("iframe");
+      expect(player).not.toBeNull();
+
+      rerender(renderInParent(2));
+
+      expect(container.querySelector("iframe")).toBe(player);
+    });
+
+    it("keeps a video loaded with Load video", () => {
+      vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+      const { container, rerender } = render(renderInParent(1));
+      fireEvent.click(screen.getByRole("button", { name: "Load video" }));
+      const player = container.querySelector("iframe");
+      expect(player).not.toBeNull();
+
+      rerender(renderInParent(2));
+
+      expect(container.querySelector("iframe")).toBe(player);
+    });
   });
 });
