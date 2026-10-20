@@ -21,6 +21,7 @@ from backend.copilot.scheduled_chats.cadence_service import (
     set_cadence,
 )
 from backend.executor.scheduler import CopilotTurnJobInfo
+from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,21 @@ async def test_a_follow_up_is_changed_in_place(
         scheduler.update_copilot_turn_cron.assert_awaited_once_with(
             "job-1", user_id=user_id, cron="0 * * * *"
         )
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_deleted_since_it_was_read_reads_as_not_found(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Not a 503 that says to try again: trying again finds nothing."""
+    user_id = await _owner()
+    scheduler.get_execution_schedules.return_value = [_every_minute_follow_up(user_id)]
+    scheduler.update_copilot_turn_cron.side_effect = NotFoundError("gone")
+    try:
+        with pytest.raises(CadenceNotFound):
+            await set_cadence(user_id, "job-1", "0 * * * *")
     finally:
         await _cleanup(user_id)
 

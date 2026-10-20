@@ -21,6 +21,7 @@ from backend.copilot.scheduled_chats.notices import schedule_title
 from backend.data.user import get_user_by_id
 from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 
@@ -82,9 +83,13 @@ async def set_cadence(
         except routines.RoutineNotFoundError as e:
             raise CadenceNotFound(schedule_key) from e
     else:
-        await get_scheduler_client().update_copilot_turn_cron(
-            schedule_key, user_id=user_id, cron=cron
-        )
+        try:
+            await get_scheduler_client().update_copilot_turn_cron(
+                schedule_key, user_id=user_id, cron=cron
+            )
+        except NotFoundError as e:
+            # Deleted since it was read.
+            raise CadenceNotFound(schedule_key) from e
     return _cadence(schedule.model_copy(update={"crons": [cron]}))
 
 

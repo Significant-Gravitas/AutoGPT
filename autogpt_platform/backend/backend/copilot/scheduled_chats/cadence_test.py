@@ -3,7 +3,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from backend.copilot.scheduled_chats.cadence import _fires, describe, less_often
+from backend.copilot.scheduled_chats.cadence import (
+    _fires,
+    _runs_per_day,
+    describe,
+    less_often,
+)
 
 _CHICAGO = "America/Chicago"
 # A Sunday afternoon in Chicago.
@@ -78,6 +83,7 @@ def test_times_stay_on_the_schedules_own_clock():
 def test_each_rung_runs_as_often_as_it_says():
     for rung in less_often(["* * * * *"], _CHICAGO, _NOW):
         assert len(_fires([rung.cron], _CHICAGO, _NOW)) == rung.runs_per_week
+        assert _runs_per_day([rung.cron], _CHICAGO, _NOW) == rung.runs_per_day
 
 
 @pytest.mark.parametrize(
@@ -111,13 +117,27 @@ def test_the_offer_does_not_depend_on_which_run_is_next():
     assert early[0].cron == "17 */4 * * *"
 
 
-def test_a_busy_schedule_on_one_day_is_offered_that_day_weekly():
-    """Every five minutes on Saturdays counts in full, well under the cap: it
-    runs on Saturday, so once a week means Saturday."""
-    rungs = less_often(["*/5 * * * sat"], _CHICAGO, _NOW)
-
-    assert rungs[-1].label == "Every Saturday at 09:00"
-    assert rungs[-1].cron == "0 9 * * sat"
+@pytest.mark.parametrize(
+    ("crons", "labels"),
+    [
+        (["*/5 * * * sat"], ["Every Saturday at 09:00"]),
+        # Past the weekly cap: it still runs on Saturdays only.
+        (["* * * * sat"], ["Every Saturday at 09:00"]),
+        (["0 * * * sat"], ["Every Saturday at 09:00"]),
+        (["*/5 * * * mon-fri"], ["Weekdays at 09:00", "Every Monday at 09:00"]),
+    ],
+    ids=[
+        "every-5-min-saturdays",
+        "every-minute-saturdays",
+        "hourly-saturdays",
+        "weekdays",
+    ],
+)
+def test_running_less_often_adds_no_runs_on_a_day_it_leaves_free(crons, labels):
+    """Every hour has fewer runs in a week than every five minutes on
+    Saturdays, but runs on six days that had none, spending their allowance.
+    Its weekly rung is on the day it runs."""
+    assert _labels(crons) == labels
 
 
 @pytest.mark.parametrize(

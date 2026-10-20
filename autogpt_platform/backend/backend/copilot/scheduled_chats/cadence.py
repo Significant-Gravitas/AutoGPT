@@ -4,7 +4,8 @@
 A chat skipped because its owner's usage limit ran out has a way out besides
 upgrading: run less often, so its runs fit the allowance. This counts how often
 the schedule fires in a week and offers the rungs of a short ladder below that,
-at a time the schedule already uses.
+at a time the schedule already uses, and never more often on any day than it
+runs now.
 
 Crons are read as Unix cron, the way they are stored: the scheduler translates
 the day-of-week field when it builds an APScheduler trigger, so croniter sees
@@ -16,7 +17,6 @@ the week the clocks change has no hour twice or missing: an hourly schedule
 still runs 168 times a week, at the minute it always does.
 """
 
-from collections import Counter
 from datetime import datetime, timedelta
 from datetime import timezone as fixed_offset
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -27,7 +27,11 @@ from pydantic import BaseModel
 # Every rung of the ladder fires well under this many times a week, so a cron
 # counted this far runs more often than all of them: stop there.
 _COUNT_CAP = 1000
+# The busiest rung runs this often a day: a day counted this far has room for
+# every rung.
+_BUSIEST_DAY = 96
 _WEEK = timedelta(days=7)
+_DAY = timedelta(days=1)
 _DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _DAY_NAMES = (
     "Monday",
@@ -50,7 +54,12 @@ _HOURLY = 7 * 24
 class Cadence(BaseModel):
     cron: str
     label: str
-    runs_per_week: int
+    # Monday first.
+    runs_per_day: list[int]
+
+    @property
+    def runs_per_week(self) -> int:
+        return sum(self.runs_per_day)
 
 
 def less_often(crons: list[str], timezone: str, now: datetime) -> list[Cadence]:
@@ -62,28 +71,38 @@ def less_often(crons: list[str], timezone: str, now: datetime) -> list[Cadence]:
     fires = _fires(crons, timezone, now)
     if not fires:
         return []
+    per_day = _runs_per_day(crons, timezone, now)
     hour, minute = _anchor_time(fires)
-    day = _anchor_day(fires)
+    day = _anchor_day(per_day)
     at = f"{hour:02d}:{minute:02d}"
     ladder = [
-        Cadence(cron="*/15 * * * *", label="Every 15 minutes", runs_per_week=672),
-        Cadence(cron=f"{minute} * * * *", label="Every hour", runs_per_week=168),
-        Cadence(cron=f"{minute} */4 * * *", label="Every 4 hours", runs_per_week=42),
+        Cadence(cron="*/15 * * * *", label="Every 15 minutes", runs_per_day=_on(96)),
+        Cadence(cron=f"{minute} * * * *", label="Every hour", runs_per_day=_on(24)),
+        Cadence(cron=f"{minute} */4 * * *", label="Every 4 hours", runs_per_day=_on(6)),
         Cadence(
-            cron=f"{minute} {hour} * * *", label=f"Every day at {at}", runs_per_week=7
+            cron=f"{minute} {hour} * * *",
+            label=f"Every day at {at}",
+            runs_per_day=_on(1),
         ),
         Cadence(
             cron=f"{minute} {hour} * * mon-fri",
             label=f"Weekdays at {at}",
-            runs_per_week=5,
+            runs_per_day=_on(1, days=range(5)),
         ),
         Cadence(
             cron=f"{minute} {hour} * * {_DAYS[day]}",
             label=f"Every {_DAY_NAMES[day]} at {at}",
-            runs_per_week=1,
+            runs_per_day=_on(1, days=[day]),
         ),
     ]
-    return [rung for rung in ladder if rung.runs_per_week < len(fires)]
+    # Less often in all, and on no day more often than now: a rung that ran
+    # on a day the schedule leaves free would spend that day's allowance.
+    return [
+        rung
+        for rung in ladder
+        if rung.runs_per_week < len(fires)
+        and all(runs <= limit for runs, limit in zip(rung.runs_per_day, per_day))
+    ]
 
 
 def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
@@ -134,12 +153,13 @@ def _fires(
     The cadences offered when the dialog opened must still be offered when
     the owner saves.
     """
-    try:
-        zone = ZoneInfo(timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = ZoneInfo("UTC")
-    offset = now.astimezone(zone).utcoffset() or timedelta(0)
-    start = now.astimezone(fixed_offset(offset)).replace(microsecond=0)
+    start = _on_its_clock(now, timezone).replace(microsecond=0)
+    return _fires_from(crons, start, span=span, limit=limit)
+
+
+def _fires_from(
+    crons: list[str], start: datetime, *, span: timedelta, limit: int
+) -> list[datetime]:
     end = start + span
     fires: list[datetime] = []
     for cron in crons:
@@ -172,13 +192,40 @@ def _anchor_time(fires: list[datetime]) -> tuple[int, int]:
     return _MORNING_HOUR, minute
 
 
-def _anchor_day(fires: list[datetime]) -> int:
-    """The weekday it runs on most; Monday first when that is a tie, or when
-    the count stopped short of a week at the cap."""
-    if len(fires) >= _COUNT_CAP:
-        return 0
-    counts = Counter(fire.weekday() for fire in fires)
-    return min(counts, key=lambda day: (-counts[day], day))
+def _anchor_day(runs_per_day: list[int]) -> int:
+    """The weekday it runs on most, as ``_runs_per_day`` counts; Monday first
+    when that is a tie."""
+    return min(range(7), key=lambda day: (-runs_per_day[day], day))
+
+
+def _runs_per_day(crons: list[str], timezone: str, now: datetime) -> list[int]:
+    """How often it runs on each of the coming seven days, Monday first, on
+    the zone's clock as it stands now. Each day is counted as far as the
+    busiest rung runs in a day: past that, no rung runs more that day."""
+    midnight = _on_its_clock(now, timezone).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    runs = [0] * 7
+    for offset in range(7):
+        day = midnight + offset * _DAY
+        fires = _fires_from(crons, day, span=_DAY, limit=_BUSIEST_DAY)
+        runs[day.weekday()] = min(len(fires), _BUSIEST_DAY)
+    return runs
+
+
+def _on(runs: int, *, days: range | list[int] = range(7)) -> list[int]:
+    """A rung's runs on each weekday, Monday first."""
+    return [runs if day in days else 0 for day in range(7)]
+
+
+def _on_its_clock(now: datetime, timezone: str) -> datetime:
+    """*now* on the zone's clock as it stands, at that fixed offset."""
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+    offset = now.astimezone(zone).utcoffset() or timedelta(0)
+    return now.astimezone(fixed_offset(offset))
 
 
 def _every(gap: timedelta, first: datetime) -> str | None:
