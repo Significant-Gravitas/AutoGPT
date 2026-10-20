@@ -15,20 +15,21 @@ vi.mock("next/script", () => ({
     id,
     src,
     strategy,
-    dangerouslySetInnerHTML: _inline,
+    dangerouslySetInnerHTML: inline,
     onLoad: _onLoad,
     ...attributes
   }: {
     id?: string;
     src?: string;
     strategy?: string;
-    dangerouslySetInnerHTML?: unknown;
+    dangerouslySetInnerHTML?: { __html?: string };
     onLoad?: unknown;
   }) => (
     <div
       data-testid={`script:${id ?? src}`}
       data-src={src}
       data-strategy={strategy}
+      data-inline={inline?.__html}
       {...attributes}
     />
   ),
@@ -157,6 +158,42 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     act(() => answerCookiebot({}));
 
     expect(screen.queryByTestId("vercel-analytics")).toBeNull();
+  });
+});
+
+describe("Google tag IDs", () => {
+  beforeEach(() => {
+    configureCookiebot();
+    installCookiebot({ statistics: true, marketing: true });
+  });
+
+  it("loads no Google tag when neither a GA nor a Google Ads ID is set", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "");
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={{ gaId: "" }} />);
+
+    expect(queryScript("_custom-ga")).toBeNull();
+    expect(queryScript("_custom-ga-init")).toBeNull();
+  });
+
+  it("configures only Google Ads when the GA ID is not set", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-TEST");
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={{ gaId: "" }} />);
+
+    const init = queryScript("_custom-ga-init")?.getAttribute("data-inline");
+    expect(queryScript("_custom-ga")).not.toBeNull();
+    expect(init).toContain(`gtag('config', "AW-TEST"`);
+    expect(init).not.toContain(`gtag('config', ""`);
+  });
+
+  it("configures the GA property it is given", () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "");
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    const init = queryScript("_custom-ga-init")?.getAttribute("data-inline");
+    expect(init).toContain(`gtag('config', "G-TEST"`);
   });
 });
 

@@ -87,6 +87,10 @@ function getLaunchDarklyClientId() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 }
 
+function getGAMeasurementID() {
+  return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
+}
+
 function getGoogleAdsID() {
   return process.env.NEXT_PUBLIC_GOOGLE_ADS_ID || "";
 }
@@ -195,6 +199,7 @@ export const environment = {
   getRevision,
   getPostHogCredentials,
   getLaunchDarklyClientId,
+  getGAMeasurementID,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
   getCookiebotCBID,
