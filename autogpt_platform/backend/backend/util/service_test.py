@@ -1005,6 +1005,69 @@ async def test_health_check_during_shutdown(test_service):
 # ============================================================================
 
 
+@pytest.mark.asyncio
+async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
+    keep_alive_service,
+):
+    """A call written into a pooled connection while the server is frozen past
+    that connection's idle time is answered, not reset (httpx.ReadError)."""
+    client = get_service_client(KeepAliveServiceClient)
+    await asyncio.gather(*(client.ping() for _ in range(3)))
+    # Idle up to uvicorn's default 5 s keep-alive, which the server must outlive.
+    await asyncio.sleep(4.5)
+    freeze = asyncio.create_task(
+        get_service_client(KeepAliveServiceClient).hold_gil(2.0)
+    )
+    await asyncio.sleep(0.3)
+
+    assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
+    await freeze
+
+
+@pytest.fixture
+async def keep_alive_service():
+    service = KeepAliveService()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class KeepAliveService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 18998
+
+    @expose
+    def ping(self) -> int:
+        return 1
+
+    @expose
+    def hold_gil(self, seconds: float) -> int:
+        """Freeze every other thread for about *seconds*, as a full gen2 GC does.
+
+        sre never releases the GIL, and catastrophic backtracking doubles its
+        time with each extra character."""
+        pattern = re.compile(r"(a+)+$")
+        started = time.perf_counter()
+        pattern.fullmatch("a" * 18 + "b")
+        doublings = round(math.log2(seconds / (time.perf_counter() - started)))
+        subject = "a" * (18 + max(0, doublings)) + "b"
+        threading.Thread(target=pattern.fullmatch, args=(subject,), daemon=True).start()
+        return 1
+
+
+class KeepAliveServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return KeepAliveService
+
+    ping = endpoint_to_async(KeepAliveService.ping)
+    hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
+
+
 class TestGetReturn:
     """Direct unit tests for DynamicClient._get_return typed-return contract."""
 
@@ -1242,66 +1305,3 @@ def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
     [request] = sent
     assert "sentry-trace" not in request.headers
     assert "baggage" not in request.headers
-
-
-@pytest.mark.asyncio
-async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
-    keep_alive_service,
-):
-    """A call written into a pooled connection while the server is frozen past
-    that connection's idle time is answered, not reset (httpx.ReadError)."""
-    client = get_service_client(KeepAliveServiceClient)
-    await asyncio.gather(*(client.ping() for _ in range(3)))
-    # Idle up to uvicorn's default 5 s keep-alive, which the server must outlive.
-    await asyncio.sleep(4.5)
-    freeze = asyncio.create_task(
-        get_service_client(KeepAliveServiceClient).hold_gil(2.0)
-    )
-    await asyncio.sleep(0.3)
-
-    assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
-    await freeze
-
-
-@pytest.fixture
-async def keep_alive_service():
-    service = KeepAliveService()
-    service.start(background=True)
-    try:
-        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
-        yield service
-    finally:
-        service.stop()
-
-
-class KeepAliveService(AppService):
-    @classmethod
-    def get_port(cls) -> int:
-        return 18998
-
-    @expose
-    def ping(self) -> int:
-        return 1
-
-    @expose
-    def hold_gil(self, seconds: float) -> int:
-        """Freeze every other thread for about *seconds*, as a full gen2 GC does.
-
-        sre never releases the GIL, and catastrophic backtracking doubles its
-        time with each extra character."""
-        pattern = re.compile(r"(a+)+$")
-        started = time.perf_counter()
-        pattern.fullmatch("a" * 18 + "b")
-        doublings = round(math.log2(seconds / (time.perf_counter() - started)))
-        subject = "a" * (18 + max(0, doublings)) + "b"
-        threading.Thread(target=pattern.fullmatch, args=(subject,), daemon=True).start()
-        return 1
-
-
-class KeepAliveServiceClient(AppServiceClient):
-    @classmethod
-    def get_service_type(cls):
-        return KeepAliveService
-
-    ping = endpoint_to_async(KeepAliveService.ping)
-    hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
