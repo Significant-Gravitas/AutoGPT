@@ -2,6 +2,7 @@
 
 from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -109,6 +110,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
     increment_daily_reset_count,
+    is_user_paywalled,
     release_reset_lock,
     reset_daily_usage,
 )
@@ -1769,6 +1771,16 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _read_paywall_state(user_id: str) -> None:
+    """Read what the paywall reads, so the paywall check can join the read.
+
+    The route shares those reads within the request (``sharing_trial_reads``),
+    so the check gets this read's result, or its error, when it runs.
+    """
+    with contextlib.suppress(Exception):
+        await is_user_paywalled(user_id)
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1871,7 +1883,25 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_writable_session(session_id, user_id)
+    # Reads that need only the user or the session id start beside the
+    # session's own checks; each is still awaited where its check runs.
+    paywall_reads = spawn_background_task(
+        _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
+    )
+    turn_in_flight_read = (
+        spawn_background_task(
+            is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
+        )
+        if request.is_user_message and request.message
+        else None
+    )
+    try:
+        session = await _validate_and_get_writable_session(session_id, user_id)
+    except BaseException:
+        paywall_reads.cancel()
+        if turn_in_flight_read is not None:
+            turn_in_flight_read.cancel()
+        raise
     _rt.append(("validate", time.perf_counter()))
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
     _rt.append(("autopilot_mode", time.perf_counter()))
@@ -1947,9 +1977,7 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
-        turn_in_flight = (
-            request.is_user_message and message and await is_turn_in_flight(session_id)
-        )
+        turn_in_flight = turn_in_flight_read is not None and await turn_in_flight_read
         _rt.append(("in_flight", time.perf_counter()))
     except StreamRegistryUnavailable as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
