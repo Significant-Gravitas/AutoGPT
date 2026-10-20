@@ -422,3 +422,16 @@ def posthog_lifecycle_db():
         posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
 
     return posthog_lifecycle_db
+
+
+def scheduled_chats_db():
+    if db.is_connected():
+        from backend.copilot.scheduled_chats import forget as _scheduled_chats_db
+
+        scheduled_chats_db = _scheduled_chats_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        scheduled_chats_db = get_database_manager_async_client()
+
+    return scheduled_chats_db

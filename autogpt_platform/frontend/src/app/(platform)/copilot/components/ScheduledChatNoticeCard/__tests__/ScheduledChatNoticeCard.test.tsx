@@ -2,7 +2,9 @@ import {
   getGetV1ListCredentialsMockHandler,
   getGetV1ListProvidersMockHandler,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import { getResumeScheduledChatMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { QueryClient } from "@tanstack/react-query";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -11,7 +13,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ScheduledChatNoticeCard } from "../ScheduledChatNoticeCard";
 import type { ScheduledChatNotice } from "../helpers";
 
@@ -67,6 +69,21 @@ describe("ScheduledChatNoticeCard", () => {
     expect(
       await screen.findByRole("button", { name: "Resumed" }),
     ).toHaveProperty("disabled", true);
+  });
+
+  it("refreshes Home, which lists the paused chat, once it resumes", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    server.use(getResumeScheduledChatMockHandler(() => ({ resumed: true })));
+    render(<ScheduledChatNoticeCard notice={PAUSED} sessionID="session-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: getGetHomeDashboardQueryKey(),
+      }),
+    );
+    invalidate.mockRestore();
   });
 
   it("treats a chat that is no longer paused as resumed", async () => {
