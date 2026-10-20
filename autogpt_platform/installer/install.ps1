@@ -265,6 +265,9 @@ function Assert-InstallDirectory {
 	if ($rest.Contains('\\')) { Die "Install directory contains redundant path separators: $($script:Dir)" }
 	if ($rest.EndsWith('\')) { $rest = $rest.Substring(0, $rest.Length - 1) }
 	$drive = $requested.Substring(0, 1).ToUpperInvariant() + ':\'
+	$driveType = (New-Object System.IO.DriveInfo ($drive.Substring(0, 1))).DriveType
+	if ($driveType -eq [System.IO.DriveType]::Network) { Die "Refusing a network or device path for the install directory: $($script:Dir)" }
+	if ($driveType -eq [System.IO.DriveType]::NoRootDirectory) { Die "Install directory drive does not exist: $drive" }
 	$components = @()
 	if ($rest) { $components = @($rest.Split([char]'\')) }
 	foreach ($component in $components) {

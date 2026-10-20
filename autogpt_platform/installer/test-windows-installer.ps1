@@ -486,6 +486,10 @@ try {
 	Assert-FailsWith 'unsupported component: a:b' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\a:b"))
 	Assert-FailsWith 'unsupported component: PROGRA~1' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\PROGRA~1"))
 	Assert-FailsWith 'Refusing a network or device path' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', '\\server\share\autogpt'))
+	$unusedDrive = [char[]](90..68) | Where-Object { -not (Test-Path -LiteralPath "${_}:\") } | Select-Object -First 1
+	if ($unusedDrive) {
+		Assert-FailsWith "Install directory drive does not exist: ${unusedDrive}:\" (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "${unusedDrive}:\autogpt"))
+	}
 	Assert-FailsWith 'must be a full path' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$($env:SystemDrive)autogpt"))
 	Assert-FailsWith 'Install directory cannot be empty' (Invoke-Installer @{} @('-CheckDirOnly', '--dir='))
 

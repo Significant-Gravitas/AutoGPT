@@ -88,8 +88,8 @@ The default state directory is `$XDG_CONFIG_HOME/autogpt`, or
 `$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset, and
 `%LOCALAPPDATA%\AutoGPT` on Windows. A custom directory must be user-owned and
 private; the installer rejects symlink paths and shared or unsafe locations. On
-Windows it also rejects junctions, and any folder on the path that another
-account can rename, delete, or re-permission. Only you, SYSTEM, and
+Windows it also rejects junctions, network drives, and any folder on the path
+that another account can rename, delete, or re-permission. Only you, SYSTEM, and
 Administrators may have access to the state directory itself.
 
 ## Artifact and Runtime Contract
