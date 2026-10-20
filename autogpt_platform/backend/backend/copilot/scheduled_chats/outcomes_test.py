@@ -67,6 +67,27 @@ def test_a_connection_the_owner_can_fix_explains_the_run_first():
     assert outcome.failure.kind == "connection"
 
 
+@pytest.mark.parametrize(
+    "failures",
+    [
+        [("run_block", _rejected("twitter")), ("run_block", _rejected("discord"))],
+        [
+            ("web_fetch", ToolFailureDetail(error_type=UNCLASSIFIED, text_hash="b")),
+            ("run_agent", ToolFailureDetail(error_type=UNCLASSIFIED, text_hash="a")),
+        ],
+    ],
+    ids=["two-connections", "two-errors"],
+)
+def test_a_run_failing_the_same_ways_fails_the_same_way_in_any_order(failures):
+    """Tools called together finish in any order: whichever came back first
+    must not decide, or the streak would start over every run."""
+    first = _run(tool_failures=failures)
+    reversed_ = _run(tool_failures=failures[::-1])
+
+    assert first.failure and reversed_.failure
+    assert first.failure.key == reversed_.failure.key
+
+
 def test_an_unlinked_chat_platform_is_its_own_kind():
     detail = ToolFailureDetail(error_type="no_linked_servers", provider="discord")
     outcome = _run(tool_failures=[("post_to_chat_platform", detail)])
