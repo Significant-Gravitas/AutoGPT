@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from backend.copilot.baseline import service as baseline
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk import e2b_file_tools, tool_adapter
@@ -194,6 +195,16 @@ async def test_workspace_actual_bytes_are_checked(workspace):
     )
     assert result.image is None
     assert "exceeds 3 MiB" in result.message
+
+
+async def test_workspace_image_preserves_google_data_marking(workspace):
+    workspace.get_file_info.return_value.metadata[GOOGLE_DATA_METADATA_KEY] = True
+    session = ChatSession.new("image-test-user", dry_run=False)
+    result = await workspace_files.ReadWorkspaceFileTool()._execute(
+        session.user_id, session, file_id="image-file"
+    )
+    assert result.image is not None
+    assert result.holds_google_data
 
 
 async def test_workspace_denial_never_reads_pixels(workspace):

@@ -722,17 +722,21 @@ class ReadWorkspaceFileTool(BaseTool):
                         + (f" Also saved to {save_to_path}." if save_to_path else ""),
                         session_id=session_id,
                     )
-                return WorkspaceFileMetadataResponse(
-                    file_id=file_info.id,
-                    name=file_info.name,
-                    path=file_info.path,
-                    mime_type=image.mime_type,
-                    size_bytes=file_info.size_bytes,
-                    download_url=f"workspace://{target_file_id}",
-                    message=f"Viewed {file_info.name} as an image (first frame only)."
-                    + (f" Also saved to {save_to_path}." if save_to_path else ""),
-                    session_id=session_id,
-                ).with_image(image)
+                return (
+                    WorkspaceFileMetadataResponse(
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        path=file_info.path,
+                        mime_type=image.mime_type,
+                        size_bytes=file_info.size_bytes,
+                        download_url=f"workspace://{target_file_id}",
+                        message=f"Viewed {file_info.name} as an image (first frame only)."
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    )
+                    .with_image(image)
+                    .with_google_data(google_data)
+                )
 
             # Ranged read: return a character slice directly.
             if char_offset > 0 or char_length is not None:
