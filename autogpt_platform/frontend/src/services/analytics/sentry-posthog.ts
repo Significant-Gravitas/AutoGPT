@@ -28,6 +28,9 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
   };
 }
 
+// posthog-js's own wording, matched whole so an app error that merely quotes
+// it still mirrors. sentry-posthog-instrumentation.test.ts drives the real
+// rate limiter, so a reworded notice fails CI instead of looping silently.
 function isPostHogRateLimitNotice(event: ErrorEvent) {
   return (
     event.logger === "console" &&
