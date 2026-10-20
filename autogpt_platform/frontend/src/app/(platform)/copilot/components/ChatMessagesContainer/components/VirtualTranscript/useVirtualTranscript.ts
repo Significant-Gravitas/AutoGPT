@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
   type MutableRefObject,
@@ -26,6 +27,7 @@ import { useQuietRows } from "./useQuietRows";
 
 const ROW_GAP_PX = 24;
 const COMPACT_ROW_GAP_PX = 16;
+const MAX_VIEWPORT_RECHECKS = 3;
 
 export type JumpToMessage = (messageID: string) => void;
 
@@ -55,6 +57,8 @@ export function useVirtualTranscript({
   // Null until the first commit; false where the scroll element has no
   // height to window against (jsdom, a hidden panel), which renders every row.
   const [hasViewport, setHasViewport] = useState<boolean | null>(null);
+  const [, recheckViewport] = useReducer((count: number) => count + 1, 0);
+  const viewportRechecksRef = useRef(0);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const enteringRef = useRef(false);
@@ -155,6 +159,15 @@ export function useVirtualTranscript({
     const prepend = prependRef.current;
     prependRef.current = null;
     const scroller = scrollRef.current;
+    // Mounted together with StickToBottom (a session switch), this runs
+    // before React attaches the scroll element's ref (twice under StrictMode).
+    // Look again on another layout pass rather than falling back to rendering
+    // every row; give up after a few, as with no scroll element at all.
+    if (!scroller && viewportRechecksRef.current < MAX_VIEWPORT_RECHECKS) {
+      viewportRechecksRef.current += 1;
+      recheckViewport();
+      return;
+    }
     const ready = scroller instanceof HTMLElement && scroller.clientHeight > 0;
     if (prepend && ready) {
       keepReadingRowAfterPrepend({ virtualizer, scroller, prepend });

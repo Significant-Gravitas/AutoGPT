@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTranscript } from "../VirtualTranscript";
 import type { TranscriptRow } from "../helpers";
@@ -19,11 +19,15 @@ const stick = vi.hoisted(() => ({
   state: { isAtBottom: true },
 }));
 
+// A ref object, as StickToBottom's is: read at the moment it is used.
+const scrollRef = {
+  get current() {
+    return stick.scroller;
+  },
+};
+
 vi.mock("use-stick-to-bottom", () => ({
-  useStickToBottomContext: () => ({
-    scrollRef: { current: stick.scroller },
-    state: stick.state,
-  }),
+  useStickToBottomContext: () => ({ scrollRef, state: stick.state }),
 }));
 
 function makeScroller() {
@@ -358,6 +362,38 @@ describe("VirtualTranscript", () => {
       expect(mountedIDs()).toContain(`m${TALL_INDEX}`);
       expect(stick.scroller!.scrollTop).toBe(458 * ROW_STRIDE);
     });
+  });
+
+  it("windows rows when it mounts in the same commit as the scroll element", () => {
+    const scroller = stick.scroller!;
+    stick.scroller = null;
+    // React attaches an ancestor's ref after its children's layout effects,
+    // as when a session switch remounts StickToBottom and the transcript.
+    function AttachScroller({ children }: { children: ReactNode }) {
+      useLayoutEffect(() => {
+        stick.scroller = scroller;
+      }, []);
+      return children;
+    }
+    const renderRow = vi.fn(({ message: m }: TranscriptRow) => (
+      <div data-message-id={m.id} />
+    ));
+    const messages = Array.from({ length: 500 }, (_, i) => message(i));
+    render(
+      <AttachScroller>
+        <VirtualTranscript
+          rows={toRows(messages)}
+          renderRow={renderRow}
+          lastUserMessageID="m498"
+          compact={false}
+        />
+      </AttachScroller>,
+      { container: scroller },
+    );
+
+    expect(mountedIDs().length).toBeLessThan(30);
+    // No pass ever rendered the whole thread.
+    expect(renderRow.mock.calls.length).toBeLessThan(150);
   });
 
   it("renders every row when the scroll element has no height", () => {
