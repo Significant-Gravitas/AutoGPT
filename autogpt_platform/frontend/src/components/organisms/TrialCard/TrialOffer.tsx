@@ -7,10 +7,11 @@ import { TrialTitle } from "./TrialTitle/TrialTitle";
 interface Props {
   trial: TrialStatusResponse;
   isStarting: boolean;
+  isBlocked: boolean;
   onStart: () => void;
 }
 
-export function TrialOffer({ trial, isStarting, onStart }: Props) {
+export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
   const offer = trial.offer;
   if (!offer) return null;
   return (
@@ -25,7 +26,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
             No charge today
           </span>
         </div>
-        <Text variant="body" unmask={false} className="!text-zinc-800">
+        <Text variant="body" className="!text-zinc-800">
           Card required. No subscription charge today. Then{" "}
           {formatTrialPrice(offer)}, plus applicable tax, unless you cancel
           before the trial ends.
@@ -40,7 +41,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
         size="large"
         onClick={onStart}
         loading={isStarting}
-        disabled={isStarting}
+        disabled={isStarting || isBlocked}
         className="w-full shrink-0 md:w-auto md:min-w-[11rem]"
       >
         Start {offer.duration_days}-day trial

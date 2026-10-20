@@ -1,69 +1,142 @@
 "use client";
 
-import { Badge } from "@/components/atoms/Badge/Badge";
+import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
-import {
-  formatTierLabel,
-  isUsageExhausted,
-  TIER_BADGE_CLASS_NAME,
-} from "../../usageHelpers";
-import { StorageBar } from "../StorageBar";
-import { UsageBar } from "../UsageBar";
-import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
-import { Alert01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { getUsageOfferAction } from "@/services/usageExperience/helpers";
+import { formatPaymentDue } from "@/services/usageExperience/payment";
+import { usagePresentation } from "@/services/usageExperience/presentation";
+import { PaymentDueAction } from "@/components/organisms/UsageExperience/PaymentDueAction";
+import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
+import { UsageMeters } from "@/components/organisms/UsageExperience/UsageMeters";
+import {
+  budgetOutTitle,
+  budgetResetSentence,
+} from "@/services/usageExperience/budget";
+import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
+import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
-export function UsageLimitReachedCard() {
-  const { usage, isSuccess, isBillingEnabled } = useUsageLimitReachedCard();
-
-  if (!isSuccess || !usage) return null;
-  if (!isUsageExhausted(usage)) return null;
-
-  const tierLabel = formatTierLabel(usage.tier);
-
+export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
+  const state = useUsageLimitReachedCard(props);
+  if (state.isLoading || (!state.experience.blocked && !state.isError))
+    return null;
+  const copy = usagePresentation(state.experience, state.offer.usageMultiplier);
+  const isOffer =
+    state.isBillingEnabled && state.experience.targetTier && !state.isError;
+  const due = formatPaymentDue(state.experience.payment);
+  const payment = state.isBillingEnabled && !state.isError ? due : null;
   return (
-    <div
-      role="alert"
-      className="mx-auto flex w-full max-w-[30rem] flex-col gap-4 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
+    <section
+      role="status"
+      aria-label="Usage notice"
+      className="mx-auto w-full rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
     >
-      <div className="flex items-center gap-2">
-        <Icon icon={Alert01Icon} className="size-5 text-orange-500" />
-        <Text variant="body-medium" className="text-neutral-900">
-          Usage limit reached
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <Text variant="small" className="!text-xs !text-zinc-500">
+          {state.isRefreshing
+            ? "Checking your allowance"
+            : state.isError
+              ? "Usage temporarily unavailable"
+              : copy.eyebrow}
         </Text>
-        {tierLabel && (
-          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
-            {tierLabel} plan
-          </Badge>
+        {!state.isError && (
+          <Button
+            as="NextLink"
+            href="/settings/billing"
+            size="small"
+            variant="ghost"
+            className="!h-auto !p-0 !text-xs !text-zinc-500"
+          >
+            {state.experience.inactiveTrialStatus === "payment_failed"
+              ? "Review billing"
+              : "View usage"}
+          </Button>
         )}
       </div>
-      {usage.daily && (
-        <UsageBar
-          label="Today"
-          percentUsed={usage.daily.percent_used}
-          resetsAt={usage.daily.resets_at}
+      <Text variant="h4" className="!text-lg !leading-6">
+        {state.isRefreshing
+          ? "Checking your usage"
+          : state.isError
+            ? "We couldn’t check your usage."
+            : state.wait
+              ? budgetOutTitle(state.wait.window)
+              : copy.noticeTitle}
+      </Text>
+      <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
+        {state.isRefreshing
+          ? "Refreshing your plan and usage…"
+          : state.isError
+            ? "Your work is saved. Try again to check your allowance."
+            : state.wait
+              ? budgetResetSentence(state.wait)
+              : copy.description}
+      </Text>
+      {state.wait && (
+        <UsageMeters
+          className="mt-4"
+          daily={state.usage?.daily}
+          weekly={state.usage?.weekly}
         />
       )}
-      {usage.weekly && (
-        <UsageBar
-          label="This week"
-          percentUsed={usage.weekly.percent_used}
-          resetsAt={usage.weekly.resets_at}
+      {isOffer && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Button
+            size="small"
+            onClick={state.upgrade}
+            disabled={state.offer.disabled}
+            rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}
+          >
+            {getUsageOfferAction(state.experience, state.offer)}
+          </Button>
+          {state.experience.freshProUsage && (
+            <Text variant="small" className="!text-xs !text-zinc-500">
+              + tax. Review before you pay.
+            </Text>
+          )}
+        </div>
+      )}
+      {payment && (
+        <div className="mt-4">
+          <PaymentDueAction
+            url={payment.url}
+            label={payment.actionLabel}
+            size="small"
+            layout="inline"
+          />
+        </div>
+      )}
+      {state.alternative && (
+        <ProviderContinuation
+          name={state.alternative.display_name}
+          onContinue={state.continueHere}
+          isSwitching={state.isSwitching}
         />
       )}
-      <StorageBar />
-      {isBillingEnabled && (
-        <Button
-          as="NextLink"
-          href="/settings/billing"
-          variant="primary"
-          size="small"
-          className="mt-1 w-full"
-        >
-          Go to billing
-        </Button>
-      )}
-    </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <Text variant="small" className="!text-xs !text-zinc-400">
+          You can keep editing your draft.
+        </Text>
+        {state.isError ? (
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={() => void state.retry()}
+            disabled={state.isRefreshing}
+          >
+            {state.isRefreshing ? "Checking…" : "Try again"}
+          </Button>
+        ) : state.experience.isTopTier && state.isBillingEnabled ? (
+          <Button
+            as="NextLink"
+            href="mailto:contact@agpt.co"
+            size="small"
+            variant="ghost"
+          >
+            {copy.supportLabel}
+          </Button>
+        ) : null}
+      </div>
+    </section>
   );
 }

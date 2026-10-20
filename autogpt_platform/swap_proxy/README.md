@@ -36,7 +36,8 @@ users at once.
    not stored. The swap everywhere else is kept (`swap_anywhere` on a
    credential) for providers that need it, and arrives with the binding
    table (SECRT-2616); nothing sets it yet. The backend is asked for values
-   per user and per host, and refuses hosts a credential is not bound to.
+   per user, per host and per box, and refuses hosts a credential is not bound
+   to (see "What a box holds").
    (`swap_proxy/swap.py`, `swap_proxy/source.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it,
@@ -112,6 +113,38 @@ mitmproxy verified for the very host the request names. If the backend cannot
 be asked, nothing is swapped: the placeholder goes out literally and the request
 fails at the provider, loudly and with nothing leaked.
 
+## What a box holds
+
+A CoPilot box behind the proxy gets, for each account its user connected, the
+provider's usual variables with a placeholder in them (`GH_TOKEN` and
+`GITHUB_TOKEN` for GitHub; `backend/copilot/integration_creds.py`). A
+placeholder names one stored credential, `hsurr:github:<credential id>`, and
+resolves only for a box that credential was **granted** to:
+
+- Each command (`bash_exec`) is handed the credential the real token used to
+  come from (the chat's pick, else the best match for the scopes asked for),
+  and the backend records the grant for that box before the command runs. A
+  provider with no usable credential gets its variables set empty, not left
+  out, so a command never falls back to another account's placeholder from
+  the box's own environment; git's helper is switched off with it.
+- A new box starts with the user's default credential for each provider in its
+  own environment, granted the same way, for what does not start through a
+  command (the desktop's browser and terminal).
+- A git credential helper, set through git's environment-variable config,
+  answers for `https://github.com` with `x-access-token` and `$GH_TOKEN`: a
+  `git push` over HTTPS sends the placeholder as HTTP Basic, which is swapped
+  here.
+
+The proxy asks for values per user, host and box (the proxy credential the
+connection presented). The backend answers only for a live box of that user's
+that gets swaps, by its own record of the box, and only with the credentials
+granted to it: another of the user's accounts, or an id typed by hand,
+resolves to nothing. A grant lasts as long as a paused box can, so a process a
+command left running keeps working.
+
+Without the proxy (`E2B_EGRESS_PROXY_ADDRESS` empty) commands get the real
+tokens as before, and the box's own environment gets nothing.
+
 ## Why a separate package
 
 mitmproxy pins its dependencies exactly and needs Python 3.12+, and the E2B SDK
@@ -131,7 +164,7 @@ poetry run swap-proxy
 | Variable | Default | |
 | --- | --- | --- |
 | `SWAP_PROXY_LISTEN_HOST` / `SWAP_PROXY_LISTEN_PORT` | `0.0.0.0` / `1080` | SOCKS5 listener |
-| `SWAP_PROXY_BACKEND_URL` | `http://localhost:8005` | the backend's internal `DatabaseManager` service |
+| `SWAP_PROXY_BACKEND_URL` | `http://localhost:8012` | the backend's swap service (`SwapCredentialService`), which serves only the two calls the proxy makes |
 | `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
 | `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
@@ -168,20 +201,37 @@ step**: the proxy reachable at that address, the CA mounted into every replica,
 and its certificate in the image the boxes run. Any one of them missing shows up
 as every box losing either its egress or its TLS to bound hosts.
 
+The same address is also what switches boxes from real tokens to placeholders
+(see "What a box holds"): from the moment it is set, a connected account works
+in a box only through the proxy's swap, so the proxy has to be swapping, and
+reaching its backend service, before the address goes out.
+
 The same step sets the network policy around the proxy, and that policy is a
 security boundary, not housekeeping. The proxy calls one backend service
-(`SWAP_PROXY_BACKEND_URL`, the internal `DatabaseManager`) and must be able to
-reach that and nothing else in the backend: the policy is what keeps a
-compromised proxy away from every other backend service.
+(`SWAP_PROXY_BACKEND_URL`) and must be able to reach that and nothing else in
+the backend: the policy is what keeps a compromised proxy away from every other
+backend service.
 
-It cannot do more than that. `DatabaseManager` serves every method it exposes
-on the same port, with no caller authentication or per-caller allowlist, and
-the proxy uses only two of them (`get_swap_bindings`,
-`resolve_swap_credential`). A proxy that can reach it can call all of them,
-reading any user's credentials among them. Restricting it to the two swap
-methods needs a dedicated service or a per-caller allowlist (SECRT-2742);
-until then that is an accepted gap, and one more reason the proxy's own host
-is to be treated as holding every user's credentials.
+That service is `SwapCredentialService` (`backend/copilot/swap_service.py`),
+and it answers the two calls the proxy makes (`get_swap_bindings`,
+`resolve_swap_credential`) and no other backend method (it also serves the
+health checks and FastAPI's schema pages, as every service does): every other
+backend method is on
+another service's port, so a proxy that can reach only this port cannot call
+it, whatever it sends. It runs beside `DatabaseManager` in the backend's `db`
+entrypoint, on its own port (`SWAP_CREDENTIAL_SERVICE_PORT`, default 8012); the
+policy should let the proxy reach that port and not `DatabaseManager`'s. What
+the service does answer is any user's credential for a bound host, so the
+proxy's own host is still to be treated as holding every user's credentials.
+
+Two things are still to do at switch-on, and neither is in this repository:
+
+- The policy itself, and publishing the service's port from the `db`
+  deployment. Until both are in place `DatabaseManager` still answers every
+  method to a proxy that can reach its port.
+- A health probe on the service's own port. It is a second process in the `db`
+  entrypoint and nothing restarts it: if it dies, `DatabaseManager`'s health
+  check keeps passing while every swap fails.
 
 ### What one message costs the event loop
 
@@ -229,6 +279,11 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 ## Known limits
 
+- An expert's box is shared by its chats, so it starts with the user's default
+  account for each provider in its own environment (for the desktop's terminal
+  and browser), and that account is granted to it. A chat on that expert that
+  picked another account can still act as the default from the box. A chat's
+  own box starts with the chat's pick instead.
 - Images and binary bodies are neither swapped (above 5 MiB) nor scrubbed (at
   any size). What counts as text is the content type the sender declares.
 - A value goes into the `Authorization` header and nowhere else. A provider
@@ -272,8 +327,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   the case, it does not close it.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
-- A connection stays authenticated while it stays open, also after its box's
-  credential is rotated.
+- A connection stays open after its box's credential is rotated (every
+  reconnect rotates it), but the backend no longer knows its box: from then on
+  nothing is swapped into it, and its text responses from bound hosts are
+  refused as while the backend is down, until the client opens a new one.
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.

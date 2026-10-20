@@ -104,7 +104,6 @@ function RelatedExecution({
         <Button
           variant="ghost"
           size="small"
-          unmask={false}
           className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-purple-700"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
@@ -118,9 +117,7 @@ function RelatedExecution({
           {name}
         </Link>
       ) : (
-        <Text variant="small" unmask={false}>
-          {name}
-        </Text>
+        <Text variant="small">{name}</Text>
       )}
       {amount != null && (
         <TransactionAmount amount={amount} className="text-xs" />

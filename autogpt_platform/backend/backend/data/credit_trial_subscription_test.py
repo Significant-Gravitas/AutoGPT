@@ -8,6 +8,7 @@ import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 
+from backend.data import credit_subscription_test
 from backend.data.credit import (
     _get_active_subscription_cached,
     get_pending_subscription_change,
@@ -16,11 +17,18 @@ from backend.data.credit import (
 )
 from backend.data.credit_subscription_test import _make_user
 
+billing_boundaries = credit_subscription_test.billing_boundaries
+
 
 @pytest.mark.asyncio
-async def test_new_plan_ends_cancel_pending_trial_without_invoice():
-    """A plan bought while the trial is cancel-pending ends the trial at once,
-    with no invoice or proration, once the new subscription is active."""
+@pytest.mark.parametrize("paid_ready", [False, True])
+async def test_new_plan_ends_cancel_pending_trial_without_invoice(
+    billing_boundaries, paid_ready
+):
+    """Only a reconciled paid plan may end the old cancel-pending trial.
+
+    Canceling the old trial creates neither an invoice nor proration.
+    """
     metadata = {"user_id": "user-1"}
     max_sub = {
         "id": "sub_max",
@@ -48,21 +56,30 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
         events.append(f"cancel:{sub_id}")
         return ended_trial
 
-    async def set_tier(user_id: str, tier: SubscriptionTier, **kwargs):
-        events.append(f"tier:{tier.value}")
+    async def set_tier(*, where, data):
+        events.append(f"tier:{data['subscriptionTier'].value}")
+
+    async def publish(*args):
+        events.append("publish")
+        return paid_ready
 
     async def price_id(tier: SubscriptionTier, billing_cycle: str = "monthly"):
         return {SubscriptionTier.MAX: "price_max_monthly"}.get(tier)
 
+    user = _make_user(tier=SubscriptionTier.TRIAL)
     with (
         patch(
             "backend.data.credit.User.prisma",
-            return_value=MagicMock(
-                find_first=AsyncMock(
-                    return_value=_make_user(tier=SubscriptionTier.TRIAL)
-                )
-            ),
+            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
         ),
+        patch(
+            "backend.data.credit.get_subscription_trial",
+            AsyncMock(return_value=MagicMock(subscription_id="sub_trial")),
+        ),
+        patch(
+            "backend.data.credit.subscription_activation.publish_initial_pro_activation",
+            AsyncMock(side_effect=publish),
+        ) as publish_activation,
         patch("backend.data.credit.get_subscription_price_id", side_effect=price_id),
         patch(
             "backend.data.credit.stripe.Subscription.list_async",
@@ -75,24 +92,37 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
             side_effect=cancel,
         ) as mock_cancel,
         patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.sync_subscription_from_stripe",
             new_callable=AsyncMock,
-            return_value=(ended_trial, None),
         ) as reconcile,
         patch(
             "backend.data.credit.set_subscription_tier",
             new_callable=AsyncMock,
-            side_effect=set_tier,
         ) as mock_set,
     ):
+        billing_boundaries.subscription.return_value = max_sub
+        billing_boundaries.tx.user.update.side_effect = set_tier
         await sync_subscription_from_stripe(max_sub)
 
-    mock_cancel.assert_awaited_once_with("sub_trial", invoice_now=False, prorate=False)
-    reconcile.assert_awaited_once_with("user-1", "sub_trial")
-    mock_set.assert_awaited_once_with(
-        "user-1", SubscriptionTier.MAX, track_lifecycle=False
+    publish_activation.assert_awaited_once_with(
+        user,
+        max_sub,
+        "price_max_monthly",
+        billing_boundaries.tx,
     )
-    assert events == ["cancel:sub_trial", "tier:MAX"]
+    mock_set.assert_not_awaited()
+    if not paid_ready:
+        mock_cancel.assert_not_awaited()
+        reconcile.assert_not_awaited()
+        billing_boundaries.tx.user.update.assert_not_awaited()
+        assert events == ["publish"]
+        return
+    mock_cancel.assert_awaited_once_with("sub_trial", invoice_now=False, prorate=False)
+    reconcile.assert_awaited_once_with(ended_trial)
+    billing_boundaries.tx.user.update.assert_awaited_once_with(
+        where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.MAX}
+    )
+    assert events == ["publish", "tier:MAX", "cancel:sub_trial"]
 
 
 async def _pending_change_for(subscription: dict):

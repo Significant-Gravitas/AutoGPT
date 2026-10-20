@@ -30,6 +30,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -48,6 +49,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
@@ -55,6 +57,8 @@ from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -1622,7 +1626,10 @@ async def _load_prior_transcript(
             session_id, restore.message_count, gap
         )
     if hole or gap:
-        _append_gap_to_builder(hole + gap, transcript_builder)
+        # The transcript is what later turns read back as their own history,
+        # so a row kept from the model never enters it. The upload's
+        # watermark still counts it, so it is not found again as a gap.
+        _append_gap_to_builder(visible_to_model(hole + gap), transcript_builder)
         logger.info(
             "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
             "+ %d gap msgs from DB",
@@ -1803,6 +1810,8 @@ async def stream_chat_completion_baseline(
     # Capture count *before* the pending drain so is_first_turn and the
     # transcript staleness check are not skewed by queued messages.
     _pre_drain_msg_count = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
     # The stream's rows start after the message that triggered it; the rows
     # appended before the turn's first yield are announced once it opens.
     turn_start = _pre_drain_msg_count
@@ -2055,6 +2064,9 @@ async def stream_chat_completion_baseline(
             )
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
+    # Before anything is appended below: this reads the last entry, and the
+    # per-turn blocks then land on the note as they would on a typed message.
+    send_trailing_note_as_user(openai_messages)
 
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
@@ -2115,7 +2127,6 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
-
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
     # model's current-turn input AND persist each pending message as
@@ -2212,6 +2223,7 @@ async def stream_chat_completion_baseline(
         try:
             skills_notice = await build_skills_update_notice(
                 user_id,
+                session_id=session.session_id,
                 expert_id=session.expert_id,
                 prior_contents=[
                     m.content or "" for m in session.messages if m.role == "user"
@@ -2588,6 +2600,7 @@ async def stream_chat_completion_baseline(
                     # Persist the assistant/tool flush BEFORE the pending append
                     # so a later pending-persist failure can roll back the
                     # pending rows without also discarding LLM output.
+                    stamp_turn_trace_id(current_session.messages, turn_start)
                     current_session = await persist_session_safe(
                         current_session, "[Baseline]"
                     )
@@ -2753,6 +2766,7 @@ async def stream_chat_completion_baseline(
             retryable=failure.retryable if failure is not None else True,
             failure=failure.as_part() if failure is not None else None,
         ):
+            stamp_turn_trace_id(_failed_session.messages, turn_start)
             try:
                 await upsert_chat_session(_failed_session)
             except Exception as marker_err:
@@ -2934,6 +2948,7 @@ async def stream_chat_completion_baseline(
                     llm_credential_id=state.llm_credential_id,
                 )
             )
+        stamp_turn_trace_id(session.messages, turn_start)
         try:
             await upsert_chat_session(session)
             final_checkpoint = turn_checkpoint(session.messages, turn_start)
@@ -2956,6 +2971,22 @@ async def stream_chat_completion_baseline(
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti; flag-gated and never raises.
+        if user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[turn_start:]),
+                    message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the

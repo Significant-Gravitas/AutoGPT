@@ -1,7 +1,7 @@
 import { SearchResponseItemsItem } from "@/app/api/__generated__/models/searchResponseItemsItem";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { getSearchItemType } from "./helper";
+import { getSearchItemKeys, getSearchItemType } from "./helper";
 import { MarketplaceAgentBlock } from "../MarketplaceAgentBlock";
 import { Block } from "../Block";
 import { UGCAgentBlock } from "../UGCAgentBlock";
@@ -24,7 +24,7 @@ export const BlockMenuSearchContent = () => {
     addingMarketplaceAgentSlug,
   } = useBlockMenuSearchContent();
 
-  const { searchQuery } = useBlockMenuStore();
+  const searchQuery = useBlockMenuStore((state) => state.searchQuery);
 
   if (searchLoading) {
     return (
@@ -43,6 +43,8 @@ export const BlockMenuSearchContent = () => {
     return <NoSearchResult />;
   }
 
+  const keys = getSearchItemKeys(searchResults);
+
   return (
     <InfiniteScroll
       isFetchingNextPage={isFetchingNextPage}
@@ -58,7 +60,7 @@ export const BlockMenuSearchContent = () => {
           case "store_agent":
             return (
               <MarketplaceAgentBlock
-                key={index}
+                key={keys[index]}
                 slug={data.slug}
                 highlightedText={searchQuery}
                 title={data.agent_name}
@@ -77,7 +79,7 @@ export const BlockMenuSearchContent = () => {
           case "block":
             return (
               <Block
-                key={index}
+                key={keys[index]}
                 title={data.name}
                 highlightedText={searchQuery}
                 description={data.description}
@@ -88,7 +90,7 @@ export const BlockMenuSearchContent = () => {
           case "library_agent":
             return (
               <UGCAgentBlock
-                key={index}
+                key={keys[index]}
                 title={data.name}
                 highlightedText={searchQuery}
                 image_url={data.image_url}

@@ -378,6 +378,15 @@ def test_format_followup_single_message() -> None:
     assert "Message 1:\nhello" in out
 
 
+def test_format_followup_escapes_the_tags_a_message_quotes() -> None:
+    out = format_pending_as_followup(
+        [PendingMessage(content="keep <user_follow_up> and </user_follow_up> rows")]
+    )
+    assert out.count("<user_follow_up>") == 1
+    assert out.count("</user_follow_up>") == 1
+    assert "keep &lt;user_follow_up&gt; and &lt;/user_follow_up&gt; rows" in out
+
+
 def test_format_followup_total_cap_drops_overflow() -> None:
     """10 × 2 KB messages must truncate past the total cap (~6 KB) with a
     marker indicating how many were dropped."""
