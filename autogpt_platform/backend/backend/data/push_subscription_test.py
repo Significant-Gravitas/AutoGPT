@@ -157,6 +157,7 @@ class TestUpsertPushSubscription:
                 id=f"row-{i}",
                 endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
                 updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
+                failCount=0,
             )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
         ]
@@ -183,6 +184,35 @@ class TestUpsertPushSubscription:
         assert writes == ["delete", "upsert"]
 
     @pytest.mark.asyncio
+    async def test_takeover_at_the_cap_drops_a_failing_device_first(self, mock_prisma):
+        # A failing push bumps updatedAt, so a dying device looks freshly
+        # refreshed; it must still go before a healthy idle one.
+        existing = [
+            MagicMock(
+                id=f"row-{i}",
+                endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
+                failCount=0,
+            )
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        existing[-1].failCount = 3
+        mock_prisma.find_many.return_value = existing
+        mock_prisma.find_unique.return_value = MagicMock(userId="user-1")
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/TAKEN",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        mock_prisma.delete_many.assert_awaited_once_with(
+            where={"id": f"row-{push_subscription.MAX_SUBSCRIPTIONS_PER_USER - 1}"}
+        )
+
+    @pytest.mark.asyncio
     async def test_cap_check_eviction_and_claim_share_one_transaction(
         self, mock_prisma
     ):
@@ -193,6 +223,7 @@ class TestUpsertPushSubscription:
                 id=f"row-{i}",
                 endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
                 updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
+                failCount=0,
             )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
         ]

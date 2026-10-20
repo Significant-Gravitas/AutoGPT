@@ -119,8 +119,11 @@ async def _subscribe(
         # endpoint past the cap is refused, but taking over one another
         # account registered (the same browser after switching accounts) is
         # not: refusing would leave that account's notifications arriving on
-        # this browser. That makes room instead, dropping this account's least
-        # recently refreshed subscription, the device most likely gone.
+        # this browser. That makes room instead, dropping the device most
+        # likely gone: the one failing most, else the least recently
+        # refreshed. Failures bump updatedAt too, so it only measures a
+        # refresh among rows that aren't failing (a subscribe resets
+        # failCount).
         if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not any(
             row.endpoint == endpoint for row in existing
         ):
@@ -129,7 +132,7 @@ async def _subscribe(
                     f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} "
                     "per user reached"
                 )
-            stalest = min(existing, key=lambda row: row.updatedAt)
+            stalest = min(existing, key=lambda row: (-row.failCount, row.updatedAt))
             await subscriptions.delete_many(where={"id": stalest.id})
         return await subscriptions.upsert(
             where={"endpoint": endpoint},
