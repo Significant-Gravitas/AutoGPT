@@ -2,16 +2,46 @@
 
 import asyncio
 import logging
-from types import SimpleNamespace
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
+from graphiti_core.nodes import EpisodeType, EpisodicNode
+from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 
 from . import context
-from ._format import extract_episode_body
-from .context import _format_context, _is_non_global_scope, fetch_warm_context
-from .memory_model import MemoryEnvelope, MemoryKind, SourceKind
+from .context import _format_context, fetch_warm_context
+from .memory_model import MemoryEnvelope
 from .scope import MemoryScope
+
+_NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
+
+
+def _edge(uuid: str = "edge-a", fact: str = "user likes python") -> EntityEdge:
+    return EntityEdge(
+        uuid=uuid,
+        group_id="user_abc",
+        source_node_uuid="user",
+        target_node_uuid="python",
+        created_at=_NOW,
+        name="preference",
+        fact=fact,
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        attributes={"status": "active"},
+    )
+
+
+def _episode(content: str) -> EpisodicNode:
+    return EpisodicNode(
+        name="ep",
+        group_id="user_abc",
+        source=EpisodeType.text,
+        source_description="chat",
+        content=content,
+        created_at=_NOW,
+        valid_at=_NOW,
+    )
 
 
 class TestFetchWarmContextEmptyUserId:
@@ -41,259 +71,179 @@ class TestFetchWarmContextTimeout:
 class TestFetchWarmContextGeneralError:
     @pytest.mark.asyncio
     async def test_returns_none_on_unexpected_error(self) -> None:
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("connection lost"),
+        with (
+            patch.object(
+                context,
+                "search_facts",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("connection lost"),
+            ),
+            patch.object(context, "recent_episodes", new_callable=AsyncMock),
         ):
             result = await fetch_warm_context("abc", "hello")
 
         assert result is None
 
 
-# ---------------------------------------------------------------------------
-# Bug: extract_episode_body() truncation breaks scope filtering
-# ---------------------------------------------------------------------------
-
-
-def _search_results(edges: list[object]) -> SimpleNamespace:
-    """Stand-in for graphiti_core.search.search_config.SearchResults — only
-    the ``.edges`` attribute is exercised by ``_fetch``."""
-    return SimpleNamespace(edges=edges)
-
-
 class TestFetchInternal:
-    """Test the internal _fetch function with mocked graphiti client.
+    """``_fetch`` reads through the recall policy (``recall.py``).
 
-    After P-1.4, ``_fetch`` calls ``client.search_()`` (note trailing
-    underscore) with the ``EDGE_HYBRID_SEARCH_CROSS_ENCODER`` recipe and
-    expects a ``SearchResults`` object whose ``.edges`` attribute carries
-    the candidate list. The mocks below reflect that shape.
+    Both reads and their recheck are mocked at their use site (the recheck
+    keeps everything unless a test says otherwise); the hit hook is replaced
+    so no test here reaches Redis or FalkorDB.
     """
 
-    @pytest.mark.asyncio
-    async def test_returns_none_when_no_edges_or_episodes(self) -> None:
-        mock_client = AsyncMock()
-        mock_client.search_.return_value = _search_results([])
-        mock_client.retrieve_episodes.return_value = []
+    @pytest.fixture(autouse=True)
+    def spawn_hits(self):
+        with patch.object(context, "_spawn_ratification_hits") as spawn:
+            yield spawn
 
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=mock_client,
-        ):
+    @pytest.fixture(autouse=True)
+    def recheck(self):
+        async def everything(scope, facts, episodes):
+            return facts, episodes
+
+        with patch.object(context, "recheck", side_effect=everything) as recheck:
+            yield recheck
+
+    @staticmethod
+    def _reads(edges: list[EntityEdge], episodes: list[EpisodicNode]):
+        return (
+            patch.object(
+                context, "search_facts", new_callable=AsyncMock, return_value=edges
+            ),
+            patch.object(
+                context,
+                "recent_episodes",
+                new_callable=AsyncMock,
+                return_value=episodes,
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_edges_or_episodes(self, spawn_hits) -> None:
+        search, recent = self._reads([], [])
+        with search, recent:
             result = await context._fetch(MemoryScope.for_user("abc"), "hello")
 
         assert result is None
+        spawn_hits.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_expert_scope_is_used_for_all_retrievals(self) -> None:
-        mock_client = AsyncMock()
-        mock_client.search_.return_value = _search_results([])
-        mock_client.retrieve_episodes.return_value = []
-
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=mock_client,
-        ) as get_client_mock:
+        search, recent = self._reads([], [])
+        with search as search_mock, recent as recent_mock:
             await fetch_warm_context("user-1", "hello", expert_id="expert-1")
 
-        expert_group = MemoryScope.for_expert("user-1", "expert-1").group_id
-        get_client_mock.assert_awaited_once_with(expert_group)
-        assert mock_client.search_.await_args.kwargs["group_ids"] == [expert_group]
-        assert mock_client.retrieve_episodes.await_args.kwargs["group_ids"] == [
-            expert_group
-        ]
+        expert_scope = MemoryScope.for_expert("user-1", "expert-1")
+        for read in (search_mock, recent_mock):
+            assert read.await_args is not None
+            assert read.await_args.args[0] == expert_scope
 
     @pytest.mark.asyncio
-    async def test_returns_context_with_edges(self) -> None:
-        edge = SimpleNamespace(
-            fact="user likes python",
-            name="preference",
-            valid_at="2025-01-01",
-            invalid_at=None,
-        )
-        mock_client = AsyncMock()
-        mock_client.search_.return_value = _search_results([edge])
-        mock_client.retrieve_episodes.return_value = []
-
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=mock_client,
-        ):
+    async def test_returns_context_with_edges(self, spawn_hits) -> None:
+        edge = _edge()
+        search, recent = self._reads([edge], [])
+        with search, recent:
             result = await context._fetch(MemoryScope.for_user("abc"), "hello")
 
         assert result is not None
         assert "<temporal_context>" in result
         assert "user likes python" in result
+        spawn_hits.assert_called_once_with(MemoryScope.for_user("abc"), [edge])
+
+    @pytest.mark.asyncio
+    async def test_renders_only_what_the_recheck_still_finds(
+        self, spawn_hits, recheck
+    ) -> None:
+        """A forget that answered while the search ran (a cross-encoder
+        rerank can take seconds): the last read before rendering no longer
+        finds the fact or its episode, so neither is shown or counted."""
+        forgotten, kept = _edge("e1", "Alice works on Atlas"), _edge("e2", "Bob")
+        episode = _episode("Alice works on Atlas")
+        recheck.side_effect = None
+        recheck.return_value = ([kept], [])
+        search, recent = self._reads([forgotten, kept], [episode])
+        with search, recent:
+            result = await context._fetch(MemoryScope.for_user("abc"), "hello")
+
+        recheck.assert_awaited_once_with(
+            MemoryScope.for_user("abc"), [forgotten, kept], [episode]
+        )
+        assert result is not None and "Alice" not in result and "Bob" in result
+        spawn_hits.assert_called_once_with(MemoryScope.for_user("abc"), [kept])
 
     @pytest.mark.asyncio
     async def test_returns_context_with_episodes(self) -> None:
-        ep = SimpleNamespace(
-            content="talked about coffee",
-            created_at="2025-06-01T00:00:00Z",
-        )
-        mock_client = AsyncMock()
-        mock_client.search_.return_value = _search_results([])
-        mock_client.retrieve_episodes.return_value = [ep]
-
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=mock_client,
-        ):
+        search, recent = self._reads([], [_episode("talked about coffee")])
+        with search, recent:
             result = await context._fetch(MemoryScope.for_user("abc"), "hello")
 
         assert result is not None
         assert "talked about coffee" in result
 
     @pytest.mark.asyncio
-    async def test_search_call_uses_cross_encoder_recipe(self) -> None:
-        """P-1.4 contract: warm context must use the cross-encoder recipe.
-
-        Pins both the method (``search_`` not ``search``) and the recipe
-        passed as ``config=``. If a future refactor swaps in a different
-        recipe, this test fires.
-        """
-        mock_client = AsyncMock()
-        mock_client.search_.return_value = _search_results([])
-        mock_client.retrieve_episodes.return_value = []
-
-        with patch.object(
-            context,
-            "get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=mock_client,
-        ):
+    async def test_search_uses_cross_encoder_recipe(self) -> None:
+        """P-1.4 contract: warm context must use the cross-encoder recipe,
+        limited to ``context_max_facts``, and five recent episodes."""
+        search, recent = self._reads([], [])
+        with search as search_mock, recent as recent_mock:
             await context._fetch(MemoryScope.for_user("abc"), "hello world")
 
-        mock_client.search_.assert_awaited_once()
-        kwargs = mock_client.search_.await_args.kwargs
-        assert kwargs["query"] == "hello world"
-        assert kwargs["group_ids"] == ["user_abc"]
-        # The config is a copy of EDGE_HYBRID_SEARCH_CROSS_ENCODER with the
-        # limit overridden to context_max_facts. Verify the edge-config
-        # reranker is still ``cross_encoder`` so the contract is locked.
-        from graphiti_core.search.search_config import EdgeReranker
-
-        cfg = kwargs["config"]
-        assert cfg.edge_config is not None
-        assert cfg.edge_config.reranker == EdgeReranker.cross_encoder
-        assert cfg.limit == context.graphiti_config.context_max_facts
+        search_mock.assert_awaited_once()
+        search = search_mock.await_args
+        assert search is not None
+        assert search.args == (MemoryScope.for_user("abc"), "hello world")
+        kwargs = search.kwargs
+        assert kwargs["recipe"] is EDGE_HYBRID_SEARCH_CROSS_ENCODER
+        assert kwargs["limit"] == context.graphiti_config.context_max_facts
+        recent_mock.assert_awaited_once_with(MemoryScope.for_user("abc"), 5)
 
 
 class TestFormatContextWithContent:
     """Test _format_context with actual edges and episodes."""
 
     def test_with_edges_only(self) -> None:
-        edge = SimpleNamespace(
-            fact="user likes coffee",
-            name="preference",
-            valid_at="2025-01-01",
-            invalid_at="present",
-        )
-        result = _format_context(edges=[edge], episodes=[])
+        result = _format_context(edges=[_edge(fact="user likes coffee")], episodes=[])
         assert result is not None
         assert "<FACTS>" in result
-        assert "user likes coffee" in result
+        assert (
+            "  - user likes coffee (valid: 2025-01-01 00:00:00+00:00 — present)"
+            in result
+        )
         assert "<temporal_context>" in result
 
     def test_with_episodes_only(self) -> None:
-        ep = SimpleNamespace(
-            content="plain conversation text",
-            created_at="2025-01-01T00:00:00Z",
+        result = _format_context(
+            edges=[], episodes=[_episode("plain conversation text")]
         )
-        result = _format_context(edges=[], episodes=[ep])
         assert result is not None
         assert "<RECENT_EPISODES>" in result
         assert "plain conversation text" in result
 
     def test_with_both_edges_and_episodes(self) -> None:
-        edge = SimpleNamespace(
-            fact="user likes coffee",
-            valid_at="2025-01-01",
-            invalid_at=None,
+        result = _format_context(
+            edges=[_edge(fact="user likes coffee")],
+            episodes=[_episode("talked about coffee")],
         )
-        ep = SimpleNamespace(
-            content="talked about coffee",
-            created_at="2025-06-01T00:00:00Z",
-        )
-        result = _format_context(edges=[edge], episodes=[ep])
         assert result is not None
         assert "<FACTS>" in result
         assert "<RECENT_EPISODES>" in result
 
     def test_global_scope_episode_included(self) -> None:
         envelope = MemoryEnvelope(content="global note", scope="real:global")
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
+        result = _format_context(
+            edges=[], episodes=[_episode(envelope.model_dump_json())]
         )
-        result = _format_context(edges=[], episodes=[ep])
         assert result is not None
         assert "<RECENT_EPISODES>" in result
 
     def test_non_global_scope_episode_excluded(self) -> None:
         envelope = MemoryEnvelope(content="project note", scope="project:crm")
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
+        result = _format_context(
+            edges=[], episodes=[_episode(envelope.model_dump_json())]
         )
-        result = _format_context(edges=[], episodes=[ep])
         assert result is None
-
-
-class TestIsNonGlobalScopeEdgeCases:
-    """Verify _is_non_global_scope handles non-dict JSON without crashing."""
-
-    def test_list_json_treated_as_global(self) -> None:
-        assert _is_non_global_scope("[1, 2, 3]") is False
-
-    def test_string_json_treated_as_global(self) -> None:
-        assert _is_non_global_scope('"just a string"') is False
-
-    def test_null_json_treated_as_global(self) -> None:
-        assert _is_non_global_scope("null") is False
-
-    def test_plain_text_treated_as_global(self) -> None:
-        assert _is_non_global_scope("plain conversation text") is False
-
-
-class TestIsNonGlobalScopeTruncation:
-    """Verify _is_non_global_scope handles long MemoryEnvelope JSON.
-
-    extract_episode_body() truncates to 500 chars.  A MemoryEnvelope with
-    a long content field serializes to >500 chars, so the truncated string
-    is invalid JSON.  The except clause falls through to return False,
-    incorrectly treating a project-scoped episode as global.
-    """
-
-    def test_long_envelope_with_non_global_scope_detected(self) -> None:
-        """Long MemoryEnvelope JSON should be parsed with raw (untruncated) body."""
-        envelope = MemoryEnvelope(
-            content="x" * 600,
-            source_kind=SourceKind.user_asserted,
-            scope="project:crm",
-            memory_kind=MemoryKind.fact,
-        )
-        full_json = envelope.model_dump_json()
-        assert len(full_json) > 500, "precondition: JSON must exceed truncation limit"
-
-        # With the fix: _is_non_global_scope on the raw (untruncated) body
-        # correctly detects the non-global scope.
-        assert _is_non_global_scope(full_json) is True
-
-        # Truncated body still fails — that's expected; callers must use raw body.
-        ep = SimpleNamespace(content=full_json)
-        truncated = extract_episode_body(ep)
-        assert _is_non_global_scope(truncated) is False  # truncated JSON → parse fails
 
 
 # ---------------------------------------------------------------------------
@@ -311,11 +261,9 @@ class TestFormatContextEmptyWrapper:
             content="project-only note",
             scope="project:crm",
         )
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
+        result = _format_context(
+            edges=[], episodes=[_episode(envelope.model_dump_json())]
         )
-        result = _format_context(edges=[], episodes=[ep])
         assert result is None
 
 
@@ -347,9 +295,8 @@ class TestRatificationHitHookFiresFireAndForget:
     def test_spawn_helper_creates_task_with_retrieved_uuids(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Edges with uuid attrs → fire-and-forget task scheduled with
-        all of their uuids. Edges missing a uuid are filtered out so
-        the hook never passes ``None`` to the ratification module."""
+        """Retrieved edges → one fire-and-forget task carrying all of their
+        uuids."""
         captured_calls: list[tuple[MemoryScope, list[str]]] = []
 
         async def fake_try_ratify(scope: MemoryScope, edge_uuids: list[str]):
@@ -362,12 +309,7 @@ class TestRatificationHitHookFiresFireAndForget:
         # asyncio.create_task needs an event loop — exercise via
         # run_until_complete instead of an actual task spawn.
         async def driver():
-            edges = [
-                SimpleNamespace(uuid="edge-a"),
-                SimpleNamespace(uuid="edge-b"),
-                SimpleNamespace(uuid=None),  # filtered
-                SimpleNamespace(),  # no uuid attr at all → filtered
-            ]
+            edges = [_edge("edge-a"), _edge("edge-b")]
             context._spawn_ratification_hits(
                 MemoryScope.for_expert("user-xyz", "expert-1"), edges=edges
             )
@@ -400,7 +342,7 @@ class TestRatificationHitTaskRetention:
 
             monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
             context._spawn_ratification_hits(
-                MemoryScope.for_user("user-xyz"), edges=[SimpleNamespace(uuid="edge-a")]
+                MemoryScope.for_user("user-xyz"), edges=[_edge("edge-a")]
             )
             # Strong ref held while the task is in flight.
             assert len(context._pending_hit_tasks) == 1
@@ -429,7 +371,7 @@ class TestRatificationHitTaskRetention:
 
             monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
             context._spawn_ratification_hits(
-                MemoryScope.for_user("user-xyz"), edges=[SimpleNamespace(uuid="edge-a")]
+                MemoryScope.for_user("user-xyz"), edges=[_edge("edge-a")]
             )
             task = next(iter(context._pending_hit_tasks))
             await asyncio.gather(task, return_exceptions=True)

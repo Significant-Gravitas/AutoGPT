@@ -11,6 +11,7 @@ from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.copilot.graphiti.recall import live_fact_predicate
 
 from .memory_admin_routes import router as memory_admin_router
 
@@ -582,6 +583,30 @@ class TestListFacts:
         resp = client.get("/admin/memory/abc/facts?status=garbage")
         assert resp.status_code == 422
 
+    def test_active_filter_uses_the_recall_live_test(self) -> None:
+        """The "active" filter lists what recall would return, tentatives
+        aside: an expired edge still stamped active, or a legacy edge with no
+        status, is judged the way recall judges it."""
+        driver = _driver_returning([])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/facts?status=active")
+        assert resp.status_code == 200
+        query = driver.execute_query.call_args.args[0]
+        assert live_fact_predicate("e", include_tentative=False) in query
+        assert "status" not in driver.execute_query.call_args.kwargs
+
+    def test_a_forgotten_fact_lists_the_text_its_forget_kept(self) -> None:
+        """A forget leaves a placeholder where graphiti reads the sentence
+        and keeps the text in ``fact_redacted`` / ``name_redacted`` for this
+        audit list."""
+        driver = _driver_returning([])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/facts")
+        assert resp.status_code == 200
+        query = driver.execute_query.call_args.args[0]
+        assert "coalesce(e.name_redacted, e.name) AS name" in query
+        assert "coalesce(e.fact_redacted, e.fact) AS fact" in query
+
 
 class TestListCommunities:
     def test_returns_community_summaries(self) -> None:
@@ -633,6 +658,39 @@ class TestGraph:
             with pytest.raises(ResponseError, match="MATHC"):
                 bare_client.get("/admin/memory/abc/graph")
         driver.close.assert_awaited_once()
+
+    def test_shows_audit_text_and_a_tombstones_stamp(self) -> None:
+        """A forgotten edge shows the text its forget kept; an episode a hard
+        forget emptied shows only when it was emptied."""
+        stamp = "2026-09-26T12:00:00+00:00"
+        driver = _driver_returning(
+            [{"uuid": "alice", "name": "Alice", "summary": "", "all_labels": []}],
+            [
+                {
+                    "uuid": "ep1",
+                    "name": "conversation_s1",
+                    "summary": None,
+                    "hard_deleted_at": stamp,
+                    "all_labels": ["Episodic"],
+                }
+            ],
+            [],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?include_episodes=true"
+                "&include_communities=false"
+            )
+        assert resp.status_code == 200
+        nodes = {node["uuid"]: node for node in resp.json()["nodes"]}
+        assert nodes["ep1"]["hard_deleted_at"] == stamp
+        assert nodes["alice"]["hard_deleted_at"] is None
+        node_query = driver.execute_query.await_args_list[1].args[0]
+        assert "toString(n.hard_deleted_at) AS hard_deleted_at" in node_query
+        assert "content" not in node_query, "no episode text in the graph view"
+        edge_query = driver.execute_query.await_args_list[2].args[0]
+        assert "coalesce(e.name_redacted, e.name) AS name" in edge_query
+        assert "coalesce(e.fact_redacted, e.fact) AS fact" in edge_query
 
 
 class TestRebuildCommunitiesPolling:

@@ -31,7 +31,9 @@ export const ConversationContent = ({
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
     scrollClassName={cn(
-      "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      // Contain the overscroll so a fling past either end bounces the thread
+      // instead of dragging the page, composer and all, with it.
+      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
       scrollClassName,
     )}
     {...props}
@@ -89,7 +91,7 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full",
+          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full [@media(pointer:coarse)]:size-10",
           className,
         )}
         onClick={handleScrollToBottom}
