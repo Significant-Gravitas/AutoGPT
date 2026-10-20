@@ -12,7 +12,7 @@ from collections import OrderedDict
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .jwt_utils import get_jwt_payload, verify_user
+from .jwt_utils import get_jwt_payload, parse_jwt_token_async, verify_user
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
@@ -25,6 +25,12 @@ optional_bearer = HTTPBearer(auto_error=False)
 
 # Header name for admin impersonation
 IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
+
+# The frontend signs the user out on this code (`account-banned.ts`).
+ACCOUNT_BANNED_DETAIL = {
+    "code": "account_banned",
+    "message": "This account has been banned.",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +110,7 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
     )
 
 
-def get_optional_user_id(
+async def get_optional_user_id(
     credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
         optional_bearer
     ),
@@ -120,23 +126,61 @@ def get_optional_user_id(
         credentials: Optional HTTPAuthorizationCredentials object from FastAPI Security dependency.
 
     Returns:
-        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present.
+        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present
+        or its account is banned.
     """
     if not credentials:
         return None
 
     try:
-        # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
-        return payload.get("sub")
+        # Off the event loop: a JWKS cache miss is a blocking fetch.
+        payload = await parse_jwt_token_async(credentials.credentials)
     except Exception as e:
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    # A banned account, or one whose ban can't be read, reads these routes as
+    # someone signed out would; they stay up either way.
+    try:
+        banned = await _is_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
+        return None
+    return None if banned else user_id
 
 
-async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -> User:
+async def get_unbanned_jwt_payload(
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+) -> dict:
+    """``get_jwt_payload``, refused with 403 when the token's subject is banned.
+
+    The resolvers below all read it, and FastAPI resolves it once per request.
+    Under impersonation the subject is the admin, who may act as a banned user.
+    """
+    user_id = jwt_payload.get("sub")
+    if user_id and await _is_banned(user_id):
+        raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    return jwt_payload
+
+
+async def _is_banned(user_id: str) -> bool:
+    """False without the backend package or a connected DB, as the self-heal is:
+    every process that serves these routes has both."""
+    try:
+        from backend.data import db  # deferred -- only needed at runtime
+        from backend.data.user import is_user_banned  # deferred
+    except ImportError:
+        return False
+    if not db.is_connected():
+        return False
+    return await is_user_banned(user_id)
+
+
+async def requires_user(
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
+) -> User:
     """
     FastAPI dependency that requires a valid authenticated user.
 
@@ -147,7 +191,7 @@ async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -
 
 
 async def requires_admin_user(
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> User:
     """
     FastAPI dependency that requires a valid admin user.
@@ -159,7 +203,8 @@ async def requires_admin_user(
 
 
 async def get_user_id(
-    request: fastapi.Request, jwt_payload: dict = fastapi.Security(get_jwt_payload)
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> str:
     """
     FastAPI dependency that returns the ID of the authenticated user.
@@ -327,7 +372,7 @@ async def _finish_account_bootstrap(jwt_payload: dict) -> None:
 
 async def get_request_context(
     request: fastapi.Request,
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> RequestContext:
     """
     FastAPI dependency that resolves the full org/workspace context for a request.
@@ -366,20 +411,25 @@ async def get_request_context(
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
+    org_member = None
 
     if org_id is None:
         # Fall back to the user's personal org (an org where the user is the
-        # sole owner, typically created at sign-up).
+        # sole owner, typically created at sign-up). The row found is the
+        # user's membership of that org, so step 3 validates it as it is
+        # rather than reading the same row again.
         personal_org = await prisma.orgmember.find_first(
             where={
                 "userId": user_id,
                 "isOwner": True,
                 "Org": {"isPersonal": True, "deletedAt": None},
             },
+            include={"Org": True},
             order={"createdAt": "asc"},
         )
         if personal_org is not None:
             org_id = personal_org.orgId
+            org_member = personal_org
         else:
             # Self-heal: bootstrap the personal org. Sign-up and the startup
             # backfill cover normal accounts, but users created outside
@@ -416,12 +466,13 @@ async def get_request_context(
                 )
 
     # --- 3. validate OrgMember ------------------------------------------------
-    org_member = await prisma.orgmember.find_unique(
-        where={
-            "orgId_userId": {"orgId": org_id, "userId": user_id},
-        },
-        include={"Org": True},
-    )
+    if org_member is None:
+        org_member = await prisma.orgmember.find_unique(
+            where={
+                "orgId_userId": {"orgId": org_id, "userId": user_id},
+            },
+            include={"Org": True},
+        )
     if org_member is None or org_member.status != "ACTIVE":
         raise fastapi.HTTPException(
             status_code=403,

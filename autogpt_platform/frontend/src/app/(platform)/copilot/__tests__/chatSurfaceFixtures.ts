@@ -5,6 +5,7 @@ import {
   EXPERT_CHANGE_TOOLS,
 } from "../components/ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../components/ExpertOnboardingCard/helpers";
+import soulProposal from "../components/ToolChain/__tests__/soulProposal.json";
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
 type Part = Message["parts"][number];
@@ -444,6 +445,12 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     "confirm_expert_change",
     expertProposal("hire", "Theo", "Analyst"),
     "Analyst",
+  ),
+  card("update_expert_soul", soulProposal, "Update Soul"),
+  card(
+    "confirm_expert_soul_update",
+    { ...soulProposal, applied: true },
+    "Soul updated",
   ),
 ]);
 

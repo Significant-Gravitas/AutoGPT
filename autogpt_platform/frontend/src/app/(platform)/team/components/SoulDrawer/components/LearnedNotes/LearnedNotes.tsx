@@ -68,20 +68,10 @@ function NotesList({
             className="flex items-start justify-between gap-2 py-2.5"
           >
             <div className="min-w-0 flex-1">
-              <Text
-                variant="small"
-                as="p"
-                unmask={false}
-                className="text-textBlack"
-              >
+              <Text variant="small" as="p" className="text-textBlack">
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
-              <Text
-                variant="small"
-                as="span"
-                unmask={false}
-                className="text-zinc-400"
-              >
+              <Text variant="small" as="span" className="text-zinc-400">
                 {formatWhen(fact.created_at)}
               </Text>
             </div>

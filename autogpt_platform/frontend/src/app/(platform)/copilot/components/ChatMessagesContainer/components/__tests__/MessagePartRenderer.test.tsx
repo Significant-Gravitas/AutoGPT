@@ -49,6 +49,16 @@ vi.mock("../StoppedTaskCard", () => ({
   StoppedTaskCard: () => <div data-testid="stopped-task-card" />,
 }));
 
+const extractWorkspaceArtifactsSpy = vi.hoisted(() => vi.fn());
+
+vi.mock("../../helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../helpers")>();
+  extractWorkspaceArtifactsSpy.mockImplementation(
+    actual.extractWorkspaceArtifacts,
+  );
+  return { ...actual, extractWorkspaceArtifacts: extractWorkspaceArtifactsSpy };
+});
+
 function stubTool(name: string, testid: string) {
   return { [name]: () => <div data-testid={testid} /> };
 }
@@ -225,6 +235,37 @@ describe("MessagePartRenderer text branch", () => {
       text: `Here is [report](workspace://${fileId}).`,
     } as unknown as Part;
     render(<MessagePartRenderer part={part} messageID="m1" partIndex={0} />);
+    expect(screen.getByTestId("artifact-card")).toBeDefined();
+  });
+
+  it("does not re-extract artifacts when the part re-renders with the same text", () => {
+    const fileId = "550e8400-e29b-41d4-a716-446655440000";
+    const text = `Here is [report](workspace://${fileId}).`;
+    extractWorkspaceArtifactsSpy.mockClear();
+    const { rerender } = render(
+      <MessagePartRenderer
+        part={{ type: "text", text } as unknown as Part}
+        messageID="m1"
+        partIndex={0}
+      />,
+    );
+    rerender(
+      <MessagePartRenderer
+        part={{ type: "text", text } as unknown as Part}
+        messageID="m1"
+        partIndex={0}
+      />,
+    );
+    expect(extractWorkspaceArtifactsSpy).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MessagePartRenderer
+        part={{ type: "text", text: `${text} More.` } as unknown as Part}
+        messageID="m1"
+        partIndex={0}
+      />,
+    );
+    expect(extractWorkspaceArtifactsSpy).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("artifact-card")).toBeDefined();
   });
 

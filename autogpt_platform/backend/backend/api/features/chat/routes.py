@@ -51,6 +51,7 @@ from backend.copilot.expert_kickoff import (
     expert_kickoff_metadata,
     scoped_client_message_id,
 )
+from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -1901,6 +1902,9 @@ async def stream_chat_post(
         _rt.append(("codex_access", time.perf_counter()))
 
     message = request.message
+    if request.is_user_message:
+        # The only writer of card approvals: a model can add chat rows, not requests.
+        await record_card_decisions(user_id, session_id, message)
     message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
         if request.message_id
@@ -2665,49 +2669,6 @@ async def get_ttl_config() -> dict:
     return {
         "stream_ttl_seconds": config.stream_ttl,
         "stream_ttl_ms": config.stream_ttl * 1000,
-    }
-
-
-# ========== Health Check ==========
-
-
-@router.get("/health", status_code=200)
-async def health_check() -> dict:
-    """
-    Health check endpoint for the chat service.
-
-    Performs a full cycle test of session creation and retrieval. Should always return healthy
-    if the service and data layer are operational.
-
-    Returns:
-        dict: A status dictionary indicating health, service name, and API version.
-
-    """
-    from backend.data.user import get_or_create_user
-
-    # Ensure health check user exists (required for FK constraint)
-    health_check_user_id = "health-check-user"
-    await get_or_create_user(
-        {
-            "sub": health_check_user_id,
-            "email": "health-check@system.local",
-            "user_metadata": {"name": "Health Check User"},
-        }
-    )
-
-    # Create and retrieve session to verify full data layer
-    session = await create_chat_session(health_check_user_id, dry_run=False)
-    fetched = await get_chat_session_metadata(session.session_id, health_check_user_id)
-    if fetched is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Chat read path unhealthy: session not found after create",
-        )
-
-    return {
-        "status": "healthy",
-        "service": "chat",
-        "version": "0.1.0",
     }
 
 

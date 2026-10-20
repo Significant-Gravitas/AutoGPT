@@ -12,16 +12,18 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/utils";
 import {
   activeItemParamFor,
   AGENT_LIBRARY_SECTION_PADDING_X,
 } from "../../../helpers";
 import { ScheduleListItem } from "./components/ScheduleListItem";
-import { TaskListItem } from "./components/TaskListItem";
+import { TaskListRow } from "./components/TaskListRow";
 import { TemplateListItem } from "./components/TemplateListItem";
 import { TriggerAgentListItem } from "./components/TriggerAgentListItem";
 import { TriggerListItem } from "./components/TriggerListItem";
+import { uniqueRunsByID } from "./helpers";
 import { useSidebarRunsList } from "./useSidebarRunsList";
 
 interface Props {
@@ -53,6 +55,9 @@ export function SidebarRunsList({
   onTabChange,
   onCountsChange,
 }: Props) {
+  // Stable, so the memoised run rows and the auto-select effects in
+  // useSidebarRunsList do not re-run on every parent render.
+  const selectRun = useStableCallback(onSelectRun);
   const {
     runs,
     schedules,
@@ -72,7 +77,7 @@ export function SidebarRunsList({
     tabValue,
   } = useSidebarRunsList({
     agent,
-    onSelectRun,
+    onSelectRun: selectRun,
     onCountsChange,
   });
 
@@ -157,22 +162,20 @@ export function SidebarRunsList({
           )}
         >
           <InfiniteList
-            items={runs}
+            items={uniqueRunsByID(runs)}
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
             className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
+            getKey={(run) => run.id}
             renderItem={(run) => (
-              <div className="w-[15rem] lg:w-full">
-                <TaskListItem
-                  run={run}
-                  title={agent.name}
-                  agent={agent}
-                  selected={selectedRunId === run.id}
-                  onClick={() => onSelectRun && onSelectRun(run.id, "runs")}
-                />
-              </div>
+              <TaskListRow
+                run={run}
+                agent={agent}
+                selected={selectedRunId === run.id}
+                onSelectRun={selectRun}
+              />
             )}
           />
         </TabsLineContent>

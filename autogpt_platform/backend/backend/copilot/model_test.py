@@ -27,6 +27,7 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    _get_session_from_db,
     _save_session_to_db,
     append_and_save_message,
     create_chat_session,
@@ -335,6 +336,27 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chats_messages_sent_one_at_a_time_are_all_saved(
+    setup_test_user, test_user_id
+):
+    """The first message and every follow-up reach the database, in order."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    sent = [("user", "first"), ("assistant", "reply"), ("user", "second")]
+    for role, content in sent:
+        appended = await append_and_save_message(
+            session.session_id, ChatMessage(role=role, content=content)
+        )
+        assert appended is not None
+
+    saved = await _get_session_from_db(session.session_id)
+
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        (role, content, sequence) for sequence, (role, content) in enumerate(sent)
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1025,6 +1047,97 @@ async def test_append_and_save_message_appends_new_message(
     result = await append_and_save_message(session.session_id, new_msg)
     assert result is not None
     assert result.messages[-1].content == "second message"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("saved", [1, 2])
+async def test_a_follow_up_message_is_saved_without_rereading_the_session(
+    mocker: MockerFixture, saved: int
+) -> None:
+    """A chat with messages already has its row, so the follow-up's save goes
+    straight to the session update and the message insert, from its first
+    saved message on."""
+    session = _make_session_with_messages(
+        *(
+            ChatMessage(role=role, content=f"message {n}", sequence=n)
+            for n, role in zip(range(saved), ["user", "assistant"])
+        )
+    )
+    db = _stub_save_path(mocker, session, next_sequence=saved)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_not_awaited()
+    db.create_chat_session.assert_not_awaited()
+    db.update_chat_session.assert_awaited_once()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == saved
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("row_exists", [True, False])
+async def test_a_chats_first_message_checks_the_session_row_first(
+    mocker: MockerFixture, row_exists: bool
+) -> None:
+    """With no messages saved yet, the save checks for the session row and
+    creates it if it is missing, before inserting the message."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0, row_exists=row_exists)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    assert db.create_chat_session.await_count == (0 if row_exists else 1)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["first message"]
+
+
+def _stub_save_path(
+    mocker: MockerFixture,
+    session: ChatSession,
+    *,
+    next_sequence: int,
+    row_exists: bool = True,
+):
+    """The session lock, cache and database behind ``append_and_save_message``;
+    its ``_save_session_to_db`` runs for real against the returned database."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    db = mocker.MagicMock(
+        get_next_sequence=mocker.AsyncMock(return_value=next_sequence),
+        get_chat_session_metadata=mocker.AsyncMock(
+            return_value=mocker.MagicMock() if row_exists else None
+        ),
+        create_chat_session=mocker.AsyncMock(),
+        update_chat_session=mocker.AsyncMock(),
+        add_chat_messages_batch=mocker.AsyncMock(return_value=next_sequence),
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    return db
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2227,6 +2340,7 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         llm_auth_provider=None,
         llm_credential_id=None,
         langfuse_trace_id=None,
+        trace_id=None,
     )
     assert flushed.stamps_pending_save is False
 
@@ -2235,8 +2349,9 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
 async def test_save_session_to_db_persists_the_turn_trace(
     mocker: MockerFixture,
 ) -> None:
-    """The Langfuse trace stamped at end of turn reaches the DB both on rows
-    flushed mid-turn (back-fill) and on rows inserted by this save."""
+    """The Langfuse and PostHog traces stamped at end of turn reach the DB
+    both on rows flushed mid-turn (back-fill) and on rows inserted by this
+    save."""
     trace_id = "1edf31f11b1693cc6103f358c1481694"
     flushed = ChatMessage(
         role="assistant",
@@ -2245,6 +2360,7 @@ async def test_save_session_to_db_persists_the_turn_trace(
         model="claude-sonnet-4-6",
         routing_source="env",
         langfuse_trace_id=trace_id,
+        trace_id="turn-1",
         stamps_pending_save=True,
     )
     unsaved = ChatMessage(
@@ -2253,6 +2369,7 @@ async def test_save_session_to_db_persists_the_turn_trace(
         model="claude-sonnet-4-6",
         routing_source="env",
         langfuse_trace_id=trace_id,
+        trace_id="turn-1",
     )
     session = _make_session_with_messages(flushed, unsaved)
 
@@ -2269,8 +2386,10 @@ async def test_save_session_to_db_persists_the_turn_trace(
     backfill = mock_db.update_chat_message_stamps.await_args
     assert backfill.kwargs["sequence"] == 7
     assert backfill.kwargs["langfuse_trace_id"] == trace_id
+    assert backfill.kwargs["trace_id"] == "turn-1"
     (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
     assert inserted["langfuse_trace_id"] == trace_id
+    assert inserted["trace_id"] == "turn-1"
 
 
 @pytest.mark.asyncio(loop_scope="session")
