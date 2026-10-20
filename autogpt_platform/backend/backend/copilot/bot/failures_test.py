@@ -5,8 +5,10 @@ import re
 
 import pytest
 import sentry_sdk
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from sentry_sdk.integrations.logging import LoggingIntegration
 
+from backend.copilot.executor.processor import RATE_LIMIT_UNAVAILABLE_CODE
 from backend.copilot.provider_failure import ProviderFailureKind
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.util.exceptions import NotFoundError
@@ -50,6 +52,20 @@ from .bot_backend import BotStreamError
             BotStreamError("backend_stream_error", "x", code=PROVIDER_UNAVAILABLE_CODE),
             failures.MODEL_UNAVAILABLE,
         ),
+        # The executor refuses a turn whose allowance it can't read (#15396).
+        (
+            BotStreamError(
+                "backend_stream_error", "x", code=RATE_LIMIT_UNAVAILABLE_CODE
+            ),
+            failures.LIMITS_UNCHECKED,
+        ),
+        # Banned between the bot's own check and the executor's (#15701).
+        (
+            BotStreamError(
+                "backend_stream_error", "x", code=ACCOUNT_BANNED_DETAIL["code"]
+            ),
+            failures.ACCOUNT_BANNED,
+        ),
         (BotStreamError("stream_timeout", "response timed out"), failures.TOO_LONG),
         (BotStreamError("subscribe_failed", "no stream"), failures.START_FAILED),
         (
@@ -83,6 +99,14 @@ def test_reply_names_the_cause_and_reference() -> None:
     assert reply == (
         "AutoGPT couldn't finish that: the model provider is busy. "
         "Try again in a moment. (ref 3f9a2c1d)"
+    )
+
+
+def test_a_reply_with_nothing_to_try_ends_at_the_cause() -> None:
+    reply = failures.failure_reply(failures.ACCOUNT_BANNED, "3f9a2c1d")
+
+    assert reply == (
+        "AutoGPT couldn't finish that: this account has been banned. (ref 3f9a2c1d)"
     )
 
 

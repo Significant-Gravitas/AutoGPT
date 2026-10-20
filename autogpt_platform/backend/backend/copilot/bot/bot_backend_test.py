@@ -645,6 +645,50 @@ class TestPausedTurn:
         )
 
 
+    @pytest.mark.asyncio
+    async def test_a_turn_refused_at_start_says_when_it_can_go_on(
+        self, api: BotBackend
+    ):
+        # The executor refuses a turn the allowance can't cover (#15396).
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="daily",
+                    resets_at=resets_at,
+                    checkpoint_saved=False,
+                    started=False,
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_that_never_resets_points_at_the_plan(
+        self, api: BotBackend
+    ):
+        # No plan behind the account: nothing refills, so no reset to wait for.
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="weekly", checkpoint_saved=False, started=False
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of this week's budget. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+
 class TestExtractSetupRequirements:
     def test_extracts_from_json_string(self):
         payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
