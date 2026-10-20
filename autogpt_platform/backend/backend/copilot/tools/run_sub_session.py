@@ -86,11 +86,8 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh child session. Runs on the copilot "
-            "executor queue — survives tab-close AND worker restarts. Waits "
-            f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
-            "If not done, returns status=running + sub_session_id — poll via "
-            "tool:get_sub_session_result."
+            "Run a durable subtask. Foreground waits; "
+            "poll tool:get_sub_session_result if still running."
         )
 
     @property
@@ -100,20 +97,20 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the child session to execute.",
+                    "description": "Task to run.",
                     "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
-                    "description": "Optional context prepended to the prompt.",
+                    "description": "Context prepended to prompt.",
                     "default": "",
                     "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue or queue into a prior sub; empty = new. "
-                        "Cheaper when the follow-up builds on what it read."
+                        "Prior subtask to continue/queue; empty = new. "
+                        "Reuse for related work."
                     ),
                     "default": "",
                     "title": "Continues",
@@ -122,8 +119,8 @@ class RunSubSessionTool(BaseTool):
                 "wait_for_result": {
                     "type": "integer",
                     "description": (
-                        "Seconds to wait inline. 0 = return immediately. "
-                        f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
+                        "Inline wait in seconds; 0 returns immediately. "
+                        f"Max {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
                     "title": "Waits up to",
@@ -133,9 +130,9 @@ class RunSubSessionTool(BaseTool):
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "Opt in only when the user asks for background work. Starts a fresh "
-                        "subtask with a 10-minute deadline and wakes this chat for one "
-                        "budgeted summary without tools. No polling required."
+                        "Only if the user asks for background work: fresh subtask, "
+                        "10-minute deadline, then one budgeted summary here without tools. "
+                        "Returns immediately; no polling."
                     ),
                     "title": "Run in background",
                 },
