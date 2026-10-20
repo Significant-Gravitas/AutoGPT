@@ -37,8 +37,15 @@ export function ChangelogPopup() {
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"
       }`}
-      onMouseEnter={() => pauseAutoDismiss("hover")}
-      onMouseLeave={() => resumeAutoDismiss("hover")}
+      onPointerEnter={(event) => {
+        if (event.pointerType !== "touch") pauseAutoDismiss("hover");
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") resumeAutoDismiss("hover");
+      }}
+      onPointerCancel={(event) => {
+        if (event.pointerType !== "touch") resumeAutoDismiss("hover");
+      }}
       onFocus={() => pauseAutoDismiss("focus")}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -92,6 +99,7 @@ export function ChangelogPopup() {
           <Link
             href={latestEntry.url}
             isExternal
+            onClick={dismiss}
             className="inline-flex items-center gap-1.5 text-foreground"
           >
             View changelog

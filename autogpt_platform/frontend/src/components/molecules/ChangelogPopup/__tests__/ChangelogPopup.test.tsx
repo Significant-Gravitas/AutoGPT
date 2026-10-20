@@ -68,6 +68,66 @@ describe("ChangelogPopup", () => {
     expect(screen.queryByText("File folders")).toBeNull();
   });
 
+  it("dismisses when the release link is activated while hovered and focused", async () => {
+    vi.useFakeTimers();
+    render(<ChangelogPopup />);
+    await vi.waitFor(() => expect(screen.getByRole("dialog")).toBeDefined(), {
+      timeout: 3000,
+    });
+    const popup = screen.getByRole("dialog");
+    const link = screen.getByRole("link", { name: /view changelog/i });
+    fireEvent.pointerEnter(popup, { pointerType: "mouse" });
+    fireEvent.mouseEnter(popup);
+    fireEvent.focus(link);
+    link.addEventListener("click", (event) => event.preventDefault(), {
+      once: true,
+    });
+    fireEvent.click(link);
+
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST);
+  });
+
+  it("keeps the countdown after a touch tap synthesizes mouse events", async () => {
+    vi.useFakeTimers();
+    render(<ChangelogPopup />);
+    await vi.waitFor(() => expect(screen.getByRole("dialog")).toBeDefined(), {
+      timeout: 3000,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    const popup = screen.getByRole("dialog");
+    fireEvent.pointerEnter(popup, { pointerType: "touch" });
+    fireEvent.pointerDown(popup, { pointerType: "touch" });
+    fireEvent.pointerUp(popup, { pointerType: "touch" });
+    fireEvent.pointerLeave(popup, { pointerType: "touch" });
+    fireEvent.mouseEnter(popup);
+    fireEvent.click(popup);
+
+    await act(() => vi.advanceTimersByTimeAsync(4500));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("resumes the remaining countdown when the hovering pointer is cancelled", async () => {
+    vi.useFakeTimers();
+    render(<ChangelogPopup />);
+    await vi.waitFor(() => expect(screen.getByRole("dialog")).toBeDefined(), {
+      timeout: 3000,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(6000));
+    const popup = screen.getByRole("dialog");
+    fireEvent.pointerEnter(popup, { pointerType: "mouse" });
+    fireEvent.mouseEnter(popup);
+    await act(() => vi.advanceTimersByTimeAsync(9000));
+    expect(screen.getByRole("dialog")).toBeDefined();
+
+    fireEvent.pointerCancel(popup, { pointerType: "mouse" });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(screen.getByRole("dialog")).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(1500));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it.each(["hover", "focus"])(
     "stays paused until both hover and focus end (%s ends first)",
     async (firstToEnd) => {
@@ -78,11 +138,12 @@ describe("ChangelogPopup", () => {
       });
       const popup = screen.getByRole("dialog");
       const link = screen.getByRole("link", { name: /view changelog/i });
-      fireEvent.mouseEnter(popup);
+      fireEvent.pointerEnter(popup, { pointerType: "mouse" });
       fireEvent.focus(link);
 
-      if (firstToEnd === "hover") fireEvent.mouseLeave(popup);
-      else fireEvent.blur(link, { relatedTarget: document.body });
+      if (firstToEnd === "hover") {
+        fireEvent.pointerLeave(popup, { pointerType: "mouse" });
+      } else fireEvent.blur(link, { relatedTarget: document.body });
 
       await act(() => vi.advanceTimersByTimeAsync(9000));
       expect(screen.getByRole("dialog")).toBeDefined();
@@ -90,7 +151,7 @@ describe("ChangelogPopup", () => {
       if (firstToEnd === "hover") {
         fireEvent.blur(link, { relatedTarget: document.body });
       } else {
-        fireEvent.mouseLeave(popup);
+        fireEvent.pointerLeave(popup, { pointerType: "mouse" });
       }
 
       await act(() => vi.advanceTimersByTimeAsync(8500));
