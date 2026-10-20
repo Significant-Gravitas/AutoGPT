@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_current_permissions,
     get_current_sandbox,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
@@ -50,6 +51,7 @@ from backend.copilot.integration_creds import (
     placeholder_grants,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import allowed_providers
 from backend.copilot.sdk.env import config as chat_config
 from backend.util.e2b_network import proxy_address, reattach_command
 from backend.util.sandbox_login import (
@@ -362,8 +364,16 @@ class BashExecTool(BaseTool):
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
+            # The run's ceiling on connected accounts.  Without the proxy,
+            # leaving a provider's token out is what keeps it from the box.
+            # Behind it, a provider outside the ceiling gets no grant (and so
+            # empty variables); the ceiling recorded when the box's egress was
+            # pinned, enforced by the swap service, is what holds.
+            providers = allowed_providers(get_current_permissions())
             if proxy_address() is not None:
-                grants = await placeholder_grants(user_id, required_scopes, selected)
+                grants = await placeholder_grants(
+                    user_id, required_scopes, selected, providers
+                )
                 try:
                     # Before the command runs: its placeholders resolve only
                     # for credentials granted to this box.
@@ -379,18 +389,20 @@ class BashExecTool(BaseTool):
                 envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
-                    user_id, required_scopes, selected
+                    user_id, required_scopes, selected, providers
                 )
                 secret_values = [v for v in integration_env.values() if v]
                 envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
-            # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(
-                user_id, selected.get("github")
-            )
-            if git_identity:
-                envs.update(git_identity)
+            # so commits made in the sandbox are attributed correctly; not for
+            # a run whose ceiling leaves GitHub out, which may not use it.
+            if providers is None or "github" in providers:
+                git_identity = await get_github_user_git_identity(
+                    user_id, selected.get("github")
+                )
+                if git_identity:
+                    envs.update(git_identity)
 
         # The box's running-time limit was armed when this turn connected;
         # E2B pauses the box at it, breaking the command's stream mid-run.

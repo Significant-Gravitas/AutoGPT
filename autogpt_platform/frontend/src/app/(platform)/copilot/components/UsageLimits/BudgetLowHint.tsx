@@ -28,7 +28,7 @@ export function BudgetLowHint({ usage, className }: Props) {
   if (percent === null) return null;
   return (
     <div
-      aria-label="AutoPilot budget"
+      aria-label="Budget running low"
       className={cn(
         "mx-auto mt-2 flex w-full items-center gap-2 px-3 text-left",
         className,

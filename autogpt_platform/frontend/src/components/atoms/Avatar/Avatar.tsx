@@ -34,7 +34,7 @@ export function Avatar({
   className,
   children,
   ...props
-}: AvatarProps): JSX.Element {
+}: AvatarProps): React.JSX.Element {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasImage, setHasImage] = useState<boolean>(false);
 
@@ -59,8 +59,12 @@ export function Avatar({
 }
 
 export interface AvatarImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+  extends Omit<
+    React.ImgHTMLAttributes<HTMLImageElement>,
+    "src" | "width" | "height"
+  > {
   as?: "NextImage" | "img";
+  src?: string;
   width?: number;
   height?: number;
   fill?: boolean;
@@ -94,7 +98,7 @@ export function AvatarImage({
   priority,
   unoptimized,
   ...rest
-}: AvatarImageProps): JSX.Element | null {
+}: AvatarImageProps): React.JSX.Element | null {
   const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
   const normalizedSrc = typeof src === "string" ? src.trim() : src;
@@ -187,7 +191,7 @@ export function AvatarFallback({
   square = false,
   accessibleLabel,
   ...props
-}: AvatarFallbackProps): JSX.Element | null {
+}: AvatarFallbackProps): React.JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
