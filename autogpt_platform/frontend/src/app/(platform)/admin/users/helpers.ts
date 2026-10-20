@@ -170,3 +170,74 @@ export function getPlanName(tier: string) {
 export function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
+
+export const TAB_QUERY_PARAM = "tab";
+export const BLOCKS_TAB = "blocks";
+
+export function pluralize(count: number, singular: string, plural?: string) {
+  const noun = count === 1 ? singular : (plural ?? `${singular}s`);
+  return `${count.toLocaleString("en-GB")} ${noun}`;
+}
+
+const BROWSERS: Array<[RegExp, string]> = [
+  [/Edg\/(\d+)/, "Edge"],
+  [/OPR\/(\d+)/, "Opera"],
+  [/Firefox\/(\d+)/, "Firefox"],
+  [/Chrome\/(\d+)/, "Chrome"],
+  [/Version\/[\d.]+.*Safari/, "Safari"],
+];
+const SYSTEMS: Array<[RegExp, string]> = [
+  [/iPhone/, "iPhone"],
+  [/iPad/, "iPad"],
+  [/Android/, "Android"],
+  [/Windows/, "Windows"],
+  [/Mac OS X|Macintosh/, "macOS"],
+  [/Linux/, "Linux"],
+];
+
+// "Chrome 141 · macOS"; anything unrecognised as its first 40 characters.
+export function summariseUserAgent(userAgent: string | null | undefined) {
+  if (!userAgent) return "Unknown device";
+  const browser = BROWSERS.find(([pattern]) => pattern.test(userAgent));
+  const system = SYSTEMS.find(([pattern]) => pattern.test(userAgent));
+  if (!browser && !system) return userAgent.slice(0, 40);
+  const version = browser?.[0].exec(userAgent)?.[1];
+  const browserLabel = browser
+    ? [browser[1], version].filter(Boolean).join(" ")
+    : null;
+  return [browserLabel, system?.[1]].filter(Boolean).join(" · ");
+}
+
+// The backend stores an IPv6 client by its /64 written out in full
+// ("2001:0db8:0000:…"); this is the form a person reads ("2001:db8::/64").
+export function formatBlockedAddress(value: string) {
+  if (!value.includes(":")) return value;
+  const groups = value.split(":").map((group) => group.replace(/^0+(?=.)/, ""));
+  let bestStart = -1;
+  let bestLength = 1;
+  for (let i = 0; i < groups.length; ) {
+    if (groups[i] !== "0") {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < groups.length && groups[end] === "0") end++;
+    if (end - i > bestLength) {
+      bestStart = i;
+      bestLength = end - i;
+    }
+    i = end;
+  }
+  const compressed =
+    bestStart === -1
+      ? groups.join(":")
+      : `${groups.slice(0, bestStart).join(":")}::${groups
+          .slice(bestStart + bestLength)
+          .join(":")}`;
+  return `${compressed}/64`;
+}
+
+export function formatEnds(expiresAt: Date | null, now = new Date()) {
+  if (!expiresAt) return "Permanent";
+  return `${formatDateTime(expiresAt)} (${formatTimeUntil(expiresAt, now)})`;
+}
