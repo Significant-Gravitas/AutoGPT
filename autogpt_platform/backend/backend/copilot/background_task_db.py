@@ -12,7 +12,11 @@ from backend.copilot.background_task import (
     BackgroundOutcome,
     BackgroundTask,
 )
-from backend.copilot.model import ChatSessionMetadata, _parse_json_field
+from backend.copilot.model import (
+    ChatSessionMetadata,
+    _parse_json_field,
+    invalidate_session_cache,
+)
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.copilot.tree import TurnEnvelope
 from backend.data import db
@@ -141,6 +145,8 @@ async def finish_background_turn(
                             {"background_task_notice": followup.id},
                             role="assistant",
                         )
+                if changed and error:
+                    await invalidate_session_cache(session_id)
         return
     task = tasks[0]
     outcome: BackgroundOutcome = (

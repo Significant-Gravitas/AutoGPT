@@ -546,6 +546,7 @@ async def test_stopping_a_running_followup_reports_cancellation_once(
     cancel = threading.Event()
 
     async def waiting_model(**_kwargs: Any):
+        assert await model.get_chat_session(task.parent_session_id, world.user_id)
         started.set()
         await asyncio.sleep(30)
         yield StreamTextDelta(id="late", delta="Should have stopped")
@@ -589,6 +590,9 @@ async def test_stopping_a_running_followup_reports_cancellation_once(
         "Otto's background follow-up was cancelled."
     )
     assert task.child_session_id in (notices[0].content or "")
+
+    session = await model.get_chat_session(task.parent_session_id, world.user_id)
+    assert session and any(m.content == notices[0].content for m in session.messages)
 
 
 async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
@@ -911,9 +915,9 @@ async def test_expired_followup_is_recovered_once(
     clock = MagicMock(wraps=datetime)
     clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
     monkeypatch.setattr(background_delivery, "datetime", clock)
-    await background_delivery.reconcile_background_subtasks()
-    await background_delivery.reconcile_background_subtasks()
-    await background_delivery.reconcile_background_subtasks()
+    for _ in range(3):
+        assert await model.get_chat_session(task.parent_session_id, world.user_id)
+        await background_delivery.reconcile_background_subtasks()
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "finished"
     assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
@@ -925,6 +929,9 @@ async def test_expired_followup_is_recovered_once(
     assert "within its limits" in (notices[0].content or "")
     assert task.child_session_id in (notices[0].content or "")
     assert len(world.published.await_args_list) == (2 if running else 1)
+
+    session = await model.get_chat_session(task.parent_session_id, world.user_id)
+    assert session and any(m.content == notices[0].content for m in session.messages)
 
 
 async def test_recovery_does_not_cancel_a_newer_parent_turn(world: World):
