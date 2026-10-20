@@ -703,6 +703,34 @@ async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
+async def test_cancelled_queued_child_retains_its_node_for_the_followup(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
+    ledger = await get_tree_ledger()
+    await ledger.open(
+        world.envelope.tree_id,
+        ceiling_microdollars=1_000_000,
+        max_nodes=2,
+        initial_nodes=1,
+    )
+    task = await world.launch()
+    assert not world.published.await_count
+    response = await cancel_session_task(task.child_session_id, world.user_id)
+    assert response.cancelled
+    with pytest.raises(TreeRefusal, match="lifetime budget"):
+        await world.launch("replacement-before-summary")
+
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    wake = world.entry(task.parent_session_id)
+    assert '"outcome": "cancelled"' in wake.message
+    assert await claim_background_execution(wake)
+    await finish_background_execution(wake, None)
+    with pytest.raises(TreeRefusal, match="lifetime budget"):
+        await world.launch("replacement-after-summary")
+
+
 @pytest.mark.parametrize("dispatch_source", ["none", "scheduled", "chat", "direct"])
 async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
     world: World,
