@@ -52,10 +52,12 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -112,6 +114,7 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
@@ -2010,45 +2013,61 @@ def _setup_langfuse_otel() -> None:
 
     To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
     `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
+
+    Every run is passed through the Google data redaction before it is
+    exported; if that cannot be installed, the SDK is left untraced.
     """
     if not _is_langfuse_configured():
         return
 
+    # Ours to take back if the setup fails, so LangSmith does not trace
+    # without the redaction.
+    set_here: list[str] = []
     try:
         settings = Settings()
         pk = settings.secrets.langfuse_public_key
         sk = settings.secrets.langfuse_secret_key
         host = settings.secrets.langfuse_host
+        tracing_env = settings.secrets.langfuse_tracing_environment
 
         # OTEL exporter config — these are only set if not already present,
-        # so explicit env-var overrides always win.
+        # so explicit env-var overrides always win. The LangSmith client
+        # reads its OTEL mode as the redaction builds it, so these go first.
         creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
-        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
-        os.environ.setdefault("LANGSMITH_TRACING", "true")
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
-        )
-        os.environ.setdefault(
-            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
-            "autogpt-copilot-traces",
-        )
-
-        # Set the Langfuse environment via OTEL resource attributes so the
-        # Langfuse server maps it to the first-class environment field.
-        tracing_env = settings.secrets.langfuse_tracing_environment
-        os.environ.setdefault(
-            "OTEL_RESOURCE_ATTRIBUTES",
-            f"langfuse.environment={tracing_env}",
+        set_here = _set_env_defaults(
+            {
+                "LANGSMITH_OTEL_ENABLED": "true",
+                "LANGSMITH_OTEL_ONLY": "true",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": f"{host}/api/public/otel",
+                "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Basic {creds}",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER": (
+                    "autogpt-copilot-traces"
+                ),
+                # The Langfuse server maps this to its first-class
+                # environment field.
+                "OTEL_RESOURCE_ATTRIBUTES": f"langfuse.environment={tracing_env}",
+            }
         )
 
+        install_trace_redaction()
+        # Switched on only once every run it traces is redacted.
+        set_here += _set_env_defaults({"LANGSMITH_TRACING": "true"})
         configure_claude_agent_sdk(tags=["sdk"])
         logger.info(
             "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
         )
     except Exception:
+        for key in set_here:
+            os.environ.pop(key, None)
         logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
+
+
+def _set_env_defaults(defaults: dict[str, str]) -> list[str]:
+    """Set each variable not already set; return the ones this set."""
+    added = [key for key in defaults if key not in os.environ]
+    for key in added:
+        os.environ[key] = defaults[key]
+    return added
 
 
 _setup_langfuse_otel()
@@ -3100,7 +3119,9 @@ def _expect_pre_query_compaction(
             return _NO_COMPACTION
         if target_tokens is not None and target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
             return _NO_COMPACTION
-        source = prior_messages if prior_messages is not None else prior
+        source = visible_to_model(
+            prior_messages if prior_messages is not None else prior
+        )
         return _will_compact(source, model)
     if transcript_msg_count <= 0:
         # ``use_resume`` with no covered rows compresses nothing.
@@ -3114,14 +3135,14 @@ def _expect_pre_query_compaction(
             for m in prior
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
-        return _will_compact(window_gap, model)
+        return _will_compact(visible_to_model(window_gap), model)
     if transcript_msg_count < session_msg_ceiling - 1:
         if transcript_msg_count > len(prior):
             return _NO_COMPACTION
         if prior[transcript_msg_count - 1].role != "assistant":
             # Misaligned watermark — _build_query_message skips the gap.
             return _NO_COMPACTION
-        return _will_compact(prior[transcript_msg_count:], model)
+        return _will_compact(visible_to_model(prior[transcript_msg_count:]), model)
     # Scenario A: --resume covers the full context; nothing is compressed.
     return _NO_COMPACTION
 
@@ -3469,7 +3490,9 @@ async def _build_query_message(
                         window_start_seq,
                         e,
                     )
-            gap = hole + window_gap
+            # Rows posted for the user only drop out here, after the
+            # sequence slicing above has counted them.
+            gap = visible_to_model(hole + window_gap)
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
@@ -3516,7 +3539,7 @@ async def _build_query_message(
                     msg_count,
                 )
                 return current_message, compaction_stats
-            gap = prior[transcript_msg_count:]
+            gap = visible_to_model(prior[transcript_msg_count:])
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
@@ -3575,7 +3598,9 @@ async def _build_query_message(
             )
             return current_message, compaction_stats
 
-        source = prior_messages if prior_messages is not None else prior
+        source = visible_to_model(
+            prior_messages if prior_messages is not None else prior
+        )
         logger.warning(
             "[SDK] [%s] No --resume for %d-message session — compressing context "
             "(source=%s, target_tokens=%s)",
@@ -4480,7 +4505,10 @@ async def _seed_transcript(
         return "", transcript_covers_prefix, transcript_msg_count
 
     _prior = session.messages[: msg_ceiling - 1]
-    _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
+    # The returned watermark still counts the rows hidden from the model.
+    _comp, _, _ = await _compress_messages(
+        visible_to_model(_prior), _SEED_TARGET_TOKENS
+    )
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
 
@@ -5304,6 +5332,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             on_compact=compaction.on_compact,
             tool_display_bridge=tool_display_bridge,
             governor=governor,
+            builtin_tool_spans=config.posthog_builtin_tool_spans,
         )
 
         if permissions is not None:
@@ -6520,6 +6549,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 start_index=pre_turn_message_count,
                 trace_id=langfuse_trace_id,
             )
+            stamp_turn_trace_id(session.messages, pre_turn_message_count)
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
             stamp_segment(
