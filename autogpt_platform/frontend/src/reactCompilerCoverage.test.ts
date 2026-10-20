@@ -55,9 +55,9 @@ function isCompiledSource(file: string) {
   const posix = `/${file}`;
   return (
     reactCompilerSources.some((source) => posix.includes(source)) &&
-    /\.(ts|tsx)$/.test(file) &&
+    /\.(js|jsx|ts|tsx)$/.test(file) &&
     !file.endsWith(".d.ts") &&
-    !/\.(test|spec|stories)\.tsx?$/.test(file) &&
+    !/\.(test|spec|stories)\.(js|jsx|ts|tsx)$/.test(file) &&
     !file.split("/").includes("__tests__")
   );
 }

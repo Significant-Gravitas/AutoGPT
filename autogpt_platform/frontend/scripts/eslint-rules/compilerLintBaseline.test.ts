@@ -38,7 +38,7 @@ const eslint = new ESLint({ cwd: FRONTEND_ROOT });
 
 function isTestOrStory(file: string) {
   return (
-    /\.(test|spec|stories)\.tsx?$/.test(file) ||
+    /\.(test|spec|stories)\.(js|jsx|ts|tsx)$/.test(file) ||
     file.split("/").includes("__tests__")
   );
 }
@@ -55,7 +55,7 @@ function listSourceFiles() {
     .map((file) => `src/${String(file).split(path.sep).join("/")}`)
     .filter(
       (file) =>
-        /\.(ts|tsx)$/.test(file) &&
+        /\.(js|jsx|ts|tsx)$/.test(file) &&
         !file.endsWith(".d.ts") &&
         !file.startsWith("src/app/api/__generated__/"),
     )
