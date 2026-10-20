@@ -12,6 +12,7 @@ from backend.data.model import (
     GraphInput,
     is_credentials_field_name,
 )
+from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
@@ -529,6 +530,34 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     )
 
 
+class PresetWebhook(pydantic.BaseModel):
+    """A trigger preset's webhook as API clients and the copilot executor see it.
+
+    Carries the ingress URL and the webhook's metadata, never its signing
+    secret or the provider's webhook id (GHSA-4m2w-qfr5-9f3v). Redacting those
+    at serialization time instead left the preset unable to validate back from
+    its own JSON, which is how it travels over the database-manager RPC.
+    """
+
+    id: str
+    user_id: str
+    provider: ProviderName
+    credentials_id: str
+    webhook_type: str
+    resource: str
+    events: list[str]
+    config: dict[str, Any] = pydantic.Field(default_factory=dict)
+    organization_id: str | None = None
+    team_id: str | None = None
+    url: str
+
+    @classmethod
+    def from_webhook(cls, webhook: "Webhook") -> "PresetWebhook":
+        return cls.model_validate(
+            webhook.model_dump(exclude={"secret", "provider_webhook_id"})
+        )
+
+
 class LibraryAgentPreset(LibraryAgentPresetCreatable):
     """Represents a preset configuration for a library agent."""
 
@@ -545,23 +574,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
     webhook_id: Optional[str] = None
-    webhook: "Webhook | None"
+    webhook: PresetWebhook | None
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
     expert_id: Optional[str] = None
-
-    @pydantic.field_serializer("webhook")
-    def _redact_webhook_signing_material(
-        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
-    ):
-        # Never expose a webhook's signing secret / provider webhook id to API
-        # clients; callers only need the ingress URL and non-sensitive metadata.
-        if webhook is None:
-            return None
-        return webhook.model_dump(
-            mode=info.mode, exclude={"secret", "provider_webhook_id"}
-        )
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
@@ -600,7 +617,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             organization_id=preset.organizationId,
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                PresetWebhook.from_webhook(Webhook.from_db(preset.Webhook))
+                if preset.Webhook
+                else None
+            ),
             expert_id=preset.expertId,
         )
 

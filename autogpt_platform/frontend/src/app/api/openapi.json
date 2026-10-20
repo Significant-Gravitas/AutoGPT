@@ -28364,7 +28364,7 @@
           },
           "webhook": {
             "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
+              { "$ref": "#/components/schemas/PresetWebhook" },
               { "type": "null" }
             ]
           },
@@ -31265,6 +31265,52 @@
         "required": ["message", "preset_id", "name", "is_active"],
         "title": "PresetUpdatedResponse",
         "description": "Response confirming a preset was updated."
+      },
+      "PresetWebhook": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name for integrations. Can be any string value, including custom provider names."
+          },
+          "credentials_id": { "type": "string", "title": "Credentials Id" },
+          "webhook_type": { "type": "string", "title": "Webhook Type" },
+          "resource": { "type": "string", "title": "Resource" },
+          "events": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Events"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "provider",
+          "credentials_id",
+          "webhook_type",
+          "resource",
+          "events",
+          "url"
+        ],
+        "title": "PresetWebhook",
+        "description": "A trigger preset's webhook as API clients and the copilot executor see it.\n\nCarries the ingress URL and the webhook's metadata, never its signing\nsecret or the provider's webhook id (GHSA-4m2w-qfr5-9f3v). Redacting those\nat serialization time instead left the preset unable to validate back from\nits own JSON, which is how it travels over the database-manager RPC."
       },
       "Profile": {
         "properties": {
@@ -37905,57 +37951,6 @@
         "required": ["label", "text"],
         "title": "VoiceSample",
         "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
-      },
-      "Webhook": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "user_id": { "type": "string", "title": "User Id" },
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
-          "credentials_id": { "type": "string", "title": "Credentials Id" },
-          "webhook_type": { "type": "string", "title": "Webhook Type" },
-          "resource": { "type": "string", "title": "Resource" },
-          "events": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Events"
-          },
-          "config": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config"
-          },
-          "secret": { "type": "string", "title": "Secret" },
-          "organization_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Organization Id"
-          },
-          "team_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Team Id"
-          },
-          "provider_webhook_id": {
-            "type": "string",
-            "title": "Provider Webhook Id"
-          },
-          "url": { "type": "string", "title": "Url", "readOnly": true }
-        },
-        "type": "object",
-        "required": [
-          "user_id",
-          "provider",
-          "credentials_id",
-          "webhook_type",
-          "resource",
-          "events",
-          "secret",
-          "provider_webhook_id",
-          "url"
-        ],
-        "title": "Webhook"
       },
       "WorkspaceFile": {
         "properties": {

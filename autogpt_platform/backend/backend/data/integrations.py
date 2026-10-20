@@ -10,6 +10,7 @@ from prisma.types import (
 )
 from pydantic import Field, computed_field
 
+from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.event_bus import AsyncRedisEventBus
 from backend.data.includes import (
     INTEGRATION_WEBHOOK_INCLUDE,
@@ -65,15 +66,6 @@ class Webhook(BaseDbModel):
             organization_id=webhook.organizationId,
             team_id=webhook.teamId,
         )
-
-
-# LibraryAgentPreset import must be after Webhook definition to avoid
-# broken circular import:
-# integrations.py → library/model.py → integrations.py (for Webhook)
-from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
-
-# Resolve forward refs
-LibraryAgentPreset.model_rebuild()
 
 
 class WebhookWithRelations(Webhook):

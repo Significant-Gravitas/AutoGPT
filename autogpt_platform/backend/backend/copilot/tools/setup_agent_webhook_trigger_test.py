@@ -1,10 +1,14 @@
 """Tests for SetupAgentWebhookTriggerTool."""
 
+import datetime
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.library.model import LibraryAgentPreset, PresetWebhook
+from backend.api.features.library.triggers import setup_triggered_preset
 from backend.blocks._base import BlockType
 from backend.copilot.tools.models import ErrorResponse, SetupRequirementsResponse
 from backend.copilot.tools.setup_agent_webhook_trigger import (
@@ -24,6 +28,7 @@ from backend.util.exceptions import (
     NotFoundError,
     WebhookRegistrationError,
 )
+from backend.util.service import _build_return_adapter
 
 from ._test_data import make_session
 
@@ -91,14 +96,39 @@ def _make_graph(
     return graph
 
 
-def _make_preset(*, provider: str, url: str):
-    preset = MagicMock()
-    preset.id = "preset-1"
-    preset.name = "My Trigger"
-    preset.is_active = True
-    preset.webhook.url = url
-    preset.webhook.provider = provider
-    return preset
+def _make_preset(*, provider: str, url: str) -> LibraryAgentPreset:
+    """The preset as the tool receives it: built by the library, sent by the
+    database manager as JSON and rebuilt by the RPC client's validator."""
+    now = datetime.datetime.now(datetime.UTC)
+    preset = LibraryAgentPreset(
+        id="preset-1",
+        user_id=_USER,
+        created_at=now,
+        updated_at=now,
+        graph_id="graph-1",
+        graph_version=1,
+        name="My Trigger",
+        description="",
+        is_active=True,
+        inputs={},
+        credentials={},
+        webhook_id="wh-1",
+        webhook=PresetWebhook(
+            id="wh-1",
+            user_id=_USER,
+            provider=ProviderName(provider),
+            credentials_id="cred-gh-1",
+            webhook_type="repo",
+            resource="owner/repo",
+            events=[],
+            url=url,
+        ),
+    )
+    adapter = _build_return_adapter(
+        setup_triggered_preset, LibraryAgentPreset, "setup_triggered_preset"
+    )
+    assert adapter is not None
+    return adapter.validate_python(json.loads(preset.model_dump_json()))
 
 
 def _patches(graph, *, matched=None, available=None, preset=None, graph_db_mock=None):
