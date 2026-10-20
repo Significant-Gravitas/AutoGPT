@@ -50,26 +50,32 @@ def test_image_pixels_stay_out_of_traces_without_changing_model_input(
     assert image.data_base64 in before
 
 
-def test_nested_tool_result_pixels_are_redacted():
+@pytest.mark.parametrize("mixed", [False, True])
+def test_nested_tool_result_pixels_are_redacted(mixed):
+    image_block = {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "private-image-bytes",
+        },
+    }
+    if mixed:
+        image_block["data"] = "other-private-image-bytes"
     payload = {
         "type": "tool_result",
         "tool_use_id": "call-image",
         "content": [
             {"type": "text", "text": "Viewed page"},
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": "private-image-bytes",
-                },
-            },
+            image_block,
         ],
     }
+    before = json.dumps(payload)
     traced = redact_google_data(payload)
     assert traced["content"][0]["text"] == "Viewed page"
-    assert traced["content"][1]["source"]["data"] != "private-image-bytes"
+    assert "private-image-bytes" not in json.dumps(traced)
     assert traced["tool_use_id"] == "call-image"
+    assert json.dumps(payload) == before
 
 
 def test_non_image_data_stays_readable():

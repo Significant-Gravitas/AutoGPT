@@ -252,7 +252,7 @@ def _without_image_data(node: dict[str, Any]) -> dict[str, Any]:
     """Wire image blocks lose provenance on replay, so never trace their pixels."""
     if node.get("type") == "image":
         if "data" in node:
-            return {**node, "data": _IMAGE_REDACTED}
+            node = {**node, "data": _IMAGE_REDACTED}
         source = node.get("source")
         if isinstance(source, dict) and source.get("type") == "base64":
             return {**node, "source": {**source, "data": _IMAGE_REDACTED}}
