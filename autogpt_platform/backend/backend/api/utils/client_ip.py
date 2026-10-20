@@ -4,12 +4,13 @@ from autogpt_libs.auth.service import frontend_service_claims
 from fastapi import Depends, Header, Request
 
 CLIENT_IP_SCOPE = "client-ip"
+CLIENT_IP_TOKEN_HEADER = "X-Client-IP-Token"
 
 
 async def client_ip(
     request: Request,
     token: Annotated[
-        str | None, Header(alias="X-Client-IP-Token", include_in_schema=False)
+        str | None, Header(alias=CLIENT_IP_TOKEN_HEADER, include_in_schema=False)
     ] = None,
 ) -> str:
     """The calling visitor's IP, for per-visitor limits on public routes.
