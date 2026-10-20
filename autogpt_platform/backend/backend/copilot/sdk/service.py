@@ -72,6 +72,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
 from backend.copilot.sdk import perf_loopwatch  # do-not-merge probe (#15739)
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
@@ -5476,6 +5477,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
         _probe_legs: dict[str, int] = {}  # do-not-merge probe (#15739)
+        _wc_marks: dict = {}
+        _wc_since = time.time()
+        _perf_legs.LEG_MARKS.set(_wc_marks)
         yield StreamStatus(message=f"perf:gather_start:{_probe_ms()}")
         e2b_task = asyncio.create_task(_probe_timed("e2b", _setup_e2b(), _probe_legs))
         try:
@@ -5519,6 +5523,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         yield StreamStatus(
             message="perf-legs:"
             + ",".join(f"{k}={v}" for k, v in sorted(_probe_legs.items()))
+        )
+        _perf_legs.LEG_MARKS.set(None)
+        yield StreamStatus(
+            message="perf-wc:"
+            + _perf_legs.render(_wc_marks, _wc_since)[len("perf-legs:") :]
         )
 
         use_e2b = e2b_sandbox is not None

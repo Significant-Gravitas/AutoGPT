@@ -105,16 +105,24 @@ async def _fetch(
     # lists are read again right before rendering (``recall_recheck.py``):
     # the episodes wait here for the slower search, a forget can answer
     # meanwhile, and what it hid is then not shown.
+    from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
+
+    _perf_legs.mark("wc_start")
     edges, episodes = await asyncio.gather(
-        search_facts(
-            scope,
-            message,
-            limit=graphiti_config.context_max_facts,
-            recipe=recipe,
+        _perf_legs.timed(
+            "wc_search",
+            search_facts(
+                scope,
+                message,
+                limit=graphiti_config.context_max_facts,
+                recipe=recipe,
+            ),
         ),
-        recent_episodes(scope, _RECENT_EPISODES),
+        _perf_legs.timed("wc_episodes", recent_episodes(scope, _RECENT_EPISODES)),
     )
-    edges, episodes = await recheck(scope, edges, episodes)
+    edges, episodes = await _perf_legs.timed(
+        "wc_recheck", recheck(scope, edges, episodes)
+    )
 
     # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge that's
     # currently ``status='tentative'`` gets promoted to ``active`` inline, and

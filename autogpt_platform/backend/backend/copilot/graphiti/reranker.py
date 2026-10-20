@@ -73,9 +73,18 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             for passage in passages
         ]
         try:
+            from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe
+
+            async def _timed_score(**kwargs: Any) -> Any:
+                started = _perf_legs.span_start("rr")
+                try:
+                    return await self.client.chat.completions.create(**kwargs)
+                finally:
+                    _perf_legs.call_span("rr", started)
+
             responses = await semaphore_gather(
                 *[
-                    self.client.chat.completions.create(
+                    _timed_score(
                         model=model,
                         messages=openai_messages,
                         temperature=0,
