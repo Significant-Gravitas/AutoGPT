@@ -2,6 +2,7 @@
 
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
+import time as _perf_time
 import asyncio
 import contextlib
 import contextvars
@@ -4225,6 +4226,7 @@ async def _run_stream_attempt(
     """
     # First, so whatever fails from here on is this launch's to absorb.
     await state.generations.start_launch()
+    yield StreamStatus(message=f"perf:launch:{int(_perf_time.time() * 1000) % 100000000}")
     acc = _StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],
@@ -4253,9 +4255,11 @@ async def _run_stream_attempt(
         baseline = await asyncio.to_thread(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
+        yield StreamStatus(message=f"perf:baseline:{int(_perf_time.time() * 1000) % 100000000}")
         state.usage.start_cli_session(baseline)
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
+    yield StreamStatus(message=f"perf:cli_connect:{int(_perf_time.time() * 1000) % 100000000}")
     try:
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
@@ -4780,8 +4784,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user LaunchDarkly targeting.
     """
+    yield StreamStatus(message=f"perf:gen_start:{int(_perf_time.time() * 1000) % 100000000}")
     if session is None:
         session = await get_chat_session(session_id, user_id)
+        yield StreamStatus(message=f"perf:load_session:{int(_perf_time.time() * 1000) % 100000000}")
 
     if not session:
         raise NotFoundError(
@@ -4797,6 +4803,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
+    yield StreamStatus(message=f"perf:expert_suffix:{int(_perf_time.time() * 1000) % 100000000}")
     expert_identity_validated = True
 
     # Stamping state for THIS turn: messages beyond this index were created
@@ -4849,6 +4856,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # message, so the append is a no-op dedup there.
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
+        yield StreamStatus(message=f"perf:clear_pending_q:{int(_perf_time.time() * 1000) % 100000000}")
 
     continued_entry: StreamPendingDrained | None = None
     if continued_pending:
@@ -4861,6 +4869,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             log_prefix=f"[SDK][{session_id[:12]}]",
         ):
             return  # rolled back and re-queued for the next turn
+        yield StreamStatus(message=f"perf:persist_pending:{int(_perf_time.time() * 1000) % 100000000}")
         continued_entry = drained_rows_entry(continued_pending)
         _user_message_appended = False
     else:
@@ -4896,6 +4905,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # turn) would trip the "no sequence" RuntimeError and crash the turn.
     if _user_message_appended and is_user_message:
         session = await persist_session_safe(session, log_prefix)
+        yield StreamStatus(message=f"perf:persist_session:{int(_perf_time.time() * 1000) % 100000000}")
         if session.messages and session.messages[-1].sequence is None:
             # Eager persist swallowed a transient DB failure and left the
             # in-memory append without a sequence. Roll back so the session
@@ -4948,6 +4958,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     )
 
     lock_owner = await lock.try_acquire()
+    yield StreamStatus(message=f"perf:lock:{int(_perf_time.time() * 1000) % 100000000}")
     if lock_owner != stream_id:
         # Another stream is active
         logger.warning(
@@ -5119,11 +5130,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                 ),
             )
+            yield StreamStatus(message=f"perf:gather:{int(_perf_time.time() * 1000) % 100000000}")
         except BaseException:
             with contextlib.suppress(BaseException):
                 e2b_sandbox = await e2b_task
             raise
         e2b_sandbox = await e2b_task
+        yield StreamStatus(message=f"perf:e2b:{int(_perf_time.time() * 1000) % 100000000}")
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -5132,6 +5145,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         auto_mode_supplement = approval_mode_supplement(
             await active_mode(user_id, session)
         )
+        yield StreamStatus(message=f"perf:active_mode:{int(_perf_time.time() * 1000) % 100000000}")
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -5140,6 +5154,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         experts_enabled = bool(user_id) and await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
         )
+        yield StreamStatus(message=f"perf:experts_flag:{int(_perf_time.time() * 1000) % 100000000}")
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         oversight_supplement = get_expert_oversight_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
@@ -5156,6 +5171,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # prompt cache keeps the ~20KB guide warm for the whole session.
         # Empty string for non-builder sessions preserves cross-user caching.
         builder_session_suffix = await build_builder_system_prompt_suffix(session)
+        yield StreamStatus(message=f"perf:builder_suffix:{int(_perf_time.time() * 1000) % 100000000}")
         # Per-turn runtime flag (never persisted): lets the guide gate and
         # get_agent_building_guide skip redundant guide round-trips when the
         # guide is already in this turn's cached system prompt.
@@ -5283,6 +5299,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 tier_name,
                 credential_lease,
             )
+            yield StreamStatus(message=f"perf:codex_route:{int(_perf_time.time() * 1000) % 100000000}")
             codex_gateway = gateway_for_lease(
                 credential_lease, model=sdk_model, effort=codex_effort
             )
@@ -5292,6 +5309,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sdk_model, routing_source = await _resolve_sdk_model_for_request(
                 model, session_id, user_id
             )
+            yield StreamStatus(message=f"perf:model_route:{int(_perf_time.time() * 1000) % 100000000}")
             fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
@@ -5324,6 +5342,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             ),
             step_checkin=config.sdk_step_checkin,
         )
+        yield StreamStatus(message=f"perf:turn_budget:{int(_perf_time.time() * 1000) % 100000000}")
 
         security_hooks = create_security_hooks(
             user_id,
@@ -5474,6 +5493,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
         _user_tier = await get_user_tier(user_id) if user_id else None
+        yield StreamStatus(message=f"perf:tier:{int(_perf_time.time() * 1000) % 100000000}")
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),
             "conversation_turn": str(turn),
@@ -5545,6 +5565,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         pending_messages = await resolve_answered(
             user_id, session, cap=cap_late_tool_result
         ) + await drain_pending_safe(session_id, log_prefix)
+        yield StreamStatus(message=f"perf:pending:{int(_perf_time.time() * 1000) % 100000000}")
         if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
@@ -5692,6 +5713,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the next turn replays, and it must not accumulate one stale figure
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
+        yield StreamStatus(message=f"perf:budget_block:{int(_perf_time.time() * 1000) % 100000000}")
 
         query_message, compaction_stats = await _build_query_message(
             budget_status + current_message,
@@ -5703,6 +5725,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             prior_messages=restore_context_messages,
             expect_compaction=forecast.expected,
         )
+        yield StreamStatus(message=f"perf:build_query:{int(_perf_time.time() * 1000) % 100000000}")
 
         # Snapshot before the close persists its synthetic assistant+tool pair:
         # ``_seed_transcript`` slices ``session.messages`` and would otherwise
@@ -5720,6 +5743,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         attachments = await _prepare_file_attachments(
             file_ids or [], user_id or "", session_id, sdk_cwd
         )
+        yield StreamStatus(message=f"perf:attachments:{int(_perf_time.time() * 1000) % 100000000}")
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
@@ -5737,11 +5761,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        yield StreamStatus(message=f"perf:builder_ctx:{int(_perf_time.time() * 1000) % 100000000}")
         # Skill-drift notice — same query-only contract as builder
         # context: never persisted, re-diffed every turn.
         query_message = await _maybe_prepend_skills_update(
             session, user_id, is_user_message, query_message
         )
+        yield StreamStatus(message=f"perf:skills_update:{int(_perf_time.time() * 1000) % 100000000}")
         # Already-seen capability record — same query-only contract.
         query_message = _maybe_prepend_seen_capabilities(
             session, is_user_message, query_message

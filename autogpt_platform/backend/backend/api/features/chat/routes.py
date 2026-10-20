@@ -1,5 +1,6 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
@@ -1856,6 +1857,8 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
+    _rt = [("start", stream_start_time)]
+    _pp.start()
     # Wall-clock arrival time, propagated to the executor so the turn-start
     # drain can order pending messages relative to this request (pending
     # pushed BEFORE this instant were typed earlier; pending pushed AFTER
@@ -1869,9 +1872,12 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    _rt.append(("validate", time.perf_counter()))
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
+    _rt.append(("autopilot_mode", time.perf_counter()))
 
     await enforce_model_entitlement(request.model, session, user_id)
+    _rt.append(("model_entitlement", time.perf_counter()))
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1890,8 +1896,10 @@ async def stream_chat_post(
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
         await enforce_payment_paywall(user_id)
+        _rt.append(("paywall", time.perf_counter()))
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
+        _rt.append(("codex_access", time.perf_counter()))
 
     message = request.message
     if request.is_user_message:
@@ -1926,6 +1934,7 @@ async def stream_chat_post(
             message_id,
             session_id,
         )
+        _rt.append(("kickoff_reply", time.perf_counter()))
 
     # The kickoff owns a server-derived id and its own replay handling.
     client_message_id = None if request.expert_kickoff else message_id
@@ -1941,6 +1950,7 @@ async def stream_chat_post(
         turn_in_flight = (
             request.is_user_message and message and await is_turn_in_flight(session_id)
         )
+        _rt.append(("in_flight", time.perf_counter()))
     except StreamRegistryUnavailable as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
@@ -1971,6 +1981,7 @@ async def stream_chat_post(
                 expert_id=session.expert_id,
                 client_message_id=client_message_id,
             )
+            _rt.append(("queue_pending", time.perf_counter()))
             return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
             if exc.status_code != 409:
@@ -2002,6 +2013,7 @@ async def stream_chat_post(
     # the shared scheduling path below.
     if user_id and is_platform_route:
         await enforce_platform_allowance(user_id)
+        _rt.append(("allowance", time.perf_counter()))
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -2016,9 +2028,11 @@ async def stream_chat_post(
             session_id=session_id,
             expert_id=session.expert_id,
         )
+        _rt.append(("attachments", time.perf_counter()))
         folders = await resolve_attachable_workspace_folders(
             user_id, request.folder_ids or [], expert_id=session.expert_id
         )
+        _rt.append(("folders", time.perf_counter()))
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files, folders)
 
@@ -2048,6 +2062,7 @@ async def stream_chat_post(
         if client_message_id is not None
         else None
     )
+    _rt.append(("claim", time.perf_counter()))
     if claim == "reserved":
         raise client_message_in_progress_error()
 
@@ -2086,6 +2101,7 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
+            _rt.append(("schedule_turn", time.perf_counter()))
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -2117,6 +2133,7 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
+            _rt.append(("enqueue", time.perf_counter()))
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
             raise HTTPException(
@@ -2153,6 +2170,11 @@ async def stream_chat_post(
             await stream_registry.publish_chunk(
                 turn_id,
                 StreamStatus(message="Message received…"),
+                session_id=session_id,
+            )
+            await stream_registry.publish_chunk(
+                turn_id,
+                StreamStatus(message="perf-route:" + ",".join(f"{_n}={int((_t - _rt[0][1]) * 1000)}" for _n, _t in sorted(_rt[1:] + _pp.take(), key=lambda _m: _m[1]))),
                 session_id=session_id,
             )
         except Exception:

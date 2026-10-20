@@ -1,3 +1,4 @@
+from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
 import logging
 import uuid
@@ -1105,6 +1106,7 @@ async def _save_session_to_db(
         # Existence check only — use the metadata-only fetch, no need to
         # eager-load any messages here.
         existing = await db.get_chat_session_metadata(session.session_id)
+        _pp.mark("db:exists")
 
         if not existing:
             # Create new session
@@ -1137,6 +1139,7 @@ async def _save_session_to_db(
             update_tenancy=True,
         )
     await db.update_chat_session(**update_kwargs)
+    _pp.mark("db:update")
 
     # Identify unsaved messages.  Two cases:
     #
@@ -1198,6 +1201,7 @@ async def _save_session_to_db(
             messages=messages_data,
             start_sequence=existing_message_count,
         )
+        _pp.mark("db:insert")
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
             msg.tool_calls_pending_save = False
@@ -1298,10 +1302,12 @@ async def append_and_save_message(
         # When the lock degraded (Redis down or 2s timeout), bypass cache for
         # the idempotency check. Stale cache could let two concurrent writers
         # both see the old state, pass the check, and write the same message.
+        _pp.mark("save:lock")
         if lock_acquired:
             session = await get_chat_session(session_id)
         else:
             session = await _get_session_from_db(session_id)
+        _pp.mark("save:load_session")
         if session is None:
             raise ValueError(f"Session {session_id} not found")
 
@@ -1343,6 +1349,7 @@ async def append_and_save_message(
 
         session.messages.append(message)
         existing_message_count = await chat_db().get_next_sequence(session_id)
+        _pp.mark("save:next_sequence")
 
         try:
             # A session with messages has its row (they reference it), so an
@@ -1369,6 +1376,7 @@ async def append_and_save_message(
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e
+        _pp.mark("save:to_db")
 
         try:
             await cache_chat_session(session)
@@ -1377,6 +1385,7 @@ async def append_and_save_message(
             # Invalidate the stale entry so future reads fall back to DB,
             # preventing a retry from bypassing the idempotency check above.
             await invalidate_session_cache(session_id)
+        _pp.mark("save:cache")
 
         return session
 
