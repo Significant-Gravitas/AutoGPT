@@ -837,10 +837,17 @@ def _prepend_skills_notice_to_current_message(
         return
     for msg in reversed(openai_messages):
         if msg["role"] == "user":
-            existing = msg.get("content", "")
-            if isinstance(existing, str):
-                msg["content"] = notice + existing
+            _add_message_text(msg, notice, prepend=True)
             break
+
+
+def _add_message_text(msg: dict[str, Any], text: str, *, prepend: bool) -> None:
+    content = msg.get("content") or ""
+    if isinstance(content, list):
+        block = {"type": "text", "text": text}
+        msg["content"] = [block, *content] if prepend else [*content, block]
+    else:
+        msg["content"] = text + content if prepend else content + text
 
 
 def _mark_system_message_with_cache_control(
@@ -2209,12 +2216,7 @@ async def stream_chat_completion_baseline(
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                content = msg.get("content") or ""
-                msg["content"] = (
-                    [{"type": "text", "text": budget_status}, *content]
-                    if isinstance(content, list)
-                    else budget_status + content
-                )
+                _add_message_text(msg, budget_status, prepend=True)
                 break
 
     # Inject Graphiti warm context into the current turn's user message (not
@@ -2226,9 +2228,7 @@ async def stream_chat_completion_baseline(
     if warm_ctx:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                existing = msg.get("content", "")
-                if isinstance(existing, str):
-                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                _add_message_text(msg, f"\n\n{warm_ctx}", prepend=False)
                 break
         # Do NOT append warm_ctx to user_message_for_transcript — it would
         # persist stale temporal context into the transcript for future turns.
@@ -2248,9 +2248,7 @@ async def stream_chat_completion_baseline(
         if builder_block:
             for msg in reversed(openai_messages):
                 if msg["role"] == "user":
-                    existing = msg.get("content", "")
-                    if isinstance(existing, str):
-                        msg["content"] = builder_block + existing
+                    _add_message_text(msg, builder_block, prepend=True)
                     break
 
     # Skill-drift notice — same query-only contract as the builder block
@@ -2331,28 +2329,32 @@ async def stream_chat_completion_baseline(
     # message in a single reverse scan.
     extra_hint = attachment_hint + context_hint
     if extra_hint or image_blocks:
-        for i in range(len(openai_messages) - 1, -1, -1):
-            if openai_messages[i].get("role") == "user":
-                existing = openai_messages[i].get("content", "")
-                if isinstance(existing, str):
-                    text = existing + "\n" + extra_hint if extra_hint else existing
-                    if image_blocks:
-                        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
-                        for img in image_blocks:
-                            parts.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": (
-                                            f"data:{img['source']['media_type']};"
-                                            f"base64,{img['source']['data']}"
-                                        )
-                                    },
-                                }
-                            )
-                        openai_messages[i]["content"] = parts
-                    else:
-                        openai_messages[i]["content"] = text
+        for msg in reversed(openai_messages):
+            if msg.get("role") == "user":
+                if extra_hint:
+                    _add_message_text(msg, "\n" + extra_hint, prepend=False)
+                if image_blocks:
+                    content = msg.get("content") or ""
+                    parts = (
+                        content
+                        if isinstance(content, list)
+                        else [{"type": "text", "text": content}]
+                    )
+                    msg["content"] = [
+                        *parts,
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:{img['source']['media_type']};"
+                                        f"base64,{img['source']['data']}"
+                                    )
+                                },
+                            }
+                            for img in image_blocks
+                        ],
+                    ]
                 break
 
     disabled_tool_groups: list[ToolGroup] = []
