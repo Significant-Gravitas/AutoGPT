@@ -111,6 +111,15 @@ def test_the_offer_does_not_depend_on_which_run_is_next():
     assert early[0].cron == "17 */4 * * *"
 
 
+def test_a_busy_schedule_on_one_day_is_offered_that_day_weekly():
+    """Every five minutes on Saturdays counts in full, well under the cap: it
+    runs on Saturday, so once a week means Saturday."""
+    rungs = less_often(["*/5 * * * sat"], _CHICAGO, _NOW)
+
+    assert rungs[-1].label == "Every Saturday at 09:00"
+    assert rungs[-1].cron == "0 9 * * sat"
+
+
 @pytest.mark.parametrize(
     "now",
     [

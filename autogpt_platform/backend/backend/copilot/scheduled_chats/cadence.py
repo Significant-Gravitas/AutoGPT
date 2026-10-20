@@ -174,8 +174,8 @@ def _anchor_time(fires: list[datetime]) -> tuple[int, int]:
 
 def _anchor_day(fires: list[datetime]) -> int:
     """The weekday it runs on most; Monday first when that is a tie, or when
-    it runs more than hourly and the count stopped short of a week."""
-    if len(fires) > _HOURLY:
+    the count stopped short of a week at the cap."""
+    if len(fires) >= _COUNT_CAP:
         return 0
     counts = Counter(fire.weekday() for fire in fires)
     return min(counts, key=lambda day: (-counts[day], day))
