@@ -17,7 +17,7 @@ const LATEST = "june-18-july-9-2026";
 const INDEX_MD = `
 | Date | Highlights |
 | ---- | ---------- |
-| [June 18 – July 9](${LATEST}.md) | File folders, shareable chats, Discord bot |
+| [June 18 – July 9](/docs/platform/changelog/changelog/${LATEST}.md) | File folders, shareable chats, Discord bot |
 `;
 
 beforeEach(() => {

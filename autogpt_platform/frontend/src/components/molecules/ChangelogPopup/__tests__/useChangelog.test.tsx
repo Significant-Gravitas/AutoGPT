@@ -10,8 +10,8 @@ const LATEST = "v0-6-63";
 const INDEX_MD = `
 | Date | Highlights |
 | ---- | ---------- |
-| [May 7 – June 10](${LATEST}.md) | Copilot upgrades, new blocks |
-| [Apr 1 – May 6](v0-6-58.md) | Marketplace redesign |
+| [May 7 – June 10](/docs/platform/changelog/changelog/${LATEST}.md) | Copilot upgrades, new blocks |
+| [Apr 1 – May 6](/docs/platform/changelog/changelog/v0-6-58.md) | Marketplace redesign |
 `;
 
 beforeEach(() => {

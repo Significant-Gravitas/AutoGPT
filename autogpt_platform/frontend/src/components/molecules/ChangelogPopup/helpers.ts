@@ -10,8 +10,8 @@ export interface ChangelogEntry {
 
 export function parseChangelogIndex(md: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
-  // gitbook README rows: | [May 7 – June 10](may-7-june-10-2026.md) | ... |
-  const rowPattern = /\|\s*\[([^\]]+)\]\(([a-z0-9-]+)\.md\)\s*\|\s*([^|]+)\|/g;
+  const rowPattern =
+    /\|\s*\[([^\]]+)\]\(\/docs\/platform\/changelog\/changelog\/([a-z0-9-]+)\.md\)\s*\|\s*([^|]+)\|/g;
 
   let match;
   while ((match = rowPattern.exec(md)) !== null) {

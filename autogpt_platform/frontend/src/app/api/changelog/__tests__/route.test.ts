@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("GET /api/changelog", () => {
-  it("proxies the changelog index README from the gitbook branch", async () => {
+  it("proxies the published site's changelog index", async () => {
     const fetchSpy = vi
       .spyOn(global, "fetch")
       .mockResolvedValue(new Response("| index |", { status: 200 }));
@@ -16,8 +16,9 @@ describe("GET /api/changelog", () => {
 
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("| index |");
-    expect(String(fetchSpy.mock.calls[0][0])).toContain(
-      "/gitbook/docs/platform/changelog/README.md",
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://agpt.co/docs/platform/changelog/changelog.md",
+      expect.objectContaining({ next: { revalidate: 3600 } }),
     );
   });
 

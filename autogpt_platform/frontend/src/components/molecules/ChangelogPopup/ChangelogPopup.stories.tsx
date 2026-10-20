@@ -8,7 +8,7 @@ import { STORAGE_KEY } from "./changelog-constants";
 const INDEX_MD = `
 | Date | Highlights |
 | ---- | ---------- |
-| [June 18 – July 9](june-18-july-9-2026.md) | File folders, shareable chats, Discord bot |
+| [June 18 – July 9](/docs/platform/changelog/changelog/june-18-july-9-2026.md) | File folders, shareable chats, Discord bot |
 `;
 
 const meta = {
