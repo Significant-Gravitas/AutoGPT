@@ -5149,6 +5149,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     """
     perf_loopwatch.ensure_watch()  # do-not-merge probe (#15739)
     perf_loopwatch.TURN_T0.set(time.monotonic())
+    yield StreamStatus(message=f"perf:turn_start:{_probe_ms()}")
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -5474,32 +5475,51 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The E2B leg runs as its own task: if a sibling leg fails first, the
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
-        e2b_task = asyncio.create_task(_setup_e2b())
+        _probe_legs: dict[str, int] = {}  # do-not-merge probe (#15739)
+        yield StreamStatus(message=f"perf:gather_start:{_probe_ms()}")
+        e2b_task = asyncio.create_task(_probe_timed("e2b", _setup_e2b(), _probe_legs))
         try:
             (
                 (base_system_prompt, understanding),
                 (graphiti_enabled, warm_ctx),
                 _restore,
             ) = await asyncio.gather(
-                _build_system_prompt(user_id if not has_history else None),
-                _fetch_graphiti_context(user_id, session, message),
+                _probe_timed(
+                    "sysprompt",
+                    _build_system_prompt(user_id if not has_history else None),
+                    _probe_legs,
+                ),
+                _probe_timed(
+                    "graphiti",
+                    _fetch_graphiti_context(user_id, session, message),
+                    _probe_legs,
+                ),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
-                _restore_cli_session_for_turn(
-                    user_id,
-                    session_id,
-                    session,
-                    sdk_cwd,
-                    transcript_builder,
-                    log_prefix,
+                _probe_timed(
+                    "restore",
+                    _restore_cli_session_for_turn(
+                        user_id,
+                        session_id,
+                        session,
+                        sdk_cwd,
+                        transcript_builder,
+                        log_prefix,
+                    ),
+                    _probe_legs,
                 ),
             )
         except BaseException:
             with contextlib.suppress(BaseException):
                 e2b_sandbox = await e2b_task
             raise
+        yield StreamStatus(message=f"perf:gather:{_probe_ms()}")
         e2b_sandbox = await e2b_task
+        yield StreamStatus(
+            message="perf-legs:"
+            + ",".join(f"{k}={v}" for k, v in sorted(_probe_legs.items()))
+        )
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -5889,11 +5909,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # now, under the turn's trace context, so it boots while the query is
         # assembled instead of after (``CLIPrelaunch``).
         # do-not-merge probe A/B (#15739): prelaunch on every other turn.
-        _cli_prelaunch = (
-            await CLIPrelaunch.start(sdk_options, log_prefix)
-            if _probe_prelaunch_turn()
-            else None
-        )
+        _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
         yield StreamStatus(
             message=f"perf:prelaunch:{'on' if _cli_prelaunch is not None else 'off'}"
         )
@@ -7511,3 +7527,12 @@ def _probe_prelaunch_turn() -> bool:
 def _probe_ms() -> int:
     """do-not-merge probe (#15739): server clock for perf statuses."""
     return int(time.time() * 1000) % 100000000
+
+
+async def _probe_timed(name: str, coro: Any, legs: dict[str, int]) -> Any:
+    """do-not-merge probe (#15739): how long one setup leg took, in ms."""
+    t0 = time.monotonic()
+    try:
+        return await coro
+    finally:
+        legs[name] = int((time.monotonic() - t0) * 1000)
