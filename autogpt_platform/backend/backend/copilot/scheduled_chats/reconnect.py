@@ -62,9 +62,14 @@ async def resume_after_reconnect(user_id: str, provider: str) -> None:
 
 
 async def _clear(user_id: str, row: ScheduledChatStreak) -> None:
-    if row.pausedAt is not None:
-        await resume_scheduled_chat(user_id, row.scheduleKey)
-        return
-    # Only told: its next run proves the fix. Until then nothing says the chat
-    # is failing, and a failure that persists counts afresh.
-    await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+    if row.pausedAt is None:
+        # Only told: its next run proves the fix. Until then nothing says the
+        # chat is failing, and a failure that persists counts afresh.
+        if await ScheduledChatStreak.prisma().delete_many(
+            where={"id": row.id, "pausedAt": None}
+        ):
+            return
+        # A run paused it after this read it: that run failed before the fix,
+        # and deleting the row would leave its jobs paused with nothing to
+        # list or resume them.
+    await resume_scheduled_chat(user_id, row.scheduleKey)

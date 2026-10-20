@@ -1,4 +1,6 @@
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,6 +29,41 @@ async def test_a_connect_does_not_wait_for_the_resume(mocker):
     assert not task.done()
     release.set()
     await task
+
+
+def _told_row() -> SimpleNamespace:
+    """What the reconnect read: a chat only told about Discord."""
+    return SimpleNamespace(id="row-1", scheduleKey="sched-1", pausedAt=None)
+
+
+def _patch_rows(mocker, deleted: int) -> tuple[MagicMock, AsyncMock]:
+    rows = MagicMock(delete_many=AsyncMock(return_value=deleted))
+    mocker.patch.object(
+        reconnect.ScheduledChatStreak, "prisma", return_value=rows, create=True
+    )
+    resume = mocker.patch.object(reconnect, "resume_scheduled_chat", AsyncMock())
+    return rows, resume
+
+
+@pytest.mark.asyncio
+async def test_a_chat_only_told_is_forgotten_while_it_stays_unpaused(mocker):
+    rows, resume = _patch_rows(mocker, deleted=1)
+
+    await reconnect._clear("user-1", _told_row())
+
+    rows.delete_many.assert_awaited_once_with(where={"id": "row-1", "pausedAt": None})
+    resume.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_chat_paused_since_it_was_read_is_resumed_not_dropped(mocker):
+    """A run still failing on the old connection paused it after the read.
+    Dropping the row would leave its jobs paused with nothing to resume them."""
+    _, resume = _patch_rows(mocker, deleted=0)
+
+    await reconnect._clear("user-1", _told_row())
+
+    resume.assert_awaited_once_with("user-1", "sched-1")
 
 
 @pytest.mark.parametrize("provider", list(ProviderName))
