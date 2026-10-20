@@ -12,9 +12,13 @@ function parseHttpUrl(url: string): URL | null {
     : `https://${trimmed}`;
   try {
     const parsed = new URL(withScheme);
-    return parsed.protocol === "https:" || parsed.protocol === "http:"
-      ? parsed
-      : null;
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    // "i.ytimg.com." is the same host as "i.ytimg.com" and URL keeps the dot,
+    // so host checks would otherwise miss it.
+    parsed.hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+    return parsed;
   } catch {
     return null;
   }

@@ -85,6 +85,8 @@ describe("AgentImages YouTube thumbnails", () => {
   test.each([
     "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
     "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    "https://i.ytimg.com./vi/dQw4w9WgXcQ/mqdefault.jpg",
+    "https://img.youtube.com./vi/dQw4w9WgXcQ/0.jpg",
   ])("waits for consent before a listing image hosted at %s", (image) => {
     configureCookiebot();
     installCookiebot({ marketing: false });

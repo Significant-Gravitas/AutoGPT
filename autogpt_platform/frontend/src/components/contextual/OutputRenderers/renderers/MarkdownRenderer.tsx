@@ -90,6 +90,23 @@ function renderPlainLink(url: string, label: React.ReactNode = url) {
   );
 }
 
+// Set inside a markdown link, so content rendered there doesn't add an
+// anchor of its own (anchors can't nest).
+const InsideLinkContext = React.createContext(false);
+
+interface YouTubePageLinkProps {
+  url: string;
+  label: string;
+}
+
+// An image pointing at a YouTube page that isn't one video: shown as a link,
+// since an <img> would fetch it before consent.
+function YouTubePageLink({ url, label }: YouTubePageLinkProps) {
+  const insideLink = React.useContext(InsideLinkContext);
+  if (insideLink) return <>{label}</>;
+  return renderPlainLink(url, label);
+}
+
 function renderVideoEmbed(url: string): React.ReactNode {
   if (getYouTubeVideoId(url)) {
     return (
@@ -230,7 +247,9 @@ function renderMarkdown(
               className="text-black underline decoration-1 underline-offset-2 transition-colors"
               {...props}
             >
-              {children}
+              <InsideLinkContext.Provider value={true}>
+                {children}
+              </InsideLinkContext.Provider>
             </a>
           ),
           blockquote: ({ children, ...props }) => (
@@ -382,10 +401,8 @@ function renderMarkdown(
             if (src && isVideoUrl(src)) {
               return renderVideoEmbed(src);
             }
-            // Any other YouTube page stays a link: an <img> would fetch it
-            // before consent.
             if (src && isYouTubeUrl(src)) {
-              return renderPlainLink(src, alt || src);
+              return <YouTubePageLink url={src} label={alt || src} />;
             }
 
             return (

@@ -128,3 +128,21 @@ describe("isYouTubeImageUrl", () => {
     expect(isYouTubeImageUrl("https://cdn.test/one.png")).toBe(false);
   });
 });
+
+describe("hosts written with a trailing dot", () => {
+  it.each([
+    [`https://www.youtube.com./watch?v=${ID}`, ID],
+    [`https://YOUTUBE.COM./shorts/${ID}`, ID],
+    [`https://youtu.be./${ID}`, ID],
+  ])("still finds the video in %s", (url, id) => {
+    expect(isYouTubeUrl(url)).toBe(true);
+    expect(getYouTubeVideoId(url)).toBe(id);
+  });
+
+  it.each([
+    `https://img.youtube.com./vi/${ID}/0.jpg`,
+    `https://i.ytimg.com./vi/${ID}/mqdefault.jpg`,
+  ])("still sees %s as a YouTube image", (url) => {
+    expect(isYouTubeImageUrl(url)).toBe(true);
+  });
+});

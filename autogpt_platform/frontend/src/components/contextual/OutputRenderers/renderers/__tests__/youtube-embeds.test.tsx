@@ -116,4 +116,20 @@ describe("YouTube links in run output", () => {
     expect(container.querySelector("video, iframe, img")).toBeNull();
     expect(screen.getByRole("link", { name: channel })).toBeDefined();
   });
+
+  it("keeps one link for a linked image of a YouTube channel", () => {
+    configureCookiebot();
+    installCookiebot({ marketing: true });
+    const channel = "https://www.youtube.com/@somechannel";
+
+    const container = renderMarkdown(
+      `# Demo\n\n[![Channel](${channel})](${channel})`,
+    );
+
+    const anchors = container.querySelectorAll(`a[href="${channel}"]`);
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].getAttribute("href")).toBe(channel);
+    expect(anchors[0].textContent).toBe("Channel");
+    expect(container.querySelector("a a, img, video, iframe")).toBeNull();
+  });
 });
