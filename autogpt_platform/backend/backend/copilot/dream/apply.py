@@ -19,6 +19,7 @@ guard at the top of ``apply_operations``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid as uuidlib
 from collections.abc import Mapping
@@ -36,6 +37,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
@@ -158,6 +160,26 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
     }
 
 
+def _citations(
+    statement: str,
+    fact_uuids: list[str],
+    episode_uuids: list[str],
+    read: Citations | None,
+) -> Citations:
+    """What a dream write rests on, which the ingestion worker checks against
+    forgets right before writing it (``graphiti/recall_citations.py``): what
+    it cites or, citing nothing, everything its pass read (``read``) and its
+    own statement, since an uncited claim may come from any of it."""
+    if fact_uuids or episode_uuids:
+        return Citations(fact_uuids=list(fact_uuids), episode_uuids=list(episode_uuids))
+    everything = read or Citations()
+    return Citations(
+        fact_uuids=everything.fact_uuids,
+        episode_uuids=everything.episode_uuids,
+        statement=statement,
+    )
+
+
 async def _write_consolidated_fact(
     scope: MemoryScope,
     pass_id: str,
@@ -165,6 +187,8 @@ async def _write_consolidated_fact(
     fact: ConsolidatedFact,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    read: Citations | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=fact.content,
@@ -187,6 +211,7 @@ async def _write_consolidated_fact(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        citations=_citations(fact.content, [], fact.source_episode_uuids, read),
     )
 
 
@@ -197,6 +222,8 @@ async def _write_proposed_finding(
     finding: ProposedFinding,
     session_id: str,
     completion: IngestionCompletion,
+    *,
+    read: Citations | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=finding.content,
@@ -221,6 +248,12 @@ async def _write_proposed_finding(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
+        citations=_citations(
+            finding.content,
+            finding.source_fact_uuids,
+            finding.source_episode_uuids,
+            read,
+        ),
     )
 
 
@@ -386,8 +419,8 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
 
     Written up front (before the memory ops) because the fact/proposal
     ``MemoryEnvelope`` provenance references this ``session_id``. The
-    user-facing narrative is written separately, AFTER the ops land
-    (``_write_dream_summary_message``), so a partway failure leaves an
+    user-facing narrative is written separately, AFTER the ops are
+    attempted (``_write_dream_summary_message``), so a partway failure leaves an
     empty dream rather than a 'completed' narrative with no memory.
 
     We use a fresh uuid rather than the pass_id so re-runs of the same
@@ -473,9 +506,13 @@ async def _write_dream_summary_message(
 
 
 async def _drain_ingestion(
-    pass_id: str, completion: IngestionCompletion, timeout_seconds: float
+    pass_id: str,
+    trackers: tuple[IngestionCompletion, ...],
+    timeout_seconds: float,
 ) -> IngestionDrainStatus:
-    """Wait for the dream's OWN enqueued episodes to land in the graph.
+    """Wait for the worker to finish the dream's OWN enqueued episodes, on
+    each of *trackers* at once: each written, dropped for resting on a
+    forget, or failed.
 
     ``enqueue_episode`` returning True only proves the episode reached the
     in-process asyncio queue; the real write (LLM extraction + embedding in
@@ -485,40 +522,45 @@ async def _drain_ingestion(
     silently discards queued writes while the pass stays recorded
     successful.
 
-    Scoped to ``completion`` — only the episodes THIS pass enqueued. The
+    Scoped to *trackers* — only the episodes THIS pass enqueued. The
     per-user queue is shared with live-chat ingestion, so a whole-queue
     barrier would let a user's concurrent chat activity extend the in-lock
     hold up to the full timeout (and items enqueued after the drain starts
     would never let it resolve). Tracking the pass's own episodes makes the
-    drain resolve the instant they land, regardless of other queue traffic.
+    drain resolve the instant they are finished, regardless of other queue
+    traffic.
 
     Returns:
-      * ``drained`` — nothing was enqueued (vacuous) or all of the pass's
-        episodes landed within the timeout.
+      * ``drained`` — nothing was enqueued (vacuous) or the worker finished
+        all of the pass's episodes within the timeout: written, dropped for
+        resting on a forget, or failed with a logged error.
       * ``skipped`` — ``timeout_seconds <= 0``; the batch path uses this to
         avoid stalling the shared, serial ``BatchExecutor.walk_once`` loop
         (see ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``). The episodes still
-        process fire-and-forget in the executor process.
-      * ``timed_out`` — the episodes did not all land within the timeout.
-        They keep processing fire-and-forget; apply warns rather than
-        failing the pass — partial visibility beats a failed pass.
+        process fire-and-forget in the executor process, counted pending.
+      * ``timed_out`` — the worker did not finish all the episodes within
+        the timeout.
+        They keep processing fire-and-forget, counted pending, not written;
+        apply warns rather than failing the pass — partial visibility beats
+        a failed pass.
     """
-    if not completion.registered:
+    waiting = [tracker for tracker in trackers if tracker.registered]
+    if not waiting:
         return IngestionDrainStatus.drained
     if timeout_seconds <= 0:
         logger.info(
             "Dream pass %s: ingestion drain skipped (no wait) — %d episode(s) "
             "processing fire-and-forget; reporting drain status=skipped",
             pass_id,
-            completion.registered,
+            sum(tracker.registered for tracker in waiting),
         )
         return IngestionDrainStatus.skipped
-    drained = await wait_for_ingestion(completion, timeout_seconds)
-    if drained:
+    waits = [wait_for_ingestion(tracker, timeout_seconds) for tracker in waiting]
+    if all(await asyncio.gather(*waits)):
         return IngestionDrainStatus.drained
     logger.warning(
         "Dream pass %s: own ingestion episodes did not drain within %.0fs — "
-        "reported write/proposal counts include episodes still queued "
+        "those not written yet are reported pending; they stay queued "
         "in-process (lost if this pod restarts)",
         pass_id,
         timeout_seconds,
@@ -532,6 +574,7 @@ async def apply_operations(
     ops: DreamOperations,
     *,
     known_fact_uuids: set[str] | None = None,
+    known_episode_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
@@ -542,10 +585,17 @@ async def apply_operations(
     detailed ``DreamOperationsSnapshot`` payload for consumers that
     need per-operation rollups (eval, admin UI, future P9 SSE event),
     and an ``ingestion_drain_status`` (``IngestionDrainStatus``) —
-    ``timed_out`` means the write/proposal counts were reported while
-    episodes were still queued in-process, ``skipped`` is the by-design
-    batch skip, ``drained`` is a fully-landed pass (see
-    ``_drain_ingestion``). Read it back via ``drain_status_from_stats``.
+    ``timed_out`` means episodes were still queued in-process when the pass
+    was reported, ``skipped`` is the by-design batch skip, ``drained`` is a
+    pass whose writes the worker all finished (see ``_drain_ingestion``).
+    Read it back via ``drain_status_from_stats``.
+
+    ``consolidated_count`` and ``proposal_count`` count the writes and
+    proposals graphiti saved by the time apply returned, never one merely
+    queued: those not written yet are ``pending_writes`` (every one on
+    the batch path, which does not wait), those whose write raised
+    ``failed_writes``, those dropped for resting on a forget
+    ``dropped_forgotten``.
 
     An empty pass — no writes, proposals, demotions, or entity
     invalidations — returns zero counts and an empty snapshot WITHOUT
@@ -553,8 +603,8 @@ async def apply_operations(
     ``session_id`` key is absent so ``apply_stats.get("session_id")``
     reads as ``None`` for both the orchestrator and the batch callback.
     A pass WITH operations but an empty ``summary_for_user`` still
-    creates the session and writes the fallback narrative (the ops
-    landed; only the narrative is missing).
+    creates the session and writes the fallback narrative (the ops were
+    attempted; only the narrative is missing).
 
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
@@ -563,15 +613,23 @@ async def apply_operations(
     up the persisted input bundle by pass_id" — the batch path's
     callbacks rely on that fallback.
 
-    ``ingestion_drain_timeout`` bounds the in-line wait for the enqueued
-    episodes to land (see ``_drain_ingestion``). The sync path keeps the
+    Each write and proposal is queued with what it cites; one that cites
+    nothing is taken to rest on everything the pass read, its
+    ``known_fact_uuids`` and ``known_episode_uuids``. The ingestion worker
+    drops, unwritten, any whose citations a forget reached after the pass
+    read the graph (``graphiti/recall_citations.py``). ``dropped_forgotten``
+    counts those dropped before apply returned: all of them on a drained
+    pass, possibly fewer when the drain was skipped or timed out.
+
+    ``ingestion_drain_timeout`` bounds the in-line wait for the worker to
+    finish the enqueued episodes (see ``_drain_ingestion``). The sync path keeps the
     full ``INGESTION_DRAIN_TIMEOUT_SECONDS``; the batch path passes
     ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS`` (0) so it never stalls the
     shared, serial ``BatchExecutor.walk_once`` loop.
 
     ``lock_handle`` is the sync path's held dream lock. It is renewed to a
     fresh ``LOCK_DRAIN_RENEWAL_SECONDS`` budget right before the drain so
-    the lock cannot expire while the writes are still landing (which would
+    the lock cannot expire while the writes are still being processed (which would
     admit a concurrent pass onto the same graph). ``None`` on the batch
     path — it already disowned the lock to its callback with a 24h TTL.
 
@@ -605,6 +663,9 @@ async def apply_operations(
             "demotion_count": 0,
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
+            "dropped_forgotten": 0,
+            "pending_writes": 0,
+            "failed_writes": 0,
             # Vacuously drained — the pass enqueued nothing.
             "ingestion_drain_status": IngestionDrainStatus.drained,
             "snapshot": DreamOperationsSnapshot(),
@@ -616,13 +677,18 @@ async def apply_operations(
     # empty dream rather than a 'completed' narrative with no memory.
     session_id = await _create_dream_session(scope, pass_id)
 
-    # Tracks completion of only the episodes THIS pass enqueues, so the
-    # drain below waits on the dream's own writes and not on unrelated
-    # live-chat ingestion sharing the same per-user queue. Registered once
-    # per successful enqueue; the worker signals each as it lands.
-    completion = IngestionCompletion()
+    # Track only the episodes THIS pass enqueues, its writes on one tracker
+    # and its proposals on another: the drain below waits on the dream's own
+    # episodes, not on unrelated live-chat ingestion sharing the same
+    # per-user queue, and the pass reports as written only what graphiti
+    # saved of each. Registered once per successful enqueue; the worker
+    # records what became of each episode as it finishes it.
+    writes_done, proposals_done = IngestionCompletion(), IngestionCompletion()
+    read = Citations(
+        fact_uuids=sorted(known_fact_uuids or ()),
+        episode_uuids=sorted(known_episode_uuids or ()),
+    )
 
-    written = 0
     write_summaries: list[WriteSummary] = []
     for i, fact in enumerate(ops.writes):
         if await _write_consolidated_fact(
@@ -631,10 +697,10 @@ async def apply_operations(
             i,
             fact,
             session_id=session_id,
-            completion=completion,
+            completion=writes_done,
+            read=read,
         ):
-            completion.register()
-            written += 1
+            writes_done.register()
             write_summaries.append(
                 WriteSummary(
                     content=fact.content,
@@ -645,7 +711,6 @@ async def apply_operations(
                 )
             )
 
-    proposed = 0
     proposal_summaries: list[WriteSummary] = []
     for i, prop in enumerate(ops.proposals):
         if await _write_proposed_finding(
@@ -654,10 +719,10 @@ async def apply_operations(
             i,
             prop,
             session_id=session_id,
-            completion=completion,
+            completion=proposals_done,
+            read=read,
         ):
-            completion.register()
-            proposed += 1
+            proposals_done.register()
             proposal_summaries.append(
                 WriteSummary(
                     content=prop.content,
@@ -668,22 +733,6 @@ async def apply_operations(
                     source_fact_uuids=list(prop.source_fact_uuids),
                 )
             )
-
-    # One episode was registered per successful enqueue, so the tracker's
-    # count is exactly the writes + proposals we report — the drain waits on
-    # precisely those and nothing else. A mismatch does not endanger the
-    # writes (the drain would just resolve early or wait out its cap), so
-    # log loudly instead of failing a pass that has already written.
-    if completion.registered != written + proposed:
-        logger.error(
-            "Dream pass %s: ingestion tracker registered %d episode(s) but "
-            "reported %d write(s) + %d proposal(s) — drain barrier is not "
-            "scoped to exactly the reported writes",
-            pass_id,
-            completion.registered,
-            written,
-            proposed,
-        )
 
     # Renew the dream lock right before the longest non-LLM tail (the
     # ingestion drain plus the demotions / summary write that follow) so the
@@ -697,17 +746,18 @@ async def apply_operations(
     # drain and the destructive writes below. The episodes already enqueued
     # above keep processing fire-and-forget (they cannot be recalled), but
     # the pass is reported errored instead of pretending exclusive ownership.
+    queued = writes_done.registered + proposals_done.registered
     if lock_handle is not None and (
-        completion.registered or ops.demotions or ops.entity_invalidations
+        queued or ops.demotions or ops.entity_invalidations
     ):
         if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
             raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
-    # treats the writes as landed (and before we return and the caller
+    # treats the writes as finished (and before we return and the caller
     # releases the dream lock). See ``_drain_ingestion``.
     ingestion_drain_status = await _drain_ingestion(
-        pass_id, completion, ingestion_drain_timeout
+        pass_id, (writes_done, proposals_done), ingestion_drain_timeout
     )
 
     demotions = await _filter_demotions_to_known_facts(
@@ -734,14 +784,21 @@ async def apply_operations(
     # once the memory ops above have been attempted.
     await _write_dream_summary_message(session_id, pass_id, ops.summary_for_user)
 
+    trackers = (writes_done, proposals_done)
+    dropped = sum(tracker.dropped_forgotten for tracker in trackers)
+    pending = sum(tracker.pending for tracker in trackers)
+    failed = sum(tracker.failed for tracker in trackers)
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d demoted=%d (failed=%d) entity_edges=%d "
-        "ingestion_drain_status=%s",
+        "writes=%d proposals=%d dropped_forgotten=%d pending=%d failed=%d "
+        "demoted=%d (failed=%d) entity_edges=%d ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
-        written,
-        proposed,
+        writes_done.written,
+        proposals_done.written,
+        dropped,
+        pending,
+        failed,
         demoted_ok,
         demoted_fail,
         entity_edges_demoted,
@@ -757,11 +814,19 @@ async def apply_operations(
 
     return {
         "session_id": session_id,
-        "consolidated_count": written,
-        "proposal_count": proposed,
+        # The writes and proposals graphiti saved by the time apply returned.
+        "consolidated_count": writes_done.written,
+        "proposal_count": proposals_done.written,
         "demotion_count": demoted_ok,
         "demotion_failed_count": demoted_fail,
         "entity_invalidation_count": entity_edges_demoted,
+        # Writes and proposals dropped unwritten: a forget reached what they
+        # rest on after the pass read the graph.
+        "dropped_forgotten": dropped,
+        # Writes and proposals not written yet (queued, waiting for the
+        # graph's lock, or being written), and those whose write failed.
+        "pending_writes": pending,
+        "failed_writes": failed,
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }

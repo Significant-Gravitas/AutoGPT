@@ -13,6 +13,7 @@ import {
   ClipboardEvent,
   KeyboardEvent,
   ReactNode,
+  memo,
   useEffect,
   useState,
 } from "react";
@@ -134,7 +135,9 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-export function ChatInput({
+// Memoised: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in.
+export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,
   sendDisabled = false,
@@ -666,7 +669,7 @@ export function ChatInput({
       )}
     </form>
   );
-}
+});
 
 function toLocalAttachment(file: File): Attachment {
   return { kind: "local", file };

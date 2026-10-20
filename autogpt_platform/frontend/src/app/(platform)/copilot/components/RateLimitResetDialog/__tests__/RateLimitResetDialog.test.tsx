@@ -133,7 +133,7 @@ describe("Usage limit dialog", () => {
       />,
     );
     expect(
-      screen.getByText("You’re out of AutoPilot budget for this week"),
+      screen.getByText("You’re out of budget for this week"),
     ).toBeDefined();
     expect(screen.queryByText("A little pause. Everything is saved.")).toBe(
       null,

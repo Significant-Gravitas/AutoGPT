@@ -210,6 +210,7 @@ class TestAnUnknownBackendValue:
         assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestPostHogBackend:
     @pytest.mark.asyncio
     async def test_an_enabled_flag_is_authoritative(self, mocker, user_context):
@@ -380,7 +381,7 @@ class TestPostHogBackend:
             frontend._defined_flags.cache_clear()
             posthog_client.shutdown()
 
-        split = frontend.FrontendFlag.CHAT_SEARCH
+        split = frontend.FrontendFlag.TASK_PROGRESS_BAR
         share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
         # One assertion, so a failure shows both halves.
         assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
@@ -1089,6 +1090,7 @@ class TestSentryFlagContext:
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestTheCountryRuleInEveryBackend:
     """The trial's country targeting, through each vendor's real evaluator."""
 
@@ -1225,7 +1227,7 @@ def _posthog_with_a_split_on_is_anonymous() -> Posthog:
     client.feature_flags = [
         {
             "id": 2,
-            "key": "chat-search",
+            "key": "task-progress-bar",
             "active": True,
             "filters": {
                 "groups": [

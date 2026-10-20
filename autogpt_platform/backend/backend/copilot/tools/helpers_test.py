@@ -17,6 +17,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
+    _single_provider,
     check_hitl_review,
     execute_block,
     get_block_provider,
@@ -2272,3 +2273,14 @@ async def test_scheduled_expert_turn_does_not_offer_a_credential_of_the_wrong_ty
     assert isinstance(result, ErrorResponse)
     assert "exa-oauth" not in result.message
     assert "connect exa" in result.message
+
+
+@pytest.mark.parametrize(
+    ("providers", "details"),
+    [({"github"}, {"provider": "github"}), (set(), None), ({"github", "slack"}, None)],
+    ids=["one", "none", "several"],
+)
+def test_a_failure_names_its_provider_only_when_there_is_one(providers, details):
+    """A scheduled chat's failure streak keys on it, and its card's Reconnect
+    opens it: with several to fix, neither could pick one."""
+    assert _single_provider(providers) == details
