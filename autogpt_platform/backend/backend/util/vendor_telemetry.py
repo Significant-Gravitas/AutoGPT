@@ -3,8 +3,10 @@
 Both libraries report usage to their own PostHog projects unless told not to.
 mem0 reads its switch once, when it is first imported, so this has to run
 before anything imports mem0; ``backend/__init__.py`` calls it, which puts it
-ahead of every import of either library. A deployment that sets one of these
-variables itself keeps its own value.
+ahead of every import of either library. A variable already in the process
+environment keeps its value. One only in ``backend/.env`` does not: the
+``load_dotenv()`` calls run after this and never overwrite a variable that is
+already set.
 """
 
 import os
