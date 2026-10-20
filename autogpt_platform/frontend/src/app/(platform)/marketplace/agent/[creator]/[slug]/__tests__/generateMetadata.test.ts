@@ -114,6 +114,7 @@ describe("generateMetadata", () => {
   test.each([
     ["missing", undefined],
     ["empty", ""],
+    ["whitespace-only", "   "],
   ])(
     "falls back to the agent name when sub_heading is %s",
     async (_label, sub_heading) => {

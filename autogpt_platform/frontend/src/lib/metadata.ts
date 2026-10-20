@@ -55,7 +55,8 @@ function toCardDescription(description?: string | null): string | undefined {
   if (!text) return undefined;
   if (text.length <= DESCRIPTION_MAX_LENGTH) return text;
 
-  const clipped = text.slice(0, DESCRIPTION_MAX_LENGTH);
+  // One character is left for the ellipsis.
+  const clipped = text.slice(0, DESCRIPTION_MAX_LENGTH - 1);
   const lastSpace = clipped.lastIndexOf(" ");
   const body = lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped;
   return `${body.trimEnd()}…`;

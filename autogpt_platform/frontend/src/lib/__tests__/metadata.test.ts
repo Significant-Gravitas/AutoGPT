@@ -57,10 +57,21 @@ describe("buildPageMetadata", () => {
     const metadata = buildPageMetadata({ title: "An Agent", description });
 
     const summary = metadata.description as string;
-    expect(summary.length).toBeLessThanOrEqual(201);
+    expect(summary.length).toBeLessThanOrEqual(200);
     expect(summary.endsWith("…")).toBe(true);
     expect(summary).not.toMatch(/wor…$/);
     expect(summary.slice(0, -1).endsWith("word")).toBe(true);
+  });
+
+  test("keeps an over-long description with no spaces within the cap", () => {
+    const metadata = buildPageMetadata({
+      title: "An Agent",
+      description: "x".repeat(300),
+    });
+
+    const summary = metadata.description as string;
+    expect(summary.length).toBeLessThanOrEqual(200);
+    expect(summary.endsWith("…")).toBe(true);
   });
 
   test.each([
