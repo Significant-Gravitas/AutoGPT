@@ -24,14 +24,18 @@ KEY_PREFIX = "swap:quota:"
 # A count that takes longer is refused rather than held: while Redis is down
 # the client's own timeouts and retries would stall every credentialed request.
 _TAKE_TIMEOUT = 2.0
+# Past the window's edge by this replica's clock: replicas' clocks differ by a
+# little, and a key gone before another replica's window ends would restart its
+# count.  The window's index is in the key, so this never carries into the next.
+_EXPIRY_SLACK = 60
 
 
 # One round trip, atomic, over every scope at once: each counter is checked
 # first, and only if all are under their limit are all incremented (a new key
 # gets its expiry in the same step).  A request refused on one scope spends
 # nothing on another.  Returns 0, or the 1-based index of the scope that
-# refused.  KEYS[i] pairs with ARGV[i + 1] (its limit); ARGV[1] is the seconds
-# left in the window, so a key goes when its window does.
+# refused.  KEYS[i] pairs with ARGV[i + 1] (its limit); ARGV[1] is a new key's
+# expiry: the seconds left in its window, plus ``_EXPIRY_SLACK``.
 _TAKE_SCRIPT = """
 for i, key in ipairs(KEYS) do
   local count = tonumber(redis.call('GET', key) or '0')
@@ -121,7 +125,11 @@ class RequestQuota:
             refused = int(
                 await asyncio.wait_for(
                     self._redis.eval(
-                        _TAKE_SCRIPT, len(keys), *keys, retry_after, *limits
+                        _TAKE_SCRIPT,
+                        len(keys),
+                        *keys,
+                        retry_after + _EXPIRY_SLACK,
+                        *limits,
                     ),
                     timeout=_TAKE_TIMEOUT,
                 )

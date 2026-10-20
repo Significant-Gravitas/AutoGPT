@@ -73,7 +73,7 @@ async def test_the_window_is_fixed_and_the_count_expires_with_it():
     assert (await q.take("session:s-1", "user-a", now=NOW + 3600)).allowed
     # Set by the script on first increment, and only then: to the window's
     # edge, so a key made late in a window does not outlive it.
-    assert set((await redis.ttls()).values()) == {3600 - 600}
+    assert set((await redis.ttls()).values()) == {3600 - 600 + 60}
 
 
 async def test_a_count_that_hangs_is_refused_not_held(monkeypatch):
