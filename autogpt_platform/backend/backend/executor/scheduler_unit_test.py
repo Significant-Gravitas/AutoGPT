@@ -2951,6 +2951,33 @@ async def test_a_run_skipped_by_our_outage_tells_nobody(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("timing", "outcome"),
+    [
+        ({"run_at": None, "cron": "9 * * * *"}, "the schedule stays registered"),
+        ({}, "the one-shot is dropped"),
+    ],
+    ids=["recurring", "one-shot"],
+)
+async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
+    post_notice, timing, outcome, caplog
+):
+    """Nothing new starts for a banned account: a recurring schedule stays for
+    when the ban is lifted, a one-shot is dropped as a paywalled one is, and
+    nothing is posted into its chats."""
+    with (
+        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        mocks = await _fire(_args(**timing))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    post_notice.assert_not_awaited()
+    assert "owner is banned" in caplog.text
+    assert outcome in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_a_routine_is_named_by_its_title_and_keyed_by_its_id(
     owner_gate, post_notice
 ):

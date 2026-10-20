@@ -798,14 +798,14 @@ def _promotion_permissions(
     )
 
 
-TurnRefusalKind = Literal["codex_access", "no_plan", "usage", "outage"]
+TurnRefusalKind = Literal["banned", "codex_access", "no_plan", "usage", "outage"]
 
 
 class TurnRefusal(BaseModel):
     reason: str
     # What the owner could do about it, for callers that tell them: reconnect
     # the Codex route, choose a plan, wait for the usage window, or nothing
-    # (an outage on our side).
+    # (a banned account, or an outage on our side).
     kind: TurnRefusalKind
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
@@ -826,7 +826,7 @@ async def turn_refusal(
     an unknown means.
     """
     if await is_user_banned(user_id):
-        return TurnRefusal(reason="is banned")
+        return TurnRefusal(reason="is banned", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None

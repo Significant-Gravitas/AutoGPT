@@ -172,6 +172,12 @@ def test_an_outage_on_our_side_says_nothing():
     assert skip_notice(refusal, title="Briefing", now=_NOW, run="recurring") is None
 
 
+def test_a_banned_account_is_told_nothing():
+    refusal = TurnRefusal(reason="is banned", kind="banned")
+
+    assert skip_notice(refusal, title="Briefing", now=_NOW, run="recurring") is None
+
+
 def test_a_schedule_says_it_once_per_window():
     """The message id is the dedupe: the same window maps to the same id, and
     the next window to a new one."""

@@ -1015,7 +1015,7 @@ async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
     ):
         refusal = await turn_queue.turn_refusal("u1", route)
 
-    assert refusal == turn_queue.TurnRefusal(reason="is banned")
+    assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
 
 
 @pytest.mark.asyncio
