@@ -34,6 +34,7 @@ import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/e
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 import type { AccuracyTrendsResponse } from "@/app/api/__generated__/models/accuracyTrendsResponse";
 import type { AccuracyLatestData } from "@/app/api/__generated__/models/accuracyLatestData";
+import { toAccuracyChartData } from "./accuracyChartData";
 
 // Use the generated type with minimal adjustment for form handling
 interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
@@ -107,13 +108,7 @@ export function ExecutionAnalyticsForm() {
 
   // Chart component for accuracy trends
   function AccuracyChart({ data }: { data: AccuracyLatestData[] }) {
-    const chartData = data.map((item) => ({
-      date: new Date(item.date).toLocaleDateString(),
-      "Daily Score": item.daily_score,
-      "3-Day Avg": item.three_day_avg,
-      "7-Day Avg": item.seven_day_avg,
-      "14-Day Avg": item.fourteen_day_avg,
-    }));
+    const chartData = toAccuracyChartData(data);
 
     return (
       <ResponsiveContainer width="100%" height={400}>

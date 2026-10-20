@@ -6,11 +6,10 @@ import {
   Database01Icon,
   DollarSignIcon,
   File02Icon,
-  GaugeIcon,
   Pulse01Icon,
   ReceiptTextIcon,
   Robot01Icon,
-  Search01Icon,
+  UserIcon,
   UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
 import { ReactNode } from "react";
@@ -25,6 +24,11 @@ function getSidebarLinkGroups() {
     {
       links: [
         {
+          text: "Users",
+          href: "/admin/users",
+          icon: <Icon icon={UserIcon} className="h-6 w-6" />,
+        },
+        {
           text: "Marketplace Management",
           href: "/admin/marketplace",
           icon: <Icon icon={UserMultipleIcon} className="h-6 w-6" />,
@@ -38,16 +42,6 @@ function getSidebarLinkGroups() {
           text: "System Diagnostics",
           href: "/admin/diagnostics",
           icon: <Icon icon={Pulse01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "User Impersonation",
-          href: "/admin/impersonation",
-          icon: <Icon icon={Search01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "Rate Limits",
-          href: "/admin/rate-limits",
-          icon: <Icon icon={GaugeIcon} className="h-6 w-6" />,
         },
         {
           text: "Platform Costs",
@@ -75,7 +69,7 @@ function getSidebarLinkGroups() {
           icon: <Icon icon={BrainIcon} className="h-6 w-6" />,
         },
         {
-          text: "Admin User Management",
+          text: "Admin settings",
           href: "/admin/settings",
           icon: <IconSliders className="h-6 w-6" />,
         },

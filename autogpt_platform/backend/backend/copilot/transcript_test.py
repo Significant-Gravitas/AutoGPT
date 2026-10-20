@@ -1869,6 +1869,32 @@ class TestExtractContextMessages:
             "assistant",  # gap assistant-7
         ]
 
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_is_not_context_without_a_transcript(self):
+        """A skipped-run card posted between turns stays out of the model's
+        history, whichever way the history is built."""
+        messages = _msgs("user", "assistant", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(None, messages)
+
+        assert [m.content for m in result] == ["user-0", "assistant-1"]
+
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_in_the_gap_is_dropped_after_slicing(self):
+        """The watermark counts the hidden row, so dropping it before the gap
+        is sliced would shift the gap and lose a real message."""
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "assistant", "user", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.content for m in result[2:]] == ["user-3", "assistant-4"]
+
 
 # ---------------------------------------------------------------------------
 # cli_session_cost_usd
