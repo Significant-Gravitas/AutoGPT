@@ -2956,6 +2956,48 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/organizations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user organizations",
+        "description": "The organizations a user is an active member of. Admin-only.",
+        "operationId": "getAdminGet user organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgResponse" },
+                  "title": "Response Getadminget User Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/attribution": {
       "post": {
         "tags": ["analytics"],
@@ -3302,47 +3344,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/auth/user/email": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Update user email",
-        "operationId": "postV1Update user email",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "type": "string", "title": "Email" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": { "type": "string" },
-                  "type": "object",
-                  "title": "Response Postv1Update User Email"
-                }
               }
             }
           },
@@ -4026,28 +4027,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/health": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Health Check",
-        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
-        "operationId": "getV2HealthCheck",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Getv2Healthcheck"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/model-tiers": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -4230,7 +4209,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_capability and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nFour modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_capability and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n- Client-named: when ``session_id`` is set, a plain or expert create\n  adopts the session that id already names, so a retry after a lost\n  response never leaves an empty session behind.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id``, ``expert_id``, ``expert_kickoff`` and/or\n        ``session_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -7031,7 +7010,15 @@
             "name": "days_back",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 7,
+              "description": "Number of days to look back",
+              "default": 30,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
           },
           {
             "name": "drop_threshold",
@@ -12727,7 +12714,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Download Brain Dump Recording",
-        "description": "Hand back the user's own recording.\n\nKept working even when ``status`` is ``failed`` — \"your recording is\nsafe\" has to be true, and this is what makes it checkable.",
+        "description": "Hand back the user's own recording, for as long as it is kept.\n\nMeant for a take that failed: \"your recording is safe\" has to be\ntrue, and this is what makes it checkable. A transcribed take has no\nrecording left, since only the transcript is kept. A failed take's\nrecording is deleted within 48 hours (see ``retention.py``), and one\nthat is due is refused even before the sweep reaches it; a signed URL\nfor one that is gone would only fail at the bucket, so say so here\ninstead.",
         "operationId": "download_brain_dump_recording",
         "responses": {
           "200": {
@@ -14915,6 +14902,174 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/paused": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List scheduled chats paused after failing the same way",
+        "description": "A paused job drops out of the follow-ups list above, so the chats a\nfailure streak paused are listed here, each once however many fire times\nit has, with why and what Resume takes.",
+        "operationId": "listPausedScheduledChats",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PausedScheduledChat"
+                  },
+                  "type": "array",
+                  "title": "Response Listpausedscheduledchats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/cadence": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "How often a scheduled chat runs, and how it could run less often",
+        "operationId": "getScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Run a scheduled chat less often",
+        "operationId": "setScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetScheduledChatCadenceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/resume": {
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Resume a scheduled chat paused after failing the same way",
+        "operationId": "resumeScheduledChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeScheduledChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/schedules/{schedule_id}": {
@@ -19019,7 +19174,8 @@
               },
               { "type": "null" }
             ],
-            "title": "Historical Data"
+            "title": "Historical Data",
+            "description": "Daily data points ordered oldest to newest"
           }
         },
         "type": "object",
@@ -20939,6 +21095,15 @@
         "required": ["file_ids"],
         "title": "BulkMoveFilesRequest"
       },
+      "CadenceOption": {
+        "properties": {
+          "cron": { "type": "string", "title": "Cron" },
+          "label": { "type": "string", "title": "Label" }
+        },
+        "type": "object",
+        "required": ["cron", "label"],
+        "title": "CadenceOption"
+      },
       "CancelSessionResponse": {
         "properties": {
           "cancelled": { "type": "boolean", "title": "Cancelled" },
@@ -21803,6 +21968,11 @@
             "title": "Limits Retry Count",
             "default": 0
           },
+          "usage_wait_count": {
+            "type": "integer",
+            "title": "Usage Wait Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -22247,6 +22417,13 @@
             "title": "Expert Kickoff",
             "default": false
           },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "format": "uuid" },
+              { "type": "null" }
+            ],
+            "title": "Session Id"
+          },
           "autopilot_mode": {
             "anyOf": [
               {
@@ -22261,7 +22438,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\n``session_id`` lets the client name the session up front, which makes\nthe create idempotent: a retry after a lost response adopts the session\nthe first attempt committed (409 if the id is someone else's or scoped\nto another expert). Builder and kickoff sessions pick their own ids, so\nit is rejected alongside them (422).\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -29241,6 +29418,10 @@
       "NightlyBatchResult": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "nightly_id": {
             "type": "string",
             "title": "Nightly Id",
@@ -30115,6 +30296,40 @@
         "type": "object",
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
+      },
+      "PausedScheduledChat": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "reason": { "type": "string", "title": "Reason" },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "summary": { "type": "string", "title": "Summary" },
+          "paused_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paused At"
+          },
+          "routine": { "type": "boolean", "title": "Routine", "default": false }
+        },
+        "type": "object",
+        "required": [
+          "schedule_key",
+          "title",
+          "session_id",
+          "reason",
+          "provider",
+          "summary",
+          "paused_at"
+        ],
+        "title": "PausedScheduledChat",
+        "description": "A scheduled chat its failure streak paused, as the lists show it."
       },
       "PeekPendingMessagesResponse": {
         "properties": {
@@ -31978,6 +32193,12 @@
         "required": ["version_id"],
         "title": "RestoreVersionRequest"
       },
+      "ResumeScheduledChatResponse": {
+        "properties": { "resumed": { "type": "boolean", "title": "Resumed" } },
+        "type": "object",
+        "required": ["resumed"],
+        "title": "ResumeScheduledChatResponse"
+      },
       "ReviewItem": {
         "properties": {
           "node_exec_id": {
@@ -32513,6 +32734,25 @@
         "title": "ScheduleUpdateRequest",
         "description": "Fields to change on an existing schedule; omitted fields keep their value."
       },
+      "ScheduledChatCadence": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "current": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "options": {
+            "items": { "$ref": "#/components/schemas/CadenceOption" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_key", "title", "current", "timezone", "options"],
+        "title": "ScheduledChatCadence"
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -32803,6 +33043,18 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetScheduledChatCadenceRequest": {
+        "properties": {
+          "cron": {
+            "type": "string",
+            "title": "Cron",
+            "description": "One of the cadences offered for this chat, as returned by getScheduledChatCadence"
+          }
+        },
+        "type": "object",
+        "required": ["cron"],
+        "title": "SetScheduledChatCadenceRequest"
       },
       "SetUserTierRequest": {
         "properties": {

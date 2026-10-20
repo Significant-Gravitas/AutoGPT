@@ -181,6 +181,8 @@ model User {
 
   ExpertRoutines       ExpertRoutine[]
   DreamPasses          DreamPass[]
+  ScheduledChatStreaks ScheduledChatStreak[]
+  MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -938,6 +940,12 @@ model ChatMessage {
   // predating this column.
   langfuseTraceId String?
 
+  // PostHog trace of the turn that wrote this assistant or reasoning row:
+  // the `$ai_trace_id` its generations and spans carry, so a rating of the
+  // reply can name the trace. Null on user/tool rows, on rows written
+  // outside an executor turn and on rows predating this column.
+  traceId String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -1215,7 +1223,9 @@ model PushSubscription {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint String
+  // An endpoint belongs to one browser profile, so to one account at a time:
+  // subscribing moves it to whoever signed in last.
+  endpoint String @unique
   p256dh   String
   auth     String
 
@@ -1223,6 +1233,10 @@ model PushSubscription {
   failCount    Int       @default(0)
   lastFailedAt DateTime?
 
+  // Implied by the unique endpoint and kept only so a backend release that
+  // still upserts on (userId, endpoint) keeps working through a rolling
+  // deploy; it also serves per-user lookups. Safe to drop once no deployed
+  // release upserts on it.
   @@unique([userId, endpoint])
 }
 
@@ -1396,6 +1410,7 @@ model Expert {
   BundledSkills   ExpertSkillListing[]
   Routines        ExpertRoutine[]
   DreamPasses     DreamPass[]
+  MemorySchedule  MemoryScopeSchedule?
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1563,6 +1578,44 @@ model ExpertRoutine {
   @@unique([expertId, key])
   @@index([expertId, createdAt, id])
   @@index([userId, createdAt, id])
+}
+
+// The runs a scheduled chat (an Expert routine or a follow-up) has failed the
+// same way in a row. The third run that fails outright pauses it, and its
+// owner is told once, with the fix; a run that works removes the row.
+model ScheduledChatStreak {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The routine's id, or the follow-up's schedule id: a routine with several
+  // fire times is one scheduled chat.
+  scheduleKey String
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
+  scheduleIds String[]
+  title       String
+  // The chat its latest run went to, where the owner is told.
+  sessionId   String?
+
+  // What the runs have in common: compared by key, explained by the rest.
+  failureKey  String
+  failureKind String
+  provider    String?
+  tool        String?
+  // Runs in a row that failed this way, and how many of the latest of those
+  // failed outright, in a row.
+  failures         Int @default(1)
+  wholeRunFailures Int @default(0)
+
+  notifiedAt DateTime?
+  pausedAt   DateTime?
+
+  @@unique([userId, scheduleKey])
+  @@index([userId, pausedAt])
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its
@@ -1885,6 +1938,56 @@ model ExpertPod {
 
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+// One row per memory scope (the account, or one hired expert) that the
+// nightly dream and weekly community-rebuild crons serve. It is the source of
+// truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
+// crons may run, the timezone they were registered in, and their APScheduler
+// job ids. Replaces the Redis registration markers.
+model MemoryScopeSchedule {
+  // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
+  // for an expert. Also the suffix of both job ids.
+  scopeKey String @id
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Null for the account scope, whose scopeKey equals userId (a CHECK in the
+  // migration holds that).
+  expertId String? @unique
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // The IANA timezone the recorded jobs were registered in.
+  timezone String
+  state    MemoryScopeScheduleState @default(ACTIVE)
+
+  // Null while that cron is not registered: its flag is off, registration
+  // failed, or the scope is paused or wiped. Skill learning runs per account,
+  // so an expert's scope never records a learning job.
+  communityJobId String?
+  nightlyJobId   String?
+  learningJobId  String?
+
+  // When each job body last ran its pass without an error.
+  lastNightlyRunAt   DateTime?
+  lastCommunityRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([state])
+}
+
+// ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
+// its schedules are paused; the crons are removed until it resumes. WIPED: the
+// scope's memory was erased; the crons are removed and no registry operation
+// reactivates the scope (the wipe work decides what brings one back).
+enum MemoryScopeScheduleState {
+  ACTIVE
+  PAUSED
+  WIPED
 }
 
 ////////////////////////////////////////////////////////////

@@ -394,6 +394,16 @@ class ChatConfig(BaseSettings):
         "re-fetching it (0 to disable caching)",
     )
 
+    # PostHog LLM analytics (copilot/ai_spans.py)
+    posthog_builtin_tool_spans: bool = Field(
+        default=True,
+        description="Send a PostHog ``$ai_span`` for each call of the SDK "
+        "CLI's built-in tools (Task/Agent, WebSearch, ...), sub-agents' calls "
+        "included. Off, only platform tools get spans. The high-volume lookups "
+        "in ``ai_spans.UNTRACED_BUILTIN_TOOLS`` (Read, Grep, TodoWrite, ...) "
+        "never get one.",
+    )
+
     # Rate limiting — cost-based limits per day and per week, stored in
     # microdollars (1 USD = 1_000_000).  The counter tracks the real
     # generation cost reported by the provider (OpenRouter ``usage.cost``
