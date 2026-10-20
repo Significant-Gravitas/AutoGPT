@@ -15,14 +15,13 @@ import random
 import re
 import shutil
 import sys
-import itertools  # do-not-merge probe (#15739)
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -44,7 +43,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
-from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
+from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.graphiti import context_refresh
@@ -59,21 +58,20 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
-from backend.copilot.google_data_redaction import install_trace_redaction
+from backend.copilot.cli_session_entry import rewrite_user_entry
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import (
-    INJECTED_MEMORY_BLOCK_RE as _INJECTED_MEMORY_BLOCK_RE,
-    INJECTED_MEMORY_MARKER,
-    INJECTED_MEMORY_NONCE as _INJECTED_MEMORY_NONCE,
-    mark_injected_memory_block as _mark_injected_memory_block,
+    INJECTED_MEMORY_NONCE,
+    append_injected_memory_block,
+    strip_injected_memory_text,
 )
+from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
-from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
-from backend.copilot.sdk import perf_loopwatch  # do-not-merge probe (#15739)
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
@@ -1082,32 +1080,19 @@ def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
     )
 
 
-_INJECTED_MEMORY_MARKER = INJECTED_MEMORY_MARKER
-
-
-def _strip_injected_memory_text(text: str) -> str:
-    """Remove nonce-marked ``<temporal_context>`` blocks (plus the injected
-    ``\\n\\n`` separator) from *text*, leaving all other content untouched.
-
-    Removes ONLY what the injector added — no global ``.strip()`` or blank-line
-    collapse — so a user's own leading/trailing whitespace and intentional blank
-    lines survive. Returns *text* verbatim when no marked block is present.
-    """
-    return _INJECTED_MEMORY_BLOCK_RE.sub("", text)
-
-
 def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
-    """Scrub the server-injected follow-up warm-context block from the JSONL.
+    """Scrub the server-injected warm-context blocks from the JSONL.
 
-    The CLI persists every ``client.query(...)`` call — including the per-turn
-    ``<temporal_context>`` block appended for SECRT-2378 recall. Left in the
-    uploaded JSONL these accumulate across turns and replay stale facts on
-    ``--resume`` (a fact the user later retracted keeps re-appearing). The
-    block is keyed on a single turn's message, so strip it here; the next turn
-    re-injects a fresh one. Only blocks carrying this process's provenance
-    nonce are removed: a ``<temporal_context>`` tag the user typed is left
-    intact unless it carries that nonce, which a user would have to get from
-    the model, since it reads it in the prompt (see ``_INJECTED_MEMORY_NONCE``).
+    The CLI persists every ``client.query(...)`` call, including the
+    ``<temporal_context>`` block every turn's query carries (the first turn's
+    fetch or a follow-up refresh, SECRT-2378). Left in the uploaded JSONL
+    these accumulate across turns and replay on ``--resume``, a fact the user
+    forgot later included. The block is read for a single send, so strip it
+    here; the next turn injects a fresh one. Only blocks carrying this
+    process's provenance nonce are removed: a ``<temporal_context>`` tag the
+    user typed is left intact unless it carries that nonce, which a user would
+    have to get from the model, since it reads it in the prompt (see
+    ``graphiti/context_marker.py``).
     """
     if not content:
         return content
@@ -1120,11 +1105,11 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     # (``data-agpt-injected="…"``) which JSON-encode to ``\"`` in the raw
     # line, so a full-marker substring test never matches. The nonce is
     # hex — unchanged by JSON escaping.
-    marker = _INJECTED_MEMORY_NONCE.encode()
+    marker = INJECTED_MEMORY_NONCE.encode()
     # Whole-buffer probe first: a turn that injected nothing (trivial message,
-    # memory off, first turn) skips splitlines and the per-line loop entirely
-    # and returns the transcript untouched. When a block IS present the full
-    # pass is still needed — a retry can inject a second marked line.
+    # memory off, nothing recalled) skips splitlines and the per-line loop
+    # entirely and returns the transcript untouched. When a block IS present
+    # the full pass is still needed — a retry can inject a second marked line.
     if marker not in content:
         return content
     out: list[bytes] = []
@@ -1135,7 +1120,7 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
             out.append(line)
             continue
         # Past this point the line carries this process's nonce: a block we
-        # injected (or, the limit ``_INJECTED_MEMORY_NONCE`` describes, one a
+        # injected (or, the limit ``context_marker`` describes, one a
         # user pasted with that nonce), expected to go. Both fall-throughs below
         # keep it — safe (they never eat user text), but they reintroduce the
         # accumulation this scrub exists to prevent, so the misses are counted
@@ -1146,7 +1131,7 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
             survived += 1
             out.append(line)
             continue
-        rewritten = _rewrite_user_entry_memory(entry)
+        rewritten = rewrite_user_entry(entry, strip_injected_memory_text)
         if rewritten is None:
             survived += 1
             out.append(line)
@@ -1161,108 +1146,6 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
             survived,
         )
     return b"".join(out)
-
-
-def _rewrite_user_entry_memory(entry: object) -> dict[str, object] | None:
-    """Return *entry* with the injected memory block stripped, or None.
-
-    None means "no change" — the caller keeps the original line byte-for-byte,
-    so only user messages that actually carried a marked block are re-serialised
-    (untouched entries are never reformatted). Entries that aren't user messages
-    (or don't match the CLI's user-entry shape at all) fail validation and are
-    likewise left alone.
-    """
-    try:
-        parsed = _CLIUserEntry.model_validate(entry)
-    except ValidationError:
-        return None
-    rewritten = parsed.message.without_injected_memory()
-    if rewritten is None:
-        return None
-    return parsed.model_copy(update={"message": rewritten}).model_dump()
-
-
-class _CLITextBlock(BaseModel):
-    """A ``text`` content block of a CLI JSONL user message."""
-
-    model_config = ConfigDict(extra="allow")
-
-    type: Literal["text"]
-    text: str
-
-    def without_injected_memory(self) -> "_CLITextBlock | None":
-        """Return the cleaned block, or None when it must be dropped entirely.
-
-        A block that empties out is dropped rather than emitted empty, since
-        Anthropic rejects empty text blocks on ``--resume``.
-        """
-        cleaned = _strip_injected_memory_text(self.text)
-        if not cleaned:
-            return None
-        return self.model_copy(update={"text": cleaned})
-
-
-class _CLIOpaqueBlock(RootModel[object]):
-    """Any other content block (image, tool_result, …) — passed through as-is."""
-
-    def without_injected_memory(self) -> "_CLIOpaqueBlock | None":
-        return self
-
-
-# Left-to-right so a well-formed text block never falls through to the opaque
-# passthrough (which validates anything).
-_CLIContentBlock = Annotated[
-    _CLITextBlock | _CLIOpaqueBlock, Field(union_mode="left_to_right")
-]
-
-
-class _CLIUserTextMessage(BaseModel):
-    """User message whose content is a bare string."""
-
-    model_config = ConfigDict(extra="allow")
-
-    role: Literal["user"]
-    content: str
-
-    def without_injected_memory(self) -> "_CLIUserTextMessage | None":
-        """Return the rewritten message, or None to keep the original as-is."""
-        cleaned = _strip_injected_memory_text(self.content)
-        if cleaned == self.content or not cleaned:
-            # Unchanged, or the whole message was the injected block — keep the
-            # original rather than emit empty content that --resume rejects.
-            return None
-        return self.model_copy(update={"content": cleaned})
-
-
-class _CLIUserBlocksMessage(BaseModel):
-    """User message whose content is a list of content blocks."""
-
-    model_config = ConfigDict(extra="allow")
-
-    role: Literal["user"]
-    content: list[_CLIContentBlock]
-
-    def without_injected_memory(self) -> "_CLIUserBlocksMessage | None":
-        """Return the rewritten message, or None to keep the original as-is."""
-        kept = [
-            cleaned
-            for cleaned in (block.without_injected_memory() for block in self.content)
-            if cleaned is not None
-        ]
-        if not kept:
-            # Every block emptied out — keep the original intact.
-            return None
-        rewritten = self.model_copy(update={"content": kept})
-        return None if rewritten == self else rewritten
-
-
-class _CLIUserEntry(BaseModel):
-    """A ``{"type": "user", ...}`` line of the CLI's native session JSONL."""
-
-    model_config = ConfigDict(extra="allow")
-
-    type: Literal["user"]
-    message: _CLIUserTextMessage | _CLIUserBlocksMessage
 
 
 def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:
@@ -1555,7 +1438,7 @@ class _RetryState:
     adapter: SDKResponseAdapter
     transcript_builder: TranscriptBuilder
     usage: _TokenUsage
-    # The turn's query as built, before the follow-up warm context is
+    # The turn's query as built, before its warm-context block is
     # appended. Every send of it appends a block read for that send
     # (``_resend_with_fresh_warm_context``); None once the query sent is not
     # the turn's own (the building-mode continuation).
@@ -3664,7 +3547,11 @@ async def _build_query_message(
     # watermark-alignment check trips on a reasoning row (instead of the
     # expected assistant) and the gap injection is skipped, dropping real
     # mid-turn user rows from the next LLM query.
-    prior = [m for m in prior if m.role != "reasoning"]
+    # The first message is read without the memory block an older session
+    # stored in it, before anything (the summarizer included) reads it.
+    prior = without_stored_first_turn_memory(
+        [m for m in prior if m.role != "reasoning"]
+    )
 
     # Every branch below makes at most one ``_compress_messages`` call and then
     # returns, so this is written exactly once per invocation.
@@ -4493,17 +4380,9 @@ async def _run_stream_attempt(
         )
         state.usage.start_cli_session(baseline)
     transport = state.prelaunch.claim(state.options) if state.prelaunch else None
-    yield StreamStatus(message=f"perf:launch:{_probe_ms()}")  # do-not-merge probe
     sdk_client = ClaudeSDKClient(options=state.options, transport=transport)
     client = await sdk_client.__aenter__()
     try:
-        yield StreamStatus(
-            message=f"perf:cli_connect:{_probe_ms()}"
-        )  # do-not-merge probe
-        _st_n, _st_max, _st_sum = perf_loopwatch.stalls_since(
-            perf_loopwatch.TURN_T0.get()
-        )
-        yield StreamStatus(message=f"perf:stalls:{_st_n}:{int(_st_max)}:{int(_st_sum)}")
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
             "query_len=%d, attached_files=%d, image_blocks=%d",
@@ -4751,7 +4630,7 @@ async def _seed_transcript(
     if msg_ceiling <= 1:
         return "", transcript_covers_prefix, transcript_msg_count
 
-    _prior = session.messages[: msg_ceiling - 1]
+    _prior = without_stored_first_turn_memory(session.messages[: msg_ceiling - 1])
     # The returned watermark still counts the rows hidden from the model.
     _comp, _, _ = await _compress_messages(
         visible_to_model(_prior), _SEED_TARGET_TOKENS
@@ -4990,8 +4869,9 @@ def _start_follow_up_warm_context(
 
     The refresh only needs the current message, so starting it here lets the
     graph round-trip overlap compaction, attachment prep and builder context.
-    ``_append_follow_up_warm_context`` joins it once the query is ready and
-    waits at most the join grace for it (``context_refresh.join_refresh``).
+    ``_append_warm_context`` joins it once the query is ready and waits at
+    most the join grace for it (``context_refresh.join_refresh``). A first
+    turn has nothing to start: its block was read during setup.
 
     Returns ``None`` when the turn is not a candidate — the outer gate, or a
     message the substance gate rejects. ``was_compacted`` (the only thing that
@@ -5010,7 +4890,7 @@ def _start_follow_up_warm_context(
     return context_refresh.start_refresh(user_id, current_message, expert_id=expert_id)
 
 
-async def _append_follow_up_warm_context(
+async def _append_warm_context(
     query_message: str,
     *,
     graphiti_enabled: bool,
@@ -5021,49 +4901,55 @@ async def _append_follow_up_warm_context(
     current_message: str,
     was_compacted: bool,
     pending: context_refresh.PendingRefresh | None = None,
+    first_turn_block: str | None = None,
 ) -> str:
-    """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
+    """Append this send's warm-context block to *query_message*, marked.
 
-    The first turn pre-loads memory via ``inject_user_context(warm_ctx=...)``;
-    later turns (a new task mid-session, or the turn right after a compaction)
-    otherwise get no deterministic recall and depend on the model choosing to
-    call the memory tool, which it often skips. Keyed on the CURRENT user
-    message; forced after a compaction so a short "continue"-style turn still
-    re-injects memory. No-op on the first turn, non-user turns, and when
-    Graphiti is disabled. Called for every send of the turn's query: the
-    first, and each retry (``_resend_with_fresh_warm_context``). ``expert_id``
-    scopes the refresh to the same memory owner the first-turn fetch used, so
-    an expert chat never refreshes from the user's personal graph.
+    Every send of a turn's query carries one block read for that send
+    (SECRT-2378): the first send and each retry
+    (``_resend_with_fresh_warm_context``). Which block:
 
-    ``pending`` is the refresh ``_start_follow_up_warm_context`` started
-    before the query was built. Without one (a retry, or a turn the starter
-    declined) the refresh starts here. Either way the turn waits at most the
-    join grace for it (``warm_context_refresh_join_grace_ms``, the most a
-    refresh may add to time-to-first-token); a refresh still running then is
-    cancelled and the query goes out without a block.
+    - The first send of a session's first turn carries ``first_turn_block``,
+      what the first-turn fetch read during setup
+      (``_fetch_graphiti_context``: the cross-encoder recipe, with
+      ratification hits). Only that send passes it.
+    - Every other send carries a refresh keyed on the CURRENT user message:
+      the one ``_start_follow_up_warm_context`` started before the query was
+      built (``pending``), or one started here. A follow-up turn's refresh
+      skips a message under the substance gate unless the build compacted, so
+      a short "continue"-style turn right after a compaction still recalls; a
+      first turn's retry always reads, as its first send did.
 
-    The block goes into the query only: the transcript records
-    ``current_message``, and ``_strip_ephemeral_memory_from_cli_jsonl``
-    removes the block from the CLI session file before upload, so no later
-    turn replays it.
+    The turn waits at most the join grace for a refresh
+    (``warm_context_refresh_join_grace_ms``, the most a refresh may add to
+    time-to-first-token); a refresh still running then is cancelled and the
+    query goes out without a block. No-op on non-user turns and when Graphiti
+    is disabled. ``expert_id`` scopes the refresh to the memory owner the
+    first turn's fetch read, so an expert chat never refreshes from the
+    user's personal graph.
+
+    The block goes into the query only. Neither the stored user message nor
+    the transcript builder holds it, and ``_strip_ephemeral_memory_from_cli_jsonl``
+    removes it, by its mark, from the CLI session file before upload, so no
+    later turn replays it (``graphiti/context_marker.py``).
     """
-    if not (graphiti_enabled and has_history and is_user_message and user_id):
+    if not (graphiti_enabled and is_user_message and user_id):
         _discard_pending_refresh(pending)
         return query_message
+    if first_turn_block is not None:
+        _discard_pending_refresh(pending)
+        return append_injected_memory_block(query_message, first_turn_block)
     if pending is None:
         pending = context_refresh.start_refresh(
-            user_id, current_message, expert_id=expert_id, force=was_compacted
+            user_id,
+            current_message,
+            expert_id=expert_id,
+            force=was_compacted or not has_history,
         )
     if pending is None:
         return query_message
     refreshed = await context_refresh.join_refresh(pending)
-    if not refreshed:
-        return query_message
-    # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
-    # can scrub THIS block from the persisted transcript. A
-    # ``<temporal_context>`` tag the user typed is left alone unless it
-    # carries this process's nonce (see ``_mark_injected_memory_block``).
-    return f"{query_message}\n\n{_mark_injected_memory_block(refreshed)}"
+    return append_injected_memory_block(query_message, refreshed)
 
 
 async def _resend_with_fresh_warm_context(
@@ -5078,8 +4964,10 @@ async def _resend_with_fresh_warm_context(
     the forgotten fact back in front of the model. So the retry's query is
     the query as built (``_RetryState.warm_context_base``: the user's text
     byte for byte, without the old block) with one block read for this send
-    appended (``append_warm_context``, ``_append_follow_up_warm_context``
-    bound to the turn). The join grace bounds the read like any other. A
+    appended (``append_warm_context``, ``_append_warm_context`` bound to the
+    turn). That holds on a session's first turn too: its first block was
+    never part of the user's message, so the retry reads memory again rather
+    than resending it. The join grace bounds the read like any other. A
     continuation that is not the turn's query (building mode) has no base
     and is sent as it is.
     """
@@ -5148,9 +5036,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user LaunchDarkly targeting.
     """
-    perf_loopwatch.ensure_watch()  # do-not-merge probe (#15739)
-    perf_loopwatch.TURN_T0.set(time.monotonic())
-    yield StreamStatus(message=f"perf:turn_start:{_probe_ms()}")
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -5286,7 +5171,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+        user_messages = [
+            m
+            for m in without_stored_first_turn_memory(session.messages)
+            if m.role == "user"
+        ]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
@@ -5476,59 +5365,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The E2B leg runs as its own task: if a sibling leg fails first, the
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
-        _probe_legs: dict[str, int] = {}  # do-not-merge probe (#15739)
-        _wc_marks: dict = {}
-        _wc_since = time.time()
-        _perf_legs.LEG_MARKS.set(_wc_marks)
-        yield StreamStatus(message=f"perf:gather_start:{_probe_ms()}")
-        e2b_task = asyncio.create_task(_probe_timed("e2b", _setup_e2b(), _probe_legs))
+        e2b_task = asyncio.create_task(_setup_e2b())
         try:
             (
                 (base_system_prompt, understanding),
                 (graphiti_enabled, warm_ctx),
                 _restore,
             ) = await asyncio.gather(
-                _probe_timed(
-                    "sysprompt",
-                    _build_system_prompt(user_id if not has_history else None),
-                    _probe_legs,
-                ),
-                _probe_timed(
-                    "graphiti",
-                    _fetch_graphiti_context(user_id, session, message),
-                    _probe_legs,
-                ),
+                _build_system_prompt(user_id if not has_history else None),
+                _fetch_graphiti_context(user_id, session, message),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
-                _probe_timed(
-                    "restore",
-                    _restore_cli_session_for_turn(
-                        user_id,
-                        session_id,
-                        session,
-                        sdk_cwd,
-                        transcript_builder,
-                        log_prefix,
-                    ),
-                    _probe_legs,
+                _restore_cli_session_for_turn(
+                    user_id,
+                    session_id,
+                    session,
+                    sdk_cwd,
+                    transcript_builder,
+                    log_prefix,
                 ),
             )
         except BaseException:
             with contextlib.suppress(BaseException):
                 e2b_sandbox = await e2b_task
             raise
-        yield StreamStatus(message=f"perf:gather:{_probe_ms()}")
         e2b_sandbox = await e2b_task
-        yield StreamStatus(
-            message="perf-legs:"
-            + ",".join(f"{k}={v}" for k, v in sorted(_probe_legs.items()))
-        )
-        _perf_legs.LEG_MARKS.set(None)
-        yield StreamStatus(
-            message="perf-wc:"
-            + _perf_legs.render(_wc_marks, _wc_since)[len("perf-legs:") :]
-        )
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -5917,11 +5779,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The CLI's options are final and the query isn't built yet: spawn it
         # now, under the turn's trace context, so it boots while the query is
         # assembled instead of after (``CLIPrelaunch``).
-        # do-not-merge probe A/B (#15739): prelaunch on every other turn.
         _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
-        yield StreamStatus(
-            message=f"perf:prelaunch:{'on' if _cli_prelaunch is not None else 'off'}"
-        )
 
         current_message = message or ""
         if not current_message and session.messages:
@@ -5996,6 +5854,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # A continuation note is stored as a system row; the model gets
             # its instruction without the rendering marker.
             current_message = as_model_prompt(current_message)
+        # What memory is searched with: the user's own words (and any pending
+        # messages folded in below), never the context blocks
+        # ``inject_user_context`` puts in front of them on a first turn.
+        recall_message = current_message
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.
@@ -6003,10 +5865,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # cache it across sessions.
         #
         # On resume (has_history=True) we intentionally skip re-injection: the
-        # transcript already contains the <user_context> and <memory_context>
-        # prefixes from the original turn (persisted to the DB via
+        # transcript already contains the <user_context> prefix and its
+        # siblings from the original turn (persisted to the DB via
         # inject_user_context), so the SDK replay carries context continuity
-        # without us prepending them again.
+        # without us prepending them again. Warm context is not among them:
+        # no turn persists its memory block, and every send carries its own
+        # (``_append_warm_context`` below).
         if not has_history:
             # Build env_ctx for the working directory and pass it into
             # inject_user_context so it is prepended AFTER
@@ -6039,16 +5903,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
                 )
-            # Pass warm_ctx and env_ctx to inject_user_context so they are
+            # Pass env_ctx and its siblings to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
             # inject_user_context persists the fully prefixed message to DB.
+            # The first turn's warm context (``warm_ctx``) is not passed: it
+            # goes into the query only, marked, like every later turn's block
+            # (``_append_warm_context`` below), so a fact forgotten later in
+            # the session is in no stored message and no uploaded transcript.
             prefixed_message = await inject_user_context(
                 understanding,
                 current_message,
                 session_id,
                 session.messages,
-                warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
                 session_ctx=session_ctx_content,
                 skills_ctx=skills_ctx_content,
@@ -6101,9 +5968,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     current_message,
                     request_arrival_at=request_arrival_at,
                 )
+                recall_message = combine_pending_with_current(
+                    pending_messages,
+                    recall_message,
+                    request_arrival_at=request_arrival_at,
+                )
 
         # SECRT-2378: start the follow-up warm-context refresh HERE rather
-        # than at the injection point below — ``current_message`` is final
+        # than at the injection point below — ``recall_message`` is final
         # after the pending fold, so the graph round-trip overlaps compaction,
         # attachment prep and builder context. The join below waits at most
         # the join grace for what is left of it.
@@ -6113,17 +5985,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             is_user_message=is_user_message,
             user_id=user_id,
             expert_id=session.expert_id,
-            current_message=current_message,
+            current_message=recall_message,
         )
-        # The turn's refresh inputs, bound once for every send of its query.
+        # The turn's warm-context inputs, bound once for every send of its
+        # query.
         append_warm_context = functools.partial(
-            _append_follow_up_warm_context,
+            _append_warm_context,
             graphiti_enabled=graphiti_enabled,
             has_history=has_history,
             is_user_message=is_user_message,
             user_id=user_id,
             expert_id=session.expert_id,
-            current_message=current_message,
+            current_message=recall_message,
         )
 
         forecast = _expect_pre_query_compaction(
@@ -6180,9 +6053,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
-        # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
-        # No separate injection needed here.
-
         # Inject per-turn builder context when the session is bound to a
         # graph via ``metadata.builder_graph_id``.  Runs on EVERY user turn
         # (including resumes) so the LLM always sees the live graph snapshot
@@ -6204,26 +6074,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, is_user_message, query_message
         )
 
-        # SECRT-2378: refresh warm context on FOLLOW-UP user turns (see
-        # ``_append_follow_up_warm_context``). Every send of the query carries
-        # a block read for it: this one, and each retry below
-        # (``_resend_with_fresh_warm_context``), which rebuilds from the query
-        # as it is here, before the block.
+        # SECRT-2378: warm context goes into the query only, marked, on every
+        # turn (see ``_append_warm_context``): the block the setup fetch read
+        # on a session's first turn, a refresh on a follow-up. Every send of
+        # the query carries a block read for it: this one, and each retry
+        # below (``_resend_with_fresh_warm_context``), which rebuilds from the
+        # query as it is here, before the block.
         warm_context_base = query_message
-        yield StreamStatus(  # do-not-merge probe (#15739)
-            message=f"perf:join_start:{'pending' if pending_warm_ctx is not None else 'none'}"
-        )
-        _probe_join_t0 = time.monotonic()
         query_message = await append_warm_context(
-            warm_context_base, was_compacted=was_compacted, pending=pending_warm_ctx
-        )
-        _probe_join = (
-            "used"
-            if query_message != warm_context_base
-            else ("skipped" if pending_warm_ctx is not None else "none")
-        )
-        yield StreamStatus(  # do-not-merge probe (#15739)
-            message=f"perf:join_end:{_probe_join}:{int((time.monotonic() - _probe_join_t0) * 1000)}"
+            warm_context_base,
+            was_compacted=was_compacted,
+            pending=pending_warm_ctx,
+            first_turn_block=None if has_history else warm_ctx,
         )
 
         # When running without --resume and no prior transcript in storage,
@@ -7187,9 +7049,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
                         _cli_content
                     )
-                    # Scrub server-injected memory blocks so per-turn warm
-                    # context (SECRT-2378) doesn't accumulate + replay stale
-                    # facts across --resume turns.
+                    # Scrub server-injected memory blocks, the first turn's
+                    # included, so per-turn warm context (SECRT-2378) doesn't
+                    # accumulate + replay stale facts across --resume turns.
                     _cli_content = _strip_ephemeral_memory_from_cli_jsonl(_cli_content)
                     # Watermark = number of DB messages this transcript covers.
                     # len(session.messages) is accurate: the CLI session file
@@ -7374,11 +7236,12 @@ async def _fetch_graphiti_context(
     """Check Graphiti flag and fetch warm context in one shot.
 
     Returns ``(graphiti_enabled, warm_ctx)`` where ``warm_ctx`` is a
-    pre-loaded fact bundle injected into the first user message (not the
-    system prompt) so the system prompt stays identical across users and
-    sessions, enabling cross-session Anthropic prompt-cache hits.  Skips
-    the fetch on follow-up turns (history > 1 message) and when the user
-    is anonymous.
+    pre-loaded fact bundle for the first turn's query (not the system
+    prompt, so the system prompt stays identical across users and sessions,
+    enabling cross-session Anthropic prompt-cache hits). The first send
+    appends it, marked, to the query only (``_append_warm_context``); it is
+    never stored in the user's message. Skips the fetch on follow-up turns
+    (history > 1 message) and when the user is anonymous.
     """
     enabled = await is_enabled_for_user(user_id)
     if not enabled:
@@ -7523,25 +7386,3 @@ def _stamp_turn_trace_id(
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True
-
-
-_PROBE_PRELAUNCH_TURNS = itertools.count()
-
-
-def _probe_prelaunch_turn() -> bool:
-    """do-not-merge probe (#15739): the CLI prelaunch on every other turn."""
-    return next(_PROBE_PRELAUNCH_TURNS) % 2 == 0
-
-
-def _probe_ms() -> int:
-    """do-not-merge probe (#15739): server clock for perf statuses."""
-    return int(time.time() * 1000) % 100000000
-
-
-async def _probe_timed(name: str, coro: Any, legs: dict[str, int]) -> Any:
-    """do-not-merge probe (#15739): how long one setup leg took, in ms."""
-    t0 = time.monotonic()
-    try:
-        return await coro
-    finally:
-        legs[name] = int((time.monotonic() - t0) * 1000)

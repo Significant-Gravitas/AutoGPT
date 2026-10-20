@@ -10,6 +10,7 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -768,6 +769,43 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
             pass_id="p-lost",
             ops=ops,
             lock_handle=lock_handle,
+        )
+
+    drain.assert_not_awaited()
+    demote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
+    """The renewal before the drain is bounded like every other lock round
+    trip, and fails closed: a renewal that does not answer in time is not
+    taken for one that landed."""
+    mocker.patch.object(apply_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 0.05)
+    drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
+    demote = mocker.patch.object(
+        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
+    )
+
+    async def never_answers(_ttl_seconds: int) -> bool:
+        await asyncio.Event().wait()
+        return True
+
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = never_answers
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+
+    with pytest.raises(DreamLockLostError):
+        await asyncio.wait_for(
+            apply_mod.apply_operations(
+                scope=MemoryScope.for_user("u-slow"),
+                pass_id="p-slow",
+                ops=ops,
+                lock_handle=lock_handle,
+            ),
+            5,
         )
 
     drain.assert_not_awaited()

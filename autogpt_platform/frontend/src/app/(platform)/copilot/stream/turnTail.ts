@@ -85,6 +85,17 @@ export function newTurnSegment(
   };
 }
 
+const CHIP_KEY_PREFIX = "pending-chip-";
+
+/** The row a promoted follow-up shows as until its drained row stands in. */
+export function chipKey(queuedId: string): string {
+  return `${CHIP_KEY_PREFIX}${queuedId}`;
+}
+
+export function isChipKey(key: string): boolean {
+  return key.startsWith(CHIP_KEY_PREFIX);
+}
+
 export function userSegment(
   message: UIMessage,
   origin: UserSegment["origin"],

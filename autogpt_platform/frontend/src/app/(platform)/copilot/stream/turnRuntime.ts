@@ -21,6 +21,7 @@ import { seedTurnLog } from "./turnLog";
 import { diffRows, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
+  chipKey,
   closeBlocks,
   FROZEN_NOTE,
   gapSegment,
@@ -105,6 +106,9 @@ export interface RuntimeSnapshot {
   notice: RuntimeNotice;
   error: Error | null;
   stopped: boolean;
+  /** Watching for a turn the server starts after the last one (an engine
+   *  switch, an answered approval); the phase shows none running meanwhile. */
+  awaitingContinuation: boolean;
 }
 
 export interface SessionView {
@@ -197,6 +201,7 @@ export class TurnRuntime {
   // A stopped turn keeps running on the server for a moment; never re-attach to it.
   private suppressAttach = false;
   private followPending = false;
+  private continuationProbes = 0;
   // A resync or an expiry is rebuilding the turn; it reconnects when done.
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
@@ -319,7 +324,7 @@ export class TurnRuntime {
     if (entries.length === 0) return;
     this.claimTail(this.nextSequence());
     for (const entry of entries) {
-      const key = `pending-chip-${entry.id}`;
+      const key = chipKey(entry.id);
       if (this.segments.some((s) => s.key === key)) continue;
       this.segments.push(
         userSegment(userMessage(key, { text: entry.text }), "chip"),
@@ -848,16 +853,26 @@ export class TurnRuntime {
     attempts: number,
     awaitContinuation: boolean,
   ) {
-    for (let i = 0; i < attempts; i++) {
-      await sleep(FINISH_PROBE_MS);
-      if (this.disposed || this.stopped) return;
-      const view = await this.fetchView();
-      if (!view) continue;
-      this.observe(view);
-      const active = view.active_stream?.turn_id ?? null;
-      if (active && active !== turnId) return;
-      if (!active && !awaitContinuation) return;
+    if (awaitContinuation) this.countContinuationProbe(1);
+    try {
+      for (let i = 0; i < attempts; i++) {
+        await sleep(FINISH_PROBE_MS);
+        if (this.disposed || this.stopped) return;
+        const view = await this.fetchView();
+        if (!view) continue;
+        this.observe(view);
+        const active = view.active_stream?.turn_id ?? null;
+        if (active && active !== turnId) return;
+        if (!active && !awaitContinuation) return;
+      }
+    } finally {
+      if (awaitContinuation) this.countContinuationProbe(-1);
     }
+  }
+
+  private countContinuationProbe(change: 1 | -1) {
+    this.continuationProbes += change;
+    if (!this.disposed) this.emitNow();
   }
 
   // A turn queued behind the user's running cap starts when another of their
@@ -1388,6 +1403,7 @@ export class TurnRuntime {
       notice: this.notice,
       error: this.error,
       stopped: this.stopped,
+      awaitingContinuation: this.continuationProbes > 0,
     };
   }
 

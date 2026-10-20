@@ -194,6 +194,38 @@ async def test_an_unclaimed_process_is_stopped_when_the_turn_is_cancelled_while_
     assert slow_to_stop[0].closed
 
 
+@pytest.mark.asyncio
+async def test_the_bundled_cli_unclaimed_is_stopped_without_cancelling_the_turn(
+    tmp_path: Path,
+):
+    """The real transport, stopped from the task ``_stop`` makes: its process
+    exits, and nothing is left to cancel the task that asked for the stop."""
+    cli_path = _resolve_cli_path()
+    if cli_path is None or not cli_path.is_file():
+        pytest.skip("No Claude Code CLI binary available")
+    options = ClaudeAgentOptions(
+        cli_path=str(cli_path),
+        setting_sources=[],
+        cwd=str(tmp_path),
+        env={
+            "ANTHROPIC_API_KEY": "sk-test-fake-key-not-real",
+            "CLAUDE_CONFIG_DIR": str(tmp_path / ".claude-config"),
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        },
+    )
+    prelaunch = await CLIPrelaunch.start(options, "[test]")
+    assert prelaunch is not None
+    process = prelaunch._transport._process
+    assert process is not None and process.returncode is None
+
+    await prelaunch.close()
+    await asyncio.sleep(0.1)
+
+    turn = asyncio.current_task()
+    assert turn is not None and turn.cancelling() == 0
+    assert process.returncode is not None
+
+
 _REPLY = "PRELAUNCH-REPLY-5d1e"
 
 

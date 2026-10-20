@@ -66,6 +66,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import dream_pass as dream_pass_db
 from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
@@ -635,6 +636,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    check_private_expert = _(experts_db.check_private_expert)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
@@ -778,6 +780,20 @@ class DatabaseManager(AppService):
     admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+
+    # ============ Dream Passes ============ #
+    # The scheduler (sync passes, the reaper, retention) and the batch
+    # executor (batch callbacks) keep no Prisma connection; the dream store
+    # reaches each pass's record through these via db_accessors.dream_db().
+    create_dream_pass = _(dream_pass_db.create_dream_pass)
+    update_dream_pass = _(dream_pass_db.update_dream_pass)
+    get_dream_pass = _(dream_pass_db.get_dream_pass)
+    get_dream_pass_for_user = _(dream_pass_db.get_dream_pass_for_user)
+    list_open_dream_passes = _(dream_pass_db.list_open_dream_passes)
+    list_dream_passes = _(dream_pass_db.list_dream_passes)
+    list_expired_dream_passes = _(dream_pass_db.list_expired_dream_passes)
+    list_dream_pass_cleanups = _(dream_pass_db.list_dream_pass_cleanups)
+    delete_old_dream_passes = _(dream_pass_db.delete_old_dream_passes)
 
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
@@ -1165,6 +1181,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    check_private_expert = d.check_private_expert
     get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
@@ -1285,3 +1302,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message
+
+    # ============ Dream Passes ============ #
+    create_dream_pass = d.create_dream_pass
+    update_dream_pass = d.update_dream_pass
+    get_dream_pass = d.get_dream_pass
+    get_dream_pass_for_user = d.get_dream_pass_for_user
+    list_open_dream_passes = d.list_open_dream_passes
+    list_dream_passes = d.list_dream_passes
+    list_expired_dream_passes = d.list_expired_dream_passes
+    list_dream_pass_cleanups = d.list_dream_pass_cleanups
+    delete_old_dream_passes = d.delete_old_dream_passes

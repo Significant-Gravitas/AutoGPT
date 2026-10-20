@@ -102,26 +102,38 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
   );
 }
 
+export type VisiblePartKind = "text" | "reasoning" | "tool";
+
+/**
+ * What an assistant part visibly renders: text or reasoning with non-empty
+ * content, or a tool card (tool cards render regardless of state). Null for
+ * the bookkeeping parts (`step-start`, `data-*`) and empty blocks a stream
+ * sends before any content.
+ */
+export function getVisiblePartKind(
+  part: UIMessage["parts"][number],
+): VisiblePartKind | null {
+  if (part.type === "text") return part.text.trim() ? "text" : null;
+  if (part.type === "reasoning") return part.text.trim() ? "reasoning" : null;
+  return part.type.startsWith(TOOL_PART_PREFIX) ? "tool" : null;
+}
+
 /**
  * Whether the trailing assistant message has at least one part the UI
- * would visibly render: text with non-empty content, reasoning with
- * non-empty content, any tool part (tool cards render regardless of
- * state), or a Paused card — a turn refused before it ran streams nothing
- * else. Used to gate the resume-snapshot discard — the replay may stream
- * empty reasoning-start / step-start chunks for minutes before any
- * rendered content (e.g. Perplexity deep research), and we do not want to
- * drop the pre-replay snapshot until the user actually sees something.
+ * would visibly render (see `getVisiblePartKind`), or a Paused card — a
+ * turn refused before it ran streams nothing else. Used to gate the
+ * resume-snapshot discard — the replay may stream empty reasoning-start /
+ * step-start chunks for minutes before any rendered content (e.g.
+ * Perplexity deep research), and we do not want to drop the pre-replay
+ * snapshot until the user actually sees something.
  */
 export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant") return false;
-  return last.parts.some((part) => {
-    if (part.type === "text" && part.text.trim().length > 0) return true;
-    if (part.type === "reasoning" && part.text.trim().length > 0) return true;
-    if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
-    if (part.type === TURN_PAUSED_PART_TYPE) return true;
-    return false;
-  });
+  return last.parts.some(
+    (part) =>
+      getVisiblePartKind(part) !== null || part.type === TURN_PAUSED_PART_TYPE,
+  );
 }
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */

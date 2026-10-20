@@ -1,10 +1,11 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Coroutine
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 from uuid import UUID, uuid4
 
 from autogpt_libs import auth
@@ -110,6 +111,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
     increment_daily_reset_count,
+    is_user_paywalled,
     release_reset_lock,
     reset_daily_usage,
 )
@@ -176,7 +178,7 @@ from backend.copilot.transports import (
     save_default_chat_route,
 )
 from backend.copilot.trial_reads import sharing_trial_reads
-from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
+from backend.copilot.turn_tracing import is_answer_text, is_model_output
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -194,6 +196,11 @@ from backend.util.settings import Settings
 settings = Settings()
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Reads a message starts before its session checks (``_start_early_read``).
+_early_reads: set[asyncio.Task[Any]] = set()
 
 config = ChatConfig()
 
@@ -790,6 +797,12 @@ async def set_default_chat_transport(
     return ChatTransportsResponse(transports=transports)
 
 
+async def _new_session_expert(user_id: str, expert_id: str | None):
+    if expert_id is None:
+        return None
+    return await experts_db.get_expert(user_id, expert_id)
+
+
 async def _resolve_new_session_llm_route(
     user_id: str,
     request: CreateSessionRequest | None,
@@ -932,14 +945,20 @@ async def create_session(
             detail="builder_graph_id and expert_id are mutually exclusive",
         )
 
-    if expert_id is not None:
-        expert = await experts_db.get_expert(user_id, expert_id)
-        if expert is None or expert.is_archived:
-            raise HTTPException(status_code=404, detail="Expert not found")
-
-    llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
-        user_id, request
+    # Two lookups the new chat waits on, neither needing the other: run them
+    # side by side, then fail in the order they used to run in.
+    expert, route = await asyncio.gather(
+        _new_session_expert(user_id, expert_id),
+        _resolve_new_session_llm_route(user_id, request),
+        return_exceptions=True,
     )
+    if isinstance(expert, BaseException):
+        raise expert
+    if expert_id is not None and (expert is None or expert.is_archived):
+        raise HTTPException(status_code=404, detail="Expert not found")
+    if isinstance(route, BaseException):
+        raise route
+    llm_auth_provider, llm_credential_id = route
 
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
@@ -1807,6 +1826,32 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+def _start_early_read(read: Coroutine[Any, Any, _T], name: str) -> asyncio.Task[_T]:
+    """Start a read the route awaits later, where its check runs."""
+    task = asyncio.create_task(read, name=name)
+    # The loop holds tasks weakly; a request that ends early never awaits this.
+    _early_reads.add(task)
+    task.add_done_callback(_finish_early_read)
+    return task
+
+
+def _finish_early_read(task: asyncio.Task[Any]) -> None:
+    _early_reads.discard(task)
+    if not task.cancelled():
+        # Retrieved, so a read nobody awaited isn't logged as an unhandled error.
+        task.exception()
+
+
+async def _read_paywall_state(user_id: str) -> None:
+    """Read what the paywall reads, so the paywall check can join the read.
+
+    The route shares those reads within the request (``sharing_trial_reads``),
+    so the check gets this read's result, or its error, when it runs.
+    """
+    with contextlib.suppress(Exception):
+        await is_user_paywalled(user_id)
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1907,7 +1952,25 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_writable_session(session_id, user_id)
+    # Reads that need only the user or the session id start beside the
+    # session's own checks; each is still awaited where its check runs.
+    paywall_reads = _start_early_read(
+        _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
+    )
+    turn_in_flight_read = (
+        _start_early_read(
+            is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
+        )
+        if request.is_user_message and request.message
+        else None
+    )
+    try:
+        session = await _validate_and_get_writable_session(session_id, user_id)
+    except BaseException:
+        paywall_reads.cancel()
+        if turn_in_flight_read is not None:
+            turn_in_flight_read.cancel()
+        raise
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     await enforce_model_entitlement(request.model, session, user_id)
@@ -1977,9 +2040,7 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
-        turn_in_flight = (
-            request.is_user_message and message and await is_turn_in_flight(session_id)
-        )
+        turn_in_flight = turn_in_flight_read is not None and await turn_in_flight_read
     except StreamRegistryUnavailable as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
@@ -2227,6 +2288,7 @@ async def stream_chat_post(
         subscriber_queue = None
         first_chunk_yielded = False
         first_token_yielded = False
+        first_text_yielded = False
         chunks_yielded = 0
         try:
             # Subscribe from the position we captured before enqueuing
@@ -2271,12 +2333,19 @@ async def stream_chat_post(
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )
-                    if not first_token_yielded and isinstance(
-                        chunk, MODEL_OUTPUT_CHUNKS
-                    ):
+                    if not first_token_yielded and is_model_output(chunk):
                         first_token_yielded = True
                         tracing.set_timing(
                             "copilot.stream.ttft_ms",
+                            (time_module.perf_counter() - stream_start_time) * 1000,
+                            span=stream_transaction,
+                        )
+                    # Reasoning and tool calls count as the first token; the
+                    # answer starts with the first text the model wrote.
+                    if not first_text_yielded and is_answer_text(chunk):
+                        first_text_yielded = True
+                        tracing.set_timing(
+                            "copilot.stream.first_text_ms",
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )

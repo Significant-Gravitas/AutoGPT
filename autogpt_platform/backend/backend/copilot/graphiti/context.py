@@ -2,13 +2,14 @@
 
 Recall must not depend on the model choosing to call ``memory_search``
 (SECRT-2378), so the chat engines put a ``<temporal_context>`` block, keyed
-on the user's message, into the turn themselves. The first turn of a
-session calls ``fetch_warm_context``: graphiti's cross-encoder recipe (BM25,
-cosine and BFS edge search, then a per-candidate LLM rerank),
-``context_max_facts`` facts, the five newest recallable episodes,
-``context_timeout``, and a ratification hit for every fact shown. Every
-later user turn refreshes it through the same fetch with a cheaper recipe
-(``context_refresh.py``).
+on the user's message, into the turn themselves: into that turn's model
+input only, marked, and never into the stored message or a transcript
+(``context_marker.py``). The first turn of a session calls
+``fetch_warm_context``: graphiti's cross-encoder recipe (BM25, cosine and
+BFS edge search, then a per-candidate LLM rerank), ``context_max_facts``
+facts, the five newest recallable episodes, ``context_timeout``, and a
+ratification hit for every fact shown. Every later user turn refreshes it
+through the same fetch with a cheaper recipe (``context_refresh.py``).
 
 Both read through the recall policy (``recall.py``) the same way: live facts
 only, recallable episodes only, one last check of both by uuid right before
@@ -105,24 +106,16 @@ async def _fetch(
     # lists are read again right before rendering (``recall_recheck.py``):
     # the episodes wait here for the slower search, a forget can answer
     # meanwhile, and what it hid is then not shown.
-    from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
-
-    _perf_legs.mark("wc_start")
     edges, episodes = await asyncio.gather(
-        _perf_legs.timed(
-            "wc_search",
-            search_facts(
-                scope,
-                message,
-                limit=graphiti_config.context_max_facts,
-                recipe=recipe,
-            ),
+        search_facts(
+            scope,
+            message,
+            limit=graphiti_config.context_max_facts,
+            recipe=recipe,
         ),
-        _perf_legs.timed("wc_episodes", recent_episodes(scope, _RECENT_EPISODES)),
+        recent_episodes(scope, _RECENT_EPISODES),
     )
-    edges, episodes = await _perf_legs.timed(
-        "wc_recheck", recheck(scope, edges, episodes)
-    )
+    edges, episodes = await recheck(scope, edges, episodes)
 
     # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge that's
     # currently ``status='tentative'`` gets promoted to ``active`` inline, and
