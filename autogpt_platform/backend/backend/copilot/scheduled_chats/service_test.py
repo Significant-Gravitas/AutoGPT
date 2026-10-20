@@ -662,3 +662,35 @@ async def test_forgetting_a_routines_id_leaves_its_pause_alone(
         assert [p.schedule_key for p in paused] == [routine.id]
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_key_naming_someone_elses_routine_is_a_follow_up(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Only the owner's routines are kept and listed as routines: a key that
+    names another account's routine is a follow-up, which a delete clears."""
+    user_id, session_id = await _owner()
+    other_id, _ = await _owner()
+    try:
+        foreign = await _routine(other_id)
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(
+                _run(
+                    user_id,
+                    session_id,
+                    failed,
+                    schedule_key=foreign.id,
+                    schedule_id=foreign.id,
+                )
+            )
+        [paused] = await list_paused_scheduled_chats(user_id)
+        assert paused.routine is False
+
+        await service.forget_scheduled_chat(user_id, foreign.id)
+
+        assert await list_paused_scheduled_chats(user_id) == []
+    finally:
+        await _cleanup(user_id)
+        await _cleanup(other_id)

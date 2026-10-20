@@ -47,10 +47,10 @@ CHAT_LINK_ERRORS = frozenset({"no_linked_servers", "no_dm_link"})
 # is the platform's weather, which our own alerts cover, and neither counts
 # toward a pause nor clears one.
 COUNTED_TURN_ERRORS = frozenset({"max_budget_exhausted", "max_turns_exhausted"})
-# Those two limits now land a run as a pause (``turn_pause``) instead of
-# ending it with an error, so a pause at either counts as the error it
-# replaced. A pause because the account's daily, weekly or trial allowance
-# ran out is the owner's state, not this schedule's, and counts as neither.
+# A run that reaches either limit lands as a pause (``turn_pause``), and a
+# pause at either counts as that limit's error. A pause because the account's
+# daily, weekly or trial allowance ran out is the owner's state, not this
+# schedule's, and counts as neither.
 PAUSE_ERROR_CODES = {"task": "max_budget_exhausted", "steps": "max_turns_exhausted"}
 
 FailureKind = Literal["connection", "chat_link", "budget", "error"]
