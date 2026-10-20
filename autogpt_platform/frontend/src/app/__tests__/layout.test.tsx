@@ -23,8 +23,8 @@ vi.mock("@/components/molecules/Toast/toaster", () => ({
   Toaster: () => null,
 }));
 vi.mock("@/services/analytics", () => ({ SetupAnalytics: () => null }));
-vi.mock("@/services/analytics/VercelAnalyticsWrapper", () => ({
-  VercelAnalyticsWrapper: () => null,
+vi.mock("@/services/analytics/VercelSpeedInsights", () => ({
+  VercelSpeedInsights: () => null,
 }));
 vi.mock("@tanstack/react-query-devtools", () => ({
   ReactQueryDevtools: () => null,

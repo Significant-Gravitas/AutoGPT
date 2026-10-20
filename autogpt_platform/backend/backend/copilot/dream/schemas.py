@@ -33,16 +33,19 @@ class IngestionDrainStatus(str, Enum):
     Three distinct states, so consumers (and a future Memory Visualizer)
     can tell a healthy by-design skip from a real failure:
 
-      * ``drained`` — the pass's own episodes were confirmed landed in the
-        graph before the pass returned (sync path), or the pass enqueued
-        nothing to drain. Healthy.
+      * ``drained`` — the worker finished every one of the pass's own
+        episodes before the pass returned (sync path): each was written,
+        dropped for resting on a forget (``dropped_forgotten``), or failed
+        with a logged error; or the pass enqueued nothing to drain. Healthy.
       * ``skipped`` — the drain was intentionally not run to avoid stalling
         a shared serial loop (batch path). The episodes process
-        fire-and-forget; healthy by design, NOT a failure signal.
+        fire-and-forget, counted pending; healthy by design, NOT a failure
+        signal.
       * ``timed_out`` — the sync-path drain was attempted but did not finish
-        within its budget. The reported write/proposal counts include
-        episodes still queued in-process, which are lost if the worker's pod
-        restarts. This is the only value that warrants an operator warning.
+        within its budget. The episodes not written yet are counted pending,
+        not written; they stay queued in-process, and are lost if the
+        worker's pod restarts. This is the only value that warrants an
+        operator warning.
     """
 
     drained = "drained"
@@ -329,22 +332,36 @@ class DreamPassResult(BaseModel):
     elapsed_seconds: float | None = None
     execution_path: ExecutionPath = "sync_baseline"
 
-    # Per-phase telemetry — null when the phase did not run.
+    # Per-phase telemetry — null when the phase did not run. The writes and
+    # proposals count only those graphiti saved before the pass was
+    # reported, never one merely queued.
     consolidated_count: int = 0
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Of the pass's writes and proposals, the ones dropped unwritten because
+    # a forget reached what they rest on after the pass read the graph; only
+    # those dropped before the pass was reported (see ingestion_drain_status).
+    dropped_forgotten: int = 0
+    # The ones not written yet when the pass was reported: still queued
+    # in-process (lost if the process stops), waiting for the graph's write
+    # lock, or being written. Every one on the batch path, which does not
+    # wait for them.
+    pending_writes: int = 0
+    # The ones whose write raised: dropped, logged, not retried.
+    failed_writes: int = 0
 
     summary_for_user: str = ""
     dream_session_id: str | None = None
 
     # Fate of the dream's enqueued graph writes when the pass was reported
-    # complete — see ``IngestionDrainStatus``. ``drained`` is a fully-landed
-    # (or nothing-to-drain) pass, ``skipped`` is the by-design batch skip
+    # complete — see ``IngestionDrainStatus``. ``drained`` is a pass whose
+    # writes the worker all finished (written, dropped or failed; or nothing
+    # to drain), ``skipped`` is the by-design batch skip
     # (healthy), ``timed_out`` is a sync-path drain that overran its budget
     # with writes still queued in-process (at risk on pod restart). Defaults
     # to ``drained`` so a payload that omits the field still validates as a
-    # fully-landed pass. Note this default is deliberately the opposite of
+    # finished pass. Note this default is deliberately the opposite of
     # ``apply.drain_status_from_stats``, which fails closed to ``timed_out``
     # for a missing LIVE stats key: an absent key on a fresh pass means lost
     # observability, while an absent field on a stored record predates the
