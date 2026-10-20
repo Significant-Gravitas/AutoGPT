@@ -2,8 +2,8 @@ import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { environment } from "@/services/environment";
 import { NextResponse, type NextRequest } from "next/server";
 
-// What Sentry's ingest reads. The forwarded-for headers keep the user's IP,
-// which Sentry records; cookies and Authorization never leave.
+// What Sentry's ingest reads. The visitor's IP address (the forwarded-for
+// headers), cookies and Authorization never leave.
 const FORWARDED_HEADERS = [
   "content-type",
   "content-length",
@@ -15,8 +15,6 @@ const FORWARDED_HEADERS = [
   "sec-ch-ua-platform-version",
   "origin",
   "referer",
-  "x-forwarded-for",
-  "x-vercel-forwarded-for",
 ];
 
 // Above Replay's ~20 MB event buffer, the largest envelope the browser SDK sends.

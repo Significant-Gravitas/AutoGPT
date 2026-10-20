@@ -151,6 +151,47 @@ async def test_shared_transcript_omits_hidden_kickoff_messages(
     ]
 
 
+@pytest.mark.asyncio
+async def test_shared_transcript_omits_the_owners_scheduled_chat_notes(
+    mock_prisma_calls,
+) -> None:
+    """A note says what the owner's plan, usage or connections are. The
+    shared copy carries no metadata, so the viewer would see it as a reply."""
+    mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+        return_value=_mock_session()
+    )
+    page = SimpleNamespace(
+        messages=[
+            ChatMessage(
+                id="note",
+                role="assistant",
+                content="Skipped: no plan",
+                sequence=0,
+                metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+            ),
+            ChatMessage(
+                id="visible",
+                role="assistant",
+                content="Here is today's briefing",
+                sequence=1,
+            ),
+        ],
+        has_more=False,
+        oldest_sequence=0,
+    )
+
+    with patch(
+        "backend.copilot.sharing.db.get_chat_messages_paginated",
+        new=AsyncMock(return_value=page),
+    ):
+        result = await get_shared_chat_messages_paginated("token-A")
+
+    assert result is not None
+    assert [message.content for message in result.messages] == [
+        "Here is today's briefing"
+    ]
+
+
 @pytest.fixture()
 def mock_transaction():
     with patch("backend.copilot.sharing.db.transaction", return_value=_TxStub()) as m:

@@ -32,7 +32,7 @@ export function TrialCancelPending({
           Cancellation pending
         </span>
       </div>
-      <Text variant="body" unmask={false} className="!text-zinc-800">
+      <Text variant="body" className="!text-zinc-800">
         Cancellation confirmed. Your trial will not convert to a paid plan and
         your card won&apos;t be charged. Trial access ends{" "}
         <strong className="font-semibold">
@@ -41,7 +41,7 @@ export function TrialCancelPending({
         .
       </Text>
       {trial.ends_at ? (
-        <Text variant="small" unmask={false} className="!text-zinc-500">
+        <Text variant="small" className="!text-zinc-500">
           Resume to keep the trial and start {trialPlanLabels[offer.tier]} on{" "}
           {formatTrialEndDate(trial.ends_at)} at {formatPlanPrice(offer)}, plus
           applicable tax.

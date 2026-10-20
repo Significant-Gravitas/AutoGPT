@@ -11,9 +11,3 @@ import pytest
 def server():
     """No-op — org tests don't need the full backend server."""
     yield None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    """No-op — org tests don't create real graphs."""
-    yield

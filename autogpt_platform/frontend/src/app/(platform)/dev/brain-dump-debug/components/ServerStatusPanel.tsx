@@ -42,12 +42,14 @@ export function ServerStatusPanel({
       description={`GET /onboarding/brain-dump/status, polled every ${STATUS_POLL_MS}ms.`}
       icon={AudioWaveformIcon}
       action={
-        <Link href={recordingDownloadHref()} isExternal variant="secondary">
-          <span className="inline-flex items-center gap-2">
-            <Icon icon={Download01Icon} size={16} />
-            Download server-side recording
-          </span>
-        </Link>
+        dump?.has_audio ? (
+          <Link href={recordingDownloadHref()} isExternal variant="secondary">
+            <span className="inline-flex items-center gap-2">
+              <Icon icon={Download01Icon} size={16} />
+              Download server-side recording
+            </span>
+          </Link>
+        ) : null
       }
     >
       {isError ? (

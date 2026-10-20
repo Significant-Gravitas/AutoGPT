@@ -22,6 +22,8 @@ from backend.copilot.constants import (
 from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_block_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
@@ -57,6 +59,7 @@ from backend.util.type import coerce_inputs_to_schema
 from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
+from .chat_platform_hint import bot_link_hint
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -694,6 +697,8 @@ def _credential_rejected_response(
             "before the next run."
         ),
         error="credential_rejected",
+        # The scheduled chat's failure streak reads which connection to fix.
+        details={"provider": provider} if provider else None,
         session_id=session_id,
     ).from_outside()
 
@@ -887,8 +892,15 @@ async def unattended_missing_credentials_error(
         )
         + grant_hint,
         error="missing_credentials",
+        details=_single_provider(providers),
         session_id=session_id,
     ).from_outside()
+
+
+def _single_provider(providers: set[str]) -> dict[str, Any] | None:
+    """The provider to fix, for a scheduled chat's failure streak; only when
+    there is exactly one, since a reconnect button opens one."""
+    return {"provider": next(iter(providers))} if len(providers) == 1 else None
 
 
 async def _pinned_account_error(
@@ -947,6 +959,7 @@ async def _pinned_account_error(
             "another account for this schedule, before the next run."
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
+        details=_single_provider(set(lost + unfit)),
         session_id=session_id,
     ).from_outside()
 
@@ -1050,6 +1063,8 @@ async def prepare_block_for_execution(
     # Before credentials: resolving them can provision a managed profile.
     if denied := _permission_denied(block_id, block.name, session_id):
         return denied
+    if denied := _provider_denied(block, block_id, session_id):
+        return denied
 
     emit_tool_display_name(block.name)
 
@@ -1128,28 +1143,47 @@ async def prepare_block_for_execution(
         missing_entries = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
+        missing_providers = {provider_slug(m.provider) for m in missing_credentials}
+        grant_hint = (
+            await ungranted_credential_hint(
+                user_id,
+                session.expert_id,
+                missing_providers,
+                missing_entries.values(),
+            )
+            if missing_credentials
+            else ""
+        )
+        # A pinned account or an ungranted credential is the fix the owner
+        # set up, so its error or grant card stands; the bot is the hint
+        # only when nothing of theirs would be.
+        owners_fix = bool(grant_hint) or bool(
+            set(turn_credential_pins()) & missing_providers
+        )
+        bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
         if missing_credentials and is_unattended_turn():
-            return await unattended_missing_credentials_error(
+            unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
                 missing_entries,
                 session_id,
                 user_id,
                 session.expert_id,
             )
+            unattended.message += bot_hint
+            return unattended
         missing_creds_dict = await annotate_expert_grants(
             user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
             message = (
-                f"Block '{block.name}' requires credentials that are not "
-                "configured. Please set up the required credentials before "
-                "running this block."
-            ) + await ungranted_credential_hint(
-                user_id,
-                session.expert_id,
-                {provider_slug(m.provider) for m in missing_credentials},
-                missing_entries.values(),
+                (
+                    f"Block '{block.name}' requires credentials that are not "
+                    "configured. Please set up the required credentials before "
+                    "running this block."
+                )
+                + grant_hint
+                + bot_hint
             )
         else:
             message = (
@@ -1234,6 +1268,26 @@ def _permission_denied(
             f"Block '{block_name}' ({block_id}) is not permitted "
             f"by the current execution permissions. {available_hint}"
             "Use find_capability to discover blocks that are allowed."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _provider_denied(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when *block* would act with a provider's stored credential
+    the run may not use.  The run's ceiling on connected accounts covers
+    blocks too, as the sandbox's placeholders are by the swap service."""
+    denied = denied_block_providers(get_current_permissions(), block)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Block '{block.name}' ({block_id}) acts with the user's {names} "
+            "account, which this run is not permitted to use. Tell the user it "
+            "is outside what this run was allowed to do."
         ),
         session_id=session_id,
     ).from_outside()

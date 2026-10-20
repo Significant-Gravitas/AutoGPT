@@ -85,6 +85,9 @@ export default function useCredits({
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
       const response = await api.requestTopUp(credit_amount);
+      if (!response.checkout_url) {
+        throw new Error("Checkout didn't start. Please try again later.");
+      }
       router.push(response.checkout_url);
     },
     [api, router],
