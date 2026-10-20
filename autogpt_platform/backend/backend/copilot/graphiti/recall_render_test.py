@@ -49,6 +49,26 @@ def _episode(content: str) -> EpisodicNode:
 
 
 class TestRender:
+    @pytest.mark.parametrize("invalid_at", [None, _NOW])
+    def test_only_live_tentative_facts_are_unconfirmed(
+        self, invalid_at: datetime | None
+    ) -> None:
+        tentative = _fact(status="tentative", valid_at=_NOW, invalid_at=invalid_at)
+        active = _fact(valid_at=_NOW, invalid_at=invalid_at)
+        legacy = active.model_copy(update={"attributes": {}})
+        retired = _fact(status="tentative", expired_at=_NOW)
+        valid_to = str(invalid_at) if invalid_at else "present"
+        interval = f"valid: {_NOW} — {valid_to}"
+
+        assert [
+            recall_render.render(f) for f in (tentative, active, legacy, retired)
+        ] == [
+            f"Unconfirmed inference (tentative): Alice works on Atlas ({interval})",
+            f"Alice works on Atlas ({interval})",
+            f"Alice works on Atlas ({interval})",
+            f"Alice works on Atlas (expired {_NOW})",
+        ]
+
     def test_live_fact_shows_its_validity(self) -> None:
         fact = _fact(valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
         assert recall_render.render(fact) == (
@@ -94,6 +114,17 @@ class TestRender:
 
 
 class TestRenderEpisode:
+    def test_reference_time_dates_delayed_episodes_with_legacy_fallback(self) -> None:
+        episode = _episode("The delivery is tomorrow.")
+        episode.valid_at = datetime(2026, 9, 30, 12, tzinfo=timezone.utc)
+        episode.created_at = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
+        legacy = episode.model_copy(update={"valid_at": None})
+
+        assert [recall_render.render_episode(item) for item in (episode, legacy)] == [
+            "[2026-09-30 12:00:00+00:00] The delivery is tomorrow.",
+            "[2026-10-20 12:00:00+00:00] The delivery is tomorrow.",
+        ]
+
     def test_timestamp_and_body(self) -> None:
         assert recall_render.render_episode(_episode("talked about coffee")) == (
             "[2026-09-26 12:00:00+00:00] talked about coffee"
