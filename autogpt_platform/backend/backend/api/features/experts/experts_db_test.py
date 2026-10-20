@@ -2576,6 +2576,7 @@ async def test_check_private_expert_reads_the_hire_and_its_owners_scope(
         "boundaries",
         "protected_soul_rules",
         "is_archived",
+        "setup_status",
     }
     assert check.expert.model_dump(include=identity_fields) == fresh.model_dump(
         include=identity_fields
