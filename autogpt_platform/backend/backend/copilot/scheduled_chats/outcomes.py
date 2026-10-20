@@ -30,6 +30,9 @@ from backend.copilot.tools.models import ResponseType
 # The same rule as the scheduled-turn alert's.
 _ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 UNCLASSIFIED = "unclassified"
+# A word with a digit in it: a count, an id, a time, a duration. Two runs that
+# fail the same way rarely agree on one.
+_VOLATILE_WORD = re.compile(r"\w*\d\w*")
 
 # A connection the owner fixes on the integrations page.
 CONNECTION_ERRORS = frozenset(
@@ -168,6 +171,8 @@ def tool_failure_detail(output: str | dict) -> ToolFailureDetail | None:
 
 
 def text_hash(text: object) -> str:
-    """Compares two uncoded errors without keeping what either says."""
+    """Compares two uncoded errors without keeping what either says. Words
+    with a digit in them don't count, so a timeout after 30 s and one after
+    31 s, each with its own request id, fail the same way."""
     raw = text if isinstance(text, str) else repr(text)
-    return hashlib.sha256(raw.encode()).hexdigest()[:12]
+    return hashlib.sha256(_VOLATILE_WORD.sub("#", raw).encode()).hexdigest()[:12]
