@@ -2,8 +2,9 @@
 Better Auth link emails and the account-deleted confirmation."""
 
 import asyncio
-from typing import Literal
+from typing import Literal, assert_never
 
+from prisma.enums import AccountDeletionSource
 from pydantic import BaseModel
 
 from backend.notifications.renderer import RenderedEmail, build_urls
@@ -36,19 +37,28 @@ class AuthEmailContent(BaseModel):
     # What the recipient may not expect from following the link. Without a
     # link it ends the body paragraph instead.
     note: str | None = None
+    # Close with the shared inbox (which also takes replies) instead of
+    # Discord, for an email about the person's own account.
+    close_with_inbox: bool = False
 
 
 def render_auth_email(
-    email_type: AuthEmailType, action_url: str | None = None
+    email_type: AuthEmailType,
+    action_url: str | None = None,
+    *,
+    reason: str | None = None,
 ) -> RenderedEmail:
     content = _CONTENT[email_type]
     if content.action and not action_url:
         raise ValueError(f"The {email_type} email needs an action URL")
+    if reason:
+        content = content.model_copy(update={"reason": reason})
     context = {
         "content": content,
         "action_url": action_url,
         "assets": settings.config.email_asset_base_url.rstrip("/"),
         "urls": build_urls(""),
+        "inbox": settings.config.billing_reply_to_email,
     }
     return RenderedEmail(
         subject=content.subject,
@@ -58,10 +68,10 @@ def render_auth_email(
     )
 
 
-async def send_account_deleted_email(to: str) -> None:
+async def send_account_deleted_email(to: str, source: AccountDeletionSource) -> None:
     """Confirm a closed account to its owner, with replies going to the shared
     inbox. Raises when delivery fails; the caller decides what that means."""
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", reason=_deletion_reason(source))
     await asyncio.to_thread(
         get_notification_manager_client().send_email_or_raise,
         to,
@@ -70,6 +80,16 @@ async def send_account_deleted_email(to: str) -> None:
         email.text,
         reply_to=settings.config.billing_reply_to_email,
     )
+
+
+def _deletion_reason(source: AccountDeletionSource) -> str:
+    """The email's reason line, by where the deletion was asked for. A new
+    source fails the type check here until it has its own line."""
+    match source:
+        case AccountDeletionSource.SETTINGS | AccountDeletionSource.PAYWALL:
+            return "You deleted your account in AutoGPT."
+        case _:
+            assert_never(source)
 
 
 _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
@@ -128,7 +148,8 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
         headline="Your account is deleted",
         intro="We've closed your AutoGPT account and disconnected your apps.",
         preheader="We finish removing your data within 30 days.",
-        reason="You deleted your account from your AutoGPT settings.",
+        reason="You deleted your account in AutoGPT.",
         note="If you have a minute, reply and tell us what we could have done better.",
+        close_with_inbox=True,
     ),
 }
