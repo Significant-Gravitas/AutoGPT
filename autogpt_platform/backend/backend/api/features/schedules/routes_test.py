@@ -11,6 +11,7 @@ from fastapi.routing import APIRoute
 
 from backend.api.features.schedules.routes import router
 from backend.api.rest_api import app as real_app
+from backend.copilot.scheduled_chats import cadence_service
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.executor import scheduler
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -60,6 +61,14 @@ EXPECTED_OPERATIONS = {
         "post",
         "/api/schedules/followups/{schedule_key}/resume",
     ): "resumeScheduledChat",
+    (
+        "get",
+        "/api/schedules/followups/{schedule_key}/cadence",
+    ): "getScheduledChatCadence",
+    (
+        "post",
+        "/api/schedules/followups/{schedule_key}/cadence",
+    ): "setScheduledChatCadence",
     ("delete", "/api/schedules/{schedule_id}"): "deleteV1Delete execution schedule",
     ("patch", "/api/schedules/{schedule_id}"): "patchV1Update execution schedule",
 }
@@ -361,6 +370,77 @@ def test_a_resume_the_scheduler_refuses_can_be_tried_again(
     response = client.post("/schedules/followups/routine-1/resume")
 
     assert response.status_code == 503
+
+
+def _cadence(**overrides) -> cadence_service.ScheduledChatCadence:
+    fields = dict(
+        schedule_key="routine-1",
+        title="Discord monitor",
+        current="Every minute",
+        timezone="America/Chicago",
+        options=[
+            cadence_service.CadenceOption(cron="0 * * * *", label="Every hour"),
+        ],
+    )
+    fields.update(overrides)
+    return cadence_service.ScheduledChatCadence(**fields)
+
+
+def test_get_cadence_offers_the_callers_chat_its_cadences(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    get = mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.get_cadence",
+        AsyncMock(return_value=_cadence()),
+    )
+
+    response = client.get("/schedules/followups/routine-1/cadence")
+
+    assert response.status_code == 200
+    assert response.json()["options"] == [{"cron": "0 * * * *", "label": "Every hour"}]
+    get.assert_awaited_once_with(test_user_id, "routine-1")
+
+
+def test_set_cadence_applies_the_chosen_one(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    set_ = mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.set_cadence",
+        AsyncMock(return_value=_cadence(current="Every hour", options=[])),
+    )
+
+    response = client.post(
+        "/schedules/followups/routine-1/cadence", json={"cron": "0 * * * *"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["current"] == "Every hour"
+    set_.assert_awaited_once_with(test_user_id, "routine-1", "0 * * * *")
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (cadence_service.CadenceNotOffered("* * * * *"), 400),
+        (cadence_service.CadenceNotFound("routine-1"), 404),
+        (cadence_service.ScheduledChatPaused("routine-1"), 409),
+        (RuntimeError("scheduler down"), 503),
+    ],
+    ids=["not-offered", "not-found", "paused", "scheduler-down"],
+)
+def test_set_cadence_maps_each_refusal(
+    mocker: pytest_mock.MockFixture, error: Exception, status: int
+) -> None:
+    mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.set_cadence",
+        AsyncMock(side_effect=error),
+    )
+
+    response = client.post(
+        "/schedules/followups/routine-1/cadence", json={"cron": "* * * * *"}
+    )
+
+    assert response.status_code == status
 
 
 def test_delete_schedule_maps_not_found_to_404(

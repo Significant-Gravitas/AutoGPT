@@ -7,6 +7,7 @@ import pytest
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 from .models import (
@@ -19,6 +20,16 @@ from .models import (
 from .run_block import RunBlockTool
 
 _TEST_USER_ID = "test-user-run-block"
+
+
+@pytest.fixture(autouse=True)
+def _no_pending_reviews():
+    """No test here seeds a review; unstubbed, this lookup is an RPC to a database
+    manager that only an earlier test's ``server`` fixture would have started."""
+    reviews = MagicMock()
+    reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+    with patch("backend.copilot.tools.helpers.review_db", return_value=reviews):
+        yield
 
 
 def make_mock_block(
@@ -167,6 +178,46 @@ class TestRunBlockFiltering:
         assert "not permitted" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_block_acting_with_a_provider_outside_the_ceiling_is_refused(
+        self,
+    ):
+        """Denying ``github`` to the run denies its GitHub blocks too, not
+        only the sandbox's placeholders."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "11111111-2222-3333-4444-666666666666"
+        github_block = make_mock_block(block_id, "Create PR", BlockType.STANDARD)
+        github_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": MagicMock(provider=frozenset({ProviderName.GITHUB}))
+        }
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        token = _current_permissions.set(perms)
+        try:
+            with (
+                patch(
+                    "backend.copilot.tools.helpers.get_block",
+                    return_value=github_block,
+                ),
+                patch(
+                    "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                    return_value=({}, []),
+                ),
+            ):
+                response = await RunBlockTool()._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                    dry_run=False,
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(response, ErrorResponse)
+        assert "GitHub account" in response.message
+        assert "not permitted" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_allowed_by_permissions_passes_guard(self):
         """A block explicitly allowed by a whitelist CopilotPermissions passes the guard."""
         session = make_session(user_id=_TEST_USER_ID)
@@ -205,11 +256,14 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
-        """Non-excluded blocks pass the filtering guard (may fail later for other reasons)."""
+        """A standard block passes the filtering guard and reaches the schema preview."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        standard_block = make_mock_block(
-            "standard-id", "HTTP Request", BlockType.STANDARD
+        standard_block = make_mock_block_with_schema(
+            block_id="standard-id",
+            name="HTTP Request",
+            input_properties={"url": {"type": "string"}},
+            required_fields=["url"],
         )
 
         with (
@@ -231,10 +285,7 @@ class TestRunBlockFiltering:
                 dry_run=False,
             )
 
-        # Should NOT be an ErrorResponse about CoPilot exclusion
-        # (may be other errors like missing credentials, but not the exclusion guard)
-        if isinstance(response, ErrorResponse):
-            assert "cannot be run directly" not in response.message
+        assert isinstance(response, BlockDetailsResponse)
 
 
 class TestRunBlockInputValidation:

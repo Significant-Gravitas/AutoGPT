@@ -151,8 +151,8 @@ export const NamedSchedule: Story = {
   args: queueOf([referenceCard("Pause schedule")]),
 };
 
-export const NamedTemplate: Story = {
-  args: queueOf([referenceCard("Hire expert")]),
+export const NamedHire: Story = {
+  args: queueOf([referenceCard("Confirm team change")]),
 };
 
 export const NamedChat: Story = {

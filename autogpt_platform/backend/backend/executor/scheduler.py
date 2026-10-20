@@ -840,6 +840,12 @@ async def _tell_owner_why_skipped(
         now=datetime.now(tz=timezone.utc),
         run=run,
         user_timezone=args.user_timezone,
+        # A routine's every fire time, not just this job's.
+        crons=(
+            list(routine.crons)
+            if routine is not None
+            else [args.cron] if args.cron else None
+        ),
     )
     if notice is None:
         return
@@ -3582,6 +3588,45 @@ class Scheduler(AppService):
         return True
 
     @expose
+    def update_copilot_turn_cron(
+        self, schedule_id: str, user_id: str, cron: str
+    ) -> CopilotTurnJobInfo:
+        """Give a repeating follow-up a new cadence, in place.
+
+        The job keeps its id, which is what its failure streak, its notes and
+        Resume all name it by. A paused one stays paused: changing how often it
+        runs is not the same thing as starting it again. A routine's jobs are
+        not changed here; its row owns their crons.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
+        if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
+            raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
+        if info.routine_id is not None:
+            raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+        # The zone the dialog showed its times in: a follow-up saved before
+        # user_timezone existed keeps its zone on the trigger alone.
+        trigger = _build_trigger(
+            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
+        )
+        args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
+            update={"cron": cron}
+        )
+        changes: dict[str, object] = {
+            "trigger": trigger,
+            "kwargs": args.model_dump(mode="json"),
+        }
+        if job.next_run_time is not None:
+            changes["next_run_time"] = trigger.get_next_fire_time(
+                None, datetime.now(timezone.utc)
+            )
+        logger.info(f"Changing the cadence of job {schedule_id}")
+        updated = self.scheduler.modify_job(
+            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+        )
+        self._invalidate_jobs_cache()
+        return CopilotTurnJobInfo.from_db(args, updated)
+
+    @expose
     def get_graph_execution_schedules(
         self,
         graph_id: str | None = None,
@@ -4772,6 +4817,7 @@ class SchedulerClient(AppServiceClient):
     )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
+    update_copilot_turn_cron = endpoint_to_async(Scheduler.update_copilot_turn_cron)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules

@@ -2995,6 +2995,39 @@ async def test_a_routine_is_named_by_its_title_and_keyed_by_its_id(
 
 
 @pytest.mark.asyncio
+async def test_an_hourly_schedule_over_its_limit_is_offered_to_run_less_often(
+    owner_gate, post_notice
+):
+    _over_a_cap(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
+
+
+@pytest.mark.asyncio
+async def test_a_routine_is_offered_less_often_by_all_of_its_times(
+    owner_gate, post_notice
+):
+    """Each job carries one fire time; whether the routine can run less often
+    depends on all of them. Two weekly times make twice a week, which can."""
+    _over_a_cap(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Weekly review",
+        prompt="Review the week.",
+        crons=["0 9 * * mon", "0 9 * * thu"],
+        enabled=True,
+    )
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        await _fire(_args(routine_id="routine-1", run_at=None, cron="0 9 * * mon"))
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
+
+
+@pytest.mark.asyncio
 async def test_a_note_that_cannot_be_posted_does_not_fail_the_tick(
     owner_gate, post_notice, caplog
 ):
