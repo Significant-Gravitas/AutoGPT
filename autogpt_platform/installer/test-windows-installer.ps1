@@ -489,6 +489,7 @@ try {
 	Assert-FailsWith "contains an unsafe '.' component" (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\."))
 	Assert-FailsWith "contains an unsafe '..' component" (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\..\x"))
 	Assert-FailsWith 'contains redundant path separators' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\\x"))
+	Assert-FailsWith 'contains redundant path separators' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$($env:SystemDrive)\\Windows"))
 	Assert-FailsWith 'unsupported component: x.' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\x."))
 	Assert-FailsWith 'unsupported component: a:b' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\a:b"))
 	Assert-FailsWith 'unsupported component: PROGRA~1' (Invoke-Installer @{} @('-CheckDirOnly', '-Dir', "$root\PROGRA~1"))

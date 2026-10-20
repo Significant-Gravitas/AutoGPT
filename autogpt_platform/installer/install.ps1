@@ -263,8 +263,8 @@ function Assert-InstallDirectory {
 	if ($requested -notmatch '^[A-Za-z]:\\') {
 		Die "Install directory must be a full path such as C:\AutoGPT, or relative to the current folder: $($script:Dir)"
 	}
+	if ($requested.Substring(2).Contains('\\')) { Die "Install directory contains redundant path separators: $($script:Dir)" }
 	$rest = $requested.Substring(3)
-	if ($rest.Contains('\\')) { Die "Install directory contains redundant path separators: $($script:Dir)" }
 	if ($rest.EndsWith('\')) { $rest = $rest.Substring(0, $rest.Length - 1) }
 	$drive = $requested.Substring(0, 1).ToUpperInvariant() + ':\'
 	$driveType = (New-Object System.IO.DriveInfo ($drive.Substring(0, 1))).DriveType
