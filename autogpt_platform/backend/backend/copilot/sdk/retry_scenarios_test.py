@@ -22,10 +22,31 @@ Scenario matrix:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import time
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
+from backend.copilot.budget_gate import AutoContinueGate
+from backend.copilot.constants import COMPACTION_TOOL_NAME
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.response_model import (
+    StreamCheckpoint,
+    StreamCompactionProgress,
+    StreamError,
+    StreamTextEnd,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+)
+from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
+from backend.copilot.stream_checkpoint import turn_checkpoint
+from backend.copilot.stream_drift.recording import saving_into
 from backend.copilot.transcript import (
     TranscriptDownload,
     _flatten_assistant_content,
@@ -33,6 +54,7 @@ from backend.copilot.transcript import (
     _messages_to_transcript,
     _transcript_to_messages,
 )
+from backend.copilot.turn_budget import TurnBudget
 from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
@@ -1047,8 +1069,10 @@ def _make_sdk_patches(
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
+                claude_agent_autocompact_pct_override=0,
                 claude_agent_thinking_effort=None,
                 claude_agent_fallback_model=None,
                 # Real strings: the stamp path canonicalizes the model for
@@ -1059,13 +1083,21 @@ def _make_sdk_patches(
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
-        # Bypass dynamic budget resolution — the helper hits Redis via
-        # get_global_rate_limits / get_remaining_usd_budget, which the
-        # retry_scenarios mocks don't stand up.  Static cap is fine for
-        # retry-flow assertions (covered directly in service_test).
+        # Bypass budget resolution — it hits Redis via the rate-limit
+        # helpers, which the retry_scenarios mocks don't stand up. The task
+        # cap is fine for retry-flow assertions (covered in turn_budget_test).
         (
-            f"{_SVC}._resolve_dynamic_max_budget_usd",
-            dict(new_callable=AsyncMock, return_value=100.0),
+            f"{_SVC}.resolve_turn_budget",
+            dict(
+                new_callable=AsyncMock,
+                return_value=TurnBudget(usd=100.0, limiting="task"),
+            ),
+        ),
+        # The auto-continue allowance check peeks the pending queue in Redis
+        # (covered in budget_gate_test).
+        (
+            f"{_SVC}.gate_auto_continue",
+            dict(new_callable=AsyncMock, return_value=AutoContinueGate(proceed=True)),
         ),
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.
@@ -1720,7 +1752,23 @@ class TestStreamChatCompletionRetryIntegration:
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
-    async def test_handled_stream_error_transient_retries_then_succeeds(self):
+    @pytest.mark.parametrize(
+        "error, text",
+        [
+            ("rate_limit", "rate limit exceeded (status code 429)"),
+            # How the bundled CLI (2.1.284) words a 529: no status-code
+            # phrase for the text patterns to find, only the category.
+            (
+                "server_error",
+                "API Error: 529 Overloaded. This is a server-side issue, "
+                "usually temporary — try again in a moment.",
+            ),
+        ],
+        ids=["rate_limit", "server_error"],
+    )
+    async def test_handled_stream_error_transient_retries_then_succeeds(
+        self, error: str, text: str
+    ):
         """_HandledStreamError(code="transient_api_error") triggers backoff retry.
 
         When ``_run_stream_attempt`` raises ``_HandledStreamError`` with
@@ -1737,7 +1785,7 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         from backend.copilot.response_model import (
             StreamError,
@@ -1757,16 +1805,16 @@ class TestStreamChatCompletionRetryIntegration:
             async def _receive():
                 if attempt == 1:
                     # First call: emit AssistantMessage with a transient error field
-                    # so _run_stream_attempt detects is_transient_api_error and
+                    # so _run_stream_attempt detects is_transient_assistant_error and
                     # raises _HandledStreamError(code="transient_api_error").
                     yield AssistantMessage(
-                        content=[],
+                        content=[TextBlock(text=text)],
                         model="claude-sonnet-4-6",
-                        error="rate_limit",
+                        error=error,
                     )
                     yield ResultMessage(
                         subtype="error",
-                        result="rate limit exceeded (status code 429)",
+                        result=text,
                         duration_ms=50,
                         duration_api_ms=0,
                         is_error=True,
@@ -1920,6 +1968,102 @@ class TestStreamChatCompletionRetryIntegration:
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
+    async def test_transient_retry_inside_reduced_attempt_reduces_once(self):
+        """A transient error inside a reduced-context attempt must not reduce again.
+
+        Attempt 1 dies with prompt-too-long, so attempt 2 opens a compaction
+        row, summarizes the transcript and persists the row.  The SDK call on
+        that attempt then dies with ECONNRESET.  The transient retry re-enters
+        the loop head without advancing ``attempt`` — it must reuse the
+        reduced context rather than summarize a second time and persist a
+        second "Condensed" row for the same compaction.
+        """
+        # Prior history is what makes the turn restore a transcript at all —
+        # a one-message session never calls ``download_transcript``.
+        session = ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[
+                ChatMessage(role="user", content="prior question"),
+                ChatMessage(role="assistant", content="prior answer"),
+                ChatMessage(role="user", content="hello"),
+            ],
+        )
+        result_msg = self._make_result_message()
+        call_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            if call_count[0] == 2:
+                return self._make_client_mock_mid_stream_error(
+                    error=Exception("ECONNRESET: connection reset by peer"),
+                )
+            return self._make_client_mock(result_message=result_msg)
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        # The shared patches mock ``os.makedirs`` but not the session-file
+        # write, so ``process_cli_restore`` fails and the turn falls back to
+        # the DB path with no transcript to summarize.  Hand it a valid
+        # restore so attempt 2 runs the real summarize branch.
+        patches.append(
+            (
+                f"{_SVC}.process_cli_restore",
+                dict(return_value=(original_transcript, True)),
+            )
+        )
+
+        events = []
+        mocks: dict[str, MagicMock] = {}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch(f"{_SVC}.asyncio.sleep", new_callable=AsyncMock))
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert call_count[0] == 3, f"Expected 3 SDK calls, got {call_count[0]}"
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
+        assert mocks[f"{_SVC}.compact_transcript"].await_count == 1
+        opened = [
+            e
+            for e in events
+            if isinstance(e, StreamToolInputStart)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        assert len(opened) == 1, f"Expected one compaction row, got {len(opened)}"
+        persisted = [
+            tc
+            for m in session.messages
+            for tc in (m.tool_calls or [])
+            if tc.get("function", {}).get("name") == COMPACTION_TOOL_NAME
+        ]
+        assert len(persisted) == 1, f"Expected one persisted row, got {persisted}"
+
+    @pytest.mark.asyncio
     async def test_resume_skipped_when_cli_session_missing(self):
         """When restore_cli_session returns False, --resume is NOT passed to ClaudeSDKClient.
 
@@ -1982,3 +2126,565 @@ class TestStreamChatCompletionRetryIntegration:
             f"{captured_options}"
         )
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_queued_messages_wait_when_the_allowance_is_used_up(self):
+        """Auto-continue asks the allowance first. Refused, it drains nothing
+        and starts no second query: the turn ends on a not-started pause and
+        the queued messages stay queued for the next turn."""
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.turn_pause import TurnPause
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        queries: list[int] = []
+
+        def _client_factory(*args, **kwargs):
+            queries.append(1)
+            return self._make_client_mock(result_message=result_msg)
+
+        pause = TurnPause(reason="daily", checkpoint_saved=False, started=False)
+        refused = AsyncMock(return_value=AutoContinueGate(proceed=False, pause=pause))
+        drain = AsyncMock(return_value=[])
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.gate_auto_continue", new=refused))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=drain))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        refused.assert_awaited_once_with(session, "test-user", platform_billed=True)
+        assert [e.pause for e in events if isinstance(e, StreamTurnPaused)] == [
+            pause.as_part()
+        ]
+        assert len(queries) == 1, "a refused auto-continue must not query again"
+        drain.assert_awaited_once()  # the turn-start drain only
+
+
+# ---------------------------------------------------------------------------
+# Pre-query compaction row — timing and lifecycle at generator level
+# ---------------------------------------------------------------------------
+
+
+class TestPreQueryCompactionRowTiming:
+    """The compaction row exists to narrate the wait, so it must SPAN it.
+
+    Opening and closing the row around work that already finished is the
+    regression this class pins; it has shipped twice, both times because the
+    predictor and the compressor were fed different inputs and the row was
+    only emitted after the fact.  Asserting event ORDER is not enough — the
+    broken build emitted the same order, just with every event inside the
+    same 10ms.  These tests assert the elapsed GAP.
+    """
+
+    _WORK_SECONDS = 0.25
+
+    def _make_result_message(self):
+        return ResultMessage(
+            subtype="success",
+            result="done",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=1,
+            session_id="test-session-id",
+        )
+
+    def _make_client_mock(self, raises_on_enter=False, result_message=None):
+        async def _receive():
+            if result_message is not None:
+                yield result_message
+
+        client = MagicMock()
+        client.receive_response = _receive
+        client.query = AsyncMock()
+        client._transport = MagicMock()
+        client._transport.write = AsyncMock()
+        if raises_on_enter:
+            client.query.side_effect = Exception(
+                "prompt is too long (context_length_exceeded)"
+            )
+
+        cm = AsyncMock()
+        cm.__aenter__.return_value = client
+        cm.__aexit__.return_value = None
+        return cm
+
+    def _big_prior(self):
+        return [
+            ChatMessage(
+                role="user" if i % 2 == 0 else "assistant",
+                content="word " * 30_000,
+                sequence=i,
+            )
+            for i in range(8)
+        ]
+
+    def _session_with_history(self, prior):
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[*prior, ChatMessage(role="user", content="hello", sequence=8)],
+        )
+
+    def _no_resume_restore(self, prior):
+        """Force the no-resume path with a transcript+gap context slice.
+
+        This is the shape production hits on essentially every no-resume turn
+        that has a baseline transcript — and the shape the first fix missed,
+        because the predictor read the full session while the compressor read
+        this list.
+        """
+        return _RestoreResult(
+            transcript_content="seeded",
+            transcript_covers_prefix=True,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=len(prior),
+            context_messages=list(prior),
+        )
+
+    def _slow_compress(self, calls):
+        async def _compress(msgs, target_tokens=None):
+            calls.append(len(msgs))
+            await asyncio.sleep(self._WORK_SECONDS)
+            return (
+                list(msgs)[:1],
+                True,
+                CompactionStats(
+                    tokens_before=200_000,
+                    tokens_after=20_000,
+                    messages_before=len(msgs),
+                    messages_after=1,
+                ),
+            )
+
+        return _compress
+
+    async def _run(self, session, extra_patches, client_factory):
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript([("user", "q"), ("assistant", "a")]),
+            compacted_transcript=_build_transcript([("user", "[summary]")]),
+            client_side_effect=client_factory,
+        )
+        patches = [p for p in patches if p[0] != f"{_SVC}.download_transcript"]
+        patches.extend(extra_patches)
+
+        timeline = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            # The generator re-raises after yielding StreamError so the caller
+            # can roll back; the events already on the wire are what we assert.
+            with contextlib.suppress(Exception):
+                async for event in stream_chat_completion_sdk(
+                    session_id="test-session-id",
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                ):
+                    timeline.append((time.monotonic(), event))
+        return timeline
+
+    @staticmethod
+    def _compaction_marks(timeline):
+        opened = [
+            t
+            for t, e in timeline
+            if isinstance(e, StreamToolInputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        closed = [
+            t
+            for t, e in timeline
+            if isinstance(e, StreamToolOutputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        return opened, closed
+
+    @pytest.mark.asyncio
+    async def test_row_stays_open_across_the_compression_work(self):
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        calls: list[int] = []
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        assert calls, "the no-resume branch never reached _compress_messages"
+        opened, closed = self._compaction_marks(timeline)
+        assert opened, "no compaction row was opened before the work"
+        assert closed, "the compaction row was never closed"
+        gap = closed[0] - opened[0]
+        assert gap >= self._WORK_SECONDS, (
+            f"the row opened and closed within {gap * 1000:.1f}ms — it was "
+            "emitted AFTER the compression work, so the user watched the wait "
+            "with nothing on screen"
+        )
+
+    @pytest.mark.asyncio
+    async def test_row_opens_before_the_compressor_is_called(self):
+        """Order, not just duration: the input event precedes the work."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        marks: list[str] = []
+
+        async def _compress(msgs, target_tokens=None):
+            marks.append("compress")
+            return (
+                list(msgs)[:1],
+                True,
+                CompactionStats(messages_before=len(msgs), messages_after=1),
+            )
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_compress)),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        assert marks == ["compress"]
+        opened, closed = self._compaction_marks(timeline)
+        assert opened and closed
+        # The row is opened by the predictor, so it must be on the wire before
+        # the compressor even runs — and the close after it.
+        assert opened[0] < closed[0]
+
+    @pytest.mark.asyncio
+    async def test_summarizing_phase_carries_the_token_estimate(self):
+        """Without ``tokensBefore`` the client's pacing collapses to its floor,
+        so a 500K compaction animates exactly like a 20K one."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        calls: list[int] = []
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        summarizing = [
+            e
+            for _, e in timeline
+            if isinstance(e, StreamCompactionProgress) and e.phase == "summarizing"
+        ]
+        assert summarizing, "no summarizing phase was emitted"
+        assert summarizing[0].tokensBefore is not None
+        assert summarizing[0].tokensBefore > 100_000
+
+    @pytest.mark.asyncio
+    async def test_retry_opens_and_closes_its_own_row(self):
+        """The retry re-reduces context, so it gets its own row — opened
+        before ``_reduce_context`` runs and closed after the rebuild."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        attempts = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        calls: list[int] = []
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            _client_factory,
+        )
+
+        assert attempts[0] == 2
+        opened, closed = self._compaction_marks(timeline)
+        assert len(opened) == 2, f"expected a row per attempt, got {len(opened)}"
+        assert len(closed) == 2
+        for i in (0, 1):
+            gap = closed[i] - opened[i]
+            assert (
+                gap >= self._WORK_SECONDS
+            ), f"attempt {i + 1}'s row spanned only {gap * 1000:.1f}ms"
+
+    @pytest.mark.asyncio
+    async def test_retry_that_reduces_nothing_retires_its_row(self):
+        """The opposite branch: the retry opened a row and then found nothing
+        to condense, so the row must be retired, not completed.
+
+        A dropped transcript is not a summarized one, and ``compact_transcript``
+        failing lands in the drop branch — so a close here would persist a
+        durable "Condensed" row for a conversation that was truncated instead.
+        """
+        prior = [
+            ChatMessage(role="user", content="hi", sequence=0),
+            ChatMessage(role="assistant", content="hello", sequence=1),
+        ]
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        attempts = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        async def _no_compression(msgs, target_tokens=None):
+            return list(msgs), False, None
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                # Compaction fails, so ``_reduce_context`` drops the transcript.
+                (
+                    f"{_SVC}.compact_transcript",
+                    dict(new_callable=AsyncMock, return_value=None),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_no_compression)),
+            ],
+            _client_factory,
+        )
+
+        assert attempts[0] == 2
+        opened, closed = self._compaction_marks(timeline)
+        assert len(opened) == 1, "only the retry should have opened a row"
+        assert len(closed) == 1, "the retry's row was left open"
+
+        outputs = [
+            e.output
+            for _, e in timeline
+            if isinstance(e, StreamToolOutputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        assert outputs == [""], "the row was completed instead of retired"
+
+        persisted = [
+            m
+            for m in session.messages
+            if m.tool_calls
+            and any(
+                call.get("function", {}).get("name") == COMPACTION_TOOL_NAME
+                for call in m.tool_calls
+            )
+        ]
+        assert persisted == [], "a retired row must not survive a refresh"
+
+    @pytest.mark.asyncio
+    async def test_error_during_compression_closes_the_open_row(self):
+        """The generator's except branch must retire a row left open by a
+        failure between start and end — otherwise the client is stuck with a
+        compaction spinner that never resolves."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+
+        async def _explode(msgs, target_tokens=None):
+            raise RuntimeError("compression blew up")
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_explode)),
+            ],
+            lambda *a, **k: self._make_client_mock(),
+        )
+
+        opened, closed = self._compaction_marks(timeline)
+        assert opened, "no row was opened"
+        assert len(closed) == len(opened), "an opened row was left unclosed"
+        assert any(isinstance(e, StreamError) for _, e in timeline)
+
+    @pytest.mark.asyncio
+    async def test_no_row_when_nothing_will_be_compressed(self):
+        """A short session must not flash a compaction bar."""
+        prior = [
+            ChatMessage(role="user", content="hi", sequence=0),
+            ChatMessage(role="assistant", content="hello", sequence=1),
+        ]
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        opened, _closed = self._compaction_marks(timeline)
+        assert opened == []
+
+
+class TestTurnEndCheckpoint:
+    """The turn-end persist in the engine's ``finally`` is followed by a
+    checkpoint only when it landed."""
+
+    async def test_the_turn_end_persist_is_followed_by_its_checkpoint(self):
+        saves: list[ChatSession] = []
+
+        events = await self._run(AsyncMock(side_effect=saving_into(saves)))
+
+        checkpoints = [e for e in events if isinstance(e, StreamCheckpoint)]
+        assert checkpoints == [turn_checkpoint(saves[-1].messages, self._TURN_START)]
+        assert checkpoints[0].rows == 1
+        last_text_end = max(
+            i for i, e in enumerate(events) if isinstance(e, StreamTextEnd)
+        )
+        assert events.index(checkpoints[0]) > last_text_end
+
+    async def test_a_failed_turn_end_persist_publishes_no_checkpoint(self):
+        events = await self._run(AsyncMock(side_effect=ConnectionError("db down")))
+
+        assert not any(isinstance(e, StreamCheckpoint) for e in events)
+
+    # A later turn: a first one runs setup that calls other services.
+    _HISTORY = [
+        ChatMessage(role="user", content="earlier"),
+        ChatMessage(role="assistant", content="earlier answer"),
+        ChatMessage(role="user", content="hello"),
+    ]
+    _TURN_START = len(_HISTORY)
+
+    async def _run(self, upsert: AsyncMock) -> list:
+        from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
+
+        session = ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            title="Greeting",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[m.model_copy() for m in self._HISTORY],
+        )
+
+        async def _receive():
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(content=[TextBlock(text="Hi there.")], model="t")
+            yield ResultMessage(
+                subtype="success",
+                result="Hi there.",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session-id",
+            )
+
+        client = MagicMock(receive_response=_receive, query=AsyncMock())
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = client
+        patches = [
+            (target, kwargs)
+            for target, kwargs in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript([("user", "hi")]),
+                compacted_transcript=None,
+                client_side_effect=lambda *a, **kw: client_cm,
+            )
+            if target != f"{_SVC}.upsert_chat_session"
+        ]
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.upsert_chat_session", new=upsert))
+            # The skill-drift notice reads the workspace over RPC.
+            stack.enter_context(
+                patch(
+                    f"{_SVC}._maybe_prepend_skills_update",
+                    new=AsyncMock(side_effect=lambda *args: args[-1]),
+                )
+            )
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+        return events

@@ -1,0 +1,167 @@
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { buildPageMetadata, getSiteUrl } from "../metadata";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("buildPageMetadata", () => {
+  test("emits a large-image card when an image is given", () => {
+    const metadata = buildPageMetadata({
+      title: "An Agent",
+      description: "What it does",
+      path: "/marketplace/agent/pwuts/an-agent",
+      images: ["https://cdn.example.com/agent.png"],
+      type: "article",
+    });
+
+    expect(metadata.openGraph?.images).toEqual([
+      "https://cdn.example.com/agent.png",
+    ]);
+    expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
+    expect(metadata.twitter?.images).toEqual([
+      "https://cdn.example.com/agent.png",
+    ]);
+    expect(metadata.openGraph).toMatchObject({
+      title: "An Agent",
+      description: "What it does",
+      siteName: "AutoGPT",
+      type: "article",
+    });
+  });
+
+  test.each([
+    ["no images key", undefined],
+    ["an empty list", []],
+    ["a null entry", [null]],
+    ["an empty string", [""]],
+  ])("omits og:image given %s", (_label, images) => {
+    const metadata = buildPageMetadata({ title: "Untitled", images });
+
+    expect(metadata.openGraph).not.toHaveProperty("images");
+    expect(metadata.twitter).not.toHaveProperty("images");
+    expect(metadata.twitter).toMatchObject({ card: "summary" });
+  });
+
+  test("keeps a description that fits under the cap", () => {
+    const description = "Sends a summary of yesterday's runs every morning.";
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    expect(metadata.description).toBe(description);
+    expect(metadata.openGraph?.description).toBe(description);
+    expect(metadata.twitter?.description).toBe(description);
+  });
+
+  test("cuts an over-long description on a word boundary", () => {
+    const description = `${"word ".repeat(60)}tail`;
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    const summary = metadata.description as string;
+    expect(summary.length).toBeLessThanOrEqual(200);
+    expect(summary.endsWith("…")).toBe(true);
+    expect(summary).not.toMatch(/wor…$/);
+    expect(summary.slice(0, -1).endsWith("word")).toBe(true);
+  });
+
+  test("keeps an over-long description with no spaces within the cap", () => {
+    const metadata = buildPageMetadata({
+      title: "An Agent",
+      description: "x".repeat(300),
+    });
+
+    const summary = metadata.description as string;
+    expect(summary.length).toBeLessThanOrEqual(200);
+    expect(summary.endsWith("…")).toBe(true);
+  });
+
+  test.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["blank", "   "],
+  ])("omits the description when it is %s", (_label, description) => {
+    const metadata = buildPageMetadata({ title: "An Agent", description });
+
+    expect(metadata.description).toBeUndefined();
+    expect(metadata.openGraph?.description).toBeUndefined();
+  });
+
+  test("resolves the canonical and og:url against the site URL", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://platform.agpt.co");
+
+    const metadata = buildPageMetadata({
+      title: "Marketplace",
+      path: "/marketplace",
+    });
+
+    expect(metadata.alternates?.canonical).toBe(
+      "https://platform.agpt.co/marketplace",
+    );
+    expect(metadata.openGraph?.url).toBe(
+      "https://platform.agpt.co/marketplace",
+    );
+  });
+
+  test("leaves the canonical unset when no path is given", () => {
+    const metadata = buildPageMetadata({ title: "Marketplace" });
+
+    expect(metadata.alternates).toBeUndefined();
+    expect(metadata.openGraph?.url).toBeUndefined();
+  });
+
+  test("drops an empty description rather than emitting an empty tag", () => {
+    const metadata = buildPageMetadata({ title: "A Creator", description: "" });
+
+    expect(metadata.description).toBeUndefined();
+    expect(metadata.openGraph?.description).toBeUndefined();
+  });
+});
+
+describe("getSiteUrl", () => {
+  test("prefers the configured frontend base URL", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://platform.agpt.co");
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://platform.agpt.co");
+  });
+
+  test("falls back to VERCEL_URL as an absolute origin", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "");
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
+  });
+
+  test("falls back to localhost with neither set", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "");
+    vi.stubEnv("VERCEL_URL", "");
+
+    expect(getSiteUrl()).toBe("http://localhost:3000");
+  });
+
+  test("skips a configured origin that is not a valid URL", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "platform.agpt.co");
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
+  });
+
+  test.each([
+    ["mailto:", "mailto:hello@agpt.co"],
+    ["data:", "data:text/html,<h1>hi</h1>"],
+  ])("skips a %s candidate and uses the next one", (_label, configured) => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", configured);
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
+    expect(() =>
+      buildPageMetadata({ title: "Marketplace", path: "/marketplace" }),
+    ).not.toThrow();
+  });
+
+  test("always returns an origin new URL() accepts", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "not a url");
+    vi.stubEnv("VERCEL_URL", "also not a url");
+
+    expect(() => new URL(getSiteUrl())).not.toThrow();
+  });
+});

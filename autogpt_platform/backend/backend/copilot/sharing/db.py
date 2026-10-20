@@ -28,6 +28,8 @@ from prisma.models import (
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
+from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
     ChatShareState,
@@ -349,7 +351,15 @@ async def get_shared_chat_messages_paginated(
         return None
 
     return SharedChatMessagesPage(
-        messages=[sanitize_chat_message(m) for m in page.messages],
+        messages=[
+            sanitize_chat_message(message)
+            for message in page.messages
+            # Hidden control turns, and the platform's notes to the owner: a
+            # scheduled chat's note says what their plan, usage or connections
+            # are, and the shared copy carries no metadata to hide it by.
+            if not is_hidden_chat_message(message.metadata)
+            and not is_hidden_from_model(message.metadata)
+        ],
         has_more=page.has_more,
         oldest_sequence=page.oldest_sequence,
     )
@@ -373,7 +383,11 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     SharedChatFile row so subsequent downloads short-circuit.
     """
     record = await SharedChatFile.prisma().find_first(
-        where={"shareToken": share_token, "fileId": file_id}
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+            "Session": {"is": {"shareToken": share_token, "isShared": True}},
+        }
     )
     if record is not None:
         return record.sessionId
@@ -768,7 +782,7 @@ async def _resolve_linked_executions(
     session_id: str,
 ) -> list[SharedChatLinkedExecution]:
     rows = await ChatLinkedShare.prisma().find_many(
-        where={"sessionId": session_id},
+        where={"sessionId": session_id, "Execution": {"is": {"isDeleted": False}}},
         include={"Execution": {"include": {"AgentGraph": True}}},
     )
     out: list[SharedChatLinkedExecution] = []

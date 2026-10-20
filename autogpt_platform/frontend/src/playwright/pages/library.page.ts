@@ -1,4 +1,4 @@
-import { expect, Locator, Page } from "@playwright/test";
+import { expect, Locator, Page, Response } from "@playwright/test";
 import { getSeededTestUser } from "../credentials/accounts";
 import { getSelectors } from "../utils/selectors";
 import { BasePage } from "./base.page";
@@ -90,10 +90,20 @@ export class LibraryPage extends BasePage {
 
   async searchAgents(searchTerm: string): Promise<void> {
     console.log(`searching for agents with term: ${searchTerm}`);
-    const { getRole } = getSelectors(this.page);
-    const searchInput = getRole("textbox", "Search agents");
+    const { getId, getRole } = getSelectors(this.page);
+    const searchInput = getRole("textbox", "Search workflows");
+    // Cards render only after hydration; text typed before it never reaches onChange.
+    await expect(getId("library-agent-card").first()).toBeVisible({
+      timeout: 15000,
+    });
+    // The search applies after a debounce; until then the unfiltered list is clickable.
+    const searchApplied = this.page.waitForResponse(
+      (response) => isAgentListResponseFor(response, searchTerm),
+      { timeout: 15000 },
+    );
     await searchInput.fill(searchTerm);
     await expect(searchInput).toHaveValue(searchTerm);
+    await searchApplied;
   }
 
   async clearSearch(): Promise<void> {
@@ -101,7 +111,7 @@ export class LibraryPage extends BasePage {
     // Look for the clear button (X icon)
     const clearButton = this.page.locator(".lucide.lucide-x");
     const searchInput = this.page.getByRole("textbox", {
-      name: "Search agents",
+      name: "Search workflows",
     });
     if (await clearButton.isVisible()) {
       await clearButton.click();
@@ -136,17 +146,19 @@ export class LibraryPage extends BasePage {
 
   async openUploadDialog(): Promise<void> {
     console.log(`opening upload dialog`);
-    // Open the unified Import dialog first
-    await this.page.getByRole("button", { name: "Import" }).click();
+    // Open the unified Import dialog first. A click that lands before the
+    // page hydrates does nothing, so click again until the dialog shows.
+    const importButton = this.page.getByRole("button", { name: "Import" });
+    const dialog = this.page.getByRole("dialog", { name: "Import" });
+    await expect(async () => {
+      if (!(await dialog.isVisible())) {
+        await importButton.click({ timeout: 2_000 });
+      }
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
 
-    // Wait for dialog to appear
-    await this.page.getByRole("dialog", { name: "Import" }).waitFor({
-      state: "visible",
-      timeout: 5_000,
-    });
-
-    // Click the "AutoGPT agent" tab
-    await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
+    // Click the "AutoGPT workflow" tab
+    await this.page.getByRole("tab", { name: "AutoGPT workflow" }).click();
   }
 
   async closeUploadDialog(): Promise<void> {
@@ -175,12 +187,12 @@ export class LibraryPage extends BasePage {
 
     // Fill agent name
     await this.page
-      .getByRole("textbox", { name: "Agent name" })
+      .getByRole("textbox", { name: "Workflow name" })
       .fill(agentName);
 
     // Fill description
     await this.page
-      .getByRole("textbox", { name: "Agent description" })
+      .getByRole("textbox", { name: "Workflow description" })
       .fill(description);
   }
 
@@ -266,7 +278,7 @@ export class LibraryPage extends BasePage {
       .getByTestId("library-agent-card")
       .filter({ hasText: agent.name });
 
-    // The "Edit agent" link is inside the three-dot dropdown menu.
+    // The "Edit workflow" link is inside the three-dot dropdown menu.
     // Open the menu first, then click the builder link.
     const menuTrigger = agentCard.getByRole("button", {
       name: "More actions",
@@ -305,7 +317,7 @@ export class LibraryPage extends BasePage {
     console.log(`getting search input value`);
     try {
       const searchInput = this.page.getByRole("textbox", {
-        name: "Search agents",
+        name: "Search workflows",
       });
       return await searchInput.inputValue();
     } catch {
@@ -444,6 +456,17 @@ export class LibraryPage extends BasePage {
   }
 }
 
+function isAgentListResponseFor(
+  response: Response,
+  searchTerm: string,
+): boolean {
+  const url = new URL(response.url());
+  return (
+    url.pathname.endsWith("/api/library/agents") &&
+    url.searchParams.get("search_term") === searchTerm
+  );
+}
+
 // Locator functions
 export function getLibraryTab(page: Page): Locator {
   return page.locator('a[href="/library"]');
@@ -490,7 +513,9 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
+  const newTaskButton = page.getByRole("button", {
+    name: /^New workflow task$/i,
+  });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -804,7 +829,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
   const visibleSurfaces: Array<[string, Locator]> = [
     [
       "about-agent",
-      page.getByText("About this agent", { exact: true }).first(),
+      page.getByText("About this workflow", { exact: true }).first(),
     ],
     [
       "setup-task",
@@ -812,7 +837,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
     ],
     [
       "new-task",
-      page.getByRole("button", { name: /^New agent task$/i }).first(),
+      page.getByRole("button", { name: /^New workflow task$/i }).first(),
     ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
@@ -861,7 +886,13 @@ export async function isLoaded(page: Page): Promise<boolean> {
 }
 
 const SUCCESS_RUN_STATUS = "completed";
-const FAILURE_RUN_STATUSES = new Set(["failed", "terminated", "incomplete"]);
+// A run whose step failed still ends COMPLETED; its badge says so.
+const FAILURE_RUN_STATUSES = new Set([
+  "failed",
+  "terminated",
+  "incomplete",
+  "completed with errors",
+]);
 const RUN_ERROR_RECOVERY_GRACE_PERIOD_MS = 1500;
 const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 
@@ -1080,26 +1111,48 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    await expect
-      .poll(
-        async () => {
-          if (/\/build/.test(page.url())) {
-            return "build";
-          }
-          if (!(await uploadingButton.isVisible().catch(() => false))) {
-            return "gone";
-          }
-          return (await uploadingButton.isDisabled().catch(() => false))
-            ? "disabled"
-            : "enabled";
-        },
-        {
-          timeout: 5000,
-          message:
-            'upload button should either stay disabled while "Uploading..." is visible or disappear because navigation already started',
-        },
-      )
-      .not.toBe("enabled");
+    const uploadingState = await uploadingButton
+      .evaluateAll((buttons) => {
+        const visibleButton = buttons.find((button) => {
+          const { width, height } = button.getBoundingClientRect();
+          return (
+            width > 0 &&
+            height > 0 &&
+            window.getComputedStyle(button).visibility !== "hidden"
+          );
+        });
+        if (!visibleButton) {
+          return "gone" as const;
+        }
+        return visibleButton.matches(":disabled") ||
+          visibleButton.getAttribute("aria-disabled") === "true"
+          ? ("disabled" as const)
+          : ("enabled" as const);
+      })
+      .catch(async (error: unknown) => {
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes("Execution context was destroyed")
+        ) {
+          throw error;
+        }
+        if (!/\/build/.test(page.url())) {
+          await page
+            .waitForURL(/\/build/, {
+              timeout: 500,
+              waitUntil: "commit",
+            })
+            .catch(() => {
+              throw error;
+            });
+        }
+        return "build" as const;
+      });
+
+    expect(
+      uploadingState,
+      'upload button should be disabled while "Uploading..." is visible',
+    ).not.toBe("enabled");
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
@@ -1114,7 +1167,7 @@ export async function importAgentFromFile(
         }
 
         const uploadFailed = await page
-          .getByText("Error Uploading agent")
+          .getByText("Error Uploading workflow")
           .isVisible()
           .catch(() => false);
         if (uploadFailed) {
@@ -1146,7 +1199,6 @@ export async function importAgentFromFile(
 
   await page.goto("/library");
   await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
 
   // Look up the specific imported card directly rather than calling
   // getAgents() in a loop. getAgents() iterates every visible card and
@@ -1203,7 +1255,6 @@ export async function openSavedAgentInLibrary(
   await page.goto("/library");
   await libraryPage.waitForAgentsToLoad();
   await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
   await navigateToAgentByName(page, agentName);
   await waitForAgentPageLoad(page, agentName);
 }
@@ -1215,7 +1266,11 @@ async function waitForExportActionSurface(
     .poll(
       async () => {
         if (
-          await getFirstVisibleLocator(page, "button", "Export agent to file")
+          await getFirstVisibleLocator(
+            page,
+            "button",
+            "Export workflow to file",
+          )
         ) {
           return "direct";
         }
@@ -1230,7 +1285,7 @@ async function waitForExportActionSurface(
     )
     .not.toBe("pending");
 
-  if (await getFirstVisibleLocator(page, "button", "Export agent to file")) {
+  if (await getFirstVisibleLocator(page, "button", "Export workflow to file")) {
     return "direct";
   }
 
@@ -1262,7 +1317,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const directExportButton = await getFirstVisibleLocator(
       page,
       "button",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (!directExportButton) {
       throw new Error(
@@ -1289,7 +1344,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const exportMenuItem = await getFirstVisibleLocator(
       page,
       "menuitem",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (exportMenuItem) {
       await exportMenuItem.click({ timeout: 15000 });
@@ -1310,6 +1365,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
 // elsewhere on the page (filter chips, tooltips, etc.).
 const RUN_STATUS_WORDS = [
   "completed",
+  "completed with errors",
   "failed",
   "terminated",
   "incomplete",

@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
+import { useProcessReviews } from "@/hooks/useProcessReviews";
 import {
   Alert01Icon,
   ArrowDown01Icon,
@@ -19,6 +19,9 @@ interface PendingReviewsListProps {
   onReviewComplete?: () => void;
   emptyMessage?: string;
 }
+
+// Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
+export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
 
 export function PendingReviewsList({
   reviews,
@@ -39,9 +42,10 @@ export function PendingReviewsList({
     },
   );
 
-  const [pendingAction, setPendingAction] = useState<
-    "approve" | "reject" | null
-  >(null);
+  const [pendingAction, setPendingAction] = useState<{
+    nodeId: string;
+    action: "approve" | "reject";
+  } | null>(null);
 
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
     Record<string, boolean>
@@ -67,47 +71,8 @@ export function PendingReviewsList({
     );
   }, [reviews]);
 
-  const reviewActionMutation = usePostV2ProcessReviewAction({
-    mutation: {
-      onSuccess: (res) => {
-        if (res.status !== 200) {
-          toast({
-            title: "Failed to process reviews",
-            description: "Unexpected response from server",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        const result = res.data;
-
-        if (result.failed_count > 0) {
-          toast({
-            title: "Reviews partially processed",
-            description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Reviews processed successfully",
-            description: `${result.approved_count} approved, ${result.rejected_count} rejected`,
-            variant: "default",
-          });
-        }
-
-        setPendingAction(null);
-        onReviewComplete?.();
-      },
-      onError: (error: Error) => {
-        setPendingAction(null);
-        toast({
-          title: "Failed to process reviews",
-          description: error.message || "An error occurred",
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const { processReviews: submitReviewAction, isProcessing } =
+    useProcessReviews({ onSettled: onReviewComplete });
 
   function handleReviewDataChange(nodeExecId: string, data: string) {
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
@@ -142,8 +107,13 @@ export function PendingReviewsList({
     }));
   }
 
-  function processReviews(approved: boolean) {
-    if (reviews.length === 0) {
+  // Scoped to one node's reviews on purpose: these are the rows rendered
+  // directly above the button that calls this, and a decision must never
+  // reach a row the reviewer has not been shown.
+  async function processGroup(nodeId: string, approved: boolean) {
+    const groupReviews = groupedReviews[nodeId] || [];
+
+    if (groupReviews.length === 0) {
       toast({
         title: "No reviews to process",
         description: "No reviews found to process.",
@@ -152,27 +122,34 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction(approved ? "approve" : "reject");
+    setPendingAction({ nodeId, action: approved ? "approve" : "reject" });
     const reviewItems = [];
 
-    for (const review of reviews) {
+    for (const review of groupReviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
       const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
       let parsedData: any = undefined;
 
       if (!autoApproveThisNode) {
-        if (review.editable && reviewData) {
+        // An emptied draft is "" here and must fail the parse below, not
+        // fall back to the original payload the reviewer just cleared.
+        if (review.editable && reviewData !== undefined) {
           try {
             parsedData = JSON.parse(reviewData);
           } catch (error) {
-            toast({
-              title: "Invalid JSON",
-              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-              variant: "destructive",
-            });
-            setPendingAction(null);
-            return;
+            // A rejection sends nothing the reviewer edited, so a broken
+            // draft only has to block an approval.
+            if (approved) {
+              toast({
+                title: "Invalid JSON",
+                description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+                variant: "destructive",
+              });
+              setPendingAction(null);
+              return;
+            }
+            parsedData = review.payload;
           }
         } else {
           parsedData = review.payload;
@@ -187,11 +164,43 @@ export function PendingReviewsList({
       });
     }
 
-    reviewActionMutation.mutate({
-      data: {
-        reviews: reviewItems,
-      },
-    });
+    try {
+      const res = await submitReviewAction(reviewItems, groupReviews);
+
+      if (res.status !== 200) {
+        toast({
+          title: "Failed to process reviews",
+          description: "Unexpected response from server",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = res.data;
+
+      if (result.failed_count > 0) {
+        toast({
+          title: "Reviews partially processed",
+          description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Reviews processed successfully",
+          description: `${result.approved_count} approved, ${result.rejected_count} rejected`,
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Failed to process reviews",
+        description:
+          error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   if (reviews.length === 0) {
@@ -206,8 +215,8 @@ export function PendingReviewsList({
           {emptyMessage}
         </Text>
         <Text variant="body" className="mt-2 max-w-md text-muted-foreground">
-          When agents have human-in-the-loop blocks, they will appear here for
-          your review and approval.
+          When workflows have human-in-the-loop blocks, they will appear here
+          for your review and approval.
         </Text>
       </div>
     );
@@ -230,19 +239,23 @@ export function PendingReviewsList({
           </Text>
         </div>
         <Text variant="large" className="text-textGrey">
-          This task is paused until you approve the changes below. Please review
-          and edit if needed.
+          {reviews.every((review) => isGateReview(review.node_id))
+            ? "Otto is waiting for your approval before the action below."
+            : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
         </Text>
       </div>
 
       <div className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          const isCollapsed = collapsedGroups[nodeId] ?? nodeReviews.length > 1;
+          const isCollapsed = collapsedGroups[nodeId] ?? false;
           const reviewCount = nodeReviews.length;
+          const groupAction =
+            pendingAction?.nodeId === nodeId ? pendingAction.action : null;
 
           const firstReview = nodeReviews[0];
-          const blockName = firstReview?.instructions;
-          const reviewTitle = `Review required for ${blockName}`;
+          const reviewTitle =
+            firstReview?.action ?? firstReview?.instructions ?? "Review";
+          const workflowName = firstReview?.agent_name;
 
           const getShortenedNodeId = (id: string) => {
             if (id.length <= 8) return id;
@@ -272,9 +285,14 @@ export function PendingReviewsList({
                   <Text variant="body" className="font-semibold text-gray-900">
                     {reviewTitle}
                   </Text>
-                  <Text variant="small" className="text-gray-500">
-                    Node #{getShortenedNodeId(nodeId)}
-                  </Text>
+                  {(workflowName ||
+                    (!firstReview?.action && !isGateReview(nodeId))) && (
+                    <Text variant="small" className="text-gray-500">
+                      {workflowName
+                        ? `In workflow “${workflowName}”`
+                        : `Node #${getShortenedNodeId(nodeId)}`}
+                    </Text>
+                  )}
                 </div>
                 <span className="text-xs text-gray-600">
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
@@ -294,16 +312,43 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <Switch
-                      checked={autoApproveFutureMap[nodeId] || false}
-                      onCheckedChange={(enabled: boolean) =>
-                        handleAutoApproveFutureToggle(nodeId, enabled)
-                      }
-                    />
-                    <Text variant="small" className="text-gray-700">
-                      Auto-approve future executions of this node
-                    </Text>
+                  {!isGateReview(nodeId) && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        checked={autoApproveFutureMap[nodeId] || false}
+                        onCheckedChange={(enabled: boolean) =>
+                          handleAutoApproveFutureToggle(nodeId, enabled)
+                        }
+                      />
+                      <Text variant="small" className="text-gray-700">
+                        Auto-approve future executions of this node
+                      </Text>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button
+                      onClick={() => processGroup(nodeId, true)}
+                      disabled={isProcessing}
+                      variant="primary"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                      loading={groupAction === "approve" && isProcessing}
+                    >
+                      {reviewCount === 1
+                        ? "Approve"
+                        : `Approve ${reviewCount} reviews`}
+                    </Button>
+                    <Button
+                      onClick={() => processGroup(nodeId, false)}
+                      disabled={isProcessing}
+                      variant="destructive"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+                      loading={groupAction === "reject" && isProcessing}
+                    >
+                      {reviewCount === 1
+                        ? "Reject"
+                        : `Reject ${reviewCount} reviews`}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -312,37 +357,14 @@ export function PendingReviewsList({
         })}
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => processReviews(true)}
-            disabled={reviewActionMutation.isPending || reviews.length === 0}
-            variant="primary"
-            className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-            loading={
-              pendingAction === "approve" && reviewActionMutation.isPending
-            }
-          >
-            Approve
-          </Button>
-          <Button
-            onClick={() => processReviews(false)}
-            disabled={reviewActionMutation.isPending || reviews.length === 0}
-            variant="destructive"
-            className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
-            loading={
-              pendingAction === "reject" && reviewActionMutation.isPending
-            }
-          >
-            Reject
-          </Button>
-        </div>
-
-        <Text variant="small" className="text-textGrey">
-          You can turn auto-approval on or off using the toggle above for each
-          node.
-        </Text>
-      </div>
+      <Text variant="small" className="text-textGrey">
+        Each decision applies only to the reviews shown above it. You can turn
+        auto-approval on or off using the toggle for each node.
+      </Text>
     </div>
   );
+}
+
+function isGateReview(nodeId: string | null | undefined) {
+  return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }

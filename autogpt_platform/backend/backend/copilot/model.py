@@ -24,13 +24,21 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, library_db
+from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
+from backend.util.background import spawn_background_task
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    NotFoundError,
+    RedisError,
+)
+from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .config import ChatConfig
+from .autopilot_mode import AutopilotMode
+from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -41,11 +49,29 @@ config = ChatConfig()
 # stamped column and model_router / the SDK service import the ONE
 # definition instead of re-declaring the Literal. ("fallback" is stamped,
 # never routed: it marks a CLI 529-overload fallback to a different model.)
-RoutingSource = Literal["ld", "catalog", "env", "fallback"]
+RoutingSource = Literal[
+    "ld",
+    "catalog",
+    "env",
+    "fallback",
+    "preferred",
+    "account_default",
+    "account_available",
+]
+
+# Who opened a session. ``interactive`` means a human is typing into it (web
+# chat, a linked chat platform); ``automation`` means a graph block or a
+# scheduler opened it, so every prompt in it is machine-authored and may
+# carry data the user never read. Tools that restaff the user's team require
+# an interactive origin — "has no expert_id" only means "not an expert chat",
+# which an AutoPilotBlock session also satisfies.
+ChatSessionOrigin = Literal["interactive", "automation"]
 
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS = 1.0
+_EXPERT_KICKOFF_SESSION_NAMESPACE = uuid.UUID("3fd5434f-225a-53e8-b248-1a749a925892")
 
 
 def _get_session_cache_key(session_id: str) -> str:
@@ -65,6 +91,13 @@ CHAT_STATUS_RUNNING = "running"
 # ===================== Chat data models ===================== #
 
 
+class PendingQuestion(BaseModel):
+    """The last unanswered question a session asked the user."""
+
+    text: str
+    asked_at: datetime
+
+
 class ChatSessionMetadata(BaseModel):
     """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
 
@@ -73,6 +106,9 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -80,6 +116,17 @@ class ChatSessionMetadata(BaseModel):
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
     source_platform: str | None = None
+
+    # ``None`` means the row was persisted before this field existed, and is
+    # NOT a synonym for either value: session metadata is immutable after
+    # creation, so a legacy row can never gain the key, and every writer goes
+    # through ``create_chat_session``, which always supplies a concrete
+    # origin. Readers must decide deliberately which way an unknown origin
+    # falls — see ``blocks/autopilot.py`` (legacy resumes) and
+    # ``autopilot_session_guard`` (legacy cannot staff).
+    origin: ChatSessionOrigin | None = None
+    # The chat's approval mode; None means the default (``copilot/gate``).
+    autopilot_mode: AutopilotMode | None = None
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -91,6 +138,47 @@ class ChatSessionMetadata(BaseModel):
     # When ``kind == "dream"``, the originating pass id so the session
     # links back to the orchestrator run that produced it.
     dream_pass_id: str | None = None
+
+    # Delegation provenance, set by ``delegate_to_expert``: which expert
+    # (None = plain Otto) asked for this work, and from which session.
+    # The session id is the poll capability — ``get_sub_session_result``
+    # accepts a cross-expert sub only when it names the caller here.
+    delegated_by_expert_id: str | None = None
+    delegated_by_session_id: str | None = None
+
+    # Set by ``handoff_to_expert`` alongside the delegation fields: a handoff
+    # transfers ownership rather than borrowing a teammate, so the receiving
+    # expert can tell "this is now mine" from "report back to whoever asked".
+    handed_off_from_expert_id: str | None = None
+
+    # What this session is for, set by the session itself so a teammate can
+    # find it with ``find_session``. Free text: the task spine (#14240) can
+    # narrow it to its own ids later without a migration.
+    purpose: str | None = None
+
+    # Set by ``ask_question`` when a turn ends waiting on the user, cleared
+    # when they reply. Drives the Home "Needs You" question item; one per
+    # session, latest wins.
+    pending_question: PendingQuestion | None = None
+
+    @property
+    def pauses_irreversible_actions(self) -> bool:
+        """Whether a workflow this chat starts pauses before irreversible blocks."""
+        # A legacy row cannot prove nobody is watching, so it pauses too.
+        return self.origin != "automation"
+
+
+def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
+    """Origin for a fresh session a tool opens on *parent*'s behalf.
+
+    A legacy ``None`` must not be copied into a row written today — that would
+    keep minting sessions indistinguishable from pre-deploy ones, and let a
+    legacy chat launder itself through a delegation. It resolves to
+    ``automation`` rather than ``interactive`` because these children are
+    opened by a tool call carrying a model-authored prompt: when the parent
+    cannot prove a human drove it, the child must not claim one did.
+    """
+    return parent.origin or "automation"
 
 
 class ChatMessage(BaseModel):
@@ -115,7 +203,7 @@ class ChatMessage(BaseModel):
 
     # Which LLM served this assistant turn ("model" — visible to clients,
     # the model-badge UX) and which routing layer picked it
-    # ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+    # (platform and Codex routing sources, plus "fallback" when the CLI's
     # overload fallback served a different model than the routed one).
     # Product-intelligence mirrors these to segment quality judgments by
     # model. None on user/tool rows.
@@ -126,6 +214,24 @@ class ChatMessage(BaseModel):
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
     routing_source: RoutingSource | None = Field(default=None, exclude=True)
+
+    # Which connection served this turn. Unlike routing_source this is the
+    # user's own choice, not an internal cohort, so it is safe to serialize
+    # and is what lets a chat show what each turn actually ran on.
+    # None on user/tool rows and on rows written before this existed --
+    # ``segment_of`` resolves those against the session's own route.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+
+    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
+    # row; a rating of the reply is scored against it. Internal, so excluded
+    # from payloads like routing_source, and persisted the same way.
+    langfuse_trace_id: str | None = Field(default=None, exclude=True)
+
+    # PostHog trace of the turn that wrote this assistant or reasoning row
+    # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
+    # rating of the reply carries. Internal and persisted like the above.
+    trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
@@ -190,6 +296,12 @@ class ChatMessage(BaseModel):
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
             routing_source=cast("RoutingSource | None", prisma_message.routingSource),
+            llm_auth_provider=cast(
+                "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
+            ),
+            llm_credential_id=prisma_message.llmCredentialId,
+            langfuse_trace_id=prisma_message.langfuseTraceId,
+            trace_id=prisma_message.traceId,
         )
 
 
@@ -214,10 +326,41 @@ def is_message_duplicate(
     return False
 
 
+async def clear_pending_question(session: "ChatSession") -> None:
+    """Resolve the session's Home "Needs You" question — the user replied.
+
+    Answering in chat is the only resolution path, so this runs on every
+    user-role turn. Best-effort: a stale row on Home is not worth failing a
+    turn the user is waiting on.
+
+    Caveat: callers gate this on ``is_user_message`` only, which marks a
+    turn's *role* (user vs assistant), not its *origin*. A programmatically
+    injected user-role turn — a re-delegation via ``delegate_to_expert``, a
+    ``run_sub_session`` follow-up, or an ``AutoPilotBlock`` run — also
+    clears the pending question even though the human never actually saw
+    or answered it. There is currently no discriminator available at this
+    call site (or its callers) to tell a human reply apart from an
+    injected one; fixing that would require plumbing a new signal through
+    the queue/executor layer.
+    """
+    if session.metadata.pending_question is None:
+        return
+    session.metadata.pending_question = None
+    try:
+        await chat_db().clear_session_pending_question(
+            session.session_id, session.user_id
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not clear pending question for {session.session_id}: {e}"
+        )
+
+
 def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
     is_user_message: bool,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """Append a user/assistant message to the session if not already present.
 
@@ -232,7 +375,9 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
-    session.messages.append(ChatMessage(role=role, content=message))
+    session.messages.append(
+        ChatMessage(role=role, content=message, metadata=metadata or None)
+    )
     return True
 
 
@@ -265,7 +410,7 @@ class ChatSessionInfo(BaseModel):
     team_id: str | None = None
     # Whether the user has pinned this session to the top of the sidebar.
     is_pinned: bool = False
-    # Hired expert this session is scoped to; None = plain Autopilot session.
+    # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
 
     @property
@@ -371,14 +516,22 @@ class ChatSession(ChatSessionInfo):
         user_id: str,
         *,
         dry_run: bool,
+        session_id: str | None = None,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        delegated_by_expert_id: str | None = None,
+        delegated_by_session_id: str | None = None,
+        handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> Self:
         return cls(
-            session_id=str(uuid.uuid4()),
+            session_id=session_id or str(uuid.uuid4()),
             user_id=user_id,
             title=None,
             messages=[],
@@ -390,6 +543,13 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                origin=origin,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                delegated_by_expert_id=delegated_by_expert_id,
+                delegated_by_session_id=delegated_by_session_id,
+                handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -414,8 +574,9 @@ class ChatSession(ChatSessionInfo):
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
-        Called by the baseline tool executor **before** the tool actually
-        runs (the announcement is about dispatch, not success).  If the
+        Called by :meth:`BaseTool.execute` — the one path both engines take —
+        after its gates and **before** the tool actually runs (the
+        announcement is about dispatch, not success).  If the
         tool raises, the name stays in the buffer for the rest of the
         turn — that matches the guide-read gate's contract ("was the tool
         called?") but means any future gate wanting *successful*
@@ -751,7 +912,7 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
     async_redis = await get_redis_async()
-    raw_session: bytes | None = await async_redis.get(redis_key)
+    raw_session = await async_redis.get(redis_key)
 
     if raw_session is None:
         return None
@@ -812,6 +973,8 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
 async def upsert_chat_session(
     session: ChatSession,
+    *,
+    persist_tenancy: bool = False,
 ) -> ChatSession:
     """Update a chat session in both cache and database.
 
@@ -820,9 +983,9 @@ async def upsert_chat_session(
     attempt to upsert the same session simultaneously.
 
     Raises:
-        DatabaseError: If the database write fails. The cache is still updated
-            as a best-effort optimization, but the error is propagated to ensure
-            callers are aware of the persistence failure.
+        DatabaseError: If the database write fails. Ordinary upserts still update
+            the cache as a best-effort optimization. Tenancy-changing upserts
+            evict instead, so an uncommitted scope cannot become authoritative.
         RedisError: If the cache write fails (after successful DB write).
     """
     async with _get_session_lock(session.session_id) as _:
@@ -837,6 +1000,7 @@ async def upsert_chat_session(
                 session,
                 existing_message_count,
                 skip_existence_check=existing_message_count > 0,
+                persist_tenancy=persist_tenancy,
             )
         except Exception as e:
             logger.error(
@@ -844,21 +1008,63 @@ async def upsert_chat_session(
             )
             db_error = e
 
-        # Save to cache (best-effort, even if DB failed).
-        # Title (update_session_title) and pin state (update_session_pinned)
-        # are mutated *outside* this lock — they only touch their single field,
-        # not messages — so a concurrent rename, auto-title, or pin/unpin may
-        # have written a newer value to Redis while this upsert was in progress.
-        # Always prefer the cached title/pin to avoid reverting it with the
-        # stale in-memory copy.
+        if db_error is not None and persist_tenancy:
+            try:
+                await asyncio.wait_for(
+                    invalidate_session_cache(session.session_id),
+                    timeout=_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Timed out evicting cache after failed tenancy update for %s",
+                    session.session_id,
+                )
+            raise DatabaseError(
+                f"Failed to persist chat session {session.session_id} to database"
+            ) from db_error
+
+        # Ordinary upserts keep best-effort cache-on-DB-error behavior;
+        # tenancy changes return above after eviction instead.
+        # Title and pin state are mutated outside this lock. Connection route
+        # updates use this same lock, but a route update that completed before
+        # this upsert acquired it may still be newer than this turn's in-memory
+        # session. Prefer those cached fields so the stale turn cannot revert
+        # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
+            cache_it = True
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
                     updates["title"] = existing_cached.title
+                # The route decides who pays for the next turn. A long turn
+                # finishing after the user switched connection would otherwise
+                # put the old one back in Redis while the database holds the
+                # new one, and bill the next turn to the connection they just
+                # left. The approval mode is changed the same way mid-turn, and
+                # a stale one would run the next turn under the mode the user
+                # just left. Only these keys are taken from the cache; the rest
+                # of this session's metadata is this turn's own.
+                cached_meta = existing_cached.metadata
+                from_cache = {
+                    "llm_auth_provider": cached_meta.llm_auth_provider,
+                    "llm_credential_id": cached_meta.llm_credential_id,
+                    "autopilot_mode": cached_meta.autopilot_mode,
+                }
+                merged = session.metadata.model_copy(update=from_cache)
+                if merged != session.metadata:
+                    updates["metadata"] = merged
                 session = session.model_copy(update=updates)
-            await cache_chat_session(session)
+            else:
+                # With no cached copy the database holds the mode, which this
+                # upsert never writes, so it cannot be stale there.
+                stored = await _with_stored_autopilot_mode(session)
+                # Without the stored mode this turn's copy could be stale, so
+                # leave the cache empty and let the next read go to the database.
+                cache_it = stored is not None
+                session = stored or session
+            if cache_it:
+                await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
             if db_error is None:
@@ -884,6 +1090,7 @@ async def _save_session_to_db(
     existing_message_count: int,
     *,
     skip_existence_check: bool = False,
+    persist_tenancy: bool = False,
 ) -> None:
     """Save or update a chat session in the database.
 
@@ -907,6 +1114,7 @@ async def _save_session_to_db(
                 organization_id=session.organization_id,
                 team_id=session.team_id,
                 metadata=session.metadata,
+                expert_id=session.expert_id,
             )
             existing_message_count = 0
 
@@ -914,15 +1122,21 @@ async def _save_session_to_db(
     total_prompt = sum(u.prompt_tokens for u in session.usage)
     total_completion = sum(u.completion_tokens for u in session.usage)
 
-    # Update session metadata
-    await db.update_chat_session(
-        session_id=session.session_id,
-        credentials=session.credentials,
-        successful_agent_runs=session.successful_agent_runs,
-        successful_agent_schedules=session.successful_agent_schedules,
-        total_prompt_tokens=total_prompt,
-        total_completion_tokens=total_completion,
-    )
+    update_kwargs: dict[str, Any] = {
+        "session_id": session.session_id,
+        "credentials": session.credentials,
+        "successful_agent_runs": session.successful_agent_runs,
+        "successful_agent_schedules": session.successful_agent_schedules,
+        "total_prompt_tokens": total_prompt,
+        "total_completion_tokens": total_completion,
+    }
+    if persist_tenancy:
+        update_kwargs.update(
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            update_tenancy=True,
+        )
+    await db.update_chat_session(**update_kwargs)
 
     # Identify unsaved messages.  Two cases:
     #
@@ -961,6 +1175,11 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                     "model": msg.model,
                     "routing_source": msg.routing_source,
+                    "llm_auth_provider": msg.llm_auth_provider,
+                    "llm_credential_id": msg.llm_credential_id,
+                    "langfuse_trace_id": msg.langfuse_trace_id,
+                    "trace_id": msg.trace_id,
+                    "metadata": msg.metadata,
                 }
             )
         logger.info(
@@ -1011,6 +1230,10 @@ async def _save_session_to_db(
                 sequence=msg.sequence,
                 model=msg.model,
                 routing_source=msg.routing_source,
+                llm_auth_provider=msg.llm_auth_provider,
+                llm_credential_id=msg.llm_credential_id,
+                langfuse_trace_id=msg.langfuse_trace_id,
+                trace_id=msg.trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1055,13 +1278,18 @@ async def _save_session_to_db(
 
 
 async def append_and_save_message(
-    session_id: str, message: ChatMessage
+    session_id: str, message: ChatMessage, *, dedupe_content: bool = True
 ) -> ChatSession | None:
     """Atomically append a message to a session and persist it.
 
     Returns the updated session, or None if the message was detected as a
     duplicate (idempotency guard). Callers must check for None and skip any
     downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
+
+    ``dedupe_content=False`` skips the trailing same-content collapse (layer 2
+    below) for a message that is the same text every time it is sent, such as
+    a continuation note; that caller has to rule out double sends itself. The
+    id check (layer 1) still applies.
 
     Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
     The idempotency check below provides a last-resort guard when the lock degrades.
@@ -1106,8 +1334,10 @@ async def append_and_save_message(
         # permanently.  The fix is to ensure failed turns always write
         # an error/timeout assistant message so the session always ends
         # on an assistant turn.
-        if message.content is not None and is_message_duplicate(
-            session.messages, message.role, message.content
+        if (
+            dedupe_content
+            and message.content is not None
+            and is_message_duplicate(session.messages, message.role, message.content)
         ):
             return None  # duplicate — caller should skip enqueue
 
@@ -1149,11 +1379,20 @@ async def create_chat_session(
     user_id: str,
     *,
     dry_run: bool,
+    session_id: str | None = None,
     builder_graph_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    origin: ChatSessionOrigin = "interactive",
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     expert_id: str | None = None,
+    delegated_by_expert_id: str | None = None,
+    delegated_by_session_id: str | None = None,
+    handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+    inherited_autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1165,27 +1404,65 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
-        expert_id: Hired expert this session is scoped to. Ownership and
-            archived state must be validated by the caller.
+        origin: Whether a human drives this session or an automation opened
+            it. Machine callers (graph blocks, schedulers) must pass
+            ``"automation"``; the team-staffing tools refuse those sessions.
+        expert_id: Private expert this session is scoped to. Expert sessions are
+            validated here and pinned to the owner's personal organization, and
+            the database re-validates active ownership atomically with session
+            persistence — the persisted attribution is authoritative.
+        delegated_by_expert_id: Expert that delegated this session's work
+            (None = plain Otto). Provenance only.
+        delegated_by_session_id: Session that delegated this session's work.
+            Doubles as the poll capability for cross-expert delegation.
+        handed_off_from_expert_id: Expert that handed this work off for good,
+            set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the chat starts on. An explicit
+            value wins; otherwise an expert session starts on the expert's
+            own default, and anything else on the platform default. Stored
+            on the session, so a later change to the expert's default never
+            rewrites an open thread. Ignored while the approval-mode flag
+            is off, like the per-thread override.
+        inherited_autopilot_mode: The mode a delegated thread must start on,
+            already decided by the caller from the parent chat and the
+            target expert (``gate.child_autopilot_mode``). Stored
+            as-is: it is a constraint rather than a pick, so the flag does
+            not drop it and the expert is not read a second time.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
+    if expert_id is not None:
+        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
+            user_id, expert_id
+        )
+    autopilot_mode = await _resolve_new_session_autopilot_mode(
+        user_id, expert_id, autopilot_mode, origin, inherited_autopilot_mode
+    )
+
     session = ChatSession.new(
         user_id,
         dry_run=dry_run,
+        session_id=session_id,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        origin=origin,
         organization_id=organization_id,
         team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         expert_id=expert_id,
+        delegated_by_expert_id=delegated_by_expert_id,
+        delegated_by_session_id=delegated_by_session_id,
+        handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
     )
 
     # Create in database first - fail fast if this fails
     try:
-        await chat_db().create_chat_session(
+        persisted = await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
             organization_id=organization_id,
@@ -1193,6 +1470,12 @@ async def create_chat_session(
             metadata=session.metadata,
             expert_id=expert_id,
         )
+        session.expert_id = persisted.expert_id
+    except ExpertNotFoundError:
+        # Domain error, not a persistence failure: the expert lost the
+        # attribution race. Propagate so callers (scheduler skip path,
+        # interactive 404) handle it as fail-closed, not as a 500.
+        raise
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(
@@ -1208,11 +1491,194 @@ async def create_chat_session(
     return session
 
 
+async def _resolve_new_session_autopilot_mode(
+    user_id: str,
+    expert_id: str | None,
+    requested: AutopilotMode | None,
+    origin: ChatSessionOrigin,
+    inherited: AutopilotMode | None = None,
+) -> AutopilotMode | None:
+    """Inherited > explicit request > the expert's default > None (platform default).
+
+    The expert default is for threads a person drives: a routine, a
+    scheduled follow-up or a block-opened session is not gated, so it is
+    not looked up for one.
+    """
+    if inherited is not None:
+        return inherited
+    if requested is None and (expert_id is None or origin != "interactive"):
+        return None
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return None
+    if requested is not None or expert_id is None:
+        return requested
+    return await experts_db().get_autopilot_mode(user_id, expert_id)
+
+
+def expert_kickoff_session_id(
+    user_id: str,
+    expert_id: str,
+    organization_id: str | None = None,
+) -> str:
+    """Return the canonical first-session ID for one user's expert."""
+    return str(
+        uuid.uuid5(
+            _EXPERT_KICKOFF_SESSION_NAMESPACE,
+            f"{user_id}:{organization_id or 'personal'}:{expert_id}",
+        )
+    )
+
+
+async def get_or_create_expert_kickoff_session(
+    user_id: str,
+    expert_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Atomically create or adopt the canonical expert kickoff session.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted
+    kickoff keeps the mode it already has.
+    """
+    sessions, _ = await get_user_sessions(
+        user_id,
+        limit=1,
+        organization_id=organization_id,
+        expert_id=expert_id,
+        pinned_first=False,
+    )
+    if sessions:
+        existing = await get_chat_session(sessions[0].session_id, user_id)
+        if existing is not None:
+            return existing
+
+    session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
+    existing = await get_chat_session(session_id, user_id)
+    if existing is not None:
+        return existing
+
+    try:
+        return await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
+        )
+    except DatabaseError:
+        existing = await get_chat_session(session_id, user_id)
+        if existing is not None and existing.expert_id == expert_id:
+            return existing
+        raise
+
+
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted one
+    keeps the mode it started on, even if the expert's default changed since.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
+    """
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
+        or metadata.handed_off_from_expert_id
+    ):
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1255,6 +1721,7 @@ async def get_or_create_builder_session(
             builder_graph_id=graph_id,
             organization_id=organization_id,
             team_id=team_id,
+            autopilot_mode=autopilot_mode,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1271,6 +1738,7 @@ async def get_user_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1292,6 +1760,7 @@ async def get_user_sessions(
         organization_id=organization_id,
         title_contains=title_contains,
         expert_id=expert_id,
+        pinned_first=pinned_first,
     )
     total_count = await db.get_user_session_count(
         user_id, organization_id=organization_id, expert_id=expert_id
@@ -1334,29 +1803,25 @@ async def delete_chat_session(
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Best-effort embedding cleanup so deleted sessions stop appearing in
-    # /search/global hits. Only attempt when we have a user_id since the
-    # embedding row is user-scoped; without it the user-filter would miss
-    # and the orphan row (if any) gets cleaned up by the periodic embedder.
-    if user_id:
-        try:
-            from backend.copilot.chat_session_embeddings import (
-                delete_chat_session_embedding,
-            )
-
-            await delete_chat_session_embedding(session_id, user_id)
-        except Exception as e:
-            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
-
-    # Shut down any local browser daemon for this session (best-effort).
-    # Inline import required: all tool modules import ChatSession from this
+    # Inline imports required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
-    try:
-        from .tools.agent_browser import close_browser_session
+    from backend.copilot.chat_session_embeddings import delete_chat_session_embedding
 
-        await close_browser_session(session_id, user_id=user_id)
-    except Exception as e:
-        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+    from .tools.agent_browser import close_browser_session
+
+    # The cleanups below are best-effort and log their own failures, so they
+    # run after the caller gets its answer instead of holding it up.
+    # The embedding row is user-scoped; without a user_id the filter would
+    # miss and the periodic embedder sweeps the orphan row instead.
+    if user_id:
+        spawn_background_task(
+            delete_chat_session_embedding(session_id, user_id),
+            name=f"chat-embedding-delete-{session_id[:12]}",
+        )
+    spawn_background_task(
+        close_browser_session(session_id, user_id=user_id),
+        name=f"browser-close-{session_id[:12]}",
+    )
 
     return True
 
@@ -1422,6 +1887,109 @@ async def update_session_title(
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    """Move an existing chat onto a different connection, from the next turn.
+
+    The session's metadata is segment zero -- where the chat started, and the
+    answer for any turn that carries no stamp of its own. Changing it does not
+    rewrite history: turns already stamped keep the connection they ran on, so
+    a chat that hit a limit and continued elsewhere reads as what it was.
+
+    Written through the same cache the title update uses, because a stale
+    cached session would send the next turn back to the connection the user
+    just moved off.
+    """
+    # This is a read-modify-write of the cached session. Serialize it with
+    # full-session upserts so a route change cannot write an older cache
+    # snapshot over messages that a turn just persisted (or vice versa).
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize route update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_llm_route(
+            session_id, user_id, llm_auth_provider, llm_credential_id
+        )
+        if not updated:
+            return False
+
+        # Cache refresh is best-effort -- the DB write already succeeded.
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.llm_auth_provider = llm_auth_provider
+                cached.metadata.llm_credential_id = llm_credential_id
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
+
+
+async def update_session_autopilot_mode(
+    session_id: str, user_id: str, mode: AutopilotMode
+) -> bool:
+    """Set the chat's approval mode from the next tool call on.
+
+    Written through the cache under the session lock, as the route change is,
+    so a stale cached copy cannot put the chat back on its old mode.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize mode update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_autopilot_mode(
+            session_id, user_id, mode
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.autopilot_mode = mode
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache mode update failed for session {session_id}; "
+                f"evicting so the next read takes the database's mode: {e}"
+            )
+            await invalidate_session_cache(session_id)
+        return True
+
+
+async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession | None:
+    """``session`` with the database's mode, or None if that could not be read."""
+    try:
+        stored = await chat_db().get_chat_session_metadata(session.session_id)
+    except Exception as e:
+        logger.warning(
+            f"Could not read the stored mode for session {session.session_id}: {e}"
+        )
+        return None
+    if stored is None or stored.metadata.autopilot_mode == (
+        session.metadata.autopilot_mode
+    ):
+        return session
+    return session.model_copy(
+        update={
+            "metadata": session.metadata.model_copy(
+                update={"autopilot_mode": stored.metadata.autopilot_mode}
+            )
+        }
+    )
 
 
 async def update_session_pinned(

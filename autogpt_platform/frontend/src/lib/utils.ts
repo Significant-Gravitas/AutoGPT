@@ -166,6 +166,10 @@ const exceptionMap: Record<string, string> = {
   Json: "JSON",
   Ai: "AI",
   "You Tube": "YouTube",
+  "Linked In": "LinkedIn",
+  "Tik Tok": "TikTok",
+  "All Quiet": "AllQuiet",
+  "Any Search": "AnySearch",
 };
 
 const applyExceptions = (str: string): string => {
@@ -454,4 +458,16 @@ export function getApprovedMarketplaceUrl(args: {
     return undefined;
   }
   return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
+}
+
+/**
+ * True when `pathname` is `base` itself or one of its sub-routes. Tolerates the
+ * `null` that `usePathname()` is typed to return.
+ */
+export function matchesRoute(
+  pathname: string | null | undefined,
+  base: string,
+): boolean {
+  if (!pathname) return false;
+  return pathname === base || pathname.startsWith(`${base}/`);
 }

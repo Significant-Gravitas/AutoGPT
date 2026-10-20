@@ -1,0 +1,37 @@
+# This image combines frontend and appliance files. The backend target has its
+# own Bake context. No env file belongs in this context or exported cache.
+*
+
+!autogpt_platform/frontend/
+!autogpt_platform/single-container/
+!autogpt_platform/db/init/00-init.sql
+!autogpt_platform/LICENSE.md
+
+**/.*
+
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/.ruff_cache/
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+**/node_modules/
+**/.next/
+**/coverage/
+**/storybook-static/
+**/playwright-report/
+**/test-results/
+**/next-env.d.ts
+**/tsconfig.tsbuildinfo
+**/src/app/api/__generated__/
+
+**/dist/
+**/build/
+!autogpt_platform/frontend/src/**/build/
+**/target/
+
+**/*.log
+**/*.tmp

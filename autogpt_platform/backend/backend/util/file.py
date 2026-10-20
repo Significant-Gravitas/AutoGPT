@@ -11,6 +11,9 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 
 from backend.util.cloud_storage import get_cloud_storage_handler
+from backend.util.filename import MAX_FILENAME_BYTES as MAX_FILENAME_BYTES
+from backend.util.filename import MAX_FILENAME_LENGTH as MAX_FILENAME_LENGTH
+from backend.util.filename import sanitize_filename as sanitize_filename
 from backend.util.request import Requests
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
@@ -20,6 +23,7 @@ MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
+    from backend.data.workspace_scope import WorkspaceScope
 
 
 class WorkspaceUri(BaseModel):
@@ -60,51 +64,36 @@ MediaReturnFormat = Literal[
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
-# Maximum filename length (conservative limit for most filesystems)
-MAX_FILENAME_LENGTH = 200
-
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Sanitize and truncate filename to prevent filesystem errors.
-    """
-    # Remove or replace invalid characters
-    sanitized = re.sub(r'[<>:"/\\|?*\n\r\t]', "_", filename)
-
-    # Truncate if too long
-    if len(sanitized) > MAX_FILENAME_LENGTH:
-        # Keep the extension if possible, but only if it's reasonable length
-        if "." in sanitized:
-            name, ext = sanitized.rsplit(".", 1)
-            # If extension is too long, it's likely not a file extension but just text
-            if len(ext) <= 20:
-                max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
-                sanitized = name[:max_name_length] + "." + ext
-            else:
-                sanitized = sanitized[:MAX_FILENAME_LENGTH]
-        else:
-            sanitized = sanitized[:MAX_FILENAME_LENGTH]
-
-    # Ensure it's not empty or just dots
-    if not sanitized or sanitized.strip(".") == "":
-        sanitized = f"file_{uuid.uuid4().hex[:8]}"
-
-    return sanitized
-
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     """
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
+
+    *path* is interpreted relative to that folder, and the result has to stay
+    inside it: an absolute path, a ``..`` segment or a symlink inside the folder
+    that points out of it is rejected rather than silently escaping.
     """
+    exec_file_root = (TEMP_DIR / "exec_file").resolve()
+    base = exec_file_root / graph_exec_id
     try:
-        full_path = TEMP_DIR / "exec_file" / graph_exec_id / path
-        return str(full_path)
+        # Resolve before comparing so symlinked components are followed first.
+        resolved_base = base.resolve()
+        full_path = (base / path).resolve()
     except OSError as e:
         if "File name too long" in str(e):
             raise ValueError(
                 f"File path too long: {len(path)} characters. Maximum path length exceeded."
             ) from e
         raise ValueError(f"Invalid file path: {e}") from e
+
+    # is_relative_to() compares path components rather than string prefixes, so
+    # a sibling folder whose name merely starts with the base name is excluded.
+    if not resolved_base.is_relative_to(exec_file_root):
+        raise ValueError("Invalid execution ID: resolves outside the exec_file folder")
+    if not full_path.is_relative_to(resolved_base):
+        raise ValueError("Invalid file path: resolves outside the execution folder")
+
+    return str(full_path)
 
 
 def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
@@ -114,6 +103,33 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
     exec_path = Path(get_exec_file_path(graph_exec_id, file))
     if exec_path.exists() and exec_path.is_dir():
         shutil.rmtree(exec_path)
+
+
+async def _expert_workspace_scope(
+    execution_context: "ExecutionContext",
+) -> "WorkspaceScope | None":
+    """Confine blocks an expert runs from its chat to the expert's own files.
+
+    Mirrors the copilot tools: a block run inside an expert's conversation can
+    only resolve ``workspace://`` references inside that expert's
+    conversations. Expert-attributed runs without a session (schedules,
+    webhooks, presets) write their outputs at the workspace root, so they
+    keep the owner's full workspace until they get a folder of their own.
+    Runs without expert attribution keep it too.
+    """
+    if (
+        not execution_context.expert_id
+        or not execution_context.session_id
+        or not execution_context.user_id
+    ):
+        return None
+    # Import here to avoid circular import (see store_media_file)
+    from backend.data.db_accessors import workspace_db
+
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        execution_context.user_id, execution_context.expert_id
+    )
+    return scope.with_session(execution_context.session_id)
 
 
 async def store_media_file(
@@ -160,7 +176,10 @@ async def store_media_file(
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
         workspace_manager = WorkspaceManager(
-            user_id, execution_context.workspace_id, execution_context.session_id
+            user_id,
+            execution_context.workspace_id,
+            execution_context.session_id,
+            scope=await _expert_workspace_scope(execution_context),
         )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))

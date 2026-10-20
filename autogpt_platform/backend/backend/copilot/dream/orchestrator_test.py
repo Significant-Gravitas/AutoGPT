@@ -14,9 +14,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
-from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
+from . import batch_submit
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
@@ -171,6 +173,63 @@ async def test_empty_input_returns_skipped(mocker):
     assert result.skip_reason == "no_input"
     structured.assert_not_called()
     apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
+    lock_calls: list[tuple[tuple, dict]] = []
+
+    @asynccontextmanager
+    async def scoped_lock(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        yield
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", scoped_lock)
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is True
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    assert lock_calls[0][0][0] == expert_scope
+    gather.assert_awaited_once_with(expert_scope)
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_reaches_marker_and_apply_on_nonempty_pass(mocker):
+    input_bundle = _build_input().model_copy(
+        update={"expert_id": "expert-1", "group_id": "expert_scope"}
+    )
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=input_bundle),
+    )
+    read_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_read_last_completed_marker",
+        AsyncMock(return_value=None),
+    )
+    stamp_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_stamp_last_completed_marker",
+        AsyncMock(),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    gather.assert_awaited_once_with(expert_scope)
+    read_marker.assert_awaited_once_with(expert_scope)
+    assert apply_mock.await_args.args[0] == expert_scope
+    stamp_marker.assert_awaited_once_with(expert_scope, input_bundle.window_end)
 
 
 @pytest.mark.asyncio
@@ -397,17 +456,38 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     ]
 
 
-def test_long_output_phase_timeouts_exceed_the_shared_request_default():
-    """Regression pin: every phase used to run on the shared 120s
-    ``DEFAULT_REQUEST_TIMEOUT_SECONDS``, which cannot decode the 16384
-    output tokens recombine/sanitize are budgeted for. If these ever
-    drop back to (or below) the default, the token-cap raise becomes
-    dead letter again."""
-    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
-    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
-    assert (
-        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= DEFAULT_REQUEST_TIMEOUT_SECONDS
-    )
+# A 120s ceiling truncates a 16384-token decode. Pinned as a literal, not
+# imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS`: that setting sizes generic
+# block calls and is free to move independently of this budget.
+_TRUNCATING_TIMEOUT_SECONDS = 120
+
+
+def test_long_output_phase_timeouts_clear_the_120s_truncation_threshold():
+    """Regression pin: at 120s the phases cannot decode the 16384 output
+    tokens recombine/sanitize are budgeted for. If these ever drop to (or
+    below) that, the token-cap raise becomes dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= _TRUNCATING_TIMEOUT_SECONDS
+
+
+# A thinking standard model's consolidate answer, measured on a test bed:
+# Sonnet 5 through OpenRouter, on a 31-fact, 31-episode window, answered in
+# 5,912 output tokens, 5,068 of them reasoning. Given 4096 it spent them all
+# on reasoning, answered nothing, and the pass failed with empty_content.
+_THINKING_CONSOLIDATE_ANSWER_TOKENS = 5_912
+
+
+def test_consolidate_budget_leaves_a_thinking_model_room_to_answer():
+    """Regression pin: the consolidate budget covers a thinking model's
+    reasoning as well as its answer, and the batch path asks for the same
+    budgets as the sync one."""
+    assert orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
+    assert batch_submit.PHASE_MAX_TOKENS == {
+        "consolidate": orchestrator_mod.CONSOLIDATE_MAX_TOKENS,
+        "recombine": orchestrator_mod.RECOMBINE_MAX_TOKENS,
+        "sanitize": orchestrator_mod.SANITIZE_MAX_TOKENS,
+    }
 
 
 def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
@@ -510,7 +590,12 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -573,7 +658,12 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -685,7 +775,12 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, lock_handle=None
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -778,7 +873,7 @@ async def test_lock_held_returns_skipped_lock_held(mocker):
 
     @asynccontextmanager
     async def busy_lock(*args, **kwargs):
-        raise DreamLockHeld(args[0] if args else "?")
+        raise DreamLockHeld(args[0].owner_user_id if args else "?")
         yield  # pragma: no cover
 
     mocker.patch.object(orchestrator_mod, "dream_lock", busy_lock)
@@ -881,19 +976,39 @@ async def test_each_completed_phase_charges_once(mocker):
 
 
 @pytest.mark.asyncio
-async def test_partial_failure_still_charges_completed_phases(mocker):
-    """If recombine errors after consolidate succeeded, we must still
-    bill for the consolidate tokens — we already paid the provider."""
+@pytest.mark.parametrize("failed_phase", ["consolidate", "recombine", "sanitize"])
+@pytest.mark.parametrize(
+    "error", ["max_tokens", "invalid output shape", "provider error"]
+)
+async def test_partial_failure_still_charges_completed_phases(
+    mocker, failed_phase, error
+):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
-    consolidated = ConsolidationOutput(facts=[])
+    phases = ["consolidate", "recombine", "sanitize"]
+    completed = phases.index(failed_phase)
+    failure_usage = CompletionUsage(
+        model="claude-sonnet-5-5",
+        input_tokens=1001,
+        output_tokens=203,
+        cache_read_tokens=3007,
+        cache_creation_tokens=509,
+        cost_usd=0.0056052,
+    )
+    failure = DreamLLMError(error, usage=failure_usage)
     mocker.patch.object(
         orchestrator_mod,
         "structured_completion",
-        AsyncMock(side_effect=[_wrap(consolidated), DreamLLMError("recombine boom")]),
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+            ][:completed]
+            + [failure]
+        ),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
     charge_spy = AsyncMock()
@@ -902,9 +1017,13 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is not None
-    assert result.error.startswith("recombine:")
-    assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
-    assert charge_spy.await_args.kwargs["phase_usage"].phase == "consolidate"
+    assert result.error.startswith(f"{failed_phase}:")
+    assert error in result.error
+    assert charge_spy.await_count == completed
+    assert [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list] == (
+        phases[:completed]
+    )
+    assert failure.usage == failure_usage
     apply_mock.assert_not_awaited()
 
 
@@ -1743,3 +1862,6 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     delete_bundle.assert_awaited_once_with("p-lock-lost")
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

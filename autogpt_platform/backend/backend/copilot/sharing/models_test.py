@@ -139,8 +139,61 @@ class TestRedactSecretKeys:
             "id_token": "[redacted]",
         }
 
+    def test_redacts_camel_and_pascal_case_secret_keys(self):
+        result = _redact_secret_keys(
+            {
+                "accessToken": "access",
+                "clientSecret": "client",
+                "AuthToken": "auth",
+                "refreshToken": "refresh",
+                "userPassword": "password",
+                "APIKey": "key",
+            }
+        )
+        assert result == {
+            "accessToken": "[redacted]",
+            "clientSecret": "[redacted]",
+            "AuthToken": "[redacted]",
+            "refreshToken": "[redacted]",
+            "userPassword": "[redacted]",
+            "APIKey": "[redacted]",
+        }
+
+    def test_does_not_redact_camel_case_usage_counts(self):
+        result = _redact_secret_keys(
+            {"promptTokens": 100, "completionTokens": 50, "totalTokens": 150}
+        )
+        assert result == {
+            "promptTokens": 100,
+            "completionTokens": 50,
+            "totalTokens": 150,
+        }
+
 
 class TestSanitizeChatMessage:
+    def test_preserves_canonical_tool_display_name(self):
+        msg = _msg(
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "display_name": "Daily report",
+                    "function": {
+                        "name": "run_agent",
+                        "arguments": {
+                            "library_agent_id": "library-id",
+                            "api_key": "secret",
+                        },
+                    },
+                }
+            ],
+        )
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.tool_calls[0]["display_name"] == "Daily report"
+        assert (
+            sanitized.tool_calls[0]["function"]["arguments"]["api_key"] == "[redacted]"
+        )
+
     def test_drops_refusal_and_metadata(self):
         msg = _msg(
             role="assistant",
@@ -247,3 +300,27 @@ class TestSanitizeChatMessage:
         payload = _json.loads(sanitized.content)
         assert payload["api_keys"] == "[redacted]"
         assert payload["count"] == 2
+
+    def test_tool_content_redacts_nested_camel_case_secrets(self):
+        msg = _msg(
+            role="tool",
+            content=(
+                '{"result":{"accessToken":"access","nested":'
+                '{"clientSecret":"client","refreshToken":"refresh"}}}'
+            ),
+        )
+
+        sanitized = sanitize_chat_message(msg)
+
+        import json as _json
+
+        payload = _json.loads(sanitized.content)
+        assert payload == {
+            "result": {
+                "accessToken": "[redacted]",
+                "nested": {
+                    "clientSecret": "[redacted]",
+                    "refreshToken": "[redacted]",
+                },
+            }
+        }

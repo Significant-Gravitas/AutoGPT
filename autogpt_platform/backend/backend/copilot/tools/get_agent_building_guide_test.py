@@ -199,12 +199,13 @@ async def test_enter_building_mode_noop_when_already_active():
 
 
 def test_enter_building_mode_available_on_baseline():
-    """enter_agent_building_mode is offered on the baseline path too — it
+    """enter_agent_building_mode is reachable on the baseline path too — it
     branches per path (SDK restart / engine switch / inline guide on
-    SDK-less deployments)."""
-    from backend.copilot.tools import get_available_tools
+    SDK-less deployments).  Both tools are deferred, so the model reaches
+    them by id through run_capability rather than from the schema list."""
+    from backend.copilot.tools import reachable_tool_names
 
-    names = {t["function"]["name"] for t in get_available_tools()}
+    names = reachable_tool_names()
     assert "enter_agent_building_mode" in names
     assert "get_agent_building_guide" in names
 

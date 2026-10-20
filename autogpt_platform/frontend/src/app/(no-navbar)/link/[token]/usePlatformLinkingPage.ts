@@ -28,6 +28,7 @@ interface ViewData {
   linkType: LinkType;
   platform: string;
   serverName: string | null;
+  serverNoun: string;
 }
 
 export function usePlatformLinkingPage() {
@@ -97,6 +98,7 @@ export function usePlatformLinkingPage() {
     successData: buildSuccessData({
       confirmResponse,
       fallbackPlatform: platformFromUrl,
+      serverNoun: info?.server_noun ?? "server",
     }),
     errorMessage: buildErrorMessage({
       hasToken: Boolean(token),
@@ -131,7 +133,12 @@ function resolveStatus(args: {
 
 function buildViewData(args: {
   info:
-    | { link_type: LinkType; platform: string; server_name?: string | null }
+    | {
+        link_type: LinkType;
+        platform: string;
+        server_name?: string | null;
+        server_noun?: string;
+      }
     | undefined;
   platformFromUrl: string;
 }): ViewData | null {
@@ -141,13 +148,15 @@ function buildViewData(args: {
     platform:
       getPlatformDisplayName(args.info.platform) || args.platformFromUrl,
     serverName: args.info.server_name ?? null,
+    serverNoun: args.info.server_noun ?? "server",
   };
 }
 
 function buildSuccessData(args: {
   confirmResponse: ConfirmLinkResponse | ConfirmUserLinkResponse | undefined;
   fallbackPlatform: string;
-}): (ViewData & { platform: string }) | null {
+  serverNoun: string;
+}): (ViewData & { platform: string; returnUrl: string | null }) | null {
   if (!args.confirmResponse) return null;
   const serverName =
     "server_name" in args.confirmResponse
@@ -159,6 +168,9 @@ function buildSuccessData(args: {
       getPlatformDisplayName(args.confirmResponse.platform) ||
       args.fallbackPlatform,
     serverName,
+    // From the token info — the confirm response carries no noun.
+    serverNoun: args.serverNoun,
+    returnUrl: args.confirmResponse.return_url ?? null,
   };
 }
 

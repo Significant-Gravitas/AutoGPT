@@ -1,10 +1,10 @@
 import {
   getDeleteV2DeleteSessionMockHandler,
-  getDeleteV2DeleteSessionMockHandler422,
   getGetV2ListSessionsMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -12,10 +12,15 @@ import {
 } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { http, HttpResponse } from "msw";
+import { parseAsString, useQueryState } from "nuqs";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import userEvent from "@testing-library/user-event";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useCopilotUIStore } from "../../../store";
+import { useChatSession } from "../../../useChatSession";
+import { useSendMessage } from "../../../useSendMessage";
 import { ChatSidebar } from "../ChatSidebar";
 
 const toastMock = vi.fn();
@@ -137,43 +142,268 @@ describe("ChatSidebar — delete flow", () => {
     expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
   });
 
-  it("closes the dialog after a successful delete", async () => {
-    server.use(getDeleteV2DeleteSessionMockHandler());
+  it("removes the chat from the list as soon as Delete is confirmed", async () => {
+    let deleted = false;
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(() => {
+        const remaining = deleted
+          ? sessions.filter((session) => session.id !== "s2")
+          : sessions;
+        return { sessions: remaining, total: remaining.length };
+      }),
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+        deleted = true;
+      }),
+    );
     renderSidebar();
 
     await openDeleteDialogFor("Other chat");
-    expect(
-      await screen.findByRole("heading", { name: /delete chat/i }),
-    ).toBeDefined();
     const confirmButton = await screen.findByRole("button", {
       name: /^delete$/i,
     });
     fireEvent.click(confirmButton);
 
     await vi.waitFor(() => {
-      expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
+      expect(screen.queryByText("Other chat")).toBeNull();
     });
+    expect(screen.queryByRole("heading", { name: /delete chat/i })).toBeNull();
+    expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
+    expect(screen.getByText("Active chat")).toBeDefined();
+
+    releaseDelete();
+
     await vi.waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: /delete chat/i }),
-      ).toBeNull();
+      expect(deleted).toBe(true);
     });
+    expect(screen.queryByText("Other chat")).toBeNull();
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it("toasts on delete failure and clears the staged session", async () => {
-    server.use(getDeleteV2DeleteSessionMockHandler422());
+  it("keeps a chat out of the list while its delete is pending, even after the list refetches", async () => {
+    let activeTitle = "Active chat";
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(() => ({
+        sessions: sessions.map((session) =>
+          session.id === "s1" ? { ...session, title: activeTitle } : session,
+        ),
+        total: sessions.length,
+      })),
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+      }),
+    );
     renderSidebar();
 
-    await openDeleteDialogFor("Active chat");
-    const confirmButton = await screen.findByRole("button", {
-      name: /^delete$/i,
+    await openDeleteDialogFor("Other chat");
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Other chat")).toBeNull();
     });
-    fireEvent.click(confirmButton);
+
+    activeTitle = "Active chat, refetched";
+    fireEvent.click(screen.getByText("Active chat"));
+
+    expect(await screen.findByText("Active chat, refetched")).toBeDefined();
+    expect(screen.queryByText("Other chat")).toBeNull();
+
+    releaseDelete();
+  });
+
+  it("leaves the open chat as soon as its delete is confirmed, so nothing more is sent to it", async () => {
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let deleted = false;
+    server.use(
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+        deleted = true;
+      }),
+    );
+    const sent: (string | null)[] = [];
+    const createSession = vi.fn();
+    const ActiveChatWrapper = withNuqsTestingAdapter({
+      searchParams: "?sessionId=s1",
+      hasMemory: true,
+    });
+    function ActiveChatComposer() {
+      const [sessionId] = useQueryState("sessionId", parseAsString);
+      const { onSend } = useSendMessage({
+        sessionId,
+        createSession,
+        isUserStoppingRef: { current: false },
+        sendMessage: async () => {
+          sent.push(sessionId);
+        },
+      });
+      return (
+        <>
+          <span data-testid="open-session">{sessionId ?? "none"}</span>
+          <button onClick={() => onSend("One more thing")}>Send</button>
+        </>
+      );
+    }
+    render(
+      <ActiveChatWrapper>
+        <SidebarProvider>
+          <ChatSidebar />
+        </SidebarProvider>
+        <ActiveChatComposer />
+      </ActiveChatWrapper>,
+    );
+    expect(screen.getByTestId("open-session").textContent).toBe("s1");
+
+    await openDeleteDialogFor("Active chat");
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
 
     await vi.waitFor(() => {
-      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("open-session").textContent).toBe("none");
     });
+    expect(deleted).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalled());
+    expect(sent).not.toContain("s1");
+
+    releaseDelete();
+    await vi.waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it.each([
+    ["while the delete is pending", "pending"],
+    ["after the delete has returned", "deleted"],
+  ])(
+    "does not reopen a deleted expert chat when the expert's latest-thread lookup answers %s",
+    async (_label, answerExpertLookup) => {
+      const expertId = "expert-maria";
+      const expertChat = { ...sessions[0], expert_id: expertId };
+      let releaseDelete = () => {};
+      const deleteHeld = new Promise<void>((resolve) => {
+        releaseDelete = resolve;
+      });
+      let releaseExpertLookup = () => {};
+      const expertLookupHeld = new Promise<void>((resolve) => {
+        releaseExpertLookup = resolve;
+      });
+      let deleted = false;
+      server.use(
+        getGetV2ListSessionsMockHandler200(async ({ request }) => {
+          if (new URL(request.url).searchParams.has("expert_id")) {
+            if (answerExpertLookup === "deleted") await expertLookupHeld;
+            return { sessions: [expertChat], total: 1 };
+          }
+          return deleted
+            ? { sessions: [sessions[1]], total: 1 }
+            : { sessions: [expertChat, sessions[1]], total: 2 };
+        }),
+        getDeleteV2DeleteSessionMockHandler(async () => {
+          await deleteHeld;
+          deleted = true;
+        }),
+      );
+      useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
+      const sent: (string | null)[] = [];
+      const createSession = vi.fn();
+      const ExpertChatWrapper = withNuqsTestingAdapter({
+        searchParams: `?sessionId=s1&expertId=${expertId}`,
+        hasMemory: true,
+      });
+      function ExpertChat() {
+        const [expertIdParam] = useQueryState("expertId", parseAsString);
+        const { sessionId } = useChatSession({ expertId: expertIdParam });
+        const { onSend } = useSendMessage({
+          sessionId,
+          createSession,
+          isUserStoppingRef: { current: false },
+          sendMessage: async () => {
+            sent.push(sessionId);
+          },
+        });
+        return (
+          <>
+            <span data-testid="open-session">{sessionId ?? "none"}</span>
+            <button onClick={() => onSend("New task")}>Send</button>
+          </>
+        );
+      }
+      function KeyedChatHost() {
+        const [sessionId] = useQueryState("sessionId", parseAsString);
+        return <ExpertChat key={sessionId ?? "new"} />;
+      }
+      render(
+        <ExpertChatWrapper>
+          <SidebarProvider>
+            <ChatSidebar />
+          </SidebarProvider>
+          <KeyedChatHost />
+        </ExpertChatWrapper>,
+      );
+
+      await openDeleteDialogFor("Active chat");
+      fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+      await vi.waitFor(() => {
+        expect(screen.getByTestId("open-session").textContent).toBe("none");
+      });
+
+      if (answerExpertLookup === "pending") {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(deleted).toBe(false);
+        expect(screen.getByTestId("open-session").textContent).toBe("none");
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+        await vi.waitFor(() => expect(createSession).toHaveBeenCalled());
+      }
+
+      releaseDelete();
+      await vi.waitFor(() => expect(deleted).toBe(true));
+      releaseExpertLookup();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(screen.getByTestId("open-session").textContent).toBe("none");
+      expect(screen.queryByText("Active chat")).toBeNull();
+      expect(sent).not.toContain("s1");
+    },
+  );
+
+  it("puts the chat back and toasts when the delete fails, without waiting for a refetch", async () => {
+    let holdListRequests = false;
+    let rejectDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      rejectDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(async () => {
+        if (holdListRequests) await new Promise(() => {});
+        return { sessions, total: sessions.length };
+      }),
+      http.delete("/api/proxy/api/chat/sessions/:sessionId", async () => {
+        await deleteHeld;
+        return HttpResponse.json({ detail: "boom" }, { status: 500 });
+      }),
+    );
+    renderSidebar();
+
+    await openDeleteDialogFor("Other chat");
+    holdListRequests = true;
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Other chat")).toBeNull();
+    });
+    expect(screen.queryByRole("heading", { name: /delete chat/i })).toBeNull();
+
+    rejectDelete();
+
+    expect(await screen.findByText("Other chat")).toBeDefined();
+    expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toMatchObject({
       title: "Failed to delete chat",
       variant: "destructive",
@@ -429,4 +659,87 @@ describe("ChatSidebar — pagination", () => {
       ).toBeNull();
     });
   }, 10_000);
+});
+
+describe("ChatSidebar — rename", () => {
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  async function startRenaming(title: string) {
+    const sessionRow = (await screen.findByText(title)).closest("div.group");
+    if (!sessionRow) throw new Error(`row not found for ${title}`);
+    const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
+      name: /more actions/i,
+    });
+    fireEvent.pointerDown(moreButton, { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename/i }));
+    return screen.findByLabelText("Rename chat");
+  }
+
+  it("keeps editing on Enter while an IME is composing, then commits on a real Enter", async () => {
+    const titleBodies: { title: string }[] = [];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      http.patch("*/api/chat/sessions/:id/title", async ({ request }) => {
+        titleBodies.push((await request.json()) as { title: string });
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    renderSidebar();
+
+    const input = await startRenaming("Active chat");
+    fireEvent.change(input, { target: { value: "新しいチャット" } });
+
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    // The IME owns this Enter: the field stays in edit mode and, more to the
+    // point, no rename request goes out.
+    expect(screen.queryByLabelText("Rename chat")).not.toBeNull();
+    expect(titleBodies).toEqual([]);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => {
+      expect(titleBodies).toEqual([{ title: "新しいチャット" }]);
+    });
+  });
+});
+
+describe("ChatSidebar — copilot UI store reads", () => {
+  beforeEach(() => {
+    useCopilotUIStore.setState({
+      sessionToDelete: null,
+      completedSessionIDs: new Set(),
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    );
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  it("does not re-render while a panel resize writes its width", async () => {
+    const onRender = vi.fn();
+    render(
+      <SidebarProvider>
+        <Profiler id="chat-sidebar" onRender={onRender}>
+          <ChatSidebar />
+        </Profiler>
+      </SidebarProvider>,
+    );
+    await screen.findByText("Other chat");
+    await act(async () => {});
+    onRender.mockClear();
+
+    act(() => {
+      const store = useCopilotUIStore.getState();
+      store.setContextPanelWidth(store.contextPanelWidth + 40);
+      store.setArtifactPanelWidth(store.artifactPanelWidth + 40);
+    });
+    expect(onRender).not.toHaveBeenCalled();
+
+    act(() => useCopilotUIStore.getState().addCompletedSession("s2"));
+    expect(onRender).toHaveBeenCalled();
+  });
 });

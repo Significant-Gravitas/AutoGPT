@@ -10,12 +10,18 @@ import { BellRingIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationDialog() {
-  const {
-    showNotificationDialog,
-    setShowNotificationDialog,
-    setNotificationsEnabled,
-    isNotificationsEnabled,
-  } = useCopilotUIStore();
+  const showNotificationDialog = useCopilotUIStore(
+    (s) => s.showNotificationDialog,
+  );
+  const setShowNotificationDialog = useCopilotUIStore(
+    (s) => s.setShowNotificationDialog,
+  );
+  const setNotificationsEnabled = useCopilotUIStore(
+    (s) => s.setNotificationsEnabled,
+  );
+  const isNotificationsEnabled = useCopilotUIStore(
+    (s) => s.isNotificationsEnabled,
+  );
 
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED) === "true",
@@ -78,7 +84,7 @@ export function NotificationDialog() {
             <Icon icon={BellRingIcon} className="h-6 w-6 text-violet-600" />
           </div>
           <Text variant="body" className="text-center text-neutral-600">
-            AutoPilot can notify you when a response is ready, even if you
+            Your experts can notify you when a response is ready, even if you
             switch tabs or close this page. Enable notifications so you never
             miss one.
           </Text>

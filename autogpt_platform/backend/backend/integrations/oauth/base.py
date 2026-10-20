@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional
@@ -14,6 +15,9 @@ class BaseOAuthHandler(ABC):
     PROVIDER_NAME: ClassVar[ProviderName | str]
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
+    # True when a refresh makes the old refresh token worthless; such refreshes
+    # always run under the credential lock, even for lock-free callers.
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = False
 
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler2]
@@ -84,3 +88,13 @@ class BaseOAuthHandler(ABC):
             logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
             scopes = self.DEFAULT_SCOPES
         return scopes
+
+
+def parse_granted_scopes(scope: str | None, fallback: list[str]) -> list[str]:
+    """Scopes the provider says it granted, or `fallback` if it says nothing.
+
+    Accepts either delimiter providers use: a wrong per-provider separator
+    stores the whole string as one nonexistent scope.
+    """
+    granted = [s for s in re.split(r"[\s,]+", scope or "") if s]
+    return granted or fallback

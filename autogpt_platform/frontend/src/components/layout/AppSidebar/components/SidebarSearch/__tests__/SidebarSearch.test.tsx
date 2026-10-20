@@ -19,9 +19,9 @@ describe("SidebarSearch", () => {
     useGlobalSearchStore.setState({ isOpen: false });
   });
 
-  it("renders a Search menu button", () => {
+  it("renders a Search button", () => {
     renderSearch();
-    expect(screen.getByText("Search")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Search" })).toBeDefined();
   });
 
   it("opens the global search palette when clicked", async () => {
@@ -29,7 +29,7 @@ describe("SidebarSearch", () => {
     renderSearch();
 
     expect(useGlobalSearchStore.getState().isOpen).toBe(false);
-    await user.click(screen.getByText("Search"));
+    await user.click(screen.getByRole("button", { name: "Search" }));
     expect(useGlobalSearchStore.getState().isOpen).toBe(true);
   });
 });

@@ -12,7 +12,7 @@ const PENDING_LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 
 export type IntroPath = "A" | "B";
 
-// Path B ends with AutoPilot asking for a dump, so the mic it points at
+// Path B ends with Otto asking for a dump, so the mic it points at
 // gets a one-time highlight.
 export function setMicGlow() {
   setFlag(MIC_GLOW_KEY);
@@ -22,7 +22,7 @@ export function takeMicGlow() {
   return takeFlag(MIC_GLOW_KEY);
 }
 
-// Set when AutoPilot's intro goes out, consumed by the user's first real
+// Set when Otto's intro goes out, consumed by the user's first real
 // message afterwards. Measures whether the intro actually started a
 // conversation.
 export function setIntroAwaitingFollowup() {
@@ -33,7 +33,7 @@ export function takeIntroAwaitingFollowup() {
   return takeFlag(AWAITING_FOLLOWUP_KEY);
 }
 
-// Path B only: the user skipped the dump, so AutoPilot invited them to
+// Path B only: the user skipped the dump, so Otto invited them to
 // record one from the copilot composer instead. Consumed the first time
 // they finish a voice message there.
 export function setPendingLaterDump() {
@@ -102,14 +102,23 @@ export function setGreetingDone(userId: string | null | undefined) {
 
 function setFlag(key: string) {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(key, "1");
+  try {
+    window.sessionStorage.setItem(key, "1");
+  } catch {
+    // Storage can be unavailable (private mode, quota); attribution is
+    // optional and must never block the action it decorates.
+  }
 }
 
 function takeFlag(key: string) {
   if (typeof window === "undefined") return false;
-  const value = window.sessionStorage.getItem(key) === "1";
-  if (value) window.sessionStorage.removeItem(key);
-  return value;
+  try {
+    const value = window.sessionStorage.getItem(key) === "1";
+    if (value) window.sessionStorage.removeItem(key);
+    return value;
+  } catch {
+    return false;
+  }
 }
 
 export function setIntroPath(path: IntroPath) {

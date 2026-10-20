@@ -4,11 +4,13 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
+import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -18,14 +20,20 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
+import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
+import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
+import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
+import { InsetHeaderSidebarTrigger } from "./components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
-export function PlatformChrome({ children }: Props) {
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
@@ -34,6 +42,8 @@ export function PlatformChrome({ children }: Props) {
     overlayInsetHeader,
     hasInsetHeaderTitle,
     isSettingsRoute,
+    isAdminRoute,
+    isBuilderRoute,
   } = usePlatformChrome();
   // The collapsed-by-default sidebar ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
@@ -44,8 +54,7 @@ export function PlatformChrome({ children }: Props) {
     </TopUpPromptProvider>
   );
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
@@ -61,11 +70,17 @@ export function PlatformChrome({ children }: Props) {
   }
 
   if (showNewLayout) {
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
     return (
       <SidebarProvider
-        defaultOpen={!isBrainDumpEnabled}
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
+        <ArtifactsPanelNavCollapse />
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
@@ -81,24 +96,26 @@ export function PlatformChrome({ children }: Props) {
             )}
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="pointer-events-auto md:hidden">
-                <SidebarTrigger />
-              </div>
+              <InsetHeaderSidebarTrigger />
               <InsetHeaderTitle />
+              <InsetHeaderActions />
             </div>
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
-          <section className="flex-1">{content}</section>
+          <AppSidebarToggleProvider>
+            <section className="flex-1">{content}</section>
+          </AppSidebarToggleProvider>
         </SidebarInset>
       </SidebarProvider>
     );
   }
 
-  // Settings renders its own sidebar shell (with a Back link) — no top Navbar.
-  // Only the new layout drops the Navbar here; classic users keep it below so
-  // they don't lose global nav (wallet, account menu) or a way back on mobile.
-  if (isSettingsRoute && isNewLayoutActive) {
+  // Settings and admin render their own sidebar shells (with a Back link) —
+  // no top Navbar. Only the new layout drops the Navbar here; classic users
+  // keep it below so they don't lose global nav (wallet, account menu) or a
+  // way back on mobile.
+  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
     return (
       <main className="flex h-screen w-full flex-col">
         <AdminImpersonationBanner />
@@ -111,7 +128,7 @@ export function PlatformChrome({ children }: Props) {
   return (
     <main className="flex h-screen w-full flex-col">
       <Navbar />
-      {isLayoutReady && !isNewLayoutActive ? <ChangelogPopup /> : null}
+      {isLayoutReady ? <ChangelogPopup /> : null}
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

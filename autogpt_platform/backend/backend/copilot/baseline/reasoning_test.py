@@ -516,66 +516,6 @@ class TestReasoningPersistence:
         # Nothing else to assert — just proves None session is supported.
 
 
-class TestBaselineReasoningEmitterRenderFlag:
-    """``render_in_ui=False`` must silence ``StreamReasoning*`` wire events
-    AND drop persistence of ``role="reasoning"`` rows — the operator hides
-    the collapse on both the live wire and on reload.  Persistence is tied
-    to the wire events because the frontend's hydration path unconditionally
-    re-renders persisted reasoning rows; keeping them would make the flag a
-    no-op post-reload.  These tests pin the contract in both directions so
-    future refactors can't flip only one half."""
-
-    def test_render_off_suppresses_start_and_delta(self):
-        emitter = BaselineReasoningEmitter(render_in_ui=False)
-        events = emitter.on_delta(_delta(reasoning="hidden"))
-        # No wire events, but state advanced (is_open == True) so close()
-        # below has something to rotate.
-        assert events == []
-        assert emitter.is_open is True
-
-    def test_render_off_suppresses_close_end(self):
-        emitter = BaselineReasoningEmitter(render_in_ui=False)
-        emitter.on_delta(_delta(reasoning="hidden"))
-        events = emitter.close()
-        assert events == []
-        assert emitter.is_open is False
-
-    def test_render_off_still_persists(self):
-        """Persistence is decoupled from the render flag — session
-        transcript always keeps the ``role="reasoning"`` row so audit
-        and ``--resume``-equivalent replay never lose thinking text.
-        The frontend gates rendering separately."""
-        session: list[ChatMessage] = []
-        emitter = BaselineReasoningEmitter(session, render_in_ui=False)
-
-        emitter.on_delta(_delta(reasoning="part one "))
-        emitter.on_delta(_delta(reasoning="part two"))
-        emitter.close()
-
-        assert len(session) == 1
-        assert session[0].role == "reasoning"
-        assert session[0].content == "part one part two"
-
-    def test_render_off_rotates_block_id_between_sessions(self):
-        """Even with wire events silenced the block id must rotate on close,
-        otherwise a hypothetical mid-session flip would reuse a stale id."""
-        emitter = BaselineReasoningEmitter(render_in_ui=False)
-        emitter.on_delta(_delta(reasoning="first"))
-        first_block_id = emitter._block_id
-        emitter.close()
-        emitter.on_delta(_delta(reasoning="second"))
-        assert emitter._block_id != first_block_id
-
-    def test_render_on_is_default(self):
-        """Defaulting to True preserves backward compat — existing callers
-        that don't pass the kwarg keep emitting wire events as before."""
-        emitter = BaselineReasoningEmitter()
-        events = emitter.on_delta(_delta(reasoning="hello"))
-        assert len(events) == 2
-        assert isinstance(events[0], StreamReasoningStart)
-        assert isinstance(events[1], StreamReasoningDelta)
-
-
 class TestClaude5FamilyThinking:
     """Claude 5 removed ``budget_tokens`` — both thinking fragments must
     stay off (the documented adaptive default serves), while 4.x keeps
@@ -583,14 +523,26 @@ class TestClaude5FamilyThinking:
 
     @pytest.mark.parametrize(
         "family_member",
-        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-5",
+            "claude-haiku-5-5",
+        ],
     )
     def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
         assert reasoning_extra_body(f"anthropic/{family_member}", 5000) is None
 
     @pytest.mark.parametrize(
         "family_member",
-        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-5",
+            "claude-haiku-5-5",
+        ],
     )
     def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):
         assert anthropic_thinking_extra_body(family_member, 5000) is None
@@ -603,7 +555,8 @@ class TestClaude5FamilyThinking:
             "thinking": {"type": "enabled", "budget_tokens": 5000}
         }
 
-    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch):
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-opus-5"])
+    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch, model: str):
         """The explicit ``_is_claude_5_family`` guard must suppress the
         fragment even if a 5-family slug is (mistakenly) added to
         ``_THINKING_CAPABLE_PREFIXES`` — otherwise the guard is dead code
@@ -613,9 +566,9 @@ class TestClaude5FamilyThinking:
         monkeypatch.setattr(
             reasoning,
             "_THINKING_CAPABLE_PREFIXES",
-            reasoning._THINKING_CAPABLE_PREFIXES + ("claude-sonnet-5",),
+            reasoning._THINKING_CAPABLE_PREFIXES + (model,),
         )
-        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+        assert anthropic_thinking_extra_body(model, 5000) is None
 
     def test_sonnet_4_6_keeps_budget_fragments(self):
         assert reasoning_extra_body("anthropic/claude-sonnet-4.6", 5000) == {

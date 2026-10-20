@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anthropic
+import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -47,6 +48,7 @@ from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
+    MODEL_DATE_SUFFIX_RE,
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
@@ -73,13 +75,30 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-# Hard cap on a single provider HTTP request. Mirrors
-# ``backend/blocks/llm.py::LLM_REQUEST_TIMEOUT_SECONDS``. Healthy
-# non-streaming Messages / Responses calls finish in seconds; anything
-# past 120s is almost certainly a stalled socket and retries-on-timeout
-# would compound into multi-hour worst cases. Batch and flex paths
-# override this where appropriate.
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 120
+# Non-streaming calls emit no bytes until the completion is done, so this
+# budget has to span the entire generation, not time-to-first-byte.
+DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
+
+# The phases where no generation happens: waiting on a SYN, or queueing for a
+# free connection. Only read/write carry the generation budget. 5.0 matches the
+# OpenAI/Anthropic SDK connect default.
+FAST_FAIL_TIMEOUT_SECONDS = 5.0
+
+
+def request_timeout(timeout_seconds: float) -> httpx.Timeout:
+    """Bound one request: generation budget on read/write, fast-fail elsewhere.
+
+    A scalar would set every phase, so a blackholed SYN — or, on the one shared
+    client (the copilot aux singleton), a saturated pool — would park a worker
+    for the whole deadline. Per-call clients are uncontended on the pool phase;
+    the pin costs them nothing.
+    """
+    return httpx.Timeout(
+        timeout_seconds,
+        connect=FAST_FAIL_TIMEOUT_SECONDS,
+        pool=FAST_FAIL_TIMEOUT_SECONDS,
+    )
+
 
 # Provider names accepted by ``call_provider``. Kept as a string Literal
 # (not an enum) so the helper stays provider-name-agnostic — callers
@@ -143,6 +162,51 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
     )
 
 
+# Anthropic's newest models reject a forced ``tool_choice`` (``{"type":
+# "tool", ...}`` or ``{"type": "any"}``) with a 400 — ``tool_choice: type
+# "tool" and "any" are not supported for this model.`` — on the Messages API
+# and on the Message Batches API, where it only comes back hours later in the
+# result rows. ``tool_use.structured_tool_choice`` sends ``auto`` to these
+# models instead. The dream pass's sync call also retries once with ``auto``
+# on that exact error (``is_forced_tool_choice_rejection``), so an unlisted
+# model self-heals there; batch submissions rely on this list alone.
+#
+# Maintained apart from the temperature list above because the two
+# restrictions cover different models: every Claude 5 model and Opus 4.7/4.8
+# reject ``temperature``, but only these reject a forced tool — Sonnet 5 and
+# Opus 5 still honour one. Hence exact native slugs rather than family
+# prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
+# after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
+# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
+# Mythos 5.1 line; add a model here when it documents the same for another.
+_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
+    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+)
+
+
+def anthropic_accepts_forced_tool_choice(model: str) -> bool:
+    """False for a model that answers a forced ``tool_choice`` with a 400,
+    in any spelling: ``anthropic/claude-opus-5.5``, ``claude-opus-5-5`` or a
+    dated snapshot of either."""
+    native = strip_anthropic_vendor_prefix(model).replace(".", "-")
+    return (
+        MODEL_DATE_SUFFIX_RE.sub("", native)
+        not in _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED
+    )
+
+
+def is_forced_tool_choice_rejection(exc: BaseException) -> bool:
+    """Whether *exc* is Anthropic's 400 for a forced ``tool_choice`` on a
+    model that takes none: an ``anthropic.BadRequestError`` reading
+    ``tool_choice: type "tool" and "any" are not supported for this
+    model.`` Nothing else counts, not even another error quoting that text:
+    a 5xx or a failure of our own is not a reason to drop the forced tool."""
+    if not isinstance(exc, anthropic.BadRequestError):
+        return False
+    error_text = str(exc).lower()
+    return "tool_choice" in error_text and "not supported" in error_text
+
+
 # ---------------------------------------------------------------------------
 # Result + submission carriers
 # ---------------------------------------------------------------------------
@@ -165,6 +229,7 @@ class ProviderResponse:
     tool_calls: list[ToolContentBlock] | None = None
     reasoning: str | None = None
     cost_usd: float | None = None
+    stop_reason: str | None = None
     # Provider-native response object for callers that need raw access.
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_response: Any = Field(default=None, repr=False, exclude=True)
@@ -206,7 +271,7 @@ async def call_provider(
     parallel_tool_calls: bool | openai.Omit = openai.omit,
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
 
@@ -218,8 +283,13 @@ async def call_provider(
 
     Raises ``TimeoutError`` if the call exceeds ``timeout_seconds``
     (sync mode only; batch submissions are bounded by the provider's
-    own SLA and the poller's own timeout policy).
+    own SLA and the poller's own timeout policy). ``timeout_seconds=None``
+    reads ``DEFAULT_REQUEST_TIMEOUT_SECONDS`` when the call is made, so a
+    test can monkeypatch it; the value itself is still read from settings
+    once, at import.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     if execution_mode == "batch":
         if not custom_id:
             raise ValueError(
@@ -278,10 +348,7 @@ async def call_provider(
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"LLM request to {provider}/{model} exceeded "
-            f"{timeout_seconds}s and was cancelled."
-        ) from exc
+        raise timeout_error(f"{provider}/{model}", timeout_seconds) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +450,7 @@ async def _dispatch_sync(
         )
     if provider == "aiml_api":
         return await _call_openai_compat(
-            base_url="https://api.aimlapi.com/v2",
+            base_url="https://api.aimlapi.com/v1",
             model=model,
             api_key=api_key,
             messages=messages,
@@ -398,6 +465,8 @@ async def _dispatch_sync(
                 "X-Project": "AutoGPT",
                 "X-Title": "AutoGPT",
                 "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
+                "X-AIMLAPI-Source": "agent/autogpt",
+                "X-AIMLAPI-Partner-ID": "part_T70zDIEvQLKSMzMQ7asjdtKR",
             },
         )
     if provider == "v0":
@@ -474,7 +543,7 @@ async def _call_openai_responses(
         # See OPEN-3187.
         store=False,
         include=["reasoning.encrypted_content"],
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
         # ``omit`` is only valid for TYPED params — the SDK strips it
         # there. ``extra_body`` flows raw into ``options.extra_json``
         # (``make_request_options`` checks ``is not None``), and
@@ -528,7 +597,9 @@ async def _call_anthropic_messages(
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
-    # single prefix; reads cost 10% of normal input tokens.
+    # single prefix. Cache reads bill at a fraction of the input rate:
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
 
@@ -556,7 +627,7 @@ async def _call_anthropic_messages(
         messages=anth_messages,
         max_tokens=max_tokens,
         tools=an_tools,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     if temperature is not None and _anthropic_accepts_temperature(model):
         create_kwargs["temperature"] = temperature
@@ -619,7 +690,7 @@ async def _call_anthropic_messages(
             reasoning = content_block.thinking
             break
 
-    first_block = resp.content[0]
+    first_block = next(iter(_anthropic_answer_blocks(resp)), None)
     content_text = (
         first_block.name
         if isinstance(first_block, anthropic.types.ToolUseBlock)
@@ -635,6 +706,7 @@ async def _call_anthropic_messages(
         or 0,
         tool_calls=tool_calls,
         reasoning=reasoning,
+        stop_reason=resp.stop_reason,
         raw_response=resp,
     )
 
@@ -667,7 +739,7 @@ async def _call_groq(
         messages=messages,
         response_format=response_format,
         max_tokens=max_tokens,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so models that reject it never see the field.
@@ -715,7 +787,9 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(host=ollama_host, timeout=timeout_seconds)
+    client = ollama.AsyncClient(
+        host=ollama_host, timeout=request_timeout(timeout_seconds)
+    )
     response = await client.chat(
         model=model,
         messages=messages,
@@ -830,7 +904,7 @@ async def _call_openai_compat(
             if force_json_output
             else openai.omit
         ),
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so upstreams that reject it (some reasoning
@@ -1021,7 +1095,7 @@ async def call_provider_openai_compat_sync(
     api_key: str | None = None,
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1037,6 +1111,8 @@ async def call_provider_openai_compat_sync(
     + (optionally) ``client_factory``. See ``call_provider_stream``
     for rationale.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     sanitize_messages_for_utf8(messages)
     if client is None:
         if base_url is None or api_key is None:
@@ -1049,13 +1125,31 @@ async def call_provider_openai_compat_sync(
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "max_tokens": max_tokens,
-        "timeout": timeout_seconds,
+        "timeout": request_timeout(timeout_seconds),
     }
     if extra_body:
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
         create_kwargs["extra_headers"] = extra_headers
-    return await client.chat.completions.create(**create_kwargs)
+    # Same total-duration guarantee as ``call_provider``: the per-request httpx
+    # timeout alone is per ATTEMPT, and the SDK's own max_retries multiplies it.
+    try:
+        return await asyncio.wait_for(
+            client.chat.completions.create(**create_kwargs),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise timeout_error(model, timeout_seconds) from exc
+
+
+def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:
+    """Provider-agnostic timeout text. The block layer adds its own UI-specific
+    remedy, which does not belong in a module dream/briefing/copilot also use."""
+    return TimeoutError(
+        f"LLM request to {target} exceeded {timeout_seconds}s and was cancelled. "
+        "If the model was still generating, shorten the prompt or pick a faster "
+        "model."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1255,6 +1349,21 @@ class BatchResultRow:
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_result: Any = Field(default=None, repr=False, exclude=True)
 
+    def with_content(self, content: str) -> BatchResultRow:
+        """This row with *content* in place of the provider's text, every
+        other field kept: the dream callback stores the JSON it parsed out
+        of a text answer."""
+        return BatchResultRow(
+            custom_id=self.custom_id,
+            content=content,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens,
+            error=self.error,
+            raw_result=self.raw_result,
+        )
+
 
 async def poll_batch(
     *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
@@ -1333,6 +1442,11 @@ async def download_batch_results(
                     output_tokens=output_tokens,
                     cache_read_tokens=cache_read,
                     cache_creation_tokens=cache_creation,
+                    error=(
+                        "max_tokens"
+                        if message is not None and message.stop_reason == "max_tokens"
+                        else None
+                    ),
                     raw_result=entry,
                 )
             )
@@ -1357,33 +1471,39 @@ async def download_batch_results(
     return rows
 
 
-def _anthropic_content_to_text(message: Any) -> str:
+def _anthropic_answer_blocks(
+    message: anthropic.types.Message | None,
+) -> list[anthropic.types.ContentBlock]:
+    if message is None:
+        return []
+    return [
+        block
+        for block in message.content
+        if block.type not in ("thinking", "redacted_thinking")
+    ]
+
+
+def _anthropic_content_to_text(message: anthropic.types.Message | None) -> str:
     """Flatten an Anthropic ``message.content`` blob into a string.
 
-    Three shapes the BatchExecutor's downstream parser handles:
-      * Single ``text`` block → return its ``text``.
-      * Single ``tool_use`` block → return ``json.dumps(input)``. This
-        is the "structured output" path (forced ``tool_choice`` makes
-        Claude emit exactly one tool_use block; the dream pass parses
-        the JSON straight into a Pydantic model).
-      * Multi-block / unknown → join all ``text`` blocks with newlines.
+    Two shapes the BatchExecutor's downstream parser handles:
+      * A ``tool_use`` block → ``json.dumps(input)`` of the first one. This
+        is the "structured output" path: the dream pass offers one output
+        tool, forced where the model accepts that (exactly one tool_use
+        block) and left to the model's choice (``auto``) where it doesn't,
+        in which case a short text block can come before the call. The
+        dream pass parses the JSON straight into a Pydantic model.
+      * No ``tool_use`` block → the ``text`` blocks joined with newlines
+        (a single text block comes back as is).
 
     Returns ``""`` when the message is missing or empty.
     """
-    if message is None:
-        return ""
-    content = getattr(message, "content", None) or []
-    if not content:
-        return ""
-    first = content[0]
-    first_type = getattr(first, "type", None)
-    if first_type == "tool_use" and len(content) == 1:
-        return json_module.dumps(getattr(first, "input", {}) or {})
-    if first_type == "text" and len(content) == 1:
-        return getattr(first, "text", "") or ""
-    # Multi-block fallback — concatenate text blocks.
-    parts: list[str] = []
-    for block in content:
-        if getattr(block, "type", None) == "text":
-            parts.append(getattr(block, "text", "") or "")
-    return "\n".join(parts)
+    content = _anthropic_answer_blocks(message)
+    tool_use = next((block for block in content if block.type == "tool_use"), None)
+    if tool_use is not None:
+        return json_module.dumps(getattr(tool_use, "input", {}) or {})
+    return "\n".join(
+        getattr(block, "text", "") or ""
+        for block in content
+        if getattr(block, "type", None) == "text"
+    )

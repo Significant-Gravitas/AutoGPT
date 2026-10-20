@@ -18,7 +18,7 @@ export default defineConfig({
       indexFiles: false,
       mock: {
         type: "msw",
-        baseUrl: "http://localhost:3000/api/proxy",
+        baseUrl: "/api/proxy",
         generateEachHttpStatus: true,
         delay: 0,
       },
@@ -36,6 +36,12 @@ export default defineConfig({
         useDates: true,
         operations: {
           "getV2List library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+          "getV2List marketplace skills": {
             query: {
               useInfinite: true,
               useInfiniteQueryParam: "page",

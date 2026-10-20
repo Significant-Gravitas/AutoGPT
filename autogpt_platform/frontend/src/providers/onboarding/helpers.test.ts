@@ -5,19 +5,22 @@ import {
 } from "./helpers";
 
 describe("shouldRedirectFromOnboarding", () => {
-  test("returns true once VISIT_COPILOT is completed", () => {
-    expect(shouldRedirectFromOnboarding(["VISIT_COPILOT"], "/onboarding")).toBe(
-      true,
-    );
+  test("returns true once ONBOARDING_COMPLETE is completed", () => {
+    expect(
+      shouldRedirectFromOnboarding(["ONBOARDING_COMPLETE"], "/onboarding"),
+    ).toBe(true);
   });
 
-  test("returns false when VISIT_COPILOT is missing", () => {
+  test("returns false when ONBOARDING_COMPLETE is missing", () => {
     expect(shouldRedirectFromOnboarding([], "/onboarding")).toBe(false);
   });
 
   test("does not redirect away from /onboarding/reset", () => {
     expect(
-      shouldRedirectFromOnboarding(["VISIT_COPILOT"], "/onboarding/reset"),
+      shouldRedirectFromOnboarding(
+        ["ONBOARDING_COMPLETE"],
+        "/onboarding/reset",
+      ),
     ).toBe(false);
   });
 });
@@ -65,24 +68,24 @@ describe("decideOnboardingRedirect", () => {
     ).toBeNull();
   });
 
-  test("completed user on /onboarding is sent to /copilot", () => {
+  test("completed user on /onboarding is sent to /home", () => {
     expect(
       decideOnboardingRedirect({
         ...base,
         isCompleted: true,
         isOnOnboardingRoute: true,
       }),
-    ).toBe("/copilot");
+    ).toBe("/home");
   });
 
-  test("completed user on /signup or /login is sent to /copilot", () => {
+  test("completed user on /signup or /login is sent to /home", () => {
     expect(
       decideOnboardingRedirect({
         ...base,
         isCompleted: true,
         isOnAuthRoute: true,
       }),
-    ).toBe("/copilot");
+    ).toBe("/home");
   });
 
   test("completed user already on the product is left alone", () => {

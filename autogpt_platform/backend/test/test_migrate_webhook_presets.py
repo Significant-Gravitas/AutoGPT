@@ -408,7 +408,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
 @pytest.mark.asyncio
 async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
     """The PUT /graphs/{id} route triggers migration on the new active version."""
-    from backend.api.features import v1
+    from backend.api.features.graphs import routes as graph_routes
 
     new_graph = _make_graph_mock(has_webhook=True, version=3)
     incoming = AsyncMock()
@@ -418,24 +418,26 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
     existing_version.version = new_graph.version - 1
     existing_version.is_active = True
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph_all_versions",
         return_value=[existing_version],
     )
-    mocker.patch.object(v1.graph_db, "make_graph_model", return_value=new_graph)
-    mocker.patch.object(v1.graph_db, "create_graph", return_value=new_graph)
-    mocker.patch.object(v1.graph_db, "set_graph_active_version")
+    mocker.patch.object(
+        graph_routes.graph_db, "make_graph_model", return_value=new_graph
+    )
+    mocker.patch.object(graph_routes.graph_db, "create_graph", return_value=new_graph)
+    mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     # get_graph feeds UpdateGraphResponse.graph (a real GraphModel field), so
     # return an actual GraphModel instance rather than a MagicMock.
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph",
-        return_value=v1.graph_db.GraphModel.model_construct(
+        return_value=graph_routes.graph_db.GraphModel.model_construct(
             id=new_graph.id, version=new_graph.version
         ),
     )
     mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "update_library_agent_version_and_settings",
         return_value=AsyncMock(),
     )
@@ -443,16 +445,18 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
         id="preset-1", name="My Trigger", pinned_version=2
     )
     migrate_mock = mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "migrate_webhook_presets_to_new_version",
         return_value=library_model.WebhookPresetMigrationResult(
             migrated_count=1, skipped_presets=[skipped]
         ),
     )
-    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
-    mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
+    mocker.patch.object(
+        graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
+    )
+    mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
 
-    response = await v1.update_graph(
+    response = await graph_routes.update_graph(
         graph_id=new_graph.id,
         graph=incoming,
         user_id="user-1",
@@ -469,7 +473,7 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
 @pytest.mark.asyncio
 async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
     """No migration call from PUT /graphs/{id} when graph has no webhook node."""
-    from backend.api.features import v1
+    from backend.api.features.graphs import routes as graph_routes
 
     new_graph = _make_graph_mock(has_webhook=False, version=3)
     incoming = AsyncMock()
@@ -479,36 +483,40 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
     existing_version.version = new_graph.version - 1
     existing_version.is_active = True
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph_all_versions",
         return_value=[existing_version],
     )
-    mocker.patch.object(v1.graph_db, "make_graph_model", return_value=new_graph)
-    mocker.patch.object(v1.graph_db, "create_graph", return_value=new_graph)
-    mocker.patch.object(v1.graph_db, "set_graph_active_version")
+    mocker.patch.object(
+        graph_routes.graph_db, "make_graph_model", return_value=new_graph
+    )
+    mocker.patch.object(graph_routes.graph_db, "create_graph", return_value=new_graph)
+    mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     # get_graph feeds UpdateGraphResponse.graph (a real GraphModel field), so
     # return an actual GraphModel instance rather than a MagicMock.
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph",
-        return_value=v1.graph_db.GraphModel.model_construct(
+        return_value=graph_routes.graph_db.GraphModel.model_construct(
             id=new_graph.id, version=new_graph.version
         ),
     )
     mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "update_library_agent_version_and_settings",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "migrate_webhook_presets_to_new_version",
         return_value=library_model.WebhookPresetMigrationResult(),
     )
-    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
-    mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
+    mocker.patch.object(
+        graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
+    )
+    mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
 
-    response = await v1.update_graph(
+    response = await graph_routes.update_graph(
         graph_id=new_graph.id,
         graph=incoming,
         user_id="user-1",
@@ -524,18 +532,18 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
     mocker,
 ):
     """PUT /graphs/{id}/versions/active triggers migration on the activated version."""
-    from backend.api.features import v1
+    from backend.api.features.graphs import routes as graph_routes
 
     target_graph = _make_graph_mock(has_webhook=True, version=4)
 
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph",
         side_effect=[target_graph, target_graph],
     )
-    mocker.patch.object(v1.graph_db, "set_graph_active_version")
+    mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "update_library_agent_version_and_settings",
         return_value=AsyncMock(),
     )
@@ -543,18 +551,20 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
         id="preset-9", name="Old Telegram Trigger", pinned_version=3
     )
     migrate_mock = mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "migrate_webhook_presets_to_new_version",
         return_value=library_model.WebhookPresetMigrationResult(
             migrated_count=2, skipped_presets=[skipped]
         ),
     )
-    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
-    mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
+    mocker.patch.object(
+        graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
+    )
+    mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
 
-    body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)
+    body = graph_routes.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
-    response = await v1.set_graph_active_version(
+    response = await graph_routes.set_graph_active_version(
         graph_id=target_graph.id,
         request_body=body,
         user_id="user-1",
@@ -571,32 +581,34 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
 @pytest.mark.asyncio
 async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
     """PUT /graphs/{id}/versions/active skips migration when no webhook node."""
-    from backend.api.features import v1
+    from backend.api.features.graphs import routes as graph_routes
 
     target_graph = _make_graph_mock(has_webhook=False, version=4)
 
     mocker.patch.object(
-        v1.graph_db,
+        graph_routes.graph_db,
         "get_graph",
         side_effect=[target_graph, target_graph],
     )
-    mocker.patch.object(v1.graph_db, "set_graph_active_version")
+    mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "update_library_agent_version_and_settings",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
-        v1.library_db,
+        graph_routes.library_db,
         "migrate_webhook_presets_to_new_version",
         return_value=library_model.WebhookPresetMigrationResult(),
     )
-    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
-    mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
+    mocker.patch.object(
+        graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
+    )
+    mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
 
-    body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)
+    body = graph_routes.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
-    response = await v1.set_graph_active_version(
+    response = await graph_routes.set_graph_active_version(
         graph_id=target_graph.id,
         request_body=body,
         user_id="user-1",

@@ -37,9 +37,14 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
+
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
@@ -48,9 +53,9 @@ from .batch_submit import (
     read_lock_token,
     submit_phase,
 )
-from .billing import record_phase_cost
+from .billing import priced_phase_usage, record_phase_cost
+from .llm import DreamLLMError, parse_json_with_prose_fallback
 from .locks import release_dream_lock
-from .model_pricing import compute_cost_usd
 from .schemas import (
     DreamOperations,
     DreamOperationsSnapshot,
@@ -61,6 +66,8 @@ from .schemas import (
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
     from backend.util.llm.providers import BatchResultRow
+
+    from .fetch import DreamInput
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +125,7 @@ async def _read_state(pass_id: str) -> dict[str, dict[str, Any]]:
 
 
 async def _write_phase_to_state(
-    *, pass_id: str, phase: DreamPhase, row: "BatchResultRow"
+    *, pass_id: str, phase: DreamPhase, row: BatchResultRow
 ) -> None:
     from backend.data.redis_client import get_redis_async
 
@@ -240,7 +247,7 @@ async def _best_effort_cleanup(pass_id: str) -> None:
         )
 
 
-async def _release_lock(user_id: str, pass_id: str) -> None:
+async def _release_lock(user_id: str, pass_id: str, expert_id: str | None) -> None:
     """Release the disowned dream lock with the ownership token persisted
     alongside the input bundle. Must run before ``delete_input_bundle`` —
     the token rides on that key. A missing token (bundle TTL'd out,
@@ -261,7 +268,16 @@ async def _release_lock(user_id: str, pass_id: str) -> None:
                 "leaving the lock to its TTL",
                 pass_id,
             )
-    await release_dream_lock(user_id, token)
+    try:
+        scope = MemoryScope.build(user_id, expert_id)
+    except ValueError:
+        logger.warning(
+            "Invalid memory scope for disowned dream lock of user %s — "
+            "leaving it for the TTL to clear",
+            user_id[:12],
+        )
+        return
+    await release_dream_lock(scope, token)
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +286,49 @@ async def _release_lock(user_id: str, pass_id: str) -> None:
 
 
 async def handle_dream_batch_result(
-    entry: "PendingEntry", rows: list["BatchResultRow"]
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    with ExitStack() as attribution:
+        try:
+            raw_context = payload.get("cost_context")
+            if raw_context is None:
+                raise UsageActivationUnavailable("Dream batch has no usage attribution")
+            context = TrialCostContext.model_validate(raw_context)
+            attribution.enter_context(restore_cost_context(user_id, context))
+        except (UsageActivationUnavailable, ValueError):
+            await _fail_unattributed_pass(payload)
+            raise
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _fail_unattributed_pass(payload: dict[str, Any]) -> None:
+    """Close a dead-end batch without charging against a new usage context."""
+    pass_id = str(payload["pass_id"])
+    await _mark_job_errored_best_effort(
+        str(payload.get("job_id") or ""), "batch usage attribution unavailable"
+    )
+    try:
+        input_bundle = await read_input_bundle(pass_id)
+        if input_bundle is not None:
+            await _release_lock(input_bundle.user_id, pass_id, input_bundle.expert_id)
+    except Exception:
+        logger.exception(
+            "Unattributed dream batch lock cleanup failed for pass=%s", pass_id
+        )
+    await _best_effort_cleanup(pass_id)
+
+
+async def _handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
     """BatchExecutor entry — called once per finished phase batch.
 
@@ -286,6 +344,8 @@ async def handle_dream_batch_result(
     """
     payload = entry.payload or {}
     user_id = str(payload.get("user_id") or "")
+    expert_id_raw = payload.get("expert_id")
+    expert_id = str(expert_id_raw) if expert_id_raw is not None else None
     pass_id = str(payload.get("pass_id") or "")
     job_id = str(payload.get("job_id") or "")
     phase_models = _phase_models_from_payload(payload)
@@ -303,19 +363,56 @@ async def handle_dream_batch_result(
             job_id, "batch payload missing user_id/pass_id/phase"
         )
         if user_id:
-            await _release_lock(user_id, pass_id)
+            await _release_lock(user_id, pass_id, expert_id)
         return
 
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
         await _mark_job_errored_best_effort(job_id, f"unknown batch phase {phase!r}")
-        await _release_lock(user_id, pass_id)
+        await _release_lock(user_id, pass_id, expert_id)
         return
 
+    authoritative_user_id = user_id
+    authoritative_expert_id = expert_id
     try:
+        input_bundle = await read_input_bundle(pass_id)
+        if input_bundle is None:
+            logger.error(
+                "Dream batch input missing; refusing payload-only scope for pass=%s",
+                pass_id,
+            )
+            await _fail_pass(
+                user_id=user_id,
+                expert_id=expert_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error="batch DreamInput missing; memory scope unavailable",
+            )
+            return
+
+        authoritative_user_id = input_bundle.user_id
+        authoritative_expert_id = input_bundle.expert_id
+        if user_id != authoritative_user_id or expert_id != authoritative_expert_id:
+            logger.error(
+                "Dream batch payload memory scope mismatch for pass=%s",
+                pass_id,
+            )
+            await _fail_pass(
+                user_id=authoritative_user_id,
+                expert_id=authoritative_expert_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error="batch payload memory scope mismatch",
+            )
+            return
+
         await _handle_phase_result(
             rows=rows,
             user_id=user_id,
+            expert_id=expert_id,
+            input_bundle=input_bundle,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -334,7 +431,8 @@ async def handle_dream_batch_result(
         )
         try:
             await _fail_pass(
-                user_id=user_id,
+                user_id=authoritative_user_id,
+                expert_id=authoritative_expert_id,
                 pass_id=pass_id,
                 job_id=job_id,
                 phase_models=phase_models,
@@ -343,17 +441,24 @@ async def handle_dream_batch_result(
         except Exception:
             logger.exception("Dream batch _fail_pass also failed for pass=%s", pass_id)
             try:
-                await _release_lock(user_id, pass_id)
+                await _release_lock(
+                    authoritative_user_id,
+                    pass_id,
+                    authoritative_expert_id,
+                )
             except Exception:
                 logger.exception(
-                    "Dream batch lock release failed for user=%s", user_id[:12]
+                    "Dream batch lock release failed for user=%s",
+                    authoritative_user_id[:12],
                 )
 
 
 async def _handle_phase_result(
     *,
-    rows: list["BatchResultRow"],
+    rows: list[BatchResultRow],
     user_id: str,
+    expert_id: str | None,
+    input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -372,6 +477,7 @@ async def _handle_phase_result(
         logger.warning("Dream batch handler got empty rows for pass=%s", pass_id)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -387,6 +493,7 @@ async def _handle_phase_result(
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -396,26 +503,36 @@ async def _handle_phase_result(
 
     # Validate the row's content matches the phase's Pydantic schema
     # BEFORE persisting — corrupted content shouldn't pollute the
-    # accumulator for the next phase to read back.
+    # accumulator for the next phase to read back. Parsed the way the sync
+    # path parses it: a model the output tool couldn't be forced on may
+    # answer in text, its JSON fenced or behind prose, so what is stored
+    # (and read back by the next phase) is the JSON alone.
     try:
-        PHASE_RESPONSE_MODELS[phase].model_validate(json.loads(row.content))
-    except (json.JSONDecodeError, ValidationError) as exc:
+        payload = parse_json_with_prose_fallback(row.content)
+        PHASE_RESPONSE_MODELS[phase].model_validate(payload)
+    except (DreamLLMError, ValidationError) as exc:
+        row.error = f"invalid output shape — {type(exc).__name__}"
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
-            error=f"{phase}: invalid output shape — {type(exc).__name__}",
+            error=f"{phase}: {row.error}",
         )
         return
 
-    await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
+    await _write_phase_to_state(
+        pass_id=pass_id, phase=phase, row=row.with_content(json.dumps(payload))
+    )
 
     next_phase = NEXT_PHASE[phase]
     if next_phase is not None:
         await _chain_next_phase(
             user_id=user_id,
+            expert_id=expert_id,
+            input_bundle=input_bundle,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -426,6 +543,8 @@ async def _handle_phase_result(
     # Terminal phase landed — apply + finalize.
     await _finalize_complete(
         user_id=user_id,
+        expert_id=expert_id,
+        input_bundle=input_bundle,
         pass_id=pass_id,
         job_id=job_id,
         phase_models=phase_models,
@@ -440,6 +559,8 @@ async def _handle_phase_result(
 async def _chain_next_phase(
     *,
     user_id: str,
+    expert_id: str | None,
+    input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -447,22 +568,11 @@ async def _chain_next_phase(
 ) -> None:
     """Submit the next phase in the chain.
 
-    Reads the persisted ``DreamInput`` + accumulated prior phase
-    outputs from Redis, builds the next phase's prompt, fires another
+    Uses the validated ``DreamInput`` + accumulated prior phase outputs
+    from Redis, builds the next phase's prompt, fires another
     batch submission. On any failure to submit, marks the JobStatus
     errored — silent submission failures are unrecoverable.
     """
-    input_bundle = await read_input_bundle(pass_id)
-    if input_bundle is None:
-        await _fail_pass(
-            user_id=user_id,
-            pass_id=pass_id,
-            job_id=job_id,
-            phase_models=phase_models,
-            error=f"{next_phase}: DreamInput missing from Redis (TTL expired?)",
-        )
-        return
-
     state = await _read_state(pass_id)
     consolidated_json = _content_for(state, "consolidate")
     recombined_json = _content_for(state, "recombine")
@@ -471,6 +581,7 @@ async def _chain_next_phase(
     if api_key is None:
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -498,6 +609,7 @@ async def _chain_next_phase(
         )
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -580,7 +692,13 @@ async def _claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "er
 
 
 async def _finalize_complete(
-    *, user_id: str, pass_id: str, job_id: str, phase_models: dict[str, str]
+    *,
+    user_id: str,
+    expert_id: str | None,
+    input_bundle: DreamInput,
+    pass_id: str,
+    job_id: str,
+    phase_models: dict[str, str],
 ) -> None:
     """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
@@ -594,6 +712,7 @@ async def _finalize_complete(
         logger.exception("Failed to import dream apply for pass=%s", pass_id)
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -606,6 +725,7 @@ async def _finalize_complete(
     if sanitize_row is None or not sanitize_row.get("content"):
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -618,6 +738,7 @@ async def _finalize_complete(
     except (json.JSONDecodeError, ValidationError) as exc:
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -627,21 +748,15 @@ async def _finalize_complete(
 
     # Enforce the same per-pass operation caps the sync path applies
     # before writing — the model can over-emit past the prompt's limits.
-    # The 5%-of-active-facts demotion ceiling needs the original fact
-    # count; the persisted input bundle still exists here (deleted only
-    # after apply below). A missing bundle (-1) falls back to the
-    # absolute demotion cap rather than zeroing all demotions.
-    input_bundle = await read_input_bundle(pass_id)
-    active_fact_count = len(input_bundle.facts) if input_bundle is not None else -1
+    # The 5%-of-active-facts demotion ceiling needs the original fact count.
+    active_fact_count = len(input_bundle.facts)
     # Pass the known-fact allowlist so hallucinated demotion uuids are
     # filtered BEFORE the cap slice — otherwise they consume cap slots
     # and displace valid demotions (cap can floor at 1 on small graphs).
     ops = _clamp_operations(
         ops,
         active_fact_count,
-        known_fact_uuids=(
-            input_bundle.known_fact_uuids if input_bundle is not None else None
-        ),
+        known_fact_uuids=input_bundle.known_fact_uuids,
     )
 
     # Batch results can re-dispatch (executor crash between dispatch and
@@ -655,6 +770,7 @@ async def _finalize_complete(
     if gate == "error":
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -678,7 +794,7 @@ async def _finalize_complete(
         await _log_all_phase_costs(
             user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
         )
-        await _release_lock(user_id, pass_id)
+        await _release_lock(user_id, pass_id, expert_id)
         await _best_effort_cleanup(pass_id)
         return
 
@@ -686,11 +802,7 @@ async def _finalize_complete(
         str, int | str | IngestionDrainStatus | DreamOperationsSnapshot
     ] = {}
     try:
-        # Thread the demotion allowlist from the bundle already in memory —
-        # letting apply re-read it would do a second Redis GET + full JSON
-        # deserialize and could fail open if the bundle's TTL lapses between
-        # the two reads. None (bundle expired) keeps apply's documented
-        # fail-open fallback.
+        # Thread the demotion allowlist from the already-validated bundle.
         #
         # Skip the ingestion drain on this path: apply runs inside this
         # handler, which BatchExecutor.walk_once awaits serially in its single
@@ -698,12 +810,10 @@ async def _finalize_complete(
         # every other user's pending batch. See
         # ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``.
         apply_stats = await apply_operations(
-            user_id,
+            MemoryScope.build(user_id, expert_id),
             pass_id,
             ops,
-            known_fact_uuids=(
-                input_bundle.known_fact_uuids if input_bundle is not None else None
-            ),
+            known_fact_uuids=input_bundle.known_fact_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -713,6 +823,7 @@ async def _finalize_complete(
         )
         await _fail_pass(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
@@ -784,13 +895,14 @@ async def _finalize_complete(
 
     # The batch path disowned the dream lock to this callback; release it now
     # that the pass has terminated so the next dream for this user can run.
-    await _release_lock(user_id, pass_id)
+    await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
 
 
 async def _fail_pass(
     *,
     user_id: str,
+    expert_id: str | None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],
@@ -823,7 +935,7 @@ async def _fail_pass(
             phase_models=phase_models,
         )
     # Release the dream lock the batch path disowned to this callback.
-    await _release_lock(user_id, pass_id)
+    await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
 
 
@@ -890,11 +1002,10 @@ async def _log_all_phase_costs(
     whatever phases landed (matches the documented "partial pass
     charges for completed phases" semantic in ``dream/billing.py``).
 
-    Cost is computed via ``dream/model_pricing.compute_cost_usd`` —
-    the dream rate card — so the batch path uses the same native-
-    Anthropic token convention (additive cache buckets, not subtracted)
-    as the sync path. The ``execution_path="anthropic_batch"`` arg
-    applies the 50% batch discount there.
+    Each phase is priced by ``billing.priced_phase_usage`` from its
+    model's catalog price card (``backend/copilot/price_card.py``), the
+    card the sync path falls back to as well: Anthropic's additive cache
+    buckets, less the batch path's half-price discount.
 
     No-ops on per-phase failure — apply already wrote the user-facing
     memory operations; a cost-log blip shouldn't take that down.
@@ -909,8 +1020,6 @@ async def _log_all_phase_costs(
     for phase, row in state.items():
         try:
             if row.get("error"):
-                # Phase errored — don't record usage for a phase that
-                # didn't complete; downstream phases never ran either.
                 continue
             phase_model = phase_models.get(phase)
             if not phase_model:
@@ -924,14 +1033,6 @@ async def _log_all_phase_costs(
             output_tokens = int(row.get("output_tokens") or 0)
             cache_read_tokens = int(row.get("cache_read_tokens") or 0)
             cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
-            cost_usd = compute_cost_usd(
-                model=phase_model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_creation_tokens=cache_creation_tokens,
-                execution_path="anthropic_batch",
-            )
             usage = PhaseUsage(
                 phase=phase,  # type: ignore[arg-type]
                 model=phase_model,
@@ -939,12 +1040,11 @@ async def _log_all_phase_costs(
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_creation_tokens=cache_creation_tokens,
-                cost_usd=cost_usd,
             )
             await record_phase_cost(
                 user_id=user_id,
                 pass_id=pass_id,
-                phase_usage=usage,
+                phase_usage=priced_phase_usage(usage, "anthropic_batch"),
                 execution_path="anthropic_batch",
             )
         except Exception:

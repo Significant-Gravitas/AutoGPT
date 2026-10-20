@@ -9,9 +9,10 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import type { MouseEvent, RefObject } from "react";
+import { memo, type MouseEvent, type RefObject } from "react";
 import { ChatSessionBlock } from "../../../ChatSessionBlock/ChatSessionBlock";
 import {
+  BookOpen01Icon,
   Delete02Icon,
   Download04Icon,
   Loading03Icon,
@@ -22,6 +23,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   session: SessionSummaryResponse;
@@ -34,21 +36,40 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   isPinningEnabled: boolean;
-  isSharingEnabled: boolean;
+  isLearningEnabled: boolean;
   showProcessing: boolean;
   showCompleted: boolean;
-  onSelect: () => void;
+  /** Whole days since the last update (see `sessionAgeDays`). It changes
+   *  exactly when the relative date label ("Today", "Yesterday", "N days ago")
+   *  does, so the memoised row re-renders then even if the session did not. */
+  ageDays: number;
+  /** The callbacks below are shared by every row and take the row's session,
+   *  so a parent re-render passes the same props and the row skips its own. */
+  onSelect: (id: string, expertId: string | null) => void;
   onEditingTitleChange: (title: string) => void;
   onRenameCancel: () => void;
-  onRenameBlur: () => void;
-  onPin: (e: MouseEvent) => void;
-  onRename: (e: MouseEvent) => void;
-  onExport: (e: MouseEvent) => void;
-  onShare: (e: MouseEvent) => void;
-  onDelete: (e: MouseEvent) => void;
+  onRenameBlur: (id: string) => void;
+  onPin: (e: MouseEvent, id: string, isPinned: boolean) => void;
+  onRename: (
+    e: MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) => void;
+  onExport: (
+    e: MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) => void;
+  onShare: (e: MouseEvent, id: string) => void;
+  onExcludeFromLearning: (e: MouseEvent, id: string) => void;
+  onDelete: (
+    e: MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) => void;
 }
 
-export function ChatSessionRow({
+export const ChatSessionRow = memo(function ChatSessionRow({
   session,
   isActive,
   isNextActive,
@@ -58,7 +79,7 @@ export function ChatSessionRow({
   isExporting,
   isDeleting,
   isPinningEnabled,
-  isSharingEnabled,
+  isLearningEnabled,
   showProcessing,
   showCompleted,
   onSelect,
@@ -69,6 +90,7 @@ export function ChatSessionRow({
   onRename,
   onExport,
   onShare,
+  onExcludeFromLearning,
   onDelete,
 }: Props) {
   return (
@@ -92,19 +114,19 @@ export function ChatSessionRow({
             value={editingTitle}
             onChange={(e) => onEditingTitleChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.currentTarget.blur();
-              } else if (e.key === "Escape") {
+              } else if (isKey(e, "Escape")) {
                 onRenameCancel();
               }
             }}
-            onBlur={onRenameBlur}
+            onBlur={() => onRenameBlur(session.id)}
             className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
           />
         </div>
       ) : (
         <button
-          onClick={onSelect}
+          onClick={() => onSelect(session.id, session.expert_id ?? null)}
           className={cn(
             "w-full px-3 py-2.5 text-left",
             isExporting ? "pr-[68px]" : "pr-10",
@@ -164,7 +186,9 @@ export function ChatSessionRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {isPinningEnabled && (
-              <DropdownMenuItem onClick={onPin}>
+              <DropdownMenuItem
+                onClick={(e) => onPin(e, session.id, !!session.is_pinned)}
+              >
                 {session.is_pinned ? (
                   <>
                     <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
@@ -178,12 +202,14 @@ export function ChatSessionRow({
                 )}
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onRename}>
+            <DropdownMenuItem
+              onClick={(e) => onRename(e, session.id, session.title)}
+            >
               <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
               Rename
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={onExport}
+              onClick={(e) => onExport(e, session.id, session.title)}
               onSelect={(e) => {
                 if (isExporting) e.preventDefault();
               }}
@@ -199,14 +225,20 @@ export function ChatSessionRow({
               )}
               {isExporting ? "Exporting…" : "Export chat"}
             </DropdownMenuItem>
-            {isSharingEnabled && (
-              <DropdownMenuItem onClick={onShare}>
-                <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-                Share chat
+            <DropdownMenuItem onClick={(e) => onShare(e, session.id)}>
+              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+              Share chat
+            </DropdownMenuItem>
+            {isLearningEnabled && (
+              <DropdownMenuItem
+                onClick={(e) => onExcludeFromLearning(e, session.id)}
+              >
+                <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
+                Exclude from learning
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
-              onClick={onDelete}
+              onClick={(e) => onDelete(e, session.id, session.title)}
               disabled={isDeleting}
               className="text-red-600 focus:bg-red-50 focus:text-red-600"
             >
@@ -218,4 +250,4 @@ export function ChatSessionRow({
       )}
     </div>
   );
-}
+});

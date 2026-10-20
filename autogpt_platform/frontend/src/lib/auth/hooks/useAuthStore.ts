@@ -1,6 +1,8 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -130,6 +132,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   async function logOut(params?: LogOutParams): Promise<void> {
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
+
+    await teardownPushSubscriptionBeforeLogout();
 
     setWebSocketDisconnectIntent();
 
@@ -292,3 +296,21 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     cleanup,
   };
 });
+
+useAuthStore.subscribe((state, previousState) => {
+  if (previousState.user && previousState.user.id !== state.user?.id) {
+    resetAnalyticsIdentity();
+    clearCopilotCompletedSessions();
+  }
+});
+
+// Loaded lazily: the copilot store pulls in React hooks the auth store
+// otherwise has no reason to load.
+function clearCopilotCompletedSessions() {
+  if (typeof window === "undefined") return;
+  import("@/app/(platform)/copilot/store")
+    .then(({ useCopilotUIStore }) =>
+      useCopilotUIStore.getState().clearAllCompletedSessions(),
+    )
+    .catch(() => {});
+}

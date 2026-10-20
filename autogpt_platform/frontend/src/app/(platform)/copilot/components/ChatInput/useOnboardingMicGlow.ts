@@ -5,7 +5,7 @@ import {
 } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
 
-// Long enough to survive AutoPilot's intro streaming in, short enough that
+// Long enough to survive Otto's intro streaming in, short enough that
 // it reads as a pointer rather than a permanent state.
 const GLOW_DURATION_MS = 30_000;
 
@@ -23,7 +23,7 @@ export function useOnboardingMicGlow({
     return () => clearTimeout(timer);
   }, []);
 
-  // A user who skipped the onboarding dump is invited by AutoPilot's Path
+  // A user who skipped the onboarding dump is invited by Otto's Path
   // B intro to record one here instead. Transcription finishing is the
   // closest thing to "they took the invitation" — the flag is consumed on
   // the first one, so later voice messages aren't counted as the dump.

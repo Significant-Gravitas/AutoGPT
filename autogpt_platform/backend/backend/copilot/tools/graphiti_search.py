@@ -12,8 +12,9 @@ from backend.copilot.graphiti._format import (
     extract_fact,
     extract_temporal_validity,
 )
-from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
+from backend.copilot.graphiti.client import get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -25,7 +26,7 @@ _MAX_LIMIT = 50
 
 
 class MemorySearchTool(BaseTool):
-    """Search the user's temporal knowledge graph for stored memories."""
+    """Search the current assistant's temporal knowledge graph."""
 
     @property
     def name(self) -> str:
@@ -34,9 +35,9 @@ class MemorySearchTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search the user's memory graph for facts, preferences, and context "
-            "from prior sessions. Use before answering context-dependent questions "
-            "or when the user references something from a past conversation."
+            "Search the current assistant's memory graph for facts, preferences, "
+            "and context from prior sessions. Use before answering context-dependent "
+            "questions or when the user references a past conversation."
         )
 
     @property
@@ -101,7 +102,7 @@ class MemorySearchTool(BaseTool):
         limit = min(limit, _MAX_LIMIT)
 
         try:
-            group_id = derive_group_id(user_id)
+            group_id = MemoryScope.build(user_id, session.expert_id).group_id
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",

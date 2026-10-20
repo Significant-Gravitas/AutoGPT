@@ -1,0 +1,15 @@
+{%- set runs = totals.runs -%}
+{%- set failed = totals.failed | default(0) -%}
+{%- set attn_count = attention | default([]) | length -%}
+{%- set runs_fmt = '{:,}'.format(runs) -%}
+{%- set run_word = 'run' if runs == 1 else 'runs' -%}
+{%- if attn_count -%}
+{{ runs_fmt }} {{ run_word }}, {{ '1 thing needs' if attn_count == 1 else attn_count ~ ' things need' }} you{% if subject_note %} · {{ subject_note }}{% endif %}
+{{ failed }} {{ 'run failed' if failed == 1 else 'runs failed' }} and {{ attn_count }} {{ 'item needs' if attn_count == 1 else 'items need' }} your attention.
+{%- elif failed -%}
+{{ runs_fmt }} {{ run_word }}, {{ failed }} failed{% if subject_note %} · {{ subject_note }}{% endif %}
+Review the failed runs to see what happened and what to do next.
+{%- else -%}
+All clear: {{ runs_fmt }} {{ run_word }}{% if subject_note %} · {{ subject_note }}{% endif %}
+Every run finished cleanly and nothing is waiting on you.
+{%- endif -%}

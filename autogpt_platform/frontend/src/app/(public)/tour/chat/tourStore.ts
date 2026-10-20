@@ -3,17 +3,17 @@ import { DEFAULT_SCENARIO_ID } from "./script/tourScenarios";
 
 interface TourState {
   activeScenarioId: string;
-  /** Bumped on every sidebar selection — re-keys the demo so clicking a
+  /** Bumped on every scenario selection — re-keys the demo so clicking a
    * scenario (even the already-active one) always restarts it fresh. */
   runId: number;
   /** True once the active demo has played through — the end card takes over
    * the upsell and the sidebar card hides until a new scenario starts. */
   isDemoComplete: boolean;
-  /** Scenarios the visitor has watched to completion — the sidebar marks
-   * them with a check and the "next scenario" nudge skips them. */
+  /** Scenarios the visitor has watched to completion — the next-scenario
+   * nudge skips them. */
   watchedScenarioIds: string[];
   /** True once the visitor has idled past the end card — shows the
-   * "Next: …" chip and pulses the next scenario in the sidebar. */
+   * "Next: …" chip. */
   isNudgeVisible: boolean;
   setActiveScenario: (id: string) => void;
   setDemoComplete: () => void;

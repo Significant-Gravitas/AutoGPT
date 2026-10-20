@@ -21,11 +21,11 @@
 -- STEP ORDER
 --   1  WELCOME               9  MARKETPLACE_VISIT     17  SCHEDULE_AGENT
 --   2  USAGE_REASON         10  MARKETPLACE_ADD_AGENT  18  RUN_AGENTS
---   3  INTEGRATIONS         11  MARKETPLACE_RUN_AGENT  19  RUN_3_DAYS
+--   3  INTEGRATIONS         11  LIBRARY_RUN_AGENT      19  RUN_3_DAYS
 --   4  AGENT_CHOICE         12  BUILDER_OPEN           20  TRIGGER_WEBHOOK
 --   5  AGENT_NEW_RUN        13  BUILDER_SAVE_AGENT     21  RUN_14_DAYS
 --   6  AGENT_INPUT          14  BUILDER_RUN_AGENT      22  RUN_AGENTS_100
---   7  CONGRATS             15  VISIT_COPILOT
+--   7  CONGRATS             15  ONBOARDING_COMPLETE
 --   8  GET_RESULTS          16  RE_RUN_AGENT
 --
 -- WINDOW
@@ -55,11 +55,11 @@ WITH all_steps AS (
     ('GET_RESULTS',           8),
     ('MARKETPLACE_VISIT',     9),
     ('MARKETPLACE_ADD_AGENT', 10),
-    ('MARKETPLACE_RUN_AGENT', 11),
+    ('LIBRARY_RUN_AGENT',     11),
     ('BUILDER_OPEN',          12),
     ('BUILDER_SAVE_AGENT',    13),
     ('BUILDER_RUN_AGENT',     14),
-    ('VISIT_COPILOT',         15),
+    ('ONBOARDING_COMPLETE',   15),
     ('RE_RUN_AGENT',          16),
     ('SCHEDULE_AGENT',        17),
     ('RUN_AGENTS',            18),

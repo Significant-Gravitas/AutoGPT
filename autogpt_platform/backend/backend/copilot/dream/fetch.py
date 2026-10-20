@@ -18,9 +18,9 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.hidden_rows import visible_to_model
 from backend.data.db_accessors import chat_db
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,7 @@ class DreamInput(BaseModel):
     """The whole gather-step bundle handed to the phase 1 prompt."""
 
     user_id: str
+    expert_id: str | None = None
     group_id: str
     window_start: datetime
     window_end: datetime
@@ -134,20 +135,6 @@ def _parse_iso_timestamp(raw: str) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices are built by the long-lived chat-write client when the
-        # user first writes a memory; the dream pass reads from an
-        # already-indexed graph and shouldn't refire the
-        # background-task race that produces "Buffer is closed" spam.
-        build_indices=False,
-    )
 
 
 async def _fetch_recent_episodes(
@@ -252,7 +239,7 @@ async def _fetch_active_facts(
 
 
 async def _fetch_recent_sessions(
-    user_id: str,
+    scope: MemoryScope,
     window_start: datetime,
     limit: int,
 ) -> list[SessionRow]:
@@ -272,8 +259,16 @@ async def _fetch_recent_sessions(
     clamp does the bounding.
     """
     _ = window_start
+    user_id = scope.owner_user_id
     try:
-        sessions = await chat_db().get_user_chat_sessions(user_id, limit=limit)
+        if scope.expert_id is None:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, autopilot_only=True
+            )
+        else:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, expert_id=scope.expert_id
+            )
     except Exception:
         logger.warning(
             "Failed to fetch recent sessions for user %s",
@@ -297,7 +292,7 @@ async def _fetch_recent_sessions(
                 session_id=sid, limit=20, user_id=user_id
             )
             if paginated is not None:
-                messages = list(getattr(paginated, "messages", []) or [])
+                messages = visible_to_model(getattr(paginated, "messages", []) or [])
         except Exception:
             logger.debug(
                 "Failed to fetch messages for session %s — body left empty",
@@ -326,7 +321,7 @@ async def _fetch_recent_sessions(
 
 
 async def gather_dream_input(
-    user_id: str,
+    scope: MemoryScope,
     *,
     window_days: int = DEFAULT_WINDOW_DAYS,
     max_episodes: int = MAX_EPISODES,
@@ -339,11 +334,11 @@ async def gather_dream_input(
     the three sources fails (Cypher error, Prisma timeout) the others
     still proceed — a partial dream is better than no dream.
     """
-    group_id = derive_group_id(user_id)
+    group_id = scope.group_id
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=window_days)
 
-    driver = _open_driver(group_id)
+    driver = open_driver(scope)
     try:
         episodes = await _fetch_recent_episodes(
             driver, group_id, window_start, max_episodes
@@ -352,10 +347,11 @@ async def gather_dream_input(
     finally:
         await driver.close()
 
-    sessions = await _fetch_recent_sessions(user_id, window_start, max_sessions)
+    sessions = await _fetch_recent_sessions(scope, window_start, max_sessions)
 
     return DreamInput(
-        user_id=user_id,
+        user_id=scope.owner_user_id,
+        expert_id=scope.expert_id,
         group_id=group_id,
         window_start=window_start,
         window_end=window_end,

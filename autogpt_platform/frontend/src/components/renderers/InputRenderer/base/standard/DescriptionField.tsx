@@ -7,6 +7,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getFieldDomId } from "../../field-accessibility";
 
 export default function DescriptionField(props: DescriptionFieldProps) {
   const { id, description, registry, uiSchema } = props;
@@ -15,7 +16,10 @@ export default function DescriptionField(props: DescriptionFieldProps) {
   }
 
   return (
-    <div id={id} className="0 inline w-fit">
+    <div
+      id={getFieldDomId(id, registry.formContext)}
+      className="0 inline w-fit"
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Icon

@@ -1,24 +1,34 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { MIN_ARTIFACT_PANEL_WIDTH, PANEL_RESERVED_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
-import { ArtifactContent } from "./components/ArtifactContent";
+import { ArtifactPreview } from "./components/ArtifactPreview";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
+import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
+import { useArtifactFullscreen } from "./useArtifactFullscreen";
+
+// Matched to the context panel so the two side rails move as one system.
+const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const PANEL_DURATION = 0.3;
 
 interface Props {
   mobile?: boolean;
+  /** Enables the Computer face: the chat whose sandboxes the panel can show. */
+  sessionId?: string | null;
 }
 
-export function ArtifactPanel({ mobile }: Props) {
+export function ArtifactPanel({ mobile, sessionId }: Props) {
   const {
     activeArtifact,
     history,
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,
@@ -27,13 +37,23 @@ export function ArtifactPanel({ mobile }: Props) {
     handleDownload,
     artifactPanelWidth,
     setArtifactPanelWidth,
+    mode,
+    isComputerOpen,
+    setArtifactPanelMode,
   } = useArtifactPanel();
+  const {
+    fullscreenRef,
+    isFullscreen,
+    canFullscreen,
+    toggleFullscreen,
+    exitFullscreen,
+  } = useArtifactFullscreen();
+  const showComputer = !!sessionId && mode === "computer" && isComputerOpen;
 
-  // Hold the last live artifact so the mobile drawer can keep rendering its
-  // contents while vaul plays the slide-out animation — by then
-  // `activeArtifact` is already null, and unmounting the whole drawer would
-  // snap it shut without animating. Desktop returns null immediately (no exit
-  // animation expected there).
+  // Hold the last live artifact so both the mobile drawer and the desktop
+  // panel can keep rendering its contents while the close animation plays —
+  // by then `activeArtifact` is already null, and unmounting outright would
+  // snap the panel shut without animating.
   const lastShownRef = useRef<{
     artifact: NonNullable<typeof activeArtifact>;
     classification: NonNullable<typeof classification>;
@@ -49,7 +69,10 @@ export function ArtifactPanel({ mobile }: Props) {
   // width is left untouched and applies again once the viewport grows.
   const panelRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
-  const showDesktopPanel = !mobile && !!activeArtifact && !!classification;
+  const [isResizing, setIsResizing] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
+  const showDesktopPanel =
+    !mobile && ((!!activeArtifact && !!classification) || showComputer);
   useEffect(() => {
     if (!showDesktopPanel || typeof ResizeObserver === "undefined") return;
     const parent = panelRef.current?.parentElement;
@@ -92,7 +115,7 @@ export function ArtifactPanel({ mobile }: Props) {
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col bg-white shadow-xl outline-none"
+            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-card shadow-xl outline-none"
             style={{ userSelect: "text" }}
             aria-describedby={undefined}
           >
@@ -113,7 +136,7 @@ export function ArtifactPanel({ mobile }: Props) {
               onOpenFiles={showFilesTab}
               onSourceToggle={setIsSourceView}
             />
-            <ArtifactContent
+            <ArtifactPreview
               artifact={shown.artifact}
               isSourceView={isSourceView}
               classification={shown.classification}
@@ -124,7 +147,9 @@ export function ArtifactPanel({ mobile }: Props) {
     );
   }
 
-  if (!activeArtifact || !classification) return null;
+  // Keep painting the outgoing artifact through the close tween — by then
+  // `activeArtifact` is already null, same reason the mobile drawer holds it.
+  const shown = lastShownRef.current;
 
   // jsdom reports offsetWidth 0 — treat non-positive readings as "unknown"
   // and fall back to the stored width.
@@ -133,39 +158,115 @@ export function ArtifactPanel({ mobile }: Props) {
       ? artifactPanelWidth
       : Math.min(artifactPanelWidth, availableWidth);
 
+  // Width is the animated property because the panel pushes the chat column
+  // rather than overlaying it. Dragging the handle bypasses the tween — a
+  // queued 300ms tween per pointer move would trail the cursor.
+  const transition =
+    shouldReduceMotion || isResizing
+      ? { duration: 0 }
+      : { duration: PANEL_DURATION, ease: PANEL_EASE };
+
+  function closeDesktopPanel() {
+    if (sessionId) {
+      closeArtifactPanel();
+      return;
+    }
+    clearArtifactPreview();
+  }
+
+  function runAfterFullscreenExit(action: () => void) {
+    if (document.fullscreenElement !== fullscreenRef.current) {
+      action();
+      return;
+    }
+    void exitFullscreen().then((didExit) => {
+      if (didExit) action();
+    });
+  }
+
+  function handleDesktopClose() {
+    runAfterFullscreenExit(closeDesktopPanel);
+  }
+
+  function handleOpenFiles() {
+    runAfterFullscreenExit(showFilesTab);
+  }
+
   return (
-    <div
-      ref={panelRef}
-      data-artifact-panel
-      style={{ width: renderedWidth, userSelect: "text" }}
-      className="relative flex h-full shrink-0 flex-col border-l border-l-[#80808017] bg-sidebar"
-    >
-      <PanelResizeHandle
-        panelSelector="[data-artifact-panel]"
-        onWidthChange={setArtifactPanelWidth}
-        minWidth={MIN_ARTIFACT_PANEL_WIDTH}
-      />
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-        <ArtifactPanelHeader
-          artifact={activeArtifact}
-          classification={classification}
-          canGoBack={history.length > 0}
-          isSourceView={isSourceView}
-          hasSourceToggle={classification.hasSourceToggle}
-          canCopy={canCopy}
-          onBack={goBackArtifact}
-          onClose={clearArtifactPreview}
-          onCopy={handleCopy}
-          onDownload={handleDownload}
-          onOpenFiles={showFilesTab}
-          onSourceToggle={setIsSourceView}
-        />
-        <ArtifactContent
-          artifact={activeArtifact}
-          isSourceView={isSourceView}
-          classification={classification}
-        />
-      </div>
-    </div>
+    <AnimatePresence initial={false}>
+      {showDesktopPanel && (shown || showComputer) && (
+        <motion.div
+          ref={panelRef}
+          data-artifact-panel
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: renderedWidth, opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={transition}
+          style={{ userSelect: "text" }}
+          className="relative h-full shrink-0 bg-sidebar"
+        >
+          {/* Sibling of the clip, not a child of it: the handle straddles the
+              border, so clipping it here would halve the drag target. */}
+          <PanelResizeHandle
+            panelSelector="[data-artifact-panel]"
+            onWidthChange={setArtifactPanelWidth}
+            onResizingChange={setIsResizing}
+            minWidth={MIN_ARTIFACT_PANEL_WIDTH}
+          />
+          <div className="h-full overflow-hidden p-2 pl-1">
+            {/* Fixed inner width so the header and content keep their final
+                layout while the shell widens — nothing reflows mid-tween. */}
+            <div
+              ref={fullscreenRef}
+              style={{
+                width: isFullscreen
+                  ? "100%"
+                  : `calc(${renderedWidth}px - 0.75rem)`,
+              }}
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
+            >
+              <ArtifactPanelHeader
+                artifact={
+                  showComputer
+                    ? (activeArtifact ?? null)
+                    : (shown?.artifact ?? null)
+                }
+                classification={
+                  showComputer
+                    ? classification
+                    : (shown?.classification ?? null)
+                }
+                mode={showComputer ? "computer" : "artifact"}
+                showModeSwitch={!!sessionId}
+                onModeChange={setArtifactPanelMode}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={
+                  canFullscreen ? toggleFullscreen : undefined
+                }
+                canGoBack={history.length > 0}
+                isSourceView={isSourceView}
+                hasSourceToggle={shown?.classification.hasSourceToggle ?? false}
+                canCopy={canCopy}
+                onBack={goBackArtifact}
+                onClose={handleDesktopClose}
+                onCopy={handleCopy}
+                onDownload={handleDownload}
+                onOpenFiles={handleOpenFiles}
+                onSourceToggle={setIsSourceView}
+              />
+              {showComputer && sessionId ? (
+                <ComputerPanelContent sessionId={sessionId} />
+              ) : shown ? (
+                <ArtifactPreview
+                  artifact={shown.artifact}
+                  isSourceView={isSourceView}
+                  classification={shown.classification}
+                />
+              ) : null}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

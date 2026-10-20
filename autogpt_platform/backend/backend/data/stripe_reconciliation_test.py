@@ -1,15 +1,19 @@
 """Tests for the periodic Stripe → DB tier reconciliation sweep."""
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_mock
 import stripe
 from prisma.enums import SubscriptionTier
+from prisma.models import PaidUsageActivation
 
+from backend.data import stripe_client
 from backend.data.stripe_reconciliation import (
     ReconciliationSummary,
     _collect_status_page,
+    _reconcile_one,
     _record_subscription,
     reconcile_all_stripe_tiers,
 )
@@ -49,7 +53,7 @@ def _candidate(
 
 def _patch_stripe_pages(
     mocker: pytest_mock.MockFixture, by_status: dict[str, list[dict]]
-) -> None:
+) -> AsyncMock:
     """Make stripe.Subscription.list return one page per status."""
 
     def _list(*, status: str, limit: int, starting_after: str | None = None):
@@ -59,8 +63,58 @@ def _patch_stripe_pages(
         return page
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
+    )
+    return mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+
+
+@pytest.fixture(autouse=True)
+def activation_rows(mocker):
+    rows = MagicMock(find_unique=AsyncMock(return_value=None))
+    mocker.patch.object(PaidUsageActivation, "prisma", return_value=rows)
+    return rows
+
+
+@pytest.mark.parametrize(
+    "subscription_id,ready",
+    [
+        ("sub_cus_pro", True),
+        ("sub_cus_pro", False),
+        ("sub_previous", True),
+        (None, True),
+    ],
+)
+async def test_sweep_skips_only_completed_activation_for_current_subscription(
+    mocker, activation_rows, subscription_id, ready
+):
+    user = _candidate("user", "cus_pro", SubscriptionTier.PRO)
+    if subscription_id:
+        activation_rows.find_unique.return_value = MagicMock(
+            stripeSubscriptionId=subscription_id, readyAt=object() if ready else None
+        )
+    reconcile = mocker.patch(
+        "backend.data.stripe_reconciliation._reconcile_pro_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+    summary = ReconciliationSummary()
+
+    await _reconcile_one(
+        user,
+        {"cus_pro": SubscriptionTier.PRO},
+        summary,
+        True,
+        {"cus_pro": _sub("cus_pro", "price_pro")},
+    )
+
+    assert summary.unchanged == 1 and summary.errors == 0
+    assert reconcile.await_count == (
+        0 if subscription_id == "sub_cus_pro" and ready else 1
     )
 
 
@@ -83,7 +137,7 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
         new_callable=AsyncMock,
         return_value={"price_pro": SubscriptionTier.PRO},
     )
-    _patch_stripe_pages(
+    reconcile_pro = _patch_stripe_pages(
         mocker,
         {"active": [_sub("cus_keep", "price_pro"), _sub("cus_up", "price_pro")]},
     )
@@ -110,8 +164,10 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert summary.downgrades == 1
     assert summary.unchanged == 1
     assert summary.errors == 0
-    set_tier.assert_any_await("u_up", SubscriptionTier.PRO)
-    set_tier.assert_any_await("u_down", SubscriptionTier.NO_TIER)
+    set_tier.assert_awaited_once_with("u_down", SubscriptionTier.NO_TIER)
+    assert reconcile_pro.await_count == 2
+    reconcile_pro.assert_any_await(candidates[0], _sub("cus_keep", "price_pro"))
+    reconcile_pro.assert_any_await(candidates[1], _sub("cus_up", "price_pro"))
     # Each correction is recorded, and the sweep alerts ops exactly once (not
     # per-user) with the discrepancy counts.
     assert {d.direction for d in summary.discrepancies} == {"upgrade", "downgrade"}
@@ -237,7 +293,7 @@ async def test_sweep_incomplete_map_skips_downgrades(
     )
     # Stripe list fails -> _collect_status_page returns capped -> map incomplete.
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=stripe.StripeError("rate limited"),
     )
     candidates = [_candidate("u_down", "cus_gone", SubscriptionTier.PRO)]
@@ -387,7 +443,7 @@ async def test_collect_status_page_follows_pagination(
         return pages.pop(0)
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
     )
     price_to_tier = {
@@ -428,7 +484,7 @@ async def test_collect_status_page_highest_tier_wins_across_pages(
     for first, second in (("price_basic", "price_pro"), ("price_pro", "price_basic")):
         pages = _run(first, second)
         mocker.patch(
-            "backend.data.stripe_reconciliation.stripe.Subscription.list",
+            "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
             side_effect=lambda *, status, limit, starting_after=None: pages.pop(0),
         )
         tiers: dict[str, SubscriptionTier] = {}
@@ -450,7 +506,7 @@ async def test_collect_status_page_stops_at_cap(
         return _page([_sub(f"cus_{call_count['n']}", "price_pro")], has_more=True)
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
     )
     tiers: dict[str, SubscriptionTier] = {}
@@ -476,3 +532,20 @@ def test_summary_defaults_to_zero() -> None:
         "pagination_capped": False,
         "discrepancies": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_collect_status_page_timeout_marks_run_incomplete():
+    """A stripe_call timeout is a StripeError like any other outage: the sweep
+    stops this status and reports capped=True instead of raising."""
+
+    async def stalled(**_kwargs):
+        await asyncio.sleep(1)
+
+    with (
+        patch.object(stripe_client, "DEFAULT_TIMEOUT_SECONDS", 0.05),
+        patch.object(stripe.Subscription, "list_async", side_effect=stalled),
+    ):
+        capped = await _collect_status_page("active", {}, {})
+
+    assert capped is True

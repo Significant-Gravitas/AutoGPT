@@ -29,15 +29,19 @@ export function ChangelogPopup() {
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out ${
+      className={`fixed bottom-4 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:bottom-6 sm:right-6 ${
         isFading
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"
       }`}
-      onMouseEnter={pauseAutoDismiss}
-      onMouseLeave={resumeAutoDismiss}
-      onFocus={pauseAutoDismiss}
-      onBlur={resumeAutoDismiss}
+      onMouseEnter={() => pauseAutoDismiss("hover")}
+      onMouseLeave={() => resumeAutoDismiss("hover")}
+      onFocus={() => pauseAutoDismiss("focus")}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          resumeAutoDismiss("focus");
+        }
+      }}
       role="dialog"
       aria-label="What's new"
     >

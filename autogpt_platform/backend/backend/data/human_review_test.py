@@ -5,6 +5,7 @@ import pytest
 import pytest_mock
 from prisma.enums import ReviewStatus
 
+from backend.copilot.constants import step_card_id
 from backend.data.human_review import (
     get_or_create_human_review,
     get_pending_reviews_for_execution,
@@ -21,6 +22,7 @@ def sample_db_review():
     mock_review.nodeExecId = "test_node_123"
     mock_review.userId = "test-user-123"
     mock_review.graphExecId = "test_graph_exec_456"
+    mock_review.chatSessionId = None
     mock_review.graphId = "test_graph_789"
     mock_review.graphVersion = 1
     mock_review.payload = {"data": "test payload"}
@@ -129,15 +131,28 @@ async def test_get_pending_reviews_for_user(
 ):
     """Test getting pending reviews for a user with pagination"""
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
-
-    # Mock get_node_execution to return node with node_id (async function)
-    mock_node_exec = Mock()
-    mock_node_exec.node_id = "test_node_def_789"
-    mocker.patch(
-        "backend.data.execution.get_node_execution",
-        new=AsyncMock(return_value=mock_node_exec),
+    # The chat cards answering steps (none), then the page.
+    mock_find_many.return_value.find_many = AsyncMock(
+        side_effect=[[], [sample_db_review]]
     )
+
+    # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
+    mock_node_exec = Mock()
+    mock_node_exec.id = "test_node_123"
+    mock_node_exec.agentNodeId = "test_node_def_789"
+    mock_node_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentNodeExecution.prisma"
+    )
+    mock_node_exec_prisma.return_value.find_many = AsyncMock(
+        return_value=[mock_node_exec]
+    )
+
+    # Mock the batched graph-execution lookup empty, so the enrichment step's
+    # dependent LibraryAgent/ChatSession queries are skipped entirely.
+    mock_graph_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentGraphExecution.prisma"
+    )
+    mock_graph_exec_prisma.return_value.find_many = AsyncMock(return_value=[])
 
     result = await get_pending_reviews_for_user("test_user", page=2, page_size=10)
 
@@ -146,9 +161,29 @@ async def test_get_pending_reviews_for_user(
     assert result[0].node_id == "test_node_def_789"
 
     # Verify pagination parameters
-    call_args = mock_find_many.return_value.find_many.call_args
+    call_args = mock_find_many.return_value.find_many.call_args_list[1]
     assert call_args.kwargs["skip"] == 10  # (page-1) * page_size = (2-1) * 10
     assert call_args.kwargs["take"] == 10
+
+
+@pytest.mark.parametrize("named", ["its own step", "another step"])
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_step_card_hides_only_the_step_it_was_opened_for(
+    mocker: pytest_mock.MockFixture, named
+):
+    card = Mock()
+    card.nodeExecId = step_card_id("user-1", "step-1")
+    card.payload = {
+        "workflow": {"node_exec_id": "step-1" if named == "its own step" else "step-2"}
+    }
+    prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    prisma.return_value.find_many = AsyncMock(side_effect=[[card], []])
+
+    await get_pending_reviews_for_user("user-1")
+
+    page = prisma.return_value.find_many.call_args_list[1].kwargs["where"]
+    hidden = {"not_in": ["step-1"]} if named == "its own step" else None
+    assert page.get("nodeExecId") == hidden
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -199,6 +234,7 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.nodeExecId = "test_node_123"
     updated_review.userId = "test-user-123"
     updated_review.graphExecId = "test_graph_exec_456"
+    updated_review.chatSessionId = None
     updated_review.graphId = "test_graph_789"
     updated_review.graphVersion = 1
     updated_review.payload = {"data": "modified"}
@@ -297,6 +333,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.nodeExecId = "test_node_456"
     second_review.userId = "test-user-123"
     second_review.graphExecId = "test_graph_exec_456"
+    second_review.chatSessionId = None
     second_review.graphId = "test_graph_789"
     second_review.graphVersion = 1
     second_review.payload = {"data": "original"}
@@ -321,6 +358,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.nodeExecId = "test_node_123"
     approved_review.userId = "test-user-123"
     approved_review.graphExecId = "test_graph_exec_456"
+    approved_review.chatSessionId = None
     approved_review.graphId = "test_graph_789"
     approved_review.graphVersion = 1
     approved_review.payload = {"data": "modified"}
@@ -338,6 +376,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.nodeExecId = "test_node_456"
     rejected_review.userId = "test-user-123"
     rejected_review.graphExecId = "test_graph_exec_456"
+    rejected_review.chatSessionId = None
     rejected_review.graphId = "test_graph_789"
     rejected_review.graphVersion = 1
     rejected_review.payload = {"data": "original"}
@@ -377,3 +416,55 @@ async def test_process_all_reviews_mixed_approval_rejection(
     assert "test_node_456" in result
     assert result["test_node_123"].node_id == "test_node_def_789"
     assert result["test_node_456"].node_id == "test_node_def_789"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_chat_with_legacy_and_new_rows_syncs_one_alert(
+    mocker: pytest_mock.MockFixture,
+):
+    def row(node_exec_id, graph_exec_id, graph_id, session_id):
+        r = Mock()
+        r.nodeExecId = node_exec_id
+        r.userId = "u1"
+        r.graphExecId = graph_exec_id
+        r.graphId = graph_id
+        r.graphVersion = 1 if graph_id else None
+        r.chatSessionId = session_id
+        r.payload = {}
+        r.instructions = "Review"
+        r.editable = True
+        r.status = ReviewStatus.WAITING
+        r.reviewMessage = None
+        r.wasEdited = False
+        r.processed = False
+        r.createdAt = r.updatedAt = r.reviewedAt = datetime.datetime.now(
+            datetime.timezone.utc
+        )
+        return r
+
+    rows = [
+        row("copilot-node-a:1", "copilot-session-s1", "copilot-session-s1", None),
+        row("copilot-node-b:2", None, None, "s1"),
+        row("copilot-node-c:3", "copilot-session-s1", "copilot-session-s1", "s1"),
+        row("node-exec-g", "ge-1", "g1", None),
+    ]
+    mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma.return_value.find_many = AsyncMock(return_value=rows)
+    mock_prisma.return_value.update = AsyncMock()
+    mocker.patch(
+        "backend.data.human_review.asyncio.gather", new=AsyncMock(return_value=[])
+    )
+    sync = mocker.patch(
+        "backend.data.human_review._sync_awaiting_review_safely", new=AsyncMock()
+    )
+
+    await process_all_reviews_for_execution(
+        user_id="u1",
+        review_decisions={
+            r.nodeExecId: (ReviewStatus.APPROVED, None, None) for r in rows
+        },
+    )
+
+    calls = [c.args for c in sync.await_args_list]
+    assert len(calls) == 2
+    assert set(calls) == {("u1", None, "s1"), ("u1", "g1", None)}

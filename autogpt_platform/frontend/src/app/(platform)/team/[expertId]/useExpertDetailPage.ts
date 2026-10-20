@@ -1,0 +1,148 @@
+import {
+  getGetExpertQueryKey,
+  getListExpertsQueryKey,
+  useGetExpert,
+  useGetExpertActivity,
+  useResumeExpertSchedules,
+} from "@/app/api/__generated__/endpoints/experts/experts";
+import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { okData } from "@/app/api/helpers";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { getExpertSchedules } from "../helpers";
+
+interface Args {
+  expertId: string;
+  enabled: boolean;
+}
+
+export function useExpertDetailPage({ expertId, enabled }: Args) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  const expertQuery = useGetExpert(expertId, {
+    query: { select: (res) => okData(res) ?? null, enabled },
+  });
+  const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
+    query: { select: (res) => okData(res) ?? [], enabled },
+  });
+  const activityQuery = useGetExpertActivity(expertId, {
+    query: { select: (res) => okData(res) ?? null, enabled },
+  });
+
+  const expert = expertQuery.data ?? null;
+  const schedules = expert
+    ? getExpertSchedules(expert, schedulesQuery.data ?? [])
+    : [];
+
+  const [isFireOpen, setIsFireOpen] = useState(false);
+  const [isSoulOpen, setIsSoulOpen] = useState(false);
+  const [soulDrawerKey, setSoulDrawerKey] = useState(0);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatDrawerKey, setChatDrawerKey] = useState(0);
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
+
+  const { mutate: resumeSchedules, isPending: isResuming } =
+    useResumeExpertSchedules({
+      mutation: {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
+          queryClient.invalidateQueries({
+            queryKey: getGetExpertQueryKey(expertId),
+          });
+        },
+        onError: () => {
+          toast({
+            title: "Could not resume schedules",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
+  async function refetch() {
+    await Promise.all([
+      expertQuery.refetch(),
+      schedulesQuery.refetch(),
+      activityQuery.refetch(),
+    ]);
+  }
+
+  function openFire() {
+    setIsFireOpen(true);
+  }
+
+  function closeFire() {
+    setIsFireOpen(false);
+  }
+
+  function toggleSoul() {
+    if (isSoulOpen) {
+      setIsSoulOpen(false);
+      return;
+    }
+    setIsChatOpen(false);
+    setIsSoulOpen(true);
+    setSoulDrawerKey((current) => current + 1);
+  }
+
+  function closeSoul() {
+    setIsSoulOpen(false);
+  }
+
+  function toggleChat() {
+    if (isChatOpen) {
+      setIsChatOpen(false);
+      return;
+    }
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(null);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function openChatWithPrompt(prompt: string) {
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(prompt);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function closeChat() {
+    setIsChatOpen(false);
+  }
+
+  return {
+    expert,
+    isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
+    isError:
+      expertQuery.isError ||
+      schedulesQuery.isError ||
+      (expertQuery.isFetched && expert === null),
+    refetch,
+    schedules,
+    activity: activityQuery.data ?? null,
+    isActivityLoading: enabled && activityQuery.isLoading,
+    isActivityError: activityQuery.isError,
+    isPickerOpen,
+    openPicker: () => setIsPickerOpen(true),
+    closePicker: () => setIsPickerOpen(false),
+    resumeSchedules: () => resumeSchedules({ expertId }),
+    isResuming,
+    isFireOpen,
+    openFire,
+    closeFire,
+    isSoulOpen,
+    soulDrawerKey,
+    toggleSoul,
+    closeSoul,
+    isChatOpen,
+    chatDrawerKey,
+    chatSeed,
+    toggleChat,
+    openChatWithPrompt,
+    closeChat,
+  };
+}

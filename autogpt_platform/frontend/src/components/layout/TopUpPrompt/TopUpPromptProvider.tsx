@@ -1,8 +1,9 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
@@ -14,10 +15,13 @@ interface Props {
 }
 
 export function TopUpPromptProvider({ children }: Props) {
+  const { user, isLoggedIn } = useAuth();
+  const identityKey = user?.id ?? null;
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { credits, autoTopUpConfig } = useCredits({
-    fetchInitialCredits: true,
-    fetchInitialAutoTopUpConfig: true,
+    identityKey,
+    fetchInitialCredits: isLoggedIn,
+    fetchInitialAutoTopUpConfig: isLoggedIn,
   });
 
   // Backend treats amount === 0 as disabled, so auto-refill only actually
@@ -37,6 +41,10 @@ export function TopUpPromptProvider({ children }: Props) {
     !autoRefillEnabled;
 
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [identityKey]);
 
   function openTopUp() {
     setIsOpen(true);

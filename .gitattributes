@@ -8,3 +8,6 @@ docs/_javascript/** linguist-vendored
 classic/forge/tests/vcr_cassettes/**/**.y*ml linguist-generated
 
 * text=auto
+
+.github/scripts/platform-single-container-*.sh text eol=lf
+autogpt_platform/single-container/*.sh text eol=lf

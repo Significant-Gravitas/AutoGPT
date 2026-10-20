@@ -1,0 +1,21 @@
+{%- import "_trial_copy.j2" as copy with context -%}
+{{ subject }}
+
+{{ copy.lede() }}
+
+Plan: {{ plan.label }}
+Trial ends: {{ ends_label }}
+Paid price: {{ plan.price_display }}
+
+{{ copy.detail() }}
+
+{{ 'Update payment method' if kind == 'payment_failed' else 'Review your plan' }}: {{ urls.billing }}
+You received this because your trial status changed or its end is approaching.
+Billing settings: {{ urls.billing }}
+
+This is a service message about the AutoGPT account for {{ user_email }}.
+It's sent even if you've opted out of product news.
+Email preferences: {{ urls.prefs }}
+Discord: {{ urls.discord }}
+AutoGPT: https://agpt.co
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK

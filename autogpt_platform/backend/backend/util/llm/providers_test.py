@@ -9,6 +9,8 @@ fields each provider exposes.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,14 +18,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import httpx
 import pytest
+from pydantic import ValidationError
 
+from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    FAST_FAIL_TIMEOUT_SECONDS,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
+    anthropic_accepts_forced_tool_choice,
     call_provider,
+    call_provider_openai_compat_sync,
+    is_forced_tool_choice_rejection,
+    request_timeout,
 )
+from backend.util.settings import Config, Settings
 
 
 def _msg(role: str, content: str) -> dict:
@@ -420,6 +430,55 @@ class TestOpenAIResponses:
 
 class TestAnthropicMessages:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "answer, expected",
+        [
+            (anthropic.types.TextBlock(type="text", text="ok"), "ok"),
+            (
+                anthropic.types.ToolUseBlock(
+                    type="tool_use", id="tool-1", name="answer", input={"value": 42}
+                ),
+                "answer",
+            ),
+        ],
+    )
+    async def test_preserves_response_after_thinking(self, answer, expected):
+        response = anthropic.types.Message(
+            id="msg-1",
+            type="message",
+            role="assistant",
+            model="claude-opus-5",
+            content=[
+                anthropic.types.ThinkingBlock(
+                    type="thinking", thinking="reasoning", signature="signature"
+                ),
+                answer,
+            ],
+            stop_reason="tool_use" if answer.type == "tool_use" else "end_turn",
+            usage=anthropic.types.Usage(input_tokens=5, output_tokens=7),
+        )
+        async_create = AsyncMock(return_value=response)
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=SimpleNamespace(messages=SimpleNamespace(create=async_create)),
+        ):
+            result = await call_provider(
+                provider="anthropic",
+                model="claude-opus-5",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=200,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert result.content == expected
+        assert result.stop_reason == response.stop_reason
+        assert result.reasoning == "reasoning"
+        assert result.completion_tokens == 7
+        if answer.type == "tool_use":
+            assert result.tool_calls is not None
+            assert result.tool_calls[0].function.arguments == '{"value": 42}'
+
+    @pytest.mark.asyncio
     async def test_dispatches_to_anthropic_messages_create_and_normalizes_usage(
         self,
     ):
@@ -727,6 +786,14 @@ class TestAIMLAPI:
         # AI/ML expects branded headers on the client construction.
         ctor_kwargs = constructor.call_args.kwargs
         assert ctor_kwargs["default_headers"]["X-Project"] == "AutoGPT"
+        # AI/ML API is served under /v1 (the /v2 host does not exist).
+        assert ctor_kwargs["base_url"] == "https://api.aimlapi.com/v1"
+        # Attribution headers identify agent-originated traffic to the provider.
+        assert ctor_kwargs["default_headers"]["X-AIMLAPI-Source"] == "agent/autogpt"
+        assert (
+            ctor_kwargs["default_headers"]["X-AIMLAPI-Partner-ID"]
+            == "part_T70zDIEvQLKSMzMQ7asjdtKR"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -896,7 +963,9 @@ class TestOllama:
         assert result.content == '{"facts": []}'
         assert result.prompt_tokens == 7
         assert result.completion_tokens == 9
-        ctor.assert_called_once_with(host="http://gpu-box:11434", timeout=42.0)
+        ctor.assert_called_once_with(
+            host="http://gpu-box:11434", timeout=request_timeout(42.0)
+        )
 
 
 class TestOllamaTrustedHosts:
@@ -1402,11 +1471,238 @@ class TestUtf8Sanitization:
 # ---------------------------------------------------------------------------
 
 
+class TestTimeoutThreading:
+    """Every SDK call site reached through ``call_provider`` must receive the
+    bounded ``httpx.Timeout``.
+
+    A site that silently loses it reverts to the SDK default. On Anthropic
+    that is worse than slow: ``_calculate_nonstreaming_timeout`` raises
+    ``ValueError("Streaming is required ...")`` above ~21333 max_tokens when
+    no explicit timeout is passed, so high-``max_tokens`` calls hard-fail.
+    """
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _sdk_site(kind: str, capture):
+        """Install a fake client for one provider branch; `capture` sees the
+        kwargs the SDK is called with."""
+        if kind == "anthropic":
+            response = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="ok")],
+                usage=SimpleNamespace(
+                    input_tokens=1,
+                    output_tokens=1,
+                    cache_read_input_tokens=0,
+                    cache_creation_input_tokens=0,
+                ),
+                stop_reason="end_turn",
+            )
+            client = SimpleNamespace(messages=SimpleNamespace(create=capture(response)))
+            with patch(
+                "backend.util.llm.providers.anthropic.AsyncAnthropic",
+                return_value=client,
+            ):
+                yield
+        elif kind == "chat_completions":
+            response = _fake_openai_chat_response("ok", prompt=1, completion=1)
+            client = SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(create=capture(response))
+                )
+            )
+            with patch("groq.AsyncGroq", return_value=client), patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI", return_value=client
+            ):
+                yield
+        else:  # the default `openai` branch: Responses API + its extractors
+            client = SimpleNamespace(
+                responses=SimpleNamespace(create=capture(SimpleNamespace()))
+            )
+            with patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI", return_value=client
+            ), patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ), patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="ok",
+            ), patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ), patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ):
+                yield
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kind, provider, model, api_key",
+        [
+            ("anthropic", "anthropic", "claude-sonnet-4-6", "sk-test"),
+            ("chat_completions", "groq", "llama-3.3-70b", "gsk-test"),
+            ("chat_completions", "open_router", "anthropic/claude-sonnet-4.6", "sk-or"),
+            ("responses", "openai", "gpt-4.1", "sk-test"),
+        ],
+    )
+    async def test_every_sdk_site_receives_the_bounded_timeout(
+        self, kind, provider, model, api_key
+    ):
+        seen: dict = {}
+
+        def capture(response):
+            async def _create(**kwargs):
+                seen.update(kwargs)
+                return response
+
+            return _create
+
+        with self._sdk_site(kind, capture):
+            await call_provider(
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=42.0,
+            )
+        assert seen["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_call_provider_omitted_timeout_resolves_at_call_time(
+        self, monkeypatch
+    ):
+        """The headline configurability, on the PRIMARY dispatch path. Hardcoding
+        the default back to 120 passed every other test in this file."""
+        monkeypatch.setattr(providers_mod, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 321.0)
+        seen: dict = {}
+
+        def capture(response):
+            async def _create(**kwargs):
+                seen.update(kwargs)
+                return response
+
+            return _create
+
+        with self._sdk_site("responses", capture):
+            await call_provider(
+                provider="openai",
+                model="gpt-4.1",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert seen["timeout"] == request_timeout(321.0)
+
+    @pytest.mark.asyncio
+    async def test_openai_compat_sync_helper_receives_bounded_timeout(self):
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        await call_provider_openai_compat_sync(
+            model="gpt-4.1",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            client=fake_client,
+            timeout_seconds=42.0,
+        )
+        assert captured["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_sync_helper_bounds_total_duration(self):
+        """The httpx timeout is per ATTEMPT and the SDK retries on top of it,
+        so the helper needs its own wall-clock bound like ``call_provider``."""
+
+        async def hang(**kwargs):
+            await asyncio.sleep(60)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=hang))
+        )
+        with pytest.raises(TimeoutError):
+            await call_provider_openai_compat_sync(
+                model="gpt-4.1",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                client=fake_client,
+                timeout_seconds=0.2,
+            )
+
+
 class TestDefaults:
-    def test_default_timeout_is_120_seconds(self):
-        # Pin the SLA — anything bigger and a stalled provider can park
-        # an executor thread for too long.
-        assert DEFAULT_REQUEST_TIMEOUT_SECONDS == 120
+    def test_default_timeout_tracks_the_setting(self):
+        assert (
+            DEFAULT_REQUEST_TIMEOUT_SECONDS
+            == Settings().config.llm_request_timeout_seconds
+        )
+
+    def test_shipped_default_is_600_seconds(self):
+        # The constant above only proves the wiring; without this the shipped
+        # SLA is pinned by nothing and can drift silently.
+        assert Config.model_fields["llm_request_timeout_seconds"].default == 600
+
+    @pytest.mark.parametrize("bad", [29, 1501])
+    def test_timeout_outside_the_supported_band_is_rejected(self, bad):
+        # Below 30 a healthy long call dies; above 1500 the deadline no longer
+        # clears the per-node cap with margin, so the node timeout can fire
+        # first and hide the provider/model error.
+        with pytest.raises(ValidationError) as exc:
+            Config(llm_request_timeout_seconds=bad)
+        assert any(
+            e["loc"] == ("llm_request_timeout_seconds",) for e in exc.value.errors()
+        ), "a different field's validation error would otherwise green this"
+
+    @pytest.mark.parametrize("ok", [30, 600, 1500])
+    def test_supported_band_boundaries_are_accepted(self, ok):
+        assert Config(llm_request_timeout_seconds=ok).llm_request_timeout_seconds == ok
+
+    def test_block_and_provider_layers_share_one_deadline(self):
+        # A call bounded at one layer and not the other is the drift that
+        # routing both through one setting exists to prevent.
+        # Function-scoped so this util-side module never imports blocks at
+        # import time (see settings.py on the dependency direction).
+        from backend.blocks.llm import LLM_REQUEST_TIMEOUT_SECONDS
+
+        assert LLM_REQUEST_TIMEOUT_SECONDS == DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_omitted_timeout_resolves_the_setting_at_call_time(self, monkeypatch):
+        """The headline feature: the deadline follows the config field. Bound as
+        a def-time default it would freeze, and this would still pass at the
+        shipped value — so patch to a distinctive one."""
+        monkeypatch.setattr(providers_mod, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 123.0)
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        await call_provider_openai_compat_sync(
+            model="gpt-4.1",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            client=fake_client,
+        )
+        assert captured["timeout"] == request_timeout(123.0)
+
+    def test_request_timeout_pins_connect_and_budgets_the_rest(self):
+        # No generation happens while a SYN goes unanswered, so connect is
+        # pinned; read/write/pool carry the generation budget.
+        t = request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        assert t.connect == FAST_FAIL_TIMEOUT_SECONDS
+        assert t.read == DEFAULT_REQUEST_TIMEOUT_SECONDS
+        assert t.write == DEFAULT_REQUEST_TIMEOUT_SECONDS
+        # Queueing for a connection is not generation either.
+        assert t.pool == FAST_FAIL_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -1600,6 +1896,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason="end_turn",
                             content=[
                                 SimpleNamespace(type="text", text='{"facts": []}')
                             ],
@@ -1640,13 +1937,24 @@ class TestDownloadBatchResults:
         assert row.error is None
 
     @pytest.mark.asyncio
-    async def test_extracts_tool_use_input_as_json(self):
+    @pytest.mark.parametrize("thinking_first", [False, True])
+    @pytest.mark.parametrize("stop_reason", ["tool_use", "max_tokens"])
+    async def test_extracts_tool_use_input_as_json(self, thinking_first, stop_reason):
         """Step 5 leans on this: when the dream pass uses
         ``tool_choice={"type":"tool","name":...}`` to force structured
         output, the result is one ``tool_use`` block whose ``input``
         IS the structured payload. Flattening it to a JSON string is
         what the dream parser then validates against the Pydantic
         schema."""
+        thinking = (
+            [
+                anthropic.types.ThinkingBlock(
+                    type="thinking", thinking="reasoning", signature="signature"
+                )
+            ]
+            if thinking_first
+            else []
+        )
         results_iter = _fake_async_iter(
             [
                 SimpleNamespace(
@@ -1654,9 +1962,13 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
-                            content=[
-                                SimpleNamespace(
+                            stop_reason=stop_reason,
+                            content=thinking
+                            + [
+                                anthropic.types.ToolUseBlock(
                                     type="tool_use",
+                                    id="tool-1",
+                                    name="submit_dream_ops",
                                     input={
                                         "writes": [],
                                         "summary_for_user": "ok",
@@ -1684,6 +1996,54 @@ class TestDownloadBatchResults:
                 api_key="x",
             )
         assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
+        assert rows[0].error == ("max_tokens" if stop_reason == "max_tokens" else None)
+        assert rows[0].output_tokens == 1
+
+    @pytest.mark.asyncio
+    async def test_tool_use_after_a_text_block_is_still_the_result(self):
+        """Under ``tool_choice`` ``auto`` (a model that rejects a forced
+        tool) a short text block can come before the call. The tool input
+        is still the structured payload, not the text."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1_recombine",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            stop_reason="end_turn",
+                            content=[
+                                anthropic.types.TextBlock(
+                                    type="text", text="Recording the proposals."
+                                ),
+                                anthropic.types.ToolUseBlock(
+                                    type="tool_use",
+                                    id="tool-1",
+                                    name="emit_recombination",
+                                    input={"proposals": []},
+                                ),
+                            ],
+                            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].content == '{"proposals": []}'
 
     @pytest.mark.asyncio
     async def test_errored_row_carries_error_string_with_zero_tokens(self):
@@ -1720,6 +2080,28 @@ class TestDownloadBatchResults:
         assert "content moderation" in rows[0].error
         assert rows[0].input_tokens == 0
         assert rows[0].output_tokens == 0
+
+
+def test_batch_result_row_with_content_keeps_every_other_field():
+    row = BatchResultRow(
+        custom_id="passid-1_consolidate",
+        content='Here are the facts: {"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+        cache_read_tokens=3,
+        cache_creation_tokens=2,
+        error="kept as is",
+        raw_result=object(),
+    )
+
+    swapped = row.with_content('{"facts": []}')
+
+    assert swapped.content == '{"facts": []}'
+    assert row.content == 'Here are the facts: {"facts": []}'
+    # Every field the row has, so a field added later can't be dropped.
+    for name in getattr(BatchResultRow, "__pydantic_fields__"):
+        if name != "content":
+            assert getattr(swapped, name) == getattr(row, name), name
 
 
 def _fake_async_iter(items):
@@ -2109,6 +2491,8 @@ class TestClaude5TemperatureRejection:
             "claude-sonnet-5",
             "claude-fable-5",
             "claude-mythos-5",
+            "claude-opus-5",
+            "claude-haiku-5-5",
             "claude-opus-4-7",
             "claude-opus-4-8",
         ],
@@ -2123,6 +2507,7 @@ class TestClaude5TemperatureRejection:
             "anthropic.claude-sonnet-5",
             "openrouter/anthropic/claude-sonnet-5",
             "us.anthropic.claude-sonnet-5",
+            "anthropic/claude-opus-5",
         ],
     )
     def test_vendor_prefixed_forms_stripped(self, model: str):
@@ -2166,3 +2551,82 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+class TestForcedToolChoiceCapability:
+    """Opus 5.5 and the Fable 5.1 / Mythos 5.1 line answer a forced
+    ``tool_choice`` with a 400. Exact slugs, not family prefixes: Sonnet 5
+    and Opus 5 still accept a forced tool."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic.claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5.5",
+            "anthropic.claude-sonnet-5-5",
+            "claude-sonnet-5-5-20260928",
+            "claude-fable-5-1",
+            "claude-mythos-5-1",
+        ],
+    )
+    def test_rejecting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5",
+            "anthropic/claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_accepting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is True
+
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
+        )
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    def test_rejection_matches_anthropics_400(self):
+        assert is_forced_tool_choice_rejection(
+            self._err(
+                'tool_choice: type "tool" and "any" are not supported for this model.'
+            )
+        )
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "temperature is not supported by this model",
+            "tool_choice.name: Field required",
+            "rate limited",
+        ],
+    )
+    def test_rejection_ignores_other_errors(self, message: str):
+        assert not is_forced_tool_choice_rejection(self._err(message))
+
+    def test_only_a_bad_request_counts_as_the_rejection(self):
+        """The documented text is not enough on its own: a 500 or an
+        exception of our own quoting it is not Anthropic's 400."""
+        text = 'tool_choice: type "tool" and "any" are not supported for this model.'
+        server_error = anthropic.InternalServerError(
+            text,
+            response=httpx.Response(
+                500, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body=None,
+        )
+        assert not is_forced_tool_choice_rejection(server_error)
+        assert not is_forced_tool_choice_rejection(RuntimeError(text))

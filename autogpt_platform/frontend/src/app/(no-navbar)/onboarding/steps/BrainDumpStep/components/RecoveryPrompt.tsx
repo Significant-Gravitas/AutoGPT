@@ -15,29 +15,20 @@ interface Props {
 // whether the user wants it.
 export function RecoveryPrompt({ durationSecs, onResume, onDiscard }: Props) {
   return (
-    <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-      <Text
-        variant="h3"
-        className="!text-[1.125rem] !leading-[1.625rem] md:!text-[1.25rem] md:!leading-[1.75rem]"
-      >
-        Pick up where you left off?
-      </Text>
-      <Text variant="lead" className="!text-base !text-zinc-500">
+    <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
+      <Text variant="h5">Pick up where you left off?</Text>
+      <Text variant="body" tone="muted">
         We kept the{" "}
-        <span className="text-purple-500">{formatElapsed(durationSecs)}</span>{" "}
-        you already recorded.
+        <span className="text-zinc-900">{formatElapsed(durationSecs)}</span> you
+        already recorded.
       </Text>
-      <div className="flex w-full flex-col items-center gap-3">
-        <Button onClick={onResume} className="w-full max-w-xs">
+      <div className="flex w-full flex-col items-center gap-2">
+        <Button size="small" onClick={onResume} className="w-full max-w-xs">
           Use that recording
         </Button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          className="text-sm text-zinc-700 transition-colors hover:text-zinc-900"
-        >
+        <Button variant="ghost" size="xs" onClick={onDiscard}>
           Start over
-        </button>
+        </Button>
       </div>
     </div>
   );

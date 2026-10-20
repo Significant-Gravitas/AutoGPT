@@ -9,13 +9,16 @@ interface Props {
 }
 
 // Calm on purpose. The recording is safe in the browser and (once it got
-// that far) on the server, so this is an inconvenience, not a loss — the
-// copy and the download button both have to make that obvious. Retrying is
-// the orb itself, so only the secondary exits live here.
+// that far) on the server, which keeps a failed take for 46 hours 30 minutes
+// (the hourly sweep then deletes it, within 48 hours), so this is an
+// inconvenience, not a loss — the copy and the download button both have to
+// make that obvious. Download and retry both read the
+// browser's copy. Retrying is the orb itself, so only the secondary exits
+// live here.
 export function FailureState({ onDownload, onSkip }: Props) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
-      <Text variant="lead" className="!text-base !text-zinc-500">
+      <Text variant="body" tone="muted">
         Your recording is safe. Try again.
       </Text>
       <div className="flex items-center gap-3">

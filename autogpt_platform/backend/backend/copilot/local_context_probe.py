@@ -2,7 +2,7 @@
 
 The local transport (``CHAT_USE_LOCAL=true``) talks to an operator-run backend
 (Ollama, vLLM, LM Studio, llama.cpp server, …). That backend's *loaded* context
-window — not any AutoGPT-side config — is the real ceiling AutoPilot must compact
+window — not any AutoGPT-side config — is the real ceiling Otto must compact
 its conversation under. Rather than carry a second config value that has to be
 kept in lockstep with the server (and silently drifts), we read the window back
 from the backend at runtime.
@@ -15,7 +15,7 @@ Probe order (first hit wins; every probe is best-effort, all errors swallowed):
     LM Studio       GET {root}/api/v0/models      data[].max_context_length
 
 Backends that expose nothing standard (LiteLLM proxy, Jan, text-generation-webui)
-fall back to ``LOCAL_CONTEXT_FALLBACK`` (32768) — conservative: AutoPilot compacts
+fall back to ``LOCAL_CONTEXT_FALLBACK`` (32768) — conservative: Otto compacts
 as if the window were 32k, retaining less history rather than overflowing.
 
 ``{root}`` is the base URL minus a trailing ``/v1``. The Ollama probe only returns
@@ -41,13 +41,13 @@ logger = logging.getLogger(__name__)
 _FLOOR_RESERVE = 24_000
 _TARGET_FLOOR = 4_096
 
-# Used when no backend reports a window. Matches the installer's default
-# ``OLLAMA_CONTEXT_LENGTH`` so the common Ollama path is correct even when the
-# model is briefly unloaded and ``/api/ps`` is empty.
+# Used when no backend reports a window. Deliberately remains 32k even though
+# the default Ornith installer uses 262k: assuming a huge window for a backend
+# that cannot report one risks overflowing its actual context limit.
 LOCAL_CONTEXT_FALLBACK = 32_768
 
 # Below this, the ~19k floor leaves almost no room for conversation — the
-# operator's backend window is misconfigured for AutoPilot.
+# operator's backend window is misconfigured for Otto.
 _MINIMUM_SAFE_WINDOW = 24_576
 
 _PROBE_TIMEOUT_S = 2.0
@@ -114,7 +114,7 @@ async def probe_local_context_window(base_url: str, model: str) -> int:
     if detected < _MINIMUM_SAFE_WINDOW:
         logger.warning(
             "[LocalProbe] Backend at %s reports a %d-token context window — below "
-            "the %d-token minimum AutoPilot needs (its system prompt + tools use "
+            "the %d-token minimum Otto needs (its system prompt + tools use "
             "~19k alone, leaving only ~%d for conversation). Raise the backend's "
             "context length (e.g. OLLAMA_CONTEXT_LENGTH=%d) to avoid truncation.",
             base_url,

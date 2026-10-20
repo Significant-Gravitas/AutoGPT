@@ -4,6 +4,8 @@ import {
   usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useExcludeSkillLearningSource } from "@/app/api/__generated__/endpoints/skill-learning/skill-learning";
+import { CHAT_SOURCE_KIND } from "@/services/skill-learning/helpers";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -24,9 +26,9 @@ import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
-import { formatNotificationTitle } from "../../helpers";
 import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
@@ -40,9 +42,12 @@ import {
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useRouter } from "next/navigation";
 import { ChatSessionRow } from "./components/ChatSessionRow/ChatSessionRow";
+import { ExpertSessionGroup } from "./components/ExpertSessionGroup/ExpertSessionGroup";
+import { HeaderAction } from "./components/HeaderAction";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import { sessionAgeDays, useSessionAgeClock } from "./useSessionAgeClock";
 import {
   Files01Icon,
   PlusSignCircleIcon,
@@ -55,7 +60,7 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
   const openSearch = useGlobalSearchStore((state) => state.openSearch);
   const closeSearch = useGlobalSearchStore((state) => state.closeSearch);
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
@@ -91,9 +96,31 @@ export function ChatSidebar() {
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const isPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
+  const { mutate: excludeFromLearning } = useExcludeSkillLearningSource({
+    mutation: {
+      onSuccess: () => {
+        toast({
+          title: "Excluded from learning",
+          description:
+            "This chat will not be used for future skill learning. Skills " +
+            "that depended on it were restored or paused.",
+        });
+      },
+      onError: (error) => {
+        toast({
+          title: "Could not exclude this chat",
+          description:
+            error instanceof ApiError
+              ? error.message
+              : "Nothing has been recorded for this chat yet.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
   const { expertsById } = useExpertMap();
   const [, setExpertIdParam] = useQueryState("expertId", parseAsString);
 
@@ -156,14 +183,6 @@ export function ChatSidebar() {
     });
   }, [sessionId, queryClient]);
 
-  // Clear completed indicator when navigating to a session (works for all paths)
-  useEffect(() => {
-    if (!sessionId || !completedSessionIDs.has(sessionId)) return;
-    clearCompletedSession(sessionId);
-    const remaining = Math.max(0, completedSessionIDs.size - 1);
-    document.title = formatNotificationTitle(remaining);
-  }, [sessionId, completedSessionIDs, clearCompletedSession]);
-
   function handleNewChat() {
     setSessionId(null);
     // Without this the ?expertId= deep-link adoption in `useChatSession`
@@ -174,24 +193,27 @@ export function ChatSidebar() {
     }
   }
 
-  function handleSelectSession(id: string, expertId: string | null) {
-    setSessionId(id);
-    if (isExpertsEnabled) {
-      setExpertIdParam(expertId);
-    }
-    closeSearch();
-  }
+  // Row handlers are shared by every row and keep one identity across renders
+  // (see `ChatSessionRow`), so a list update only re-renders the rows whose
+  // own props changed.
+  const handleSelectSession = useStableCallback(
+    (id: string, expertId: string | null) => {
+      setSessionId(id);
+      if (isExpertsEnabled) {
+        setExpertIdParam(expertId);
+      }
+      closeSearch();
+    },
+  );
 
-  function handleRenameClick(
-    e: React.MouseEvent,
-    id: string,
-    title: string | null | undefined,
-  ) {
-    e.stopPropagation();
-    renameCancelledRef.current = false;
-    setEditingSessionId(id);
-    setEditingTitle(title || "");
-  }
+  const handleRenameClick = useStableCallback(
+    (e: React.MouseEvent, id: string, title: string | null | undefined) => {
+      e.stopPropagation();
+      renameCancelledRef.current = false;
+      setEditingSessionId(id);
+      setEditingTitle(title || "");
+    },
+  );
 
   function handleRenameSubmit(id: string) {
     const trimmed = editingTitle.trim();
@@ -202,21 +224,50 @@ export function ChatSidebar() {
     }
   }
 
-  function handleDeleteClick(
-    e: React.MouseEvent,
-    id: string,
-    title: string | null | undefined,
-  ) {
-    e.stopPropagation();
-    requestDelete(id, title);
-  }
+  const handleRenameCancel = useStableCallback(() => {
+    renameCancelledRef.current = true;
+    setEditingSessionId(null);
+  });
 
-  function handlePinClick(e: React.MouseEvent, id: string, isPinned: boolean) {
-    e.stopPropagation();
-    setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
-  }
+  const handleRenameBlur = useStableCallback((id: string) => {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      return;
+    }
+    handleRenameSubmit(id);
+  });
 
-  async function handleExportClick(
+  const handleDeleteClick = useStableCallback(
+    (e: React.MouseEvent, id: string, title: string | null | undefined) => {
+      e.stopPropagation();
+      requestDelete(id, title);
+    },
+  );
+
+  const handleExcludeClick = useStableCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      excludeFromLearning({ sourceKind: CHAT_SOURCE_KIND, sourceRef: id });
+    },
+  );
+
+  const handlePinClick = useStableCallback(
+    (e: React.MouseEvent, id: string, isPinned: boolean) => {
+      e.stopPropagation();
+      setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
+    },
+  );
+
+  const handleShareClick = useStableCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      setSharingSessionId(id);
+    },
+  );
+
+  const handleExportClick = useStableCallback(handleExport);
+
+  async function handleExport(
     e: React.MouseEvent,
     id: string,
     title: string | null | undefined,
@@ -246,30 +297,36 @@ export function ChatSidebar() {
     }
   }
 
-  const { pinned, groups, showHeaders } = groupSessionsForSidebar({
-    sessions,
-    floatPinned: isPinningEnabled,
-  });
+  const { pinned, groups, showHeaders } = useMemo(
+    () =>
+      groupSessionsForSidebar({
+        sessions,
+        floatPinned: isPinningEnabled,
+      }),
+    [sessions, isPinningEnabled],
+  );
   const sessionSections = isExpertsEnabled && showHeaders ? groups : null;
+  const ageClock = useSessionAgeClock(sessions);
 
   function renderSessionRow(
     session: SessionSummaryResponse,
     index: number,
     list: SessionSummaryResponse[],
   ) {
+    const isEditing = editingSessionId === session.id;
     return (
       <ChatSessionRow
         key={session.id}
         session={session}
         isActive={session.id === sessionId}
         isNextActive={list[index + 1]?.id === sessionId}
-        isEditing={editingSessionId === session.id}
-        editingTitle={editingTitle}
+        isEditing={isEditing}
+        editingTitle={isEditing ? editingTitle : ""}
         renameInputRef={renameInputRef}
         isExporting={exportingSessionIds.has(session.id)}
         isDeleting={isDeleting}
         isPinningEnabled={isPinningEnabled}
-        isSharingEnabled={chatSharingEnabled}
+        isLearningEnabled={isLearningEnabled}
         showProcessing={
           !!session.is_processing &&
           shouldShowSessionProcessingIndicator({
@@ -283,55 +340,18 @@ export function ChatSidebar() {
         showCompleted={
           completedSessionIDs.has(session.id) && session.id !== sessionId
         }
-        onSelect={() =>
-          handleSelectSession(session.id, session.expert_id ?? null)
-        }
+        ageDays={sessionAgeDays(session.updated_at, ageClock)}
+        onSelect={handleSelectSession}
         onEditingTitleChange={setEditingTitle}
-        onRenameCancel={() => {
-          renameCancelledRef.current = true;
-          setEditingSessionId(null);
-        }}
-        onRenameBlur={() => {
-          if (renameCancelledRef.current) {
-            renameCancelledRef.current = false;
-            return;
-          }
-          handleRenameSubmit(session.id);
-        }}
-        onPin={(e) => handlePinClick(e, session.id, !!session.is_pinned)}
-        onRename={(e) => handleRenameClick(e, session.id, session.title)}
-        onExport={(e) => handleExportClick(e, session.id, session.title)}
-        onShare={(e) => {
-          e.stopPropagation();
-          setSharingSessionId(session.id);
-        }}
-        onDelete={(e) => handleDeleteClick(e, session.id, session.title)}
+        onRenameCancel={handleRenameCancel}
+        onRenameBlur={handleRenameBlur}
+        onPin={handlePinClick}
+        onRename={handleRenameClick}
+        onExport={handleExportClick}
+        onShare={handleShareClick}
+        onExcludeFromLearning={handleExcludeClick}
+        onDelete={handleDeleteClick}
       />
-    );
-  }
-
-  function renderSessionSection(
-    key: string,
-    label: string,
-    list: SessionSummaryResponse[],
-  ) {
-    const headerId = `session-group-${key}`;
-    return (
-      <div
-        key={key}
-        role="group"
-        aria-labelledby={headerId}
-        className="flex flex-col gap-1"
-      >
-        <div
-          id={headerId}
-          data-testid={`expert-group-header-${key}`}
-          className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-zinc-500"
-        >
-          {label}
-        </div>
-        {list.map((session, index) => renderSessionRow(session, index, list))}
-      </div>
     );
   }
 
@@ -398,34 +418,42 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center">
+                <div className="flex items-center [&_button:hover]:!bg-zinc-100 [&_button]:!h-8 [&_button]:!w-8 [&_button]:!min-w-0 [&_button]:!rounded-full [&_button]:!p-0 [&_button]:!text-zinc-600 [&_svg]:!size-[1.125rem]">
                   {isChatSearchEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Search chats"
-                      onClick={() => openSearch()}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Search01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Search chats">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Search chats"
+                        onClick={() => openSearch()}
+                      >
+                        <Icon icon={Search01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
                   {isArtifactsEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Files"
-                      onClick={() => router.push("/artifacts")}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Files01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Files">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Files"
+                        onClick={() => router.push("/artifacts")}
+                      >
+                        <Icon icon={Files01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
-                  <UsagePopover />
-                  <NotificationToggle />
-                  <SidebarTrigger />
+                  <HeaderAction label="Usage limits">
+                    <UsagePopover />
+                  </HeaderAction>
+                  <HeaderAction label="Notification settings">
+                    <NotificationToggle />
+                  </HeaderAction>
+                  <HeaderAction label="Collapse sidebar">
+                    <SidebarTrigger />
+                  </HeaderAction>
                 </div>
               </div>
               {sessionId ? (
@@ -461,17 +489,36 @@ export function ChatSidebar() {
                 </p>
               ) : sessionSections ? (
                 <>
-                  {pinned.length > 0 &&
-                    renderSessionSection("pinned", "Pinned", pinned)}
-                  {sessionSections.map((group) =>
-                    renderSessionSection(
-                      group.expertId ?? "autopilot",
-                      group.expertId
-                        ? (expertsById.get(group.expertId)?.name ?? "Expert")
-                        : "Autopilot",
-                      group.sessions,
-                    ),
+                  {pinned.length > 0 && (
+                    <ExpertSessionGroup
+                      groupKey="pinned"
+                      label="Pinned"
+                      sessions={pinned}
+                      renderRow={renderSessionRow}
+                    />
                   )}
+                  {sessionSections.map((group) => {
+                    const groupKey = group.expertId ?? "autopilot";
+                    const expert = group.expertId
+                      ? expertsById.get(group.expertId)
+                      : null;
+                    return (
+                      <ExpertSessionGroup
+                        key={groupKey}
+                        groupKey={groupKey}
+                        role={
+                          group.expertId
+                            ? expert?.jobTitle || expert?.role
+                            : "Head of AI"
+                        }
+                        label={
+                          group.expertId ? (expert?.name ?? "Expert") : "Otto"
+                        }
+                        sessions={group.sessions}
+                        renderRow={renderSessionRow}
+                      />
+                    );
+                  })}
                 </>
               ) : (
                 sessions.map((session, index) =>

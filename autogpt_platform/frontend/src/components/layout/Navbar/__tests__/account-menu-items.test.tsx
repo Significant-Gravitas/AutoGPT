@@ -11,7 +11,9 @@ describe("account menu changelog entry", () => {
 
     expect(changelog).toBeDefined();
     expect(changelog?.external).toBe(true);
-    expect(changelog?.href).toBe("https://agpt.co/changelog");
+    expect(changelog?.href).toBe(
+      "https://agpt.co/docs/platform/changelog/changelog/",
+    );
     expect(changelog?.icon).toBe(IconType.WhatsNew);
 
     const changelogIndex = items.findIndex((i) => i.text === "Changelog");

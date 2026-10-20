@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.execution import ExecutionContext
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.file import (
     is_media_file_ref,
     parse_data_uri,
@@ -38,13 +39,11 @@ class TestFileCloudIntegration:
         cloud_path = "gcs://test-bucket/uploads/456/source.txt"
         cloud_content = b"cloud file content"
 
-        with patch(
-            "backend.util.file.get_cloud_storage_handler"
-        ) as mock_handler_getter, patch(
-            "backend.util.file.scan_content_safe"
-        ) as mock_scan, patch(
-            "backend.util.file.Path"
-        ) as mock_path_class:
+        with (
+            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
+            patch("backend.util.file.scan_content_safe") as mock_scan,
+            patch("backend.util.file.Path") as mock_path_class,
+        ):
 
             # Mock cloud storage handler
             mock_handler = MagicMock()
@@ -115,17 +114,13 @@ class TestFileCloudIntegration:
         cloud_path = "gcs://test-bucket/uploads/456/image.png"
         cloud_content = b"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR"  # PNG header
 
-        with patch(
-            "backend.util.file.get_cloud_storage_handler"
-        ) as mock_handler_getter, patch(
-            "backend.util.file.scan_content_safe"
-        ) as mock_scan, patch(
-            "backend.util.file.get_mime_type"
-        ) as mock_mime, patch(
-            "backend.util.file.base64.b64encode"
-        ) as mock_b64, patch(
-            "backend.util.file.Path"
-        ) as mock_path_class:
+        with (
+            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
+            patch("backend.util.file.scan_content_safe") as mock_scan,
+            patch("backend.util.file.get_mime_type") as mock_mime,
+            patch("backend.util.file.base64.b64encode") as mock_b64,
+            patch("backend.util.file.Path") as mock_path_class,
+        ):
 
             # Mock cloud storage handler
             mock_handler = MagicMock()
@@ -174,17 +169,13 @@ class TestFileCloudIntegration:
         graph_exec_id = "test-exec-123"
         data_uri = "data:text/plain;base64,SGVsbG8gd29ybGQ="
 
-        with patch(
-            "backend.util.file.get_cloud_storage_handler"
-        ) as mock_handler_getter, patch(
-            "backend.util.file.scan_content_safe"
-        ) as mock_scan, patch(
-            "backend.util.file.base64.b64decode"
-        ) as mock_b64decode, patch(
-            "backend.util.file.uuid.uuid4"
-        ) as mock_uuid, patch(
-            "backend.util.file.Path"
-        ) as mock_path_class:
+        with (
+            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
+            patch("backend.util.file.scan_content_safe") as mock_scan,
+            patch("backend.util.file.base64.b64decode") as mock_b64decode,
+            patch("backend.util.file.uuid.uuid4") as mock_uuid,
+            patch("backend.util.file.Path") as mock_path_class,
+        ):
 
             # Mock cloud storage handler
             mock_handler = MagicMock()
@@ -260,13 +251,11 @@ class TestFileCloudIntegration:
         local_file = "test_video.mp4"
         file_content = b"fake video content"
 
-        with patch(
-            "backend.util.file.get_cloud_storage_handler"
-        ) as mock_handler_getter, patch(
-            "backend.util.file.scan_content_safe"
-        ) as mock_scan, patch(
-            "backend.util.file.Path"
-        ) as mock_path_class:
+        with (
+            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
+            patch("backend.util.file.scan_content_safe") as mock_scan,
+            patch("backend.util.file.Path") as mock_path_class,
+        ):
 
             # Mock cloud storage handler - not a cloud path
             mock_handler = MagicMock()
@@ -312,13 +301,11 @@ class TestFileCloudIntegration:
         local_file = "infected.exe"
         file_content = b"malicious content"
 
-        with patch(
-            "backend.util.file.get_cloud_storage_handler"
-        ) as mock_handler_getter, patch(
-            "backend.util.file.scan_content_safe"
-        ) as mock_scan, patch(
-            "backend.util.file.Path"
-        ) as mock_path_class:
+        with (
+            patch("backend.util.file.get_cloud_storage_handler") as mock_handler_getter,
+            patch("backend.util.file.scan_content_safe") as mock_scan,
+            patch("backend.util.file.Path") as mock_path_class,
+        ):
 
             # Mock cloud storage handler - not a cloud path
             mock_handler = MagicMock()
@@ -508,3 +495,114 @@ class TestResolveMediaContent:
             ctx,
             return_format="for_local_processing",
         )
+
+
+# ---------------------------------------------------------------------------
+# store_media_file: expert-attributed runs
+# ---------------------------------------------------------------------------
+
+
+class TestStoreMediaFileExpertScope:
+    """Blocks an expert runs from its chat resolve ``workspace://`` refs inside
+    the expert's own conversations only; session-less and owner runs keep the
+    full workspace."""
+
+    @pytest.mark.asyncio
+    async def test_expert_run_confines_workspace_refs_to_the_expert(self):
+        ctx = ExecutionContext(
+            user_id="user-1",
+            graph_exec_id="exec-1",
+            workspace_id="ws-1",
+            session_id="sess-1",
+            expert_id="expert-a",
+        )
+        scope = WorkspaceScope(expert_id="expert-a", session_ids=["older"])
+        db = MagicMock()
+        db.resolve_expert_workspace_scope = AsyncMock(return_value=scope)
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(
+            side_effect=WorkspaceAccessDeniedError("denied")
+        )
+        with (
+            patch(
+                "backend.util.file.get_cloud_storage_handler",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.data.db_accessors.workspace_db", return_value=db),
+            patch(
+                "backend.util.workspace.WorkspaceManager", return_value=manager
+            ) as manager_cls,
+            pytest.raises(WorkspaceAccessDeniedError),
+        ):
+            await store_media_file(
+                MediaFileType("workspace://foreign-file"),
+                ctx,
+                return_format="for_local_processing",
+            )
+
+        db.resolve_expert_workspace_scope.assert_awaited_once_with("user-1", "expert-a")
+        manager_cls.assert_called_once_with(
+            "user-1", "ws-1", "sess-1", scope=scope.with_session("sess-1")
+        )
+
+    @pytest.mark.asyncio
+    async def test_expert_run_without_a_session_keeps_the_full_workspace(self):
+        """Scheduled, webhook and preset runs of an expert's workflow have no
+        chat session and write at the workspace root, so they stay unscoped."""
+        ctx = ExecutionContext(
+            user_id="user-1",
+            graph_exec_id="exec-1",
+            workspace_id="ws-1",
+            expert_id="expert-a",
+        )
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(side_effect=RuntimeError("stop"))
+        with (
+            patch(
+                "backend.util.file.get_cloud_storage_handler",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.data.db_accessors.workspace_db") as workspace_db,
+            patch(
+                "backend.util.workspace.WorkspaceManager", return_value=manager
+            ) as manager_cls,
+            pytest.raises(RuntimeError, match="stop"),
+        ):
+            await store_media_file(
+                MediaFileType("workspace://any-file"),
+                ctx,
+                return_format="for_local_processing",
+            )
+
+        workspace_db.assert_not_called()
+        manager_cls.assert_called_once_with("user-1", "ws-1", None, scope=None)
+
+    @pytest.mark.asyncio
+    async def test_owner_run_keeps_the_full_workspace(self):
+        ctx = ExecutionContext(
+            user_id="user-1",
+            graph_exec_id="exec-1",
+            workspace_id="ws-1",
+            session_id="sess-1",
+        )
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(side_effect=RuntimeError("stop"))
+        with (
+            patch(
+                "backend.util.file.get_cloud_storage_handler",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.data.db_accessors.workspace_db") as workspace_db,
+            patch(
+                "backend.util.workspace.WorkspaceManager", return_value=manager
+            ) as manager_cls,
+            pytest.raises(RuntimeError, match="stop"),
+        ):
+            await store_media_file(
+                MediaFileType("workspace://any-file"),
+                ctx,
+                return_format="for_local_processing",
+            )
+
+        workspace_db.assert_not_called()
+        manager_cls.assert_called_once_with("user-1", "ws-1", "sess-1", scope=None)

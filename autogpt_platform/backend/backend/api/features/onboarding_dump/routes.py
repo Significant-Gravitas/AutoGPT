@@ -26,6 +26,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     GreetingDoneResponse,
     IntroCardResponse,
+    RecommendedExpertsResponse,
     RecommendedProvidersResponse,
     UploadPartResponse,
 )
@@ -97,8 +98,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -118,8 +118,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -224,6 +223,20 @@ async def get_brain_dump_recommended_providers(
     return await service.get_recommended_providers(user_id)
 
 
+@router.get("/recommended-experts", operation_id="get_brain_dump_recommended_experts")
+async def get_brain_dump_recommended_experts(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> RecommendedExpertsResponse:
+    """The team Otto proposes: who to hire first, and the raise door.
+
+    Written by a background job beside the greeting one; a plain read
+    here, with the deterministic fallback filled in for takes the job
+    never ran on. ``ready=false`` means keep polling. ``team`` is null
+    when the expert-team feature is off for this user.
+    """
+    return await service.get_recommended_experts(user_id)
+
+
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")
 async def complete_brain_dump_greeting(
     user_id: Annotated[str, Security(get_user_id)],
@@ -241,14 +254,37 @@ async def complete_brain_dump_greeting(
 async def download_brain_dump_recording(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> RedirectResponse:
-    """Hand back the user's own recording.
+    """Hand back the user's own recording, for as long as it is kept.
 
-    Kept working even when ``status`` is ``failed`` — "your recording is
-    safe" has to be true, and this is what makes it checkable.
+    Meant for a take that failed: "your recording is safe" has to be
+    true, and this is what makes it checkable. A transcribed take has no
+    recording left, since only the transcript is kept. A failed take's
+    recording is deleted within 48 hours (see ``retention.py``), and one
+    that is due is refused even before the sweep reaches it; a signed URL
+    for one that is gone would only fail at the bucket, so say so here
+    instead.
     """
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:
         raise fastapi.HTTPException(status_code=404, detail="No recording found")
+    try:
+        available = await storage.audio_available(dump.audioPath)
+    except Exception as e:
+        # Type only: a GCS error carries the object URL, which holds the
+        # user ID, and so would the traceback of a 500.
+        logger.warning(
+            f"Brain dump recording check failed at the bucket: {type(e).__name__}"
+        )
+        raise fastapi.HTTPException(
+            status_code=503, detail="Recording temporarily unavailable, try again"
+        ) from None
+    if not available:
+        # So ``has_audio`` stops offering it, even if the blob went some way
+        # other than the sweep, which clears the row itself.
+        await db.clear_audio_paths([dump.audioPath])
+        raise fastapi.HTTPException(
+            status_code=404, detail="Recording no longer available"
+        )
 
     url = await storage.audio_download_url(user_id, dump.audioPath)
     return RedirectResponse(url=url, status_code=307)

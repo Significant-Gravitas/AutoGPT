@@ -47,8 +47,8 @@ describe("useChangelog", () => {
     const { result } = renderHook(() => useChangelog());
     await waitFor(() => expect(result.current.latestEntry?.slug).toBe(LATEST));
 
-    act(() => result.current.pauseAutoDismiss());
-    act(() => result.current.resumeAutoDismiss());
+    act(() => result.current.pauseAutoDismiss("hover"));
+    act(() => result.current.resumeAutoDismiss("hover"));
     act(() => result.current.dismiss());
 
     await waitFor(

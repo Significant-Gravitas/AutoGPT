@@ -20,14 +20,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { getNextTourScenario, tourScenarios } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
-import { useTourScenarioSelection } from "../../useTourScenarioSelection";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
 import { TourUpsellCard } from "./components/TourUpsellCard";
 import {
@@ -38,15 +35,10 @@ import {
   Search01Icon,
   SparklesIcon,
   Store01Icon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-// Visual clone of the logged-in AppSidebar for the public tour demo. Only
-// Marketplace navigates; every other destination needs an account, so those
-// items render disabled. The "Recent chats" group lists the demo scenarios
-// as if they were chat sessions.
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 
 function DisabledMenuItem({
   icon,
@@ -69,71 +61,29 @@ function DisabledMenuItem({
   );
 }
 
-function TourSessionsMenu({ variant }: { variant: TourSidebarVariant }) {
-  const router = useRouter();
-  const activeScenarioId = useTourStore((s) => s.activeScenarioId);
-  const watchedScenarioIds = useTourStore((s) => s.watchedScenarioIds);
-  const isDemoComplete = useTourStore((s) => s.isDemoComplete);
-  const isNudgeVisible = useTourStore((s) => s.isNudgeVisible);
-  const selectTourScenario = useTourScenarioSelection();
-
-  // While the visitor idles on a finished demo, the scenario the nudge chip
-  // points at pulses in the sidebar too.
-  const nudgeScenarioId =
-    variant === "tour" && isDemoComplete && isNudgeVisible
-      ? getNextTourScenario(activeScenarioId, watchedScenarioIds).id
-      : null;
-
-  function selectScenario(id: string) {
-    selectTourScenario(id);
-    if (variant === "marketplace")
-      router.push("/tour/chat?utm_source=platform_marketplace");
-  }
-
-  return (
-    <SidebarMenu>
-      {tourScenarios.map((scenario) => (
-        <SidebarMenuItem key={scenario.id}>
-          <SidebarMenuButton
-            isActive={variant === "tour" && scenario.id === activeScenarioId}
-            tooltip={scenario.label}
-            onClick={() => selectScenario(scenario.id)}
-            className={cn(
-              "font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200",
-              scenario.id === nudgeScenarioId &&
-                "animate-pulse bg-violet-50 outline-dashed outline-1 outline-violet-400",
-            )}
-          >
-            <Icon icon={scenario.icon} className="size-4 shrink-0" />
-            <span className="truncate">{scenario.label}</span>
-            {variant === "tour" && watchedScenarioIds.includes(scenario.id) && (
-              <span className="ml-auto flex shrink-0 items-center gap-0.5 text-xs text-emerald-600">
-                <Icon icon={Tick02Icon} className="size-3" />
-                watched
-              </span>
-            )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
-  );
-}
-
-type TourSidebarVariant = "tour" | "marketplace";
-
 interface Props {
-  /** "marketplace" renders the sidebar as a logged-out upsell shell: the
-   * sessions group is honestly labelled a demo and clicking one navigates
-   * into /tour/chat instead of switching in place. */
-  variant?: TourSidebarVariant;
+  variant?: "tour" | "marketplace";
 }
+
+// Matches the mobile sidebar sheet's closing animation
+// (`data-[state=closed]:duration-200` in `@/components/ui/sidebar`).
+const SHEET_CLOSE_MS = 200;
 
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
-  // Once the demo finishes, the end card in the chat carries the upsell —
-  // the sidebar card hides until a new scenario resets the demo.
+  // In the tour, the end card replaces the sidebar upsell after completion.
+  // The marketplace always shows the sidebar card.
   const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+
+  // On phones the sidebar is a modal sheet, which blocks clicks and focus
+  // outside itself, Cookiebot's dialog included: close it first.
+  const isSheetOpen = isMobile && openMobile;
+  async function closeMobileSheet() {
+    setOpenMobile(false);
+    await new Promise((resolve) => setTimeout(resolve, SHEET_CLOSE_MS));
+  }
 
   return (
     <Sidebar
@@ -173,7 +123,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
               <SidebarGroupContent>
                 <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                   <DisabledMenuItem icon={Search01Icon} label="Search" />
-                  <DisabledMenuItem icon={GridViewIcon} label="Agents" />
+                  <DisabledMenuItem icon={GridViewIcon} label="Workflows" />
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
@@ -214,28 +164,18 @@ export function TourSidebar({ variant = "tour" }: Props) {
               </SidebarGroup>
             </Collapsible>
           </motion.div>
-
-          <motion.div
-            variants={itemVariants}
-            className="group-data-[collapsible=icon]:hidden"
-          >
-            <SidebarGroup className="py-1">
-              <SidebarGroupLabel className="text-[13px] font-medium">
-                {variant === "marketplace" ? "Try Autopilot" : "Recent chats"}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <TourSessionsMenu variant={variant} />
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </motion.div>
         </motion.div>
       </SidebarContent>
 
-      {!isDemoComplete && (
-        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
-          <TourUpsellCard />
-        </SidebarFooter>
-      )}
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        {(variant === "marketplace" || !isDemoComplete) && (
+          <TourUpsellCard surface={variant} />
+        )}
+        <CookieSettingsLink
+          className="self-center"
+          beforeOpen={isSheetOpen ? closeMobileSheet : undefined}
+        />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

@@ -118,7 +118,7 @@ class ListAgentTriggersTool(BaseTool):
             parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Library agent not found: {e}",
+                message=f"Library workflow not found: {e}",
                 error="library_agent_not_found",
                 session_id=session_id,
             )
@@ -133,11 +133,16 @@ class ListAgentTriggersTool(BaseTool):
                 library_agent_id=library_agent_id,
                 parent_graph_id=parent.graph_id,
             ),
+            # Scope to the session's memory scope (its expert, or Otto's
+            # unattributed presets) — without this the listing leaks other
+            # scopes' presets AND their webhook ingress URLs into the chat.
             ldb.list_presets(
                 user_id=user_id,
                 page=1,
                 page_size=100,
                 graph_id=parent.graph_id,
+                expert_id=session.expert_id if session else None,
+                filter_by_expert=True,
             ),
         )
         webhook_presets = [
@@ -170,7 +175,7 @@ class ListAgentTriggersTool(BaseTool):
         ]
 
         message = (
-            f"Found {len(triggers)} trigger(s) for this agent."
+            f"Found {len(triggers)} trigger(s) for this workflow."
             if triggers
             else "No triggers configured."
         )

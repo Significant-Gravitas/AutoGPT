@@ -1,0 +1,2 @@
+ALTER TABLE "Expert"
+ADD COLUMN "color" TEXT NOT NULL DEFAULT '';

@@ -1,14 +1,35 @@
 import datetime
 import enum
-from typing import TYPE_CHECKING, List, Self
+from typing import TYPE_CHECKING, Annotated, List, Self
 
 import prisma.enums
 import pydantic
 
 from backend.util.models import Pagination
 
+from .categories import validate_canonical_categories
+
 if TYPE_CHECKING:
     import prisma.models
+
+
+SUB_HEADING_MAX_LENGTH = 100
+
+# Surfaced as a one-line card subtitle, so it must be a short CTA rather than a
+# description; whitespace-only is stripped to "" and rejected as empty.
+SubHeading = Annotated[
+    str,
+    pydantic.StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=SUB_HEADING_MAX_LENGTH
+    ),
+    pydantic.Field(
+        description=(
+            "Short call-to-action line describing what the agent does for the "
+            "user, e.g. 'Find decision-makers at any company in seconds'. "
+            f"Required; max {SUB_HEADING_MAX_LENGTH} characters."
+        ),
+    ),
+]
 
 
 class ChangelogEntry(pydantic.BaseModel):
@@ -301,6 +322,12 @@ class StoreSubmissionsResponse(pydantic.BaseModel):
     stats: SubmissionStats
 
 
+class StoreCategoryInfo(pydantic.BaseModel):
+    value: str
+    label: str
+    description: str
+
+
 class StoreSubmissionRequest(pydantic.BaseModel):
     graph_id: str = pydantic.Field(
         ..., min_length=1, description="Graph ID cannot be empty"
@@ -310,28 +337,36 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     )
     slug: str
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None
-    categories: list[str] = []
+    categories: list[str]
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None
-    categories: list[str] = []
+    categories: list[str]
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionAdminView(StoreSubmission):

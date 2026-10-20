@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
@@ -21,6 +22,7 @@ import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import { SUB_HEADING_MAX } from "./helpers";
 import {
   Album01Icon,
   AlertCircleIcon,
@@ -61,6 +63,8 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
+  const { categories, isUnavailable, placeholder } = useStoreCategories();
+
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
   const [openAccordion, setOpenAccordion] = React.useState("");
@@ -75,18 +79,10 @@ export function AgentInfoStep({
     form.setValue("recommendedScheduleCron", cronExpression);
   };
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const isSubmitDisabled =
     Object.keys(form.formState.errors).length > 0 || isSubmitting;
@@ -124,7 +120,7 @@ export function AgentInfoStep({
     : "Build the store listing";
   const description = isMarketplaceUpdate
     ? "Explain what changed, then adjust any listing details that need to move with this version."
-    : "Write a bit of details about your agent so reviewers and users know what to expect.";
+    : "Write a bit of details about your workflow so reviewers and users know what to expect.";
 
   return (
     <div className="mx-auto flex w-full flex-col">
@@ -217,7 +213,7 @@ export function AgentInfoStep({
                         label="Title"
                         labelTooltip="Public name shown on the marketplace listing."
                         type="text"
-                        placeholder="Agent name"
+                        placeholder="Workflow name"
                         error={form.formState.errors.title?.message}
                         {...field}
                       />
@@ -228,16 +224,22 @@ export function AgentInfoStep({
                     control={form.control}
                     name="subheader"
                     render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Subheader"
-                        labelTooltip="One-sentence tagline displayed under the title."
-                        type="text"
-                        placeholder="A concise tagline for your agent"
-                        error={form.formState.errors.subheader?.message}
-                        {...field}
-                      />
+                      <CharCountedTextarea
+                        max={SUB_HEADING_MAX}
+                        value={field.value ?? ""}
+                      >
+                        <Input
+                          id={field.name}
+                          labelVariant="body"
+                          label="Tagline"
+                          labelTooltip="The one-line subtitle shown under the workflow name and on preview cards. Start with a verb and name the outcome for the user."
+                          type="text"
+                          placeholder="Find decision-makers at any company in seconds"
+                          error={form.formState.errors.subheader?.message}
+                          required
+                          {...field}
+                        />
+                      </CharCountedTextarea>
                     )}
                   />
                 </div>
@@ -267,8 +269,9 @@ export function AgentInfoStep({
                       id={field.name}
                       labelVariant="body"
                       label="Category"
-                      labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      labelTooltip="Primary category that helps users discover the workflow."
+                      placeholder={placeholder}
+                      disabled={isUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}
@@ -351,10 +354,10 @@ export function AgentInfoStep({
                         id={field.name}
                         labelVariant="body"
                         label="Description"
-                        labelTooltip="What the agent does and the outcome users get."
+                        labelTooltip="What the workflow does and the outcome users get."
                         type="textarea"
                         rows={2}
-                        placeholder="Describe the outcome this agent creates"
+                        placeholder="Describe the outcome this workflow creates"
                         error={form.formState.errors.description?.message}
                         {...field}
                       />
@@ -374,7 +377,7 @@ export function AgentInfoStep({
                         id={field.name}
                         labelVariant="body"
                         label="Instructions"
-                        labelTooltip="Steps users should follow to set up and run the agent."
+                        labelTooltip="Steps users should follow to set up and run the workflow."
                         type="textarea"
                         rows={2}
                         placeholder="Explain inputs, setup, and what to expect after a run"
@@ -411,7 +414,7 @@ export function AgentInfoStep({
                         id={field.name}
                         labelVariant="body"
                         label="Output demo"
-                        labelTooltip="Link showing example output the agent produces."
+                        labelTooltip="Link showing example output the workflow produces."
                         type="url"
                         placeholder="https://youtube.com/watch?v=..."
                         error={form.formState.errors.agentOutputDemo?.message}
@@ -432,7 +435,7 @@ export function AgentInfoStep({
                             Recommended schedule
                           </Text>
                           <InformationTooltip
-                            description="Suggested cron schedule users can run the agent on. Sets a run cadence for recurring use cases."
+                            description="Suggested cron schedule users can run the workflow on. Sets a run cadence for recurring use cases."
                             iconSize={20}
                           />
                         </div>

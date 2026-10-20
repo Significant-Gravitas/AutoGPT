@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { humanizeCronExpression } from "./cron-expression-utils";
+import {
+  humanizeCronExpression,
+  safeHumanizeCronExpression,
+} from "./cron-expression-utils";
 
 describe("humanizeCronExpression", () => {
   it("renders comma-separated weekdays", () => {
@@ -31,5 +34,11 @@ describe("humanizeCronExpression", () => {
     expect(humanizeCronExpression("0 12 1 3-5 *")).toBe(
       "Every year on the 1st day of March, April, May at 12:00",
     );
+  });
+});
+
+describe("safeHumanizeCronExpression", () => {
+  it("uses a generic label for malformed cron expressions", () => {
+    expect(safeHumanizeCronExpression("not-a-cron")).toBe("Scheduled");
   });
 });

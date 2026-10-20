@@ -1,0 +1,45 @@
+Redis server 8.6.3
+
+Upstream source:
+https://github.com/redis/redis/tree/bd3b38d41070b478c58bc8b72d2af89cbccd1a40
+
+Upstream tag:
+https://github.com/redis/redis/releases/tag/8.6.3
+
+FalkorDB image definition using Redis 8.6.3:
+https://github.com/FalkorDB/FalkorDB/blob/efea8d99f8492f3eeaadcafeae29967c66d825a0/build/docker/Dockerfile.server
+
+Official Redis image manifest:
+redis:8.6.3@sha256:4d25e2fe601f7ffaeb4437cb6ced3518bc36edf34ebe98863c80836943d94529
+
+Official image packaging source:
+https://github.com/redis/docker-library-redis/tree/0e8b375a38d5b818b5baf23372e395ff8ee99d8e
+
+Redis source archive SHA-256 used by that packaging:
+58d0d1eb49a1ea6c2179659707fec171b1e2e2b8d5157ed2ec59d1d66ad5a654
+
+fast_float v6.1.4 license source:
+https://github.com/fastfloat/fast_float/blob/3e57d8dcfb0a04b5a8a26b486b54490a2e9b310f/LICENSE-MIT
+
+License bundle source:
+https://github.com/redis/redis/blob/bd3b38d41070b478c58bc8b72d2af89cbccd1a40/LICENSE.txt
+
+License bundle SHA-256:
+4a0e416b9537688f30dfe69ddaceb2ca64d96b7df02a0a6760d376890ddc4e40
+
+Contributions notice SHA-256:
+aa6a56234e5ca27f09010693d1c31ca83988d7a0dc80fb253603e052d1d7f0d1
+
+FalkorDB 4.20.1 is built on the official redis:8.6.3 image. This AutoGPT
+image copies /usr/local/bin/redis-server from the pinned FalkorDB container
+image to /opt/falkordb/redis-server. Redis 8.6.3 is offered under its
+upstream tri-license. The complete upstream license bundle and contributions
+notice are provided beside this file. The license and copyright notices for
+the dependencies linked into the upstream Redis server are preserved under
+deps/ and src/ using component-corresponding paths. Redis embeds fast_float's
+MIT notice in its vendored header, so the standalone LICENSE-MIT here comes
+from the matching upstream fast_float v6.1.4 tag. The official Redis image
+packaging modifies the default protected-mode setting and jemalloc build
+configuration; the exact packaging source above records those changes.
+Publication remains subject to the project's legal approval of the selected
+Redis license path and whole-image notice bundle.

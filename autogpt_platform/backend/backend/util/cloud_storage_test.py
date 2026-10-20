@@ -2,11 +2,14 @@
 Tests for cloud storage utilities.
 """
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
 from backend.util.cloud_storage import CloudStorageConfig, CloudStorageHandler
+from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 
 
 class TestCloudStorageHandler:
@@ -23,6 +26,14 @@ class TestCloudStorageHandler:
     def handler(self, config):
         """Create a test handler."""
         return CloudStorageHandler(config)
+
+    @patch("backend.util.cloud_storage.Config")
+    def test_cloud_storage_config_uses_private_bucket(self, mock_config):
+        mock_config.return_value.resolved_private_user_data_bucket = "private-data"
+
+        config = CloudStorageConfig()
+
+        assert config.gcs_bucket_name == "private-data"
 
     def test_parse_cloud_path_gcs(self, handler):
         """Test parsing GCS paths."""
@@ -70,7 +81,103 @@ class TestCloudStorageHandler:
         assert call_args[0][0] == "test-bucket"  # bucket name
         assert call_args[0][1].startswith("uploads/system/")  # blob name
         assert call_args[0][2] == content  # file content
-        assert "metadata" in call_args[1]  # metadata argument
+        # Top level, which GCS drops: saved schedules and presets keep
+        # pointing at /files/upload files, so they must never expire.
+        upload_metadata = call_args.kwargs["metadata"]
+        assert upload_metadata["expires_at"]
+        assert "metadata" not in upload_metadata
+
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_store_file_delete_when_expired_writes_custom_metadata(
+        self, mock_get_async_client, handler
+    ):
+        """The expiry has to land where the cleanup reads it."""
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+
+        before = datetime.now(timezone.utc)
+        await handler.store_file(
+            b"audio",
+            "brain-dump-rec.webm",
+            expiration_hours=168,
+            user_id="user-1",
+            delete_when_expired=True,
+        )
+
+        upload_metadata = mock_async_client.upload.call_args.kwargs["metadata"]
+        assert set(upload_metadata) == {"metadata"}
+        custom = upload_metadata["metadata"]
+        expires_at = datetime.fromisoformat(custom["expires_at"])
+        assert expires_at - before >= timedelta(hours=168)
+        assert expires_at - before < timedelta(hours=168, minutes=1)
+        assert custom["expiration_hours"] == "168"
+
+        # And the cleanup deletes it once that time has passed.
+        mock_async_client.list_objects = AsyncMock(
+            return_value={"items": [{"name": "uploads/users/user-1/x/a.webm"}]}
+        )
+        mock_async_client.download_metadata = AsyncMock(
+            return_value={"metadata": {**custom, "expires_at": before.isoformat()}}
+        )
+        mock_async_client.delete = AsyncMock()
+
+        assert await handler.delete_expired_files() == 1
+        mock_async_client.delete.assert_awaited_once_with(
+            "test-bucket", "uploads/users/user-1/x/a.webm"
+        )
+
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_store_file_keeps_custom_metadata_whether_or_not_it_may_be_deleted(
+        self, mock_get_async_client, handler
+    ):
+        """Every file carries an expiry; ``delete_when_expired`` only decides
+        whether the cleanup can read it. Custom metadata is kept either way."""
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+        marker = {"brain_dump_recording": "true"}
+
+        await handler.store_file(
+            b"audio",
+            "a.webm",
+            user_id="user-1",
+            delete_when_expired=True,
+            custom_metadata=marker,
+        )
+        custom = mock_async_client.upload.call_args.kwargs["metadata"]["metadata"]
+        assert custom["brain_dump_recording"] == "true"
+        assert custom["expires_at"]
+
+        await handler.store_file(
+            b"audio", "a.webm", user_id="user-1", custom_metadata=marker
+        )
+        upload_metadata = mock_async_client.upload.call_args.kwargs["metadata"]
+        assert upload_metadata["metadata"] == marker
+
+    @pytest.mark.parametrize("delete_when_expired", [False, True])
+    @pytest.mark.parametrize("key", ["expires_at", "uploaded_at", "expiration_hours"])
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_store_file_refuses_custom_metadata_that_sets_the_expiry(
+        self, mock_get_async_client, handler, key, delete_when_expired
+    ):
+        """Only ``delete_when_expired`` may make a file deletable, and then
+        only at its own ``expiration_hours``: an ``expires_at`` slipped in
+        through custom metadata would switch the cleanup on for files saved
+        schedules and presets still use."""
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+
+        with pytest.raises(ValueError, match=key):
+            await handler.store_file(
+                b"audio",
+                "a.webm",
+                user_id="user-1",
+                delete_when_expired=delete_when_expired,
+                custom_metadata={key: "2020-01-01T00:00:00+00:00"},
+            )
+        mock_async_client.upload.assert_not_awaited()
 
     @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
@@ -101,14 +208,35 @@ class TestCloudStorageHandler:
         mock_async_client = AsyncMock()
         mock_storage_class.return_value = mock_async_client
 
-        # Mock the download method to raise a 404 exception
-        mock_async_client.download = AsyncMock(side_effect=Exception("404 Not Found"))
+        # gcloud-aio raises aiohttp.ClientResponseError for a non-2xx response
+        mock_async_client.download = AsyncMock(
+            side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
+        )
         mock_async_client.close = AsyncMock()
 
         with pytest.raises(FileNotFoundError):
             await handler.retrieve_file(
                 "gcs://test-bucket/uploads/system/uuid123/nonexistent.txt"
             )
+
+    @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
+    @pytest.mark.asyncio
+    async def test_retrieve_file_keeps_non_404_errors(
+        self, mock_storage_class, handler
+    ):
+        """A 503 whose object URL contains "404" is not a missing file."""
+        mock_async_client = AsyncMock()
+        mock_storage_class.return_value = mock_async_client
+        mock_async_client.download = AsyncMock(
+            side_effect=_gcs_http_error(503, _URL_CONTAINING_404)
+        )
+        mock_async_client.close = AsyncMock()
+
+        with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            await handler.retrieve_file(
+                "gcs://test-bucket/uploads/system/uuid123/file.txt"
+            )
+        assert exc_info.value.status == 503
 
     @patch.object(CloudStorageHandler, "_get_sync_gcs_client")
     @pytest.mark.asyncio
@@ -132,6 +260,22 @@ class TestCloudStorageHandler:
         mock_blob.generate_signed_url.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_retrieve_rejects_a_different_bucket(self, handler):
+        with pytest.raises(PermissionError, match="configured private bucket"):
+            await handler.retrieve_file(
+                "gcs://other-bucket/uploads/users/user123/id/file.txt",
+                user_id="user123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_signed_url_rejects_a_different_bucket(self, handler):
+        with pytest.raises(PermissionError, match="configured private bucket"):
+            await handler.generate_signed_url(
+                "gcs://other-bucket/uploads/users/user123/id/file.txt",
+                user_id="user123",
+            )
+
+    @pytest.mark.asyncio
     async def test_unsupported_provider(self, handler):
         """Test unsupported provider error."""
         with pytest.raises(ValueError, match="Unsupported cloud storage provider"):
@@ -147,8 +291,6 @@ class TestCloudStorageHandler:
     @pytest.mark.asyncio
     async def test_delete_expired_files_gcs(self, mock_get_async_client, handler):
         """Test deleting expired files from GCS."""
-        from datetime import datetime, timedelta, timezone
-
         # Mock async GCS client
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
@@ -187,8 +329,6 @@ class TestCloudStorageHandler:
     @pytest.mark.asyncio
     async def test_check_file_expired_gcs(self, mock_get_async_client, handler):
         """Test checking if a file has expired."""
-        from datetime import datetime, timedelta, timezone
-
         # Mock async GCS client
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
@@ -210,6 +350,25 @@ class TestCloudStorageHandler:
 
         result = await handler.check_file_expired("gcs://test-bucket/valid-file.txt")
         assert result is False
+
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_check_file_expired_gcs_by_status(
+        self, mock_get_async_client, handler
+    ):
+        """Only a 404 counts as gone; other errors whose URL contains "404" don't."""
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+
+        mock_async_client.download_metadata = AsyncMock(
+            side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
+        )
+        assert await handler.check_file_expired("gcs://test-bucket/gone.txt") is True
+
+        mock_async_client.download_metadata = AsyncMock(
+            side_effect=_gcs_http_error(401, _URL_CONTAINING_404)
+        )
+        assert await handler.check_file_expired("gcs://test-bucket/file.txt") is False
 
     @patch("backend.util.cloud_storage.get_cloud_storage_handler")
     @pytest.mark.asyncio

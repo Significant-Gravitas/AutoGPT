@@ -1,4 +1,10 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  cleanup,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { useCopilotUIStore } from "../store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotPage } from "../CopilotPage";
 
@@ -35,8 +41,9 @@ vi.mock("../components/FileDropZone/FileDropZone", () => ({
     <div>{children}</div>
   ),
 }));
+const viewportState = vi.hoisted(() => ({ isMobile: false }));
 vi.mock("../useIsMobile", () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => viewportState.isMobile,
 }));
 vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
   ScaleLoader: () => <div data-testid="scale-loader" />,
@@ -53,6 +60,7 @@ vi.mock("@/components/ui/sidebar", () => ({
 // Mock hooks that hit the network. Exercise the `select` callback so its
 // line counts as covered alongside the rest of the options.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   useGetV2GetCopilotUsage: (opts: {
     query?: { select?: (r: { data: unknown }) => unknown };
   }) => {
@@ -67,6 +75,15 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     }
     return { data: undefined, isSuccess: false, isError: false };
   },
+  // The provider-limit dialog reads connections to find somewhere to
+  // continue. It only renders on a failure, which this page test never
+  // provokes, so an empty result is the honest stand-in.
+  useGetV2ListChatConnections: () => ({ data: undefined }),
+  getGetV2ListChatConnectionsQueryKey: () => ["chat", "connections"],
+  usePutV2ChangeTheConnectionAnExistingChatRunsOn: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),
@@ -74,8 +91,8 @@ vi.mock("@/hooks/useCredits", () => ({
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
+    TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
   useGetFlag: () => false,
 }));
@@ -141,13 +158,46 @@ afterEach(() => {
     isLoggedIn: true,
   }));
   mockSessionIdForQueryState = null;
+  viewportState.isMobile = false;
+});
+
+describe("CopilotPage context panel reset", () => {
+  it("forgets the previous chat's artifact on session entry even on mobile", async () => {
+    viewportState.isMobile = true;
+    mockSessionIdForQueryState = "session-b";
+    mockUseCopilotPage.mockReturnValue({
+      ...basePageState,
+      sessionId: "session-b",
+    });
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: true,
+        lastArtifact: {
+          id: "session-a-file",
+          title: "from-chat-a.md",
+          mimeType: "text/markdown",
+          sourceUrl: "/api/proxy/api/workspace/files/session-a-file/download",
+          origin: "agent",
+        },
+      },
+    }));
+
+    render(<CopilotPage />);
+
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.lastArtifact,
+      ).toBeNull(),
+    );
+  });
 });
 
 describe("CopilotPage test-mode banner", () => {
   it("does not show test-mode banner when there is no active session", () => {
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -160,7 +210,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -173,7 +223,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.getByText(/test mode.*this session runs agents/i),
+      screen.getByText(/test mode.*this session runs workflows/i),
     ).toBeDefined();
   });
 
@@ -185,7 +235,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 

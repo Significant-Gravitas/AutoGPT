@@ -1,4 +1,7 @@
+import { getPostV1ExecuteGraphAgentMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getDeleteV1DeleteExecutionScheduleMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import * as invalidateSchedules from "@/services/schedules/invalidate-schedules";
@@ -14,6 +17,11 @@ function wrapper({ children }: { children: ReactNode }) {
   });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
+
+const sendDatafastEvent = vi.hoisted(() => vi.fn());
+vi.mock("@/services/analytics", () => ({
+  analytics: { sendDatafastEvent },
+}));
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -31,10 +39,20 @@ const agent = {
   id: "lib-1",
   graph_id: "graph-xyz",
   graph_version: 1,
+  name: "My agent",
 } as unknown as LibraryAgent;
+
+const schedule = {
+  id: "sched-1",
+  graph_id: "graph-xyz",
+  graph_version: 1,
+  input_data: { topic: "news" },
+  input_credentials: {},
+} as unknown as GraphExecutionJobInfo;
 
 afterEach(() => {
   toastMock.mockClear();
+  sendDatafastEvent.mockClear();
   server.resetHandlers();
 });
 
@@ -103,5 +121,39 @@ describe("useSelectedScheduleActions", () => {
         variant: "destructive",
       }),
     );
+  });
+
+  test("handleRunNow records a run_agent goal from the library surface", async () => {
+    server.use(
+      getPostV1ExecuteGraphAgentMockHandler({
+        id: "run-1",
+        graph_id: "graph-xyz",
+      } as GraphExecutionMeta),
+    );
+    const onSelectRun = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useSelectedScheduleActions({
+          agent,
+          scheduleId: "sched-1",
+          schedule,
+          onSelectRun,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.handleRunNow();
+    });
+
+    await waitFor(() => {
+      expect(onSelectRun).toHaveBeenCalledWith("run-1");
+    });
+    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
+      id: "graph-xyz",
+      name: "My agent",
+      surface: "library",
+    });
   });
 });

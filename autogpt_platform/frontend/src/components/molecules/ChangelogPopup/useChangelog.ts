@@ -16,7 +16,7 @@ export function useChangelog() {
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isPaused = useRef(false);
+  const pauseSources = useRef(new Set<"hover" | "focus">());
   const isDismissing = useRef(false);
   // Track how much of the auto-dismiss countdown is left so hover/focus can
   // pause and resume the *remaining* time instead of restarting from scratch.
@@ -52,17 +52,17 @@ export function useChangelog() {
   }
 
   function startAutoDismiss(duration = AUTO_DISMISS_MS) {
-    if (isPaused.current) return;
+    if (pauseSources.current.size > 0 || isDismissing.current) return;
     clearTimers();
     dismissStartedAt.current = Date.now();
     remainingMs.current = duration;
     autoDismissTimer.current = setTimeout(() => {
-      if (!isPaused.current) dismiss();
+      if (pauseSources.current.size === 0) dismiss();
     }, duration);
   }
 
-  function pauseAutoDismiss() {
-    isPaused.current = true;
+  function pauseAutoDismiss(source: "hover" | "focus") {
+    pauseSources.current.add(source);
     if (autoDismissTimer.current) {
       clearTimeout(autoDismissTimer.current);
       autoDismissTimer.current = null;
@@ -71,9 +71,9 @@ export function useChangelog() {
     }
   }
 
-  function resumeAutoDismiss() {
+  function resumeAutoDismiss(source: "hover" | "focus") {
+    pauseSources.current.delete(source);
     if (isDismissing.current) return;
-    isPaused.current = false;
     // Resume the leftover time rather than restarting the full countdown.
     startAutoDismiss(remainingMs.current);
   }

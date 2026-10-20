@@ -23,12 +23,14 @@ pinning a provider:
     subscription Anthropic, direct Anthropic, and OpenRouter all
     land at the same call site without per-transport branches here.
   * ``response_format={"type":"json_object"}`` is supported across
-    OpenAI, OpenRouter, and Ollama (forced JSON works on every
-    transport this dispatcher accepts).
-  * The Anthropic batch path in the orchestrator (see
-    ``plans/idempotent-launching-moth.md`` component E) layers in
-    *below* this wrapper via ``call_provider(execution_mode="batch")``
-    when the transport supports it; this wrapper stays sync-only.
+    OpenAI, OpenRouter, and Ollama. The native Anthropic API ignores
+    it, so on the ``anthropic`` provider the output comes from one
+    tool built from the response model instead, the way the batch
+    path gets it (``structured_output.py``): forced where the model
+    accepts that, left to the model (``auto``) where it doesn't.
+  * The Anthropic batch path (``batch_submit.py``) calls
+    ``call_provider(execution_mode="batch")`` itself, beside this
+    wrapper rather than through it; this wrapper stays sync-only.
 """
 
 from __future__ import annotations
@@ -37,15 +39,22 @@ import json
 import logging
 from typing import Generic, TypeVar
 
+import anthropic
 from pydantic import BaseModel, ValidationError
 
-from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
+from backend.copilot.transport_routing import (
+    ProviderRoutingKwargs,
+    routing_kwargs_for_chat_transport,
+)
 from backend.util.llm.providers import (
-    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    BatchSubmissionRef,
     ProviderLiteral,
     ProviderResponse,
     call_provider,
+    is_forced_tool_choice_rejection,
 )
+
+from .structured_output import StructuredRequest, structured_payload, structured_request
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +62,18 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class DreamLLMError(RuntimeError):
-    """Raised when a dream-pass LLM call cannot be parsed into the target schema."""
+    """Raised when a dream-pass LLM call cannot be parsed into the target schema.
+
+    ``usage`` carries the provider-reported spend when the failure happened
+    *after* a response came back — empty content, unparseable JSON, a schema
+    mismatch. Those tokens were billed, so a caller keeping a cost ledger has
+    to record them. ``None`` means no provider call completed and nothing was
+    charged.
+    """
+
+    def __init__(self, message: str, usage: CompletionUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 class CompletionUsage(BaseModel):
@@ -87,20 +107,25 @@ async def structured_completion(
     response_model: type[T],
     temperature: float = 0.2,
     max_output_tokens: int = 4096,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> StructuredCompletion[T]:
-    """Call the LLM in JSON mode and parse into ``response_model``.
+    """Call the LLM for structured output and parse into ``response_model``.
+
+    JSON mode on every provider but the native Anthropic API, which gets
+    ``model`` in its native spelling and one tool built from
+    ``response_model``, forced where the model accepts that (see
+    ``structured_output.py``); the tool call's arguments are parsed, or
+    the message text when there is none.
 
     Returns a ``StructuredCompletion`` carrying both the parsed value
     and a ``CompletionUsage`` block so the dream orchestrator can roll
     token counts + cost up into a ``DreamPassUsage``.
 
     ``timeout_seconds`` is the wall-clock budget for the provider call.
-    The shared 120s default is sized for short chat completions; dream
-    phases with large ``max_output_tokens`` budgets (recombine/sanitize
-    at 16384) must pass their own ceiling — see the per-phase
-    ``*_TIMEOUT_SECONDS`` constants in ``orchestrator.py`` — or real
-    long responses die on TimeoutError before they finish decoding.
+    The shared default is a generic block-call budget; dream phases are
+    sized against the pass's own scheduler/lock envelope and must pass
+    their own ceiling — see the per-phase ``*_TIMEOUT_SECONDS`` constants
+    in ``orchestrator.py`` — rather than inherit it.
 
     Raises ``DreamLLMError`` if the response is empty, unparseable, or
     fails Pydantic validation. Callers should treat that as "this
@@ -110,16 +135,76 @@ async def structured_completion(
     routing = routing_kwargs_for_chat_transport()
     if not routing.api_key and routing.provider != "ollama":
         raise DreamLLMError(_missing_api_key_message(routing.provider))
-
     try:
-        response = await call_provider(
+        request = structured_request(routing.provider, model, response_model)
+    except ValueError as exc:
+        raise DreamLLMError(str(exc)) from exc
+
+    response = await _call_provider_sync(
+        routing,
+        request,
+        messages=messages,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        timeout_seconds=timeout_seconds,
+    )
+    usage = _usage_from_provider_response(response, request.model, routing.provider)
+
+    if response.stop_reason == "max_tokens":
+        raise DreamLLMError("LLM output truncated at max_tokens", usage)
+
+    content = structured_payload(response)
+    if not content:
+        raise DreamLLMError("LLM returned empty content", usage)
+
+    # Everything below this point is post-billing: the provider already
+    # charged for the tokens it sent, so every failure carries the usage out.
+    try:
+        payload = parse_json_with_prose_fallback(content)
+        return StructuredCompletion(
+            value=response_model.model_validate(payload),
+            usage=usage,
+        )
+    except DreamLLMError as exc:
+        exc.usage = usage
+        raise
+    except ValidationError as exc:
+        raise DreamLLMError(
+            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
+        ) from exc
+
+
+async def _call_provider_sync(
+    routing: ProviderRoutingKwargs,
+    request: StructuredRequest,
+    *,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_output_tokens: int,
+    timeout_seconds: float | None,
+) -> ProviderResponse:
+    """One sync ``call_provider`` round trip; any failure is a ``DreamLLMError``
+    with no usage, since no response came back to bill.
+
+    A model that turns the forced output tool down (Anthropic's 400
+    ``BadRequestError`` naming ``tool_choice``, and only that) is asked
+    once more with the tool left to its choice and the prompt asking for
+    the call: the self-heal for a model missing from the provider's
+    forced-tool list. A second failure is final."""
+
+    async def send(
+        attempt: StructuredRequest,
+    ) -> ProviderResponse | BatchSubmissionRef:
+        return await call_provider(
             provider=routing.provider,
-            model=model,
+            model=attempt.model,
             api_key=routing.api_key,
-            messages=messages,
+            messages=attempt.prompt(messages),
             max_tokens=max_output_tokens,
             temperature=temperature,
-            force_json_output=True,
+            force_json_output=attempt.force_json_output,
+            tools=attempt.tools,
+            tool_choice=attempt.tool_choice,
             timeout_seconds=timeout_seconds,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
@@ -129,46 +214,54 @@ async def structured_completion(
             # ``ollama.AsyncClient`` wants the raw host:port.
             ollama_host=_normalize_ollama_host(routing.base_url),
         )
+
+    try:
+        try:
+            response = await send(request)
+        except anthropic.BadRequestError as exc:
+            if not (
+                request.forces_output_tool and is_forced_tool_choice_rejection(exc)
+            ):
+                raise
+            logger.warning(
+                "Model %s rejected the forced output tool (%s); retrying once "
+                "with tool_choice=auto. Add it to "
+                "_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED in "
+                "backend/util/llm/providers.py.",
+                request.model,
+                exc,
+            )
+            response = await send(request.with_output_tool_optional())
     except DreamLLMError:
         raise
     except Exception as exc:
         raise DreamLLMError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
 
     if not isinstance(response, ProviderResponse):
-        # ``call_provider`` only returns a non-ProviderResponse when the
-        # caller passed ``execution_mode="batch"`` (lands later). The
-        # dream's sync wrapper never opts in, so anything else is a bug.
+        # ``call_provider`` returns a ``BatchSubmissionRef`` only for
+        # ``execution_mode="batch"``, which the batch path
+        # (``batch_submit.submit_phase``) asks for; this sync wrapper never
+        # does, so anything else is a bug.
         raise DreamLLMError(
             "structured_completion expected a sync ProviderResponse but got a "
             f"{type(response).__name__} — execution_mode must stay 'sync' here."
         )
-
-    usage = _usage_from_provider_response(response, model)
-
-    content = (response.content or "").strip()
-    if not content:
-        raise DreamLLMError("LLM returned empty content")
-
-    payload = _parse_json_with_prose_fallback(content)
-
-    try:
-        return StructuredCompletion(
-            value=response_model.model_validate(payload),
-            usage=usage,
-        )
-    except ValidationError as exc:
-        raise DreamLLMError(
-            f"LLM JSON did not match {response_model.__name__}: {exc}"
-        ) from exc
+    return response
 
 
 def _usage_from_provider_response(
-    response: ProviderResponse, model: str
+    response: ProviderResponse, model: str, provider: ProviderLiteral
 ) -> CompletionUsage:
-    """Convert a ``ProviderResponse`` into the dream's ``CompletionUsage``."""
+    """Normalize input to disjoint buckets; native Anthropic already excludes caches."""
+    input_tokens = response.prompt_tokens
+    if provider != "anthropic":
+        input_tokens = max(
+            0,
+            input_tokens - response.cache_read_tokens - response.cache_creation_tokens,
+        )
     return CompletionUsage(
         model=model,
-        input_tokens=response.prompt_tokens,
+        input_tokens=input_tokens,
         output_tokens=response.completion_tokens,
         cache_read_tokens=response.cache_read_tokens,
         cache_creation_tokens=response.cache_creation_tokens,
@@ -176,7 +269,7 @@ def _usage_from_provider_response(
     )
 
 
-def _parse_json_with_prose_fallback(content: str) -> object:
+def parse_json_with_prose_fallback(content: str) -> object:
     """Parse JSON from a model response, recovering from common preamble bugs.
 
     Two layers of defense, in order:

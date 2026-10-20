@@ -271,6 +271,24 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           cache reads on every resumed SDK turn.  Still requires
         #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.  Verified
         #           OpenRouter-safe via cli_openrouter_compat_test.py.
+        "2.1.248",  # claude-agent-sdk 0.2.146 -- context-management is still
+        #           an experimental beta here, still stripped by
+        #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.
+        "2.1.259",  # claude-agent-sdk 0.2.152 -- wire shape measured identical
+        #           to 2.1.248 on both the bare and the build_sdk_env-pinned
+        #           path: same anthropic-beta list, same message roles, same
+        #           body keys.  Verified via cli_openrouter_compat_test.py.
+        "2.1.281",  # claude-agent-sdk 0.2.159 -- 2.1.280+ is required for
+        #           claude-opus-5-5.  Verified via cli_openrouter_compat_test.py.
+        "2.1.284",  # claude-agent-sdk 0.2.161 -- 2.1.284+ is required for
+        #           claude-sonnet-5-5: the 2.1.281 bundle carries no
+        #           sonnet-5-5 entry (inspected the bundled binary), so the
+        #           CLI rejects the slug the same way 2.1.279 rejected
+        #           claude-opus-5-5.  Still ships the
+        #           context-management-2025-06-27 beta string, so the
+        #           build_sdk_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+        #           guard remains required -- see
+        #           cli_openrouter_compat_test.py, which CI runs.
     }
 )
 
