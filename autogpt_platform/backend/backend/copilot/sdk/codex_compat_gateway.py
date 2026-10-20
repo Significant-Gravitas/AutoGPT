@@ -40,7 +40,7 @@ from backend.integrations.credential_lease import CredentialLease
 # Ten queued 3 MiB images expand to 40 MiB, plus conversation and JSON overhead.
 _MAX_REQUEST_BYTES = 64 * 1024 * 1024
 _REQUEST_TOO_LARGE_MESSAGE = (
-    "Request body is too large. Use fewer or smaller images, "
+    "Request too large. Use fewer or smaller images, "
     "or shorten the conversation context."
 )
 # Bounds on the per-conversation replay cache. A retry arrives seconds to

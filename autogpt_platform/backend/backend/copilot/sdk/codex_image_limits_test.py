@@ -12,6 +12,7 @@ from backend.copilot.sdk.codex_compat_gateway_test import (
     _tool_request,
     _tool_use_id,
 )
+from backend.copilot.sdk.service import _is_prompt_too_long
 from backend.copilot.tool_image import MAX_IMAGE_BYTES, ToolImage
 
 
@@ -74,8 +75,17 @@ async def test_max_size_images_survive_gateway_count_start_continue_and_retry(co
 
 
 @pytest.mark.parametrize("endpoint", ["messages", "messages/count_tokens"])
-async def test_gateway_size_error_explains_how_to_recover(monkeypatch, endpoint):
+@pytest.mark.parametrize("image_history", [False, True])
+async def test_gateway_size_error_explains_how_to_recover(
+    monkeypatch, endpoint, image_history
+):
     monkeypatch.setattr(codex_compat_gateway, "_MAX_REQUEST_BYTES", 512)
+    image = ToolImage(mime_type="image/png", data_base64="A" * 256)
+    messages = (
+        [{"role": "user", "content": [image.anthropic()]}] * 3
+        if image_history
+        else [{"role": "user", "content": "x" * 1024}]
+    )
     session = _FakeAgentSession()
     async with CodexAnthropicGateway(
         transport=_FakeTransport(session), credential_lease=_lease(), model="gpt-5.4"
@@ -83,10 +93,11 @@ async def test_gateway_size_error_explains_how_to_recover(monkeypatch, endpoint)
         response = await client.post(
             f"{gateway.base_url}/v1/{endpoint}",
             headers=_headers(gateway),
-            json={"messages": [{"role": "user", "content": "x" * 1024}]},
+            json={"messages": messages},
         )
         assert response.status == 413
         body = await response.json()
     assert body["type"] == "error"
     assert "fewer or smaller images" in body["error"]["message"]
+    assert _is_prompt_too_long(RuntimeError(body["error"]["message"]))
     assert not session.requests
