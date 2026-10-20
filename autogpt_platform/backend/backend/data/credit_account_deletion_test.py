@@ -267,15 +267,26 @@ async def _clean_up_after_upgrade() -> None:
 
 
 async def _fail_an_uncovered_renewal() -> None:
-    await credit.handle_subscription_payment_failure(
-        {
-            "id": "in_1",
-            "customer": CUSTOMER,
-            "subscription": "sub_active",
-            "amount_due": 2000,
-            "billing_reason": "subscription_cycle",
-        }
-    )
+    invoice = {
+        "id": "in_1",
+        "customer": CUSTOMER,
+        "subscription": "sub_active",
+        "amount_due": 2000,
+        "billing_reason": "subscription_cycle",
+    }
+    with (
+        patch(
+            "backend.data.credit.get_subscription_trial",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.data.credit.stripe.Invoice.retrieve_async",
+            new_callable=AsyncMock,
+            return_value={**invoice, "status": "open"},
+        ),
+    ):
+        await credit.handle_subscription_payment_failure(invoice)
 
 
 @pytest.mark.asyncio
@@ -398,7 +409,10 @@ def _deleted_event(comment: str | None, status: str = "canceled") -> dict:
 async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person(
     ended_status,
 ):
-    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
+    user = MagicMock(
+        id="user-1", subscriptionTier=SubscriptionTier.PRO, stripeCustomerId=CUSTOMER
+    )
+    event = _deleted_event(credit.ACCOUNT_DELETION_CANCELLATION_COMMENT, ended_status)
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -409,17 +423,23 @@ async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person(
             return_value=_page(),
         ),
         patch(
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=event,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_trial",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as set_tier,
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as person_sync,
     ):
-        await credit.sync_subscription_from_stripe(
-            _deleted_event(credit.ACCOUNT_DELETION_CANCELLATION_COMMENT, ended_status)
-        )
+        await credit.sync_subscription_from_stripe(event)
 
-    set_tier.assert_awaited_once_with(
-        "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
-    )
+    set_tier.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
     person_sync.assert_not_called()
 
 

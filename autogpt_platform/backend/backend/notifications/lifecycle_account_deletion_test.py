@@ -67,7 +67,6 @@ def _paid_mocks() -> dict:
         "claim": AsyncMock(return_value=True),
         "notify": AsyncMock(return_value=NotificationResult(success=True)),
         "audience": AsyncMock(return_value=NotificationResult(success=True)),
-        "fields": AsyncMock(),
         "ended": MagicMock(),
         "trial_notice": AsyncMock(return_value=False),
         "trial_update": AsyncMock(return_value=False),
@@ -81,7 +80,6 @@ async def _run_paid(handler, mocks: dict) -> None:
         patch.object(lifecycle, "claim_once", mocks["claim"]),
         patch.object(lifecycle, "queue_notification_async", mocks["notify"]),
         patch.object(lifecycle, "queue_audience_change", mocks["audience"]),
-        patch.object(lifecycle.subscriber_fields, "queue_fields", mocks["fields"]),
         patch.object(lifecycle, "track_subscription_ended", mocks["ended"]),
         patch.object(lifecycle, "notify_trial", mocks["trial_notice"]),
         patch.object(lifecycle, "on_trial_subscription_updated", mocks["trial_update"]),
@@ -128,7 +126,6 @@ async def test_a_deleted_accounts_cancel_flag_flip_sends_nothing(cancelling):
 
     mocks["notify"].assert_not_awaited()
     mocks["audience"].assert_not_awaited()
-    mocks["fields"].assert_not_awaited()
     mocks["claim"].assert_not_awaited()
     mocks["trial_update"].assert_not_awaited()
 
