@@ -69,7 +69,12 @@ def list_tool():
 @pytest.fixture(autouse=True)
 def forget_streak(mocker):
     """The failure-streak cleanup a delete does, which reaches the database."""
-    return mocker.patch(f"{_SCHEDULES_PATH}.forget_scheduled_chat", AsyncMock())
+    forget = AsyncMock()
+    mocker.patch(
+        f"{_SCHEDULES_PATH}.scheduled_chats_db",
+        return_value=MagicMock(forget_scheduled_chat=forget),
+    )
+    return forget
 
 
 @pytest.fixture
