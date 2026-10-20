@@ -2,8 +2,7 @@ import asyncio
 import contextlib
 import inspect
 import logging
-import math
-import re
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -1013,15 +1012,12 @@ async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
     that connection's idle time is answered, not reset (httpx.ReadError)."""
     client = get_service_client(KeepAliveServiceClient)
     await asyncio.gather(*(client.ping() for _ in range(3)))
-    # Idle up to uvicorn's default 5 s keep-alive, which the server must outlive.
-    await asyncio.sleep(4.5)
-    freeze = asyncio.create_task(
-        get_service_client(KeepAliveServiceClient).hold_gil(2.0)
-    )
-    await asyncio.sleep(0.3)
+    # The service freezes from 4 s to 7 s of idle, across uvicorn's default 5 s
+    # keep-alive, which it must outlive; the calls arrive mid-freeze.
+    await get_service_client(KeepAliveServiceClient).hold_gil(after=4.0, seconds=3.0)
+    await asyncio.sleep(5.5)
 
     assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
-    await freeze
 
 
 @pytest.fixture
@@ -1045,17 +1041,12 @@ class KeepAliveService(AppService):
         return 1
 
     @expose
-    def hold_gil(self, seconds: float) -> int:
-        """Freeze every other thread for about *seconds*, as a full gen2 GC does.
-
-        sre never releases the GIL, and catastrophic backtracking doubles its
-        time with each extra character."""
-        pattern = re.compile(r"(a+)+$")
-        started = time.perf_counter()
-        pattern.fullmatch("a" * 18 + "b")
-        doublings = round(math.log2(seconds / (time.perf_counter() - started)))
-        subject = "a" * (18 + max(0, doublings)) + "b"
-        threading.Thread(target=pattern.fullmatch, args=(subject,), daemon=True).start()
+    def hold_gil(self, after: float, seconds: float) -> int:
+        """Freeze every other thread for *seconds*, starting *after* seconds from
+        now, as a full gen2 GC does: the event loop is then idle in select()."""
+        timer = threading.Timer(after, _spin_holding_gil, args=(seconds,))
+        timer.daemon = True
+        timer.start()
         return 1
 
 
@@ -1066,6 +1057,19 @@ class KeepAliveServiceClient(AppServiceClient):
 
     ping = endpoint_to_async(KeepAliveService.ping)
     hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
+
+
+def _spin_holding_gil(seconds: float) -> None:
+    # A spinning thread keeps the GIL until another has waited a whole switch
+    # interval for it, so an interval this long hands it over only at the end.
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(seconds)
+    try:
+        deadline = time.perf_counter() + seconds
+        while time.perf_counter() < deadline:
+            pass
+    finally:
+        sys.setswitchinterval(previous)
 
 
 class TestGetReturn:
