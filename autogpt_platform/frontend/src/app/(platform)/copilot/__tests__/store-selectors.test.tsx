@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatInput } from "../components/ChatInput/useChatInput";
 import { useConnectionPicker } from "../components/ChatInput/components/ConnectionPicker/useConnectionPicker";
 import { useLockedTierFallback } from "../components/ChatInput/components/ConnectionPicker/useLockedTierFallback";
-import { NotificationToggle } from "../components/ChatSidebar/components/NotificationToggle/NotificationToggle";
 import { NotificationDialog } from "../components/NotificationDialog/NotificationDialog";
 import { DEFAULT_PANEL_WIDTH, useCopilotUIStore } from "../store";
 import { useSessionDeletion } from "../useSessionDeletion";
@@ -171,18 +170,6 @@ describe("copilot UI store readers", () => {
 
     act(() => useCopilotUIStore.getState().setInitialPrompt("Hello Otto"));
     await waitFor(() => expect(result.current.value).toBe("Hello Otto"));
-  });
-
-  it("NotificationToggle ignores unrelated writes", async () => {
-    const { onRender } = countComponentCommits(<NotificationToggle />);
-    await settle();
-    onRender.mockClear();
-
-    writeUnrelatedField();
-    expect(onRender).not.toHaveBeenCalled();
-
-    act(() => useCopilotUIStore.getState().toggleSound());
-    expect(onRender).toHaveBeenCalled();
   });
 
   it("NotificationDialog ignores unrelated writes", async () => {
