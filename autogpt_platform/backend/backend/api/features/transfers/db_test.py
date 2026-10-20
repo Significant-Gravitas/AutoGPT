@@ -58,6 +58,13 @@ async def test_execute_moves_resource_and_writes_audit_rows(transfer_world):
         assert all(
             v.teamId is None and v.userId == world["source_user"] for v in versions
         )
+    else:
+        listing = await StoreListing.prisma().find_unique_or_raise(
+            where={"id": world["resource_id"]}
+        )
+        assert listing.owningUserId == world["source_user"]
+        versions = await AgentGraph.prisma().find_many(where={"id": world["graph_id"]})
+        assert all(v.organizationId == world["org_a"] for v in versions)
     audit = await AuditLog.prisma().find_many(where={"entityId": t1})
     assert len(audit) == 2
     assert {row.organizationId for row in audit} == {world["org_a"], world["org_b"]}
