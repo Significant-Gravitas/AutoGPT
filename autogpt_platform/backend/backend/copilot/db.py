@@ -36,6 +36,7 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .model import invalidate_session_cache
 from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
@@ -1620,7 +1621,61 @@ async def append_expert_run_message(
                 message_id=message_id,
                 metadata=metadata,
             )
+    # The chat page reads the session through the Redis cache: drop a copy
+    # from before this post, or the post shows only once the copy expires.
+    await invalidate_session_cache(session_id)
     return session_id
+
+
+async def append_session_message(
+    session_id: str,
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Post an assistant message into one chat the user owns, between turns.
+
+    For a note about that chat, such as why its scheduled run was skipped.
+    Unlike ``append_expert_run_message`` this never creates or re-targets a
+    session: a note about a chat belongs in that chat or nowhere. Returns False
+    when the chat is gone or not the user's, or when *message_id* was already
+    written (deterministic at the caller, so a double fire posts once).
+    """
+    if await PrismaChatMessage.prisma().find_unique(where={"id": message_id}):
+        return False
+    session = await PrismaChatSession.prisma().find_first(
+        where={"id": session_id, "userId": user_id}
+    )
+    if session is None:
+        return False
+
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=session_id,
+            role="assistant",
+            sequence=await get_next_sequence(session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+
+    # Same Redis NX lock as append_expert_run_message: the sequence read and
+    # the insert must not interleave with a turn writing the same sequence.
+    async with _get_session_lock(session_id):
+        try:
+            await write_with_fresh_sequence()
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return False
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await write_with_fresh_sequence()
+    # The next turn and the chat page load the session through the Redis cache
+    # first; a stale copy would hide the row just written.
+    await invalidate_session_cache(session_id)
+    return True
 
 
 async def append_plain_session_message(

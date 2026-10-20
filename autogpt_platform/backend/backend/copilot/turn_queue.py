@@ -31,6 +31,7 @@ cancels manually.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
@@ -833,10 +834,21 @@ def _promotion_permissions(
     )
 
 
+TurnRefusalKind = Literal["banned", "codex_access", "no_plan", "usage", "outage"]
+
+
 class TurnRefusal(BaseModel):
     reason: str
+    # What the owner could do about it, for callers that tell them: reconnect
+    # the Codex route, choose a plan, wait for the usage window, or nothing
+    # (a banned account, or an outage on our side).
+    kind: TurnRefusalKind
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
+    # Usage refusals only: the window that ran out ("daily", "weekly" or
+    # "trial") and when it resets.
+    window: str | None = None
+    resets_at: datetime | None = None
 
 
 async def turn_refusal(
@@ -850,15 +862,15 @@ async def turn_refusal(
     an unknown means.
     """
     if await is_user_banned(user_id):
-        return TurnRefusal(reason="is banned")
+        return TurnRefusal(reason="is banned", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
-        return TurnRefusal(reason="lacks Codex entitlement")
+        return TurnRefusal(reason="lacks Codex entitlement", kind="codex_access")
     if llm_auth_provider != "platform":
         return None
     if await is_user_paywalled(user_id):
-        return TurnRefusal(reason="paywalled")
+        return TurnRefusal(reason="paywalled", kind="no_plan")
     cfg = ChatConfig()
     try:
         daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
@@ -873,7 +885,14 @@ async def turn_refusal(
             expected_tier=usage_tier,
         )
     except RateLimitExceeded as exc:
-        return TurnRefusal(reason=f"rate-limited ({exc})")
+        return TurnRefusal(
+            reason=f"rate-limited ({exc})",
+            kind="usage",
+            window=exc.window,
+            resets_at=exc.resets_at,
+        )
     except RateLimitUnavailable:
-        return TurnRefusal(reason="has unreadable usage limits", transient=True)
+        return TurnRefusal(
+            reason="has unreadable usage limits", kind="outage", transient=True
+        )
     return None

@@ -180,6 +180,7 @@ model User {
 
 
   ExpertRoutines       ExpertRoutine[]
+  ScheduledChatStreaks ScheduledChatStreak[]
   MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
@@ -1475,6 +1476,44 @@ model ExpertRoutine {
   @@unique([expertId, key])
   @@index([expertId, createdAt, id])
   @@index([userId, createdAt, id])
+}
+
+// The runs a scheduled chat (an Expert routine or a follow-up) has failed the
+// same way in a row. The third run that fails outright pauses it, and its
+// owner is told once, with the fix; a run that works removes the row.
+model ScheduledChatStreak {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The routine's id, or the follow-up's schedule id: a routine with several
+  // fire times is one scheduled chat.
+  scheduleKey String
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
+  scheduleIds String[]
+  title       String
+  // The chat its latest run went to, where the owner is told.
+  sessionId   String?
+
+  // What the runs have in common: compared by key, explained by the rest.
+  failureKey  String
+  failureKind String
+  provider    String?
+  tool        String?
+  // Runs in a row that failed this way, and how many of the latest of those
+  // failed outright, in a row.
+  failures         Int @default(1)
+  wholeRunFailures Int @default(0)
+
+  notifiedAt DateTime?
+  pausedAt   DateTime?
+
+  @@unique([userId, scheduleKey])
+  @@index([userId, pausedAt])
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its
