@@ -295,6 +295,7 @@ def _before_send(event, hint):
             return None
 
     _strip_user_pii(event)
+    _strip_ip_headers(event)
     _scrub_sentry_event(event)
     return event
 
@@ -303,6 +304,7 @@ def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
     every WebSocket connection is one."""
     _strip_user_pii(event)
+    _strip_ip_headers(event)
     _redact_request_urls(event)
     return event
 
@@ -323,6 +325,37 @@ def _strip_user_pii(event: dict) -> None:
         event["user"] = kept
     else:
         del event["user"]
+
+
+# Request headers that carry the visitor's IP address or the location derived
+# from it. The backends sit behind Cloudflare, which adds ``Cf-Connecting-Ip``
+# and its ``Cf-Ip*`` location headers to every request; sentry-sdk only drops
+# ``X-Forwarded-For`` and ``X-Real-Ip`` with PII off.
+_IP_HEADER_MARKERS = (
+    "forwarded",
+    "proxied_for",
+    "real_ip",
+    "connecting_ip",
+    "client_ip",
+    "vercel_ip",
+)
+
+
+def _is_ip_header(name: str) -> bool:
+    key = name.lower().replace("-", "_")
+    return key.startswith("cf_ip") or any(m in key for m in _IP_HEADER_MARKERS)
+
+
+def _strip_ip_headers(event: dict) -> None:
+    request = event.get("request")
+    if not isinstance(request, dict):
+        return
+    headers = request.get("headers")
+    if not isinstance(headers, dict):
+        return
+    request["headers"] = {
+        name: value for name, value in headers.items() if not _is_ip_header(name)
+    }
 
 
 def _sentry_environment() -> str:

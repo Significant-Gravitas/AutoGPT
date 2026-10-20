@@ -670,3 +670,46 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     assert frame_vars["email_count"] == "1"
     assert body["extra"]["email_verified"] is True
     assert body["extra"]["ip_allowlist_enabled"] is True
+
+
+def _event_with_ip_headers() -> dict:
+    return {
+        "level": "error",
+        "request": {
+            "url": "https://backend.agpt.co/api/library",
+            "headers": {
+                "User-Agent": "ua",
+                "Content-Type": "application/json",
+                "Cf-Connecting-Ip": "203.0.113.7",
+                "True-Client-Ip": "203.0.113.7",
+                "Forwarded": "for=203.0.113.7",
+                "X-Forwarded-For": "203.0.113.7, 10.0.0.1",
+                "X-Real-Ip": "203.0.113.7",
+                "Cf-Ipcountry": "PL",
+                "Cf-Ipcity": "Warsaw",
+                "Cf-Iplatitude": "52.2",
+                "X-Vercel-Ip-City": "Warsaw",
+                "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+            },
+        },
+    }
+
+
+_KEPT_HEADERS = {
+    "User-Agent": "ua",
+    "Content-Type": "application/json",
+    "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+}
+
+
+def test_before_send_drops_the_visitors_ip_and_location_headers() -> None:
+    event = _before_send(_event_with_ip_headers(), hint={})
+
+    assert event is not None
+    assert event["request"]["headers"] == _KEPT_HEADERS
+
+
+def test_before_send_transaction_drops_the_visitors_ip_and_location_headers() -> None:
+    event = metrics._before_send_transaction(_event_with_ip_headers(), hint={})
+
+    assert event["request"]["headers"] == _KEPT_HEADERS
