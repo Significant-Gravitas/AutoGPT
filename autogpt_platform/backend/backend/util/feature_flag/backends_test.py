@@ -381,7 +381,7 @@ class TestPostHogBackend:
             frontend._defined_flags.cache_clear()
             posthog_client.shutdown()
 
-        split = frontend.FrontendFlag.CHAT_SEARCH
+        split = frontend.FrontendFlag.TASK_PROGRESS_BAR
         share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
         # One assertion, so a failure shows both halves.
         assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
@@ -1227,7 +1227,7 @@ def _posthog_with_a_split_on_is_anonymous() -> Posthog:
     client.feature_flags = [
         {
             "id": 2,
-            "key": "chat-search",
+            "key": "task-progress-bar",
             "active": True,
             "filters": {
                 "groups": [
