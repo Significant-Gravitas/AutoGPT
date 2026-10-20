@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { usePostV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { Button } from "@/components/atoms/Button/Button";
 import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
@@ -138,15 +139,15 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   // whatever was behind the overlay. While the provider picker is open
   // Escape belongs to it — stepping back out of a half-typed API key must
   // not end onboarding for good.
+  const skip = useStableCallback(() => finish("skipped"));
   useEffect(() => {
     if (!isOpen) return;
     dialogRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
-      if (isKey(event, "Escape") && !isConnectOpen) finish("skipped");
+      if (isKey(event, "Escape") && !isConnectOpen) skip();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, cardIndex, isConnectOpen, deck]);
 
   function handleNext() {

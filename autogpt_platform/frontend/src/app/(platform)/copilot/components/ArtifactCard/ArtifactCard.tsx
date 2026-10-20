@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
@@ -46,10 +47,12 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
   // in the store (knownIds check).
   // Skipped in readOnly mode — the share viewer has no panel for auto-open
   // to target, and registering would just pollute the store.
+  const registerForAutoOpen = useStableCallback(() => {
+    registerArtifactForAutoOpen(artifact);
+  });
   useEffect(() => {
     if (readOnly) return;
-    registerArtifactForAutoOpen(artifact);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
+    registerForAutoOpen();
   }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen, readOnly]);
 
   const classification = classifyArtifact(

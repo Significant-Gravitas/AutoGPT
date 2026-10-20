@@ -79,7 +79,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
         })),
         batch.map((item) => item.scope),
       );
-      ok = res.status === 200 && res.data.failed_count === 0;
+      ok = isAccepted(res);
     } catch {
       ok = false;
     }
@@ -147,6 +147,14 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     setConfirmRejectAll,
     answer,
   };
+}
+
+function isAccepted(
+  res: Awaited<
+    ReturnType<ReturnType<typeof useProcessReviews>["processReviews"]>
+  >,
+) {
+  return res.status === 200 && res.data.failed_count === 0;
 }
 
 function receiptText(item: ApprovalItem, approved: boolean) {

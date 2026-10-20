@@ -46,6 +46,12 @@ export function NotificationDialog() {
 
   const isOpen = showNotificationDialog || shouldShowAuto;
 
+  function handleDismiss() {
+    storage.set(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED, "true");
+    setDismissed(true);
+    setShowNotificationDialog(false);
+  }
+
   function handleEnable() {
     if (typeof Notification === "undefined") {
       handleDismiss();
@@ -58,12 +64,6 @@ export function NotificationDialog() {
         handleDismiss();
       }
     });
-  }
-
-  function handleDismiss() {
-    storage.set(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED, "true");
-    setDismissed(true);
-    setShowNotificationDialog(false);
   }
 
   return (

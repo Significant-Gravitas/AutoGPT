@@ -275,26 +275,29 @@ export function ChatSidebar() {
     e.stopPropagation();
     if (exportingSessionIds.has(id)) return;
     setExportingSessionIds((prev) => new Set(prev).add(id));
-    try {
+    async function exportChat() {
       await fetchAndExportChat(id, title, getV2GetSession);
       toast({ title: "Chat exported" });
-    } catch (error) {
-      console.error("Failed to export chat:", { id, title, error });
-      toast({
-        title: "Export failed",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Could not export this chat. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setExportingSessionIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
     }
+    await exportChat()
+      .catch((error) => {
+        console.error("Failed to export chat:", { id, title, error });
+        toast({
+          title: "Export failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Could not export this chat. Please try again.",
+          variant: "destructive",
+        });
+      })
+      .finally(() => {
+        setExportingSessionIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      });
   }
 
   const { pinned, groups, showHeaders } = useMemo(

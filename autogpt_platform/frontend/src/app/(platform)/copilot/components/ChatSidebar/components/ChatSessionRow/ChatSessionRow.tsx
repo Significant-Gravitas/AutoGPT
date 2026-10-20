@@ -82,6 +82,7 @@ export const ChatSessionRow = memo(function ChatSessionRow({
   isLearningEnabled,
   showProcessing,
   showCompleted,
+  ageDays,
   onSelect,
   onEditingTitleChange,
   onRenameCancel,
@@ -149,6 +150,7 @@ export const ChatSessionRow = memo(function ChatSessionRow({
               </AnimatePresence>
             }
             updatedAt={session.updated_at}
+            ageDays={ageDays}
             sourcePlatform={session.source_platform}
             showPinned={isPinningEnabled && !!session.is_pinned}
             isActive={isActive}

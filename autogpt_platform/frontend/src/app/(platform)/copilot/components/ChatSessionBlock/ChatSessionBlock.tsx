@@ -11,11 +11,15 @@ import {
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 
 interface Props {
   title?: string | null;
   titleContent?: ReactNode;
   updatedAt: string;
+  /** Whole days since `updatedAt` (see `sessionAgeDays`). A memoised parent
+   *  passes it so this block re-renders when its date label changes. */
+  ageDays?: number;
   sourcePlatform?: string | null;
   isActive?: boolean;
   chatStatus?: string | null;
@@ -63,6 +67,9 @@ export function ChatSessionBlock({
   className,
 }: Props) {
   const displayTitle = title || "Untitled chat";
+  // Relative to the clock, so read on every render rather than cached on
+  // `updatedAt`.
+  const dateLabel = useReadEveryRender(() => formatDate(updatedAt));
 
   return (
     <div
@@ -90,7 +97,7 @@ export function ChatSessionBlock({
             />
           ) : null}
           <Text variant="small" className="text-neutral-400">
-            {formatDate(updatedAt)}
+            {dateLabel}
           </Text>
           <ChatOriginIcon sourcePlatform={sourcePlatform} />
         </div>
