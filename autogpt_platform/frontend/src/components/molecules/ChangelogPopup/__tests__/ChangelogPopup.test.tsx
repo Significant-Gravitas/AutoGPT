@@ -13,11 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHANGELOG_INDEX_MD_URL, STORAGE_KEY } from "../changelog-constants";
 import { ChangelogPopup } from "../ChangelogPopup";
 
-const LATEST = "v0-6-63";
+const LATEST = "june-18-july-9-2026";
 const INDEX_MD = `
 | Date | Highlights |
 | ---- | ---------- |
-| [May 7 – June 10](${LATEST}.md) | Copilot upgrades, new blocks |
+| [June 18 – July 9](${LATEST}.md) | File folders, shareable chats, Discord bot |
 `;
 
 beforeEach(() => {
@@ -37,9 +37,10 @@ describe("ChangelogPopup", () => {
     render(<ChangelogPopup />);
 
     expect(
-      await screen.findByText("Copilot upgrades", {}, { timeout: 3000 }),
+      await screen.findByText("File folders", {}, { timeout: 3000 }),
     ).toBeDefined();
-    expect(screen.getByText("new blocks")).toBeDefined();
+    expect(screen.getByText("Shareable chats")).toBeDefined();
+    expect(screen.getByText("Discord bot")).toBeDefined();
 
     const link = screen.getByRole("link", { name: /view changelog/i });
     expect(link.getAttribute("href")).toContain(`/changelog/${LATEST}`);
@@ -56,9 +57,7 @@ describe("ChangelogPopup", () => {
     );
     await userEvent.click(dismiss);
 
-    await waitFor(() =>
-      expect(screen.queryByText("Copilot upgrades")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("File folders")).toBeNull());
   });
 
   it("stays hidden for a release the user has already seen", async () => {
@@ -66,7 +65,7 @@ describe("ChangelogPopup", () => {
     render(<ChangelogPopup />);
 
     await new Promise((resolve) => setTimeout(resolve, 1800));
-    expect(screen.queryByText("Copilot upgrades")).toBeNull();
+    expect(screen.queryByText("File folders")).toBeNull();
   });
 
   it.each(["hover", "focus"])(

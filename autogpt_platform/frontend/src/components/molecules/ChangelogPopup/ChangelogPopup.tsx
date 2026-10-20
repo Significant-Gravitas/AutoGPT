@@ -27,7 +27,8 @@ export function ChangelogPopup() {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map((item) => item.charAt(0).toUpperCase() + item.slice(1));
 
   return (
     <div
