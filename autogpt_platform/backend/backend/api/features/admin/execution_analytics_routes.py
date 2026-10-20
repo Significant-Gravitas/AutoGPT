@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from pydantic import BaseModel, Field
 
 from backend.blocks.llm import DEFAULT_LLM_MODEL, LLMModel
@@ -453,7 +453,7 @@ async def _process_batch(
 async def get_execution_accuracy_trends(
     graph_id: str,
     user_id: Optional[str] = None,
-    days_back: int = 30,
+    days_back: int = Query(30, description="Number of days to look back", ge=7, le=90),
     drop_threshold: float = 10.0,
     include_historical: bool = False,
     admin_user_id: str = Security(get_user_id),

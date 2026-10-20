@@ -11,12 +11,25 @@ Focuses on the queue-on-busy fallback:
   fresh dispatch.
 """
 
+import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot import active_turns
-from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
+from backend.copilot.response_model import (
+    StreamFinish,
+    StreamStart,
+    StreamTextDelta,
+    StreamTurnPaused,
+)
+from backend.copilot.sdk.session_waiter import (
+    SessionResult,
+    run_copilot_turn_via_queue,
+    wait_for_session_result,
+)
+from backend.copilot.turn_pause import TurnPause
 
 _QR = type(
     "QR",
@@ -440,6 +453,92 @@ async def test_a_tree_refusal_becomes_the_refused_outcome():
 
     assert outcome == "refused"
     assert result.refusal == "This task's tree has closed."
+
+
+async def _wait_on(*events):
+    queue: asyncio.Queue = asyncio.Queue()
+    for event in events:
+        queue.put_nowait(("0-0", event))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.subscribe_to_session",
+            new=AsyncMock(return_value=queue),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.unsubscribe_from_session",
+            new=AsyncMock(),
+        ),
+    ):
+        return await wait_for_session_result(
+            session_id="sess-1", user_id="u1", timeout=5
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_refused_at_pickup_is_refused_not_completed():
+    """The executor ends a turn the allowance can't cover as a not-started
+    pause and the stream completes; reported as done, the caller would take
+    the empty answer for the task's result."""
+    pause = TurnPause(
+        reason="weekly",
+        resets_at=datetime(2026, 10, 19, tzinfo=UTC),
+        checkpoint_saved=False,
+        started=False,
+    )
+    outcome, result = await _wait_on(
+        StreamStart(messageId="msg-1"),
+        StreamTurnPaused(pause=pause.as_part()),
+        StreamFinish(),
+    )
+
+    assert outcome == "refused"
+    assert result.pause == pause
+    assert result.response_text == ""
+    assert result.refusal == (
+        "Not started: out of this week's budget. "
+        "The account's budget resets 2026-10-19 00:00 UTC."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_with_nothing_to_wait_for_says_so():
+    pause = TurnPause(reason="trial", checkpoint_saved=False, started=False)
+    outcome, result = await _wait_on(
+        StreamTurnPaused(pause=pause.as_part()), StreamFinish()
+    )
+    assert outcome == "refused"
+    assert result.refusal == (
+        "Not started: the trial allowance is used up. "
+        "The account's budget doesn't reset on its own."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_paused_after_running_still_completes():
+    pause = TurnPause(reason="daily", checkpoint_saved=True, started=True)
+    outcome, result = await _wait_on(
+        StreamTextDelta(id="t-1", delta="Where I got to: half the inbox."),
+        StreamTurnPaused(pause=pause.as_part()),
+        StreamFinish(),
+    )
+    assert outcome == "completed"
+    assert result.pause == pause
+    assert result.refusal == ""
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_ran_and_could_not_continue_still_completes():
+    """Out of budget before queued messages, the engine ends a turn that ran
+    with a not-started pause after its output; that turn's answer stands."""
+    pause = TurnPause(reason="weekly", checkpoint_saved=False, started=False)
+    outcome, result = await _wait_on(
+        StreamTextDelta(id="t-1", delta="Here is the summary."),
+        StreamTurnPaused(pause=pause.as_part()),
+        StreamFinish(),
+    )
+    assert outcome == "completed"
+    assert result.response_text == "Here is the summary."
+    assert result.refusal == ""
 
 
 def _status_db(status: str) -> MagicMock:

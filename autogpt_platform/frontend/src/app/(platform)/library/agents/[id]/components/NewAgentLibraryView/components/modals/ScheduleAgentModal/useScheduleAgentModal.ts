@@ -34,10 +34,7 @@ export function useScheduleAgentModal(
           toast({
             title: "Schedule created",
           });
-          trackScheduleCreatedGoal(
-            { id: agent.graph_id, name: agent.name },
-            "library",
-          );
+          trackScheduleCreatedGoal(agent.graph_id, "library");
           callbacks?.onCreateSchedule?.(response.data);
           invalidateAllScheduleQueries(queryClient, agent.graph_id);
           // Reset form

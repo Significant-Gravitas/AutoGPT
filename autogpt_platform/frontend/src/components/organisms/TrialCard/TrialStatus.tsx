@@ -51,7 +51,6 @@ export function TrialStatus({
         </div>
         <Text
           variant="small"
-          unmask={false}
           tone="secondary"
           className="max-w-[560px] leading-5"
         >

@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useEffect, useState } from "react";
+import { JsonDataInput } from "./components/JsonDataInput/JsonDataInput";
 import { ReviewInputFields } from "./components/ReviewInputFields/ReviewInputFields";
 import { reviewFields } from "./components/ReviewInputFields/helpers";
 import { useReviewBlockSchema } from "./components/ReviewInputFields/useReviewBlockSchema";
@@ -113,22 +114,13 @@ export function PendingReviewCard({
       );
     } else {
       return (
-        <Input
-          id="data-json"
-          label="Value"
-          hideLabel
-          size="small"
-          type="textarea"
-          rows={6}
-          value={JSON.stringify(data, null, 2)}
-          onChange={(e) => {
-            try {
-              const parsed = JSON.parse(e.target.value);
-              handleDataChange(parsed);
-            } catch {}
-          }}
-          placeholder="Edit JSON data"
-          className="font-mono text-sm"
+        <JsonDataInput
+          value={data}
+          initialText={externalDataValue}
+          onChange={(value) => handleDataChange(value as ReviewPayload)}
+          onInvalidDraft={(text) =>
+            onReviewDataChange(review.node_exec_id, text)
+          }
         />
       );
     }

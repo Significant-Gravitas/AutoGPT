@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -27,13 +28,17 @@ from backend.copilot.executor.processor import (
     _wait_for_expert_setup,
     sync_fail_close_session,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import is_turn_impersonated
+from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
@@ -42,6 +47,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.tree import TurnEnvelope
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -64,6 +70,15 @@ def no_trial_attribution(mocker):
     )
     mocker.patch(
         "backend.copilot.usage_activation.pro_activation_db", return_value=store
+    )
+
+
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
     )
 
 
@@ -224,6 +239,8 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["unattended"] = is_unattended_turn()
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
+            seen["trace_id"] = turn_trace_id()
+            seen["span_id"] = current_span_id()
             return MagicMock()
 
         with (
@@ -266,13 +283,25 @@ class TestExecuteAsyncScheduledTurnContext:
 
         seen = await self._seen_by_the_turn(entry)
 
-        assert seen == {"unattended": True, "pins": {"exa": pin}, "impersonated": False}
+        assert seen == {
+            "unattended": True,
+            "pins": {"exa": pin},
+            "impersonated": False,
+            "trace_id": "turn-1",
+            "span_id": "turn-1",
+        }
 
     @pytest.mark.asyncio
     async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
         seen = await self._seen_by_the_turn(_make_entry())
 
-        assert seen == {"unattended": False, "pins": {}, "impersonated": False}
+        assert seen == {
+            "unattended": False,
+            "pins": {},
+            "impersonated": False,
+            "trace_id": "turn-1",
+            "span_id": "turn-1",
+        }
 
     @pytest.mark.asyncio
     async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
@@ -281,6 +310,35 @@ class TestExecuteAsyncScheduledTurnContext:
         seen = await self._seen_by_the_turn(entry)
 
         assert seen["impersonated"] is True
+
+    @pytest.mark.asyncio
+    async def test_the_turn_id_is_the_trace_of_its_llm_calls(self) -> None:
+        """Every model call of one reply groups into one PostHog trace."""
+        entry = _make_entry().model_copy(update={"turn_id": "turn-42"})
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "turn-42"
+
+    @pytest.mark.asyncio
+    async def test_a_subtask_joins_the_trace_of_the_reply_it_works_for(
+        self,
+    ) -> None:
+        """Its model and tool calls group with the reply at its tree's root,
+        and its tool calls nest under the subtask's own span."""
+        entry = _make_entry().model_copy(
+            update={
+                "turn_id": "child-turn",
+                "envelope": TurnEnvelope(
+                    tree_id="root-turn", depth=1, ai_trace_id="root-turn"
+                ),
+            }
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "root-turn"
+        assert seen["span_id"] == "child-turn"
 
 
 class TestExecuteAsyncAclose:
@@ -756,6 +814,44 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
     assert stream_fn.call_args.kwargs["team_id"] == "entry-team"
+
+
+@pytest.mark.asyncio
+async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
+    """Every copilot turn reaches the executor, whatever queued it: schedules,
+    the AutoPilot block, approval wakes, sub-sessions and chat bots."""
+    entry = _make_entry().model_copy(
+        update={"scheduled": ScheduledTurnOrigin(schedule_id="sched-1")}
+    )
+    get_session = AsyncMock()
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.is_user_banned",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.model.get_chat_session", new=get_session),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mark_completed,
+        ),
+        patch(
+            "backend.copilot.executor.scheduled_turn_alert.sentry_sdk.capture_message"
+        ) as alert,
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry, threading.Event(), MagicMock(), _make_log()
+        )
+
+    get_session.assert_not_awaited()
+    mark_completed.assert_awaited_once_with(
+        "sess-1",
+        error_message="This account has been banned.",
+        error_code="account_banned",
+        turn_id="turn-1",
+    )
+    alert.assert_not_called()
 
 
 @pytest.mark.asyncio

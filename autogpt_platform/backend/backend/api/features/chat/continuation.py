@@ -21,6 +21,7 @@ from backend.api.features.chat.routes import (
 )
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLLMModel
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor.utils import schedule_chat_turn
@@ -104,6 +105,8 @@ async def continue_session(
         # Another turn took the chat after the busy check above: a message
         # sent at the same moment, or the first click of a double click.
         raise HTTPException(status_code=409, detail="turn_in_progress")
+    # Picked up now, so a pending "Resume at reset" would repeat it.
+    cancel_resume_at_reset_in_background(session_id, user_id)
     await _announce(turn_id, session_id)
     return ContinueSessionResponse(turn_id=turn_id)
 

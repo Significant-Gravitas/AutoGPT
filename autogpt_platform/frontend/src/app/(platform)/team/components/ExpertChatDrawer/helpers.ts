@@ -1,3 +1,5 @@
+import type { ExpertKickoffMetadata } from "@/app/(platform)/copilot/expertKickoff";
+import type { OutgoingMessage } from "@/app/(platform)/copilot/helpers/sendWithAttachments";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { AUTOPILOT_ROLE } from "../../helpers";
 import {
@@ -28,4 +30,11 @@ export function expertToChatTarget(expert: Expert): ChatTarget {
     avatarUrl: expert.avatar_url,
     color: expert.color,
   };
+}
+
+export function textMessage(
+  text: string,
+  metadata?: ExpertKickoffMetadata,
+): OutgoingMessage {
+  return { text, files: [], parts: [], metadata };
 }

@@ -9,7 +9,7 @@
 import logging
 import time
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -22,9 +22,11 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
+from backend.copilot.llm_attribution import turn_trace_id
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -273,6 +275,10 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    # A scheduled chat its owner set up, or a chat's own turn resumed or
+    # sent at its budget reset. Both alert; only a scheduled chat has a
+    # failure streak to count toward.
+    purpose: Literal["followup", "resume", "send"] = "followup"
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -363,6 +369,11 @@ class CoPilotExecutionEntry(BaseModel):
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
 
+    tool_name: str | None = None
+    """What started the turn, as registered with the stream registry
+    (``"autopilot_block"`` for the AutoPilot block, whose turns may run on the
+    credit balance once the plan's allowance is used up). ``None`` for entries
+    queued before the field existed."""
     trace_headers: dict[str, str] = Field(default_factory=dict)
     """``sentry-trace``/``baggage`` of the transaction that dispatched the turn,
     which the turn's own transaction continues. Empty when the dispatcher was
@@ -404,6 +415,7 @@ async def enqueue_copilot_turn(
     impersonated: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    tool_name: str | None = None,
     trace_headers: Mapping[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
@@ -462,6 +474,7 @@ async def enqueue_copilot_turn(
         ),
         enqueued_at=time.time(),
         cost_context=await capture_cost_context(user_id),
+        tool_name=tool_name,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -691,6 +704,7 @@ async def dispatch_turn(
             impersonated=impersonated,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            tool_name=tool_name,
             trace_headers=trace_headers,
         )
         slot.keep()
@@ -794,8 +808,15 @@ async def _admitted_turn_envelope(
     if spawner is None:
         envelope = root_envelope(turn_id, session_id=session_id)
     else:
+        # Same rule as the Sentry trace: a child derived from the caller's
+        # context joins the caller's PostHog trace, under its running tool.
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        ).model_copy(
+            update={
+                "ai_trace_id": turn_trace_id(),
+                "ai_parent_span_id": current_span_id(),
+            }
         )
     await admit_turn(envelope, user_id=user_id)
     return envelope
@@ -804,14 +825,15 @@ async def _admitted_turn_envelope(
 def _narrow_permissions(
     permissions: CopilotPermissions | None, envelope: TurnEnvelope
 ) -> CopilotPermissions | None:
-    """The envelope's tool set as the turn's whitelist, keeping any block
-    filter the caller passed. Hides the tools from the model; the refusal
+    """The envelope's tool set as the turn's whitelist, keeping any block and
+    provider filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
     if narrowed is None:
         return permissions
     if permissions is None:
         return narrowed
+    providers, providers_exclude = permissions.flattened_providers()
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
     #
@@ -824,6 +846,10 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
+        # The effective ceiling, parents included: this instance crosses the
+        # queue, where ``_parent`` does not.
+        providers=providers,
+        providers_exclude=providers_exclude,
     )
 
 
