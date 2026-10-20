@@ -1093,8 +1093,8 @@ export const IconStarFilled = createIcon((props) => (
  * @param avgRating - The average rating (0 to 5)
  * @returns An array of star icons as JSX elements
  */
-export function StarRatingIcons(avgRating: number): JSX.Element[] {
-  const stars: JSX.Element[] = [];
+export function StarRatingIcons(avgRating: number): React.JSX.Element[] {
+  const stars: React.JSX.Element[] = [];
   const rating = Math.max(0, Math.min(5, avgRating));
   for (let i = 1; i <= 5; i++) {
     if (i <= rating) {
