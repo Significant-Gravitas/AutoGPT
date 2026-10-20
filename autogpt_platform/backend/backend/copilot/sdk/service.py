@@ -57,6 +57,7 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -2012,45 +2013,61 @@ def _setup_langfuse_otel() -> None:
 
     To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
     `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
+
+    Every run is passed through the Google data redaction before it is
+    exported; if that cannot be installed, the SDK is left untraced.
     """
     if not _is_langfuse_configured():
         return
 
+    # Ours to take back if the setup fails, so LangSmith does not trace
+    # without the redaction.
+    set_here: list[str] = []
     try:
         settings = Settings()
         pk = settings.secrets.langfuse_public_key
         sk = settings.secrets.langfuse_secret_key
         host = settings.secrets.langfuse_host
+        tracing_env = settings.secrets.langfuse_tracing_environment
 
         # OTEL exporter config — these are only set if not already present,
-        # so explicit env-var overrides always win.
+        # so explicit env-var overrides always win. The LangSmith client
+        # reads its OTEL mode as the redaction builds it, so these go first.
         creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
-        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
-        os.environ.setdefault("LANGSMITH_TRACING", "true")
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
-        )
-        os.environ.setdefault(
-            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
-            "autogpt-copilot-traces",
-        )
-
-        # Set the Langfuse environment via OTEL resource attributes so the
-        # Langfuse server maps it to the first-class environment field.
-        tracing_env = settings.secrets.langfuse_tracing_environment
-        os.environ.setdefault(
-            "OTEL_RESOURCE_ATTRIBUTES",
-            f"langfuse.environment={tracing_env}",
+        set_here = _set_env_defaults(
+            {
+                "LANGSMITH_OTEL_ENABLED": "true",
+                "LANGSMITH_OTEL_ONLY": "true",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": f"{host}/api/public/otel",
+                "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Basic {creds}",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER": (
+                    "autogpt-copilot-traces"
+                ),
+                # The Langfuse server maps this to its first-class
+                # environment field.
+                "OTEL_RESOURCE_ATTRIBUTES": f"langfuse.environment={tracing_env}",
+            }
         )
 
+        install_trace_redaction()
+        # Switched on only once every run it traces is redacted.
+        set_here += _set_env_defaults({"LANGSMITH_TRACING": "true"})
         configure_claude_agent_sdk(tags=["sdk"])
         logger.info(
             "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
         )
     except Exception:
+        for key in set_here:
+            os.environ.pop(key, None)
         logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
+
+
+def _set_env_defaults(defaults: dict[str, str]) -> list[str]:
+    """Set each variable not already set; return the ones this set."""
+    added = [key for key in defaults if key not in os.environ]
+    for key in added:
+        os.environ[key] = defaults[key]
+    return added
 
 
 _setup_langfuse_otel()
