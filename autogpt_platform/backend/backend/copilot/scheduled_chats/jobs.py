@@ -19,8 +19,21 @@ async def pause_jobs(user_id: str, schedule_ids: list[str]) -> list[str] | None:
     """Pause every job that is due to fire. Returns the jobs this call paused,
     the only ones a resume may restart: a job its owner paused, or one deleted
     since, is left as it is. None when the scheduler refused partway, after
-    resuming what this call had paused."""
+    resuming what this call had paused, and the job it failed on if that one
+    was running: a pause whose answer was lost may still have landed."""
+    if not schedule_ids:
+        return []
     scheduler = get_scheduler_client()
+    try:
+        running = {
+            job.id
+            for job in await scheduler.get_execution_schedules(
+                user_id=user_id, kind="copilot_turn"
+            )
+        }
+    except Exception:
+        logger.warning("Could not read the scheduled chat jobs", exc_info=True)
+        return None
     paused: list[str] = []
     for schedule_id in schedule_ids:
         try:
@@ -33,7 +46,10 @@ async def pause_jobs(user_id: str, schedule_ids: list[str]) -> list[str] | None:
             logger.warning(
                 "Could not pause scheduled chat job %s", schedule_id, exc_info=True
             )
-            await unpause(user_id, paused)
+            # Resuming one whose pause never landed changes nothing; one its
+            # owner had paused was not running, and stays as it is.
+            uncertain = [schedule_id] if schedule_id in running else []
+            await unpause(user_id, paused + uncertain)
             return None
     return paused
 
