@@ -142,7 +142,9 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
         return None
     if runs >= _COUNT_CAP:
         return f"At least {_COUNT_CAP} times a week"
-    if runs % 7 == 0:
+    # A day's runs only when every day has them: seven on Mondays is not
+    # once a day.
+    if runs % 7 == 0 and len(set(_runs_per_day(crons, timezone, now))) == 1:
         per_day = runs // 7
         if per_day <= 2:
             return "Once a day" if per_day == 1 else "Twice a day"
