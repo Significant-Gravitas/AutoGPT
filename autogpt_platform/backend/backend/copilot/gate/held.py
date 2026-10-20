@@ -86,6 +86,11 @@ class HeldResult(PendingMessage):
 
     content: str = Field(min_length=1, max_length=_MAX_RESULT_CHARS)
 
+    @staticmethod
+    def carried_by(data: dict[str, Any]) -> bool:
+        """Whether a buffered message's data is a held call's result."""
+        return _RESULT_KEY in (data.get("metadata") or {})
+
 
 class HeldCall(BaseModel):
     review_id: str
