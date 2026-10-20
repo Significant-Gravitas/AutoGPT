@@ -2,6 +2,11 @@ import {
   getListExpertsMockHandler,
   getListExpertTemplatesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetV1CheckIfOnboardingIsCompletedMockHandler200,
+  getGetV1OnboardingStateMockHandler200,
+  getGetV1OnboardingStateResponseMock200,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
 import {
@@ -83,6 +88,17 @@ describe("Marketplace ExpertsSection", () => {
       user: { id: "user-1" },
       isLoggedIn: true,
     });
+    server.use(
+      getGetV1CheckIfOnboardingIsCompletedMockHandler200({
+        is_completed: true,
+      }),
+      getGetV1OnboardingStateMockHandler200(
+        getGetV1OnboardingStateResponseMock200({
+          userId: "user-1",
+          completedSteps: ["ONBOARDING_COMPLETE", "MARKETPLACE_TAB_INTRO"],
+        }),
+      ),
+    );
   });
 
   test("links each expert card to its own page", async () => {
