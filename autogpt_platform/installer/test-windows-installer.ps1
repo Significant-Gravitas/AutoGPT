@@ -429,6 +429,7 @@ function Select-TestRoot {
 
 $root = Select-TestRoot
 New-PrivateDirectory $root
+Write-Host "test root: $root"
 try {
 	$fakeBin = Join-Path $root 'fake-bin'
 	New-Item -ItemType Directory -Path $fakeBin | Out-Null
@@ -564,7 +565,10 @@ try {
 	Assert-FailsWith 'switch Docker Desktop to Linux containers' (Invoke-FakeInstall $probeDir @{ FAKE_DOCKER_OS = 'windows' })
 	Assert-FailsWith 'Unsupported Docker daemon architecture' (Invoke-FakeInstall $probeDir @{ FAKE_DOCKER_ARCH = 'riscv64' })
 	Assert-FailsWith 'not running or is not accessible' (Invoke-FakeInstall $probeDir @{ FAKE_DOCKER_INFO_FAIL = 'true' })
-	Assert-FailsWith 'Docker is required' (Invoke-FakeInstall $probeDir @{ PATH = $systemPath })
+	# CI images can ship a docker.exe in System32, so search only an empty folder.
+	$emptyBin = Join-Path $root 'empty-bin'
+	New-Item -ItemType Directory -Path $emptyBin | Out-Null
+	Assert-FailsWith 'Docker is required' (Invoke-FakeInstall $probeDir @{ PATH = $emptyBin })
 	$cmdBin = Join-Path $root 'cmd-bin'
 	New-Item -ItemType Directory -Path $cmdBin | Out-Null
 	Clear-File (Join-Path $cmdBin 'docker.cmd') '@exit /b 0'
