@@ -67,8 +67,8 @@ describe("AccountMenuFeedbackRow", () => {
     tally = stubTallyEmbed();
   });
 
-  afterEach(() => {
-    tally.restore();
+  afterEach(async () => {
+    await tally.restore();
   });
 
   test("does not load the Tally script until someone asks for feedback", async () => {
@@ -150,6 +150,8 @@ describe("AccountMenuFeedbackRow", () => {
 
     fireEvent.click(button);
     expect(tally.scripts).toHaveLength(2);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("reads auth from the client store, not the getCurrentUser server action", async () => {
@@ -173,6 +175,8 @@ describe("AccountMenuFeedbackRow", () => {
     fireEvent.click(await renderRow());
 
     expect(setOpenMobile).toHaveBeenCalledWith(false);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("leaves the desktop sidebar alone", async () => {
@@ -182,10 +186,15 @@ describe("AccountMenuFeedbackRow", () => {
     fireEvent.click(await renderRow());
 
     expect(setOpenMobile).not.toHaveBeenCalled();
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("works outside a sidebar", async () => {
-    const button = await renderRow();
-    expect(() => fireEvent.click(button)).not.toThrow();
+    fireEvent.click(await renderRow());
+
+    expect(tally.scripts).toHaveLength(1);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 });

@@ -23,8 +23,6 @@ declare global {
 
 let pendingLoad: Promise<TallyApi> | null = null;
 
-// Tally's script is only fetched once someone asks to give feedback, so no
-// third-party code runs for people who never open the form.
 export function loadTallyEmbed(): Promise<TallyApi> {
   if (window.Tally) return Promise.resolve(window.Tally);
   if (pendingLoad) return pendingLoad;

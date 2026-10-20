@@ -1,6 +1,6 @@
 "use client";
 
-import { useTallyFeedback } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { useTallyFeedback } from "@/components/molecules/TallyPoup/useTallyFeedback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Chatting01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";

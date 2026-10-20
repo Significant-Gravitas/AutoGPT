@@ -27,8 +27,8 @@ describe("FeedbackButton", () => {
     tally = stubTallyEmbed();
   });
 
-  afterEach(() => {
-    tally.restore();
+  afterEach(async () => {
+    await tally.restore();
   });
 
   test("loads Tally only after a click and waits for it before opening the form", async () => {

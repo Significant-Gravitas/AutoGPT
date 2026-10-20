@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useTallyFeedback } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { useTallyFeedback } from "@/components/molecules/TallyPoup/useTallyFeedback";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
