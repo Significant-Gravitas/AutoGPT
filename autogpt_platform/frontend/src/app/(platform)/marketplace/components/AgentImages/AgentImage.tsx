@@ -6,7 +6,8 @@ import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
-import { getYouTubeVideoId, isValidVideoUrl } from "../AgentImageItem/helpers";
+import { isValidVideoUrl } from "../AgentImageItem/helpers";
+import { getYouTubeVideoId } from "@/components/molecules/YouTubeEmbed/helpers";
 import { useAgentImage } from "./useAgentImage";
 
 interface AgentImagesProps {

@@ -9,8 +9,9 @@ import {
   useConsent,
   useConsentManagerStatus,
 } from "@/services/consent/useConsent";
+import { getYouTubeVideoId, getYouTubeWatchUrl } from "./helpers";
 
-export function useYouTubeEmbed(videoId: string) {
+export function useYouTubeEmbed(url: string) {
   const consent = useConsent();
   const managerStatus = useConsentManagerStatus();
   // Without a consent banner (self-hosted installs) the viewer can load a
@@ -18,20 +19,25 @@ export function useYouTubeEmbed(videoId: string) {
   // video only, so switching to another asks again.
   const [loadedVideoId, setLoadedVideoId] = useState<string | null>(null);
 
+  const videoId = getYouTubeVideoId(url);
   // With a banner configured, consent only ever comes from it, even while
   // its script loads or after a blocker stopped it.
   const hasConsentBanner = isConsentManagerConfigured();
-  const loadedOnRequest = !hasConsentBanner && loadedVideoId === videoId;
+  const loadedOnRequest =
+    !hasConsentBanner && videoId !== null && loadedVideoId === videoId;
 
   function loadVideo() {
     setLoadedVideoId(videoId);
   }
 
   return {
+    videoId,
+    watchUrl: getYouTubeWatchUrl(url),
     showPlayer: consent.advertising || loadedOnRequest,
-    hasConsentBanner,
+    canLoadOnce: !hasConsentBanner && videoId !== null,
     // The banner can be opened from the notice (a blocker may have stopped it).
-    canAllowHere: hasConsentBanner && managerStatus !== "unavailable",
+    canAllowHere:
+      videoId !== null && hasConsentBanner && managerStatus !== "unavailable",
     settingsReady: managerStatus === "ready",
     openSettings: openConsentSettings,
     loadVideo,

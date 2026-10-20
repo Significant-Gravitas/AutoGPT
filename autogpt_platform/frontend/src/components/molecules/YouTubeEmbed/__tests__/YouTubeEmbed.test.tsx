@@ -14,10 +14,11 @@ import {
 import { YouTubeEmbed } from "../YouTubeEmbed";
 
 const VIDEO_ID = "dQw4w9WgXcQ";
+const VIDEO_URL = `https://www.youtube.com/watch?v=${VIDEO_ID}`;
 const NOTICE = "YouTube sets advertising cookies when this video loads.";
 
 function renderEmbed() {
-  return render(<YouTubeEmbed videoId={VIDEO_ID} title="Demo video" />);
+  return render(<YouTubeEmbed url={VIDEO_URL} title="Demo video" />);
 }
 
 function getPlayer(container: HTMLElement) {
@@ -137,7 +138,9 @@ describe("YouTubeEmbed", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load video" }));
     expect(getPlayer(container)).not.toBeNull();
 
-    rerender(<YouTubeEmbed videoId="aaaaaaaaaaa" title="Other video" />);
+    rerender(
+      <YouTubeEmbed url="https://youtu.be/aaaaaaaaaaa" title="Other video" />,
+    );
 
     expect(getPlayer(container)).toBeNull();
     expect(screen.getByRole("button", { name: "Load video" })).toBeDefined();
@@ -158,5 +161,27 @@ describe("YouTubeEmbed", () => {
       screen.queryByRole("button", { name: "Cookie settings" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Load video" })).toBeNull();
+  });
+
+  test("only links out for a YouTube link that names no single video", () => {
+    configureCookiebot();
+    installCookiebot({ marketing: true });
+
+    const { container } = render(
+      <YouTubeEmbed url="https://www.youtube.com/@somechannel" />,
+    );
+
+    expect(getPlayer(container)).toBeNull();
+    expect(
+      screen.getByText("This video can only be watched on YouTube."),
+    ).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: "Watch on YouTube" })
+        .getAttribute("href"),
+    ).toBe("https://www.youtube.com/@somechannel");
+    expect(
+      screen.queryByRole("button", { name: "Cookie settings" }),
+    ).toBeNull();
   });
 });

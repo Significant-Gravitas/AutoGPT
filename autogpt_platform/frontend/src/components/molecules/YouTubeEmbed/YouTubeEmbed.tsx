@@ -5,32 +5,36 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { YoutubeIcon } from "@hugeicons/core-free-icons";
-import { getYouTubeEmbedUrl, getYouTubeWatchUrl } from "./helpers";
+import { getYouTubeEmbedUrl, getNoticeText } from "./helpers";
 import { useYouTubeEmbed } from "./useYouTubeEmbed";
 
 interface Props {
-  videoId: string;
+  /** Any YouTube link; one that names no single video only gets a link out. */
+  url: string;
   title?: string;
   className?: string;
 }
 
 // YouTube sets advertising cookies (Cookiebot's Marketing category) as soon as
-// its player loads, so the iframe waits for that consent.
+// its player loads, so the iframe waits for that consent. Nothing else here
+// requests anything from YouTube.
 export function YouTubeEmbed({
-  videoId,
+  url,
   title = "YouTube video",
   className,
 }: Props) {
   const {
+    videoId,
+    watchUrl,
     showPlayer,
-    hasConsentBanner,
+    canLoadOnce,
     canAllowHere,
     settingsReady,
     openSettings,
     loadVideo,
-  } = useYouTubeEmbed(videoId);
+  } = useYouTubeEmbed(url);
 
-  if (showPlayer) {
+  if (showPlayer && videoId) {
     return (
       <iframe
         className={cn("h-full w-full", className)}
@@ -54,23 +58,23 @@ export function YouTubeEmbed({
     >
       <Icon icon={YoutubeIcon} size={28} className="text-zinc-400" />
       <Text variant="body" tone="secondary" className="max-w-sm">
-        {canAllowHere
-          ? "YouTube sets advertising cookies when this video loads. To watch it here, allow marketing cookies."
-          : "YouTube sets advertising cookies when this video loads."}
+        {getNoticeText({ hasVideoId: videoId !== null, canAllowHere })}
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Button
-          as="NextLink"
-          href={getYouTubeWatchUrl(videoId)}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          size="small"
-          leadingIcon={YoutubeIcon}
-        >
-          Watch on YouTube
-        </Button>
-        {!hasConsentBanner && (
+        {watchUrl && (
+          <Button
+            as="NextLink"
+            href={watchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="small"
+            leadingIcon={YoutubeIcon}
+          >
+            Watch on YouTube
+          </Button>
+        )}
+        {canLoadOnce && (
           <Button variant="primary" size="small" onClick={loadVideo}>
             Load video
           </Button>

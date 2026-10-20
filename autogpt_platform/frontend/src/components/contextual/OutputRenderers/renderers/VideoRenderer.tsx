@@ -1,6 +1,10 @@
 import React from "react";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
+  getYouTubeVideoId,
+  isYouTubeUrl,
+} from "@/components/molecules/YouTubeEmbed/helpers";
+import {
   OutputRenderer,
   OutputMetadata,
   DownloadContent,
@@ -44,14 +48,10 @@ function guessMimeType(url: string): string | null {
   return extension ? mimeMap[extension] || null : null;
 }
 
-const YOUTUBE_REGEX =
-  /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
 const VIMEO_REGEX = /^https?:\/\/(?:www\.)?vimeo\.com\/(\d+)/;
 
-function getYouTubeVideoID(url: string): string | null {
-  const match = url.match(YOUTUBE_REGEX);
-  return match ? match[1] : null;
+function isYouTubeVideoURL(url: string): boolean {
+  return /^https?:\/\//i.test(url) && getYouTubeVideoId(url) !== null;
 }
 
 function getVimeoVideoID(url: string): string | null {
@@ -60,7 +60,7 @@ function getVimeoVideoID(url: string): string | null {
 }
 
 function isEmbeddableVideoURL(url: string): boolean {
-  return getYouTubeVideoID(url) !== null || getVimeoVideoID(url) !== null;
+  return isYouTubeVideoURL(url) || getVimeoVideoID(url) !== null;
 }
 
 function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
@@ -103,12 +103,13 @@ function renderVideo(
 ): React.ReactNode {
   const videoUrl = String(value);
 
-  const youtubeID = getYouTubeVideoID(videoUrl);
-  if (youtubeID) {
+  // Any YouTube link, even one naming no single video, goes through the
+  // consent notice rather than a <video> that would fetch it.
+  if (isYouTubeUrl(videoUrl)) {
     return (
       <div className="group relative aspect-video w-full">
         <YouTubeEmbed
-          videoId={youtubeID}
+          url={videoUrl}
           className="rounded-md border border-gray-200"
         />
       </div>

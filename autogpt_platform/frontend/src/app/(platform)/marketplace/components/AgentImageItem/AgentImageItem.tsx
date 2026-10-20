@@ -3,16 +3,13 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useEffect, useState } from "react";
-import {
-  getYouTubeVideoId,
-  isValidVideoFile,
-  isValidVideoUrl,
-} from "./helpers";
+import { isValidVideoFile, isValidVideoUrl } from "./helpers";
 import { useAgentImageItem } from "./useAgentImageItem";
 import { ImageNotFound01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
+import { isYouTubeUrl } from "@/components/molecules/YouTubeEmbed/helpers";
 
 interface AgentImageItemProps {
   image: string;
@@ -31,7 +28,6 @@ export function AgentImageItem({
 }: AgentImageItemProps) {
   const { videoRef } = useAgentImageItem({ playingVideoIndex, index });
   const isVideoFile = isValidVideoFile(image);
-  const youTubeVideoId = getYouTubeVideoId(image);
   const [imageLoaded, setImageLoaded] = useState(false);
   const { showImage, handleImageError } = useImageFallback(image);
 
@@ -43,8 +39,8 @@ export function AgentImageItem({
     <div className="relative">
       <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
-          youTubeVideoId ? (
-            <YouTubeEmbed videoId={youTubeVideoId} />
+          isYouTubeUrl(image) ? (
+            <YouTubeEmbed url={image} />
           ) : (
             <div className="relative h-full w-full overflow-hidden">
               <video
