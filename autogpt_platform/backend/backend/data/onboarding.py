@@ -130,7 +130,8 @@ async def reset_user_onboarding(user_id: str):
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {
                 "completedSteps": [],
-                "wizardProgress": None,
+                # Prisma refuses a bare None for a Json column.
+                "wizardProgress": SafeJson(None),
                 "wizardRevision": {"increment": 1},
                 "walletShown": False,
                 "notified": [],
@@ -177,8 +178,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
     if "wizardProgress" in data.model_fields_set:
-        update["wizardProgress"] = (
-            SafeJson(data.wizardProgress.model_dump(mode="json"))
+        update["wizardProgress"] = SafeJson(
+            data.wizardProgress.model_dump(mode="json")
             if data.wizardProgress is not None
             else None
         )

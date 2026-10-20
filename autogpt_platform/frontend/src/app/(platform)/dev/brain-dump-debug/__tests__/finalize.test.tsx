@@ -163,6 +163,18 @@ describe("server status panel", () => {
       "/api/proxy/api/onboarding/brain-dump/recording",
     );
   });
+
+  it("offers no download once the server has deleted the recording", async () => {
+    serveStatus({ status: "completed", input_mode: "voice", has_audio: false });
+
+    render(<BrainDumpDebugPage />);
+
+    const status = panel("Server status");
+    expect(await status.findByText("completed")).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: /Download server-side recording/ }),
+    ).toBeNull();
+  });
 });
 
 describe("debug finalize", () => {

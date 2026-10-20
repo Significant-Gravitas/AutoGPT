@@ -517,6 +517,7 @@ async def _handle_phase_result(
         payload = parse_json_with_prose_fallback(row.content)
         PHASE_RESPONSE_MODELS[phase].model_validate(payload)
     except (InferenceError, ValidationError) as exc:
+        row.error = f"invalid output shape — {type(exc).__name__}"
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
@@ -524,7 +525,7 @@ async def _handle_phase_result(
             pass_id=pass_id,
             job_id=job_id,
             phase_models=phase_models,
-            error=f"{phase}: invalid output shape — {type(exc).__name__}",
+            error=f"{phase}: {row.error}",
         )
         return
 
@@ -1053,8 +1054,7 @@ async def _log_phase_cost(
     row: dict[str, Any],
     phase_models: dict[str, str],
 ) -> None:
-    if row.get("error") and row["error"] != "max_tokens":
-        # Truncation still consumes billable tokens; provider failures do not.
+    if row.get("error"):
         return
     phase_model = phase_models.get(phase)
     if not phase_model:

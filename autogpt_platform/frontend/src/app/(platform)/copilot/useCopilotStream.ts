@@ -577,7 +577,12 @@ export function useCopilotStream({
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
-  const messages = deduplicateMessages(rawMessages);
+  // Memoised so `messages` keeps its identity across renders that did not
+  // change the chat, instead of being a new array every render.
+  const messages = useMemo(
+    () => deduplicateMessages(rawMessages),
+    [rawMessages],
+  );
 
   useEffect(() => {
     if (!sessionId) return;

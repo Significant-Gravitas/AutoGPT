@@ -1,4 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -125,7 +126,9 @@ export function useCopilotPage({
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const isDryRun = useCopilotUIStore((s) => s.isDryRun);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -301,7 +304,13 @@ export function useCopilotPage({
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  // Memoised on their inputs so the stripReplayPrefix memos below only re-run
+  // when the messages actually change, not on every render once older pages
+  // are loaded.
+  const rawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, currentMessages),
+    [pagedMessages, currentMessages],
+  );
   const cachedSessionMessages = useMemo(
     () =>
       sessionId
@@ -309,9 +318,9 @@ export function useCopilotPage({
         : [],
     [sessionId],
   );
-  const cachedRawMessages = concatWithAssistantMerge(
-    pagedMessages,
-    cachedSessionMessages,
+  const cachedRawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, cachedSessionMessages),
+    [pagedMessages, cachedSessionMessages],
   );
 
   // Drop / trim assistant messages whose leading text is a replay of an
@@ -361,7 +370,7 @@ export function useCopilotPage({
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(
+  async function sendOrQueue(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
@@ -453,9 +462,14 @@ export function useCopilotPage({
     }
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }
+  // One function for the host's lifetime that runs the latest `sendOrQueue`,
+  // so the chat actions and the composer keep their props across flushes.
+  const onSend = useStableCallback(sendOrQueue);
 
   useWorkflowImportAutoSubmit({
-    onSend,
+    // This render's function on purpose: its effect lists `onSend` as a
+    // dependency and re-checks the URL for a prompt every time it changes.
+    onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
   });

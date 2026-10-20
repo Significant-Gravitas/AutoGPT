@@ -3,6 +3,7 @@ import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMen
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
@@ -91,8 +92,16 @@ function TextWithArtifactCards({
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
 }) {
-  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
-  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
+  // A settled part's text never changes, so this only re-runs for the part
+  // that is streaming.
+  const artifacts = useMemo(
+    () => extractWorkspaceArtifacts(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
+  const resolved = useMemo(
+    () => resolveWorkspaceUrls(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
 
   // Text reads first, with the artifact cards trailing.
   return (
