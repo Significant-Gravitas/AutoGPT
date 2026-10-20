@@ -13,7 +13,6 @@ export function ExpertTagline({ tagline, compact }: Props) {
     <Text
       variant="body"
       tone="secondary"
-      unmask={false}
       className={cn("mt-2", compact && "line-clamp-2 min-h-[2lh]")}
     >
       {tagline}

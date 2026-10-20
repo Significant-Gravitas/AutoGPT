@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Security
+from fastapi import APIRouter, Body, Query, Security
 from fastapi.responses import JSONResponse
 
 from backend.api.utils.api_key_auth import APIKeyAuthenticator
@@ -37,14 +37,7 @@ postmark_api_key_auth = APIKeyAuthenticator(
 @router.post("/unsubscribe", summary="One Click Email Unsubscribe")
 async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
     logger.info("Received unsubscribe request from One Click Unsubscribe")
-    try:
-        await unsubscribe_user_by_token(token)
-    except Exception as e:
-        logger.exception("Unsubscribe failed: %s", e)
-        raise HTTPException(
-            status_code=500,
-            detail={"message": str(e), "hint": "Verify Postmark token settings."},
-        )
+    await unsubscribe_user_by_token(token)
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 

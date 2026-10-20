@@ -644,16 +644,15 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-10-02: $0.03/$0.75 per
-                # 1M (cache read $0.00375), down from $0.30/$1.20 on
-                # 2026-09-26. OpenRouter reprices this route continuously
-                # (by design); this is the latest snapshot at PR time,
-                # re-checked immediately before merge. Flagged by
+                # Live OpenRouter rate as of 2026-10-19: $0.0472/$0.12 per
+                # 1M (cache read $0.00375). OpenRouter reprices this route
+                # continuously (by design); this is the latest snapshot at
+                # PR time, re-checked immediately before merge. Flagged by
                 # scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=4.5,
-                    output_credits_per_1m=112.5,
+                    input_credits_per_1m=7.08,
+                    output_credits_per_1m=18.0,
                     cache_read_credits_per_1m=0.5625,
                 ),
             ),
@@ -1168,13 +1167,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-02: $0.43415/$1.828 per
-                # 1M (cheapest route, Baidu), down from $0.65/$3.41.
+                # Live OpenRouter rate as of 2026-10-19: $0.65/$3.41 per 1M.
                 # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=65.1225,
-                    output_credits_per_1m=274.2,
+                    input_credits_per_1m=97.5,
+                    output_credits_per_1m=511.5,
                 ),
             ),
             CatalogModel(
@@ -1872,6 +1870,10 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=1,
                     input_credits_per_1m=15.0,
                     output_credits_per_1m=75.0,
+                    provider_input_usd_per_1m=0.10,
+                    provider_output_usd_per_1m=0.50,
+                    provider_cache_read_usd_per_1m=0.01,
+                    provider_cache_creation_usd_per_1m=0.125,
                 ),
             ),
             CatalogModel(

@@ -102,7 +102,7 @@ class SendTelegramMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -198,7 +198,7 @@ class SendTelegramPhotoBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -358,7 +358,7 @@ class SendTelegramVoiceBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -504,7 +504,7 @@ class ReplyToTelegramMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -724,6 +724,7 @@ class EditTelegramMessageBlock(Block):
                     message_id=42
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -826,7 +827,7 @@ class SendTelegramAudioBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1002,7 +1003,7 @@ class SendTelegramDocumentBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1163,7 +1164,7 @@ class SendTelegramVideoBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

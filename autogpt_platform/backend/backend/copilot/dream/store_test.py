@@ -114,9 +114,6 @@ def _complete_result(**overrides) -> DreamPassResult:
         "proposal_count": 1,
         "demotion_count": 2,
         "entity_invalidation_count": 0,
-        "dropped_forgotten": 1,
-        "pending_writes": 2,
-        "failed_writes": 1,
         "summary_for_user": "Tidied what you told me this week.",
         "dream_session_id": "session-1",
         "ingestion_drain_status": IngestionDrainStatus.drained,
@@ -257,9 +254,6 @@ class TestWrites:
                 consolidated_count=3,
                 proposal_count=1,
                 demotion_count=2,
-                dropped_forgotten=1,
-                pending_writes=2,
-                failed_writes=1,
                 summary_for_user="Tidied what you told me this week.",
                 dream_session_id="session-1",
                 ingestion_drain_status=IngestionDrainStatus.drained,
@@ -544,7 +538,6 @@ class TestReadSide:
                 applied=DreamPassApplied(
                     consolidated_count=1,
                     proposal_count=2,
-                    pending_writes=3,
                     summary_for_user="ok",
                     dream_session_id="s1",
                     ingestion_drain_status=IngestionDrainStatus.skipped,
@@ -564,7 +557,6 @@ class TestReadSide:
             execution_path="anthropic_batch",
             consolidated_count=1,
             proposal_count=2,
-            pending_writes=3,
             summary_for_user="ok",
             dream_session_id="s1",
             ingestion_drain_status=IngestionDrainStatus.skipped,
@@ -619,7 +611,9 @@ class TestReadSide:
 
     async def test_a_sync_outcome_reads_back_as_the_result_it_recorded(self, db):
         """What the orchestrator returned is what the eval driver reads."""
-        result = _complete_result()
+        result = _complete_result(
+            dropped_forgotten=2, pending_writes=3, failed_writes=4
+        )
         await store.record_sync_outcome(result)
         _, update = _update(db)
         assert update.operations is not None

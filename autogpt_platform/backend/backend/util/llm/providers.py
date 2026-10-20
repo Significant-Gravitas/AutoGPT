@@ -1,7 +1,7 @@
 """Per-provider LLM call helper — the single seam every caller delegates to.
 
 Owns the raw per-provider SDK call so the block-layer ``_llm_call``,
-background inference's ``structured_complete``, and the copilot chat
+the dream-pass ``structured_completion``, and the copilot chat
 dispatch all route through one implementation. Adding a new
 execution mode (``batch``, ``flex``) or a new provider lands once
 and every caller picks it up.
@@ -21,8 +21,8 @@ What this module is NOT responsible for (caller wraps):
   * Prompt compression (``compress_context``) — block layer needs it,
     dream may not
   * Retry on validation failure (block layer's ``retry`` parameter)
-  * Pydantic ``response_model`` validation (background inference's
-    ``structured_complete`` does this on top)
+  * Pydantic ``response_model`` validation (dream's
+    ``structured_completion`` does this on top)
   * Cost-log writes / rate-limit charging — caller decides which
     billing path to use, ``ProviderResponse.cost_usd`` just surfaces
     the number
@@ -177,10 +177,10 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
 # Opus 5 still honour one. Hence exact native slugs rather than family
 # prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
 # after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
-# Anthropic documents the restriction for Opus 5.5 and for the Fable 5.1 /
+# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
 # Mythos 5.1 line; add a model here when it documents the same for another.
 _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
-    {"claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
 )
 
 

@@ -32,9 +32,9 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
     ``get_due_jobs`` returning the row, so one bad job cannot spin the
     scheduler.
 
-    Parked jobs do not run. ``get_parked_job_ids`` is the operator surface
-    that keeps that from being silent, and ``reconcile_repaired_jobs``
-    finishes the job once the payload is repaired.
+    A listing that can restore a parked job resumes its serialized schedule.
+    Explicitly paused jobs have no serialized next run and stay paused.
+    ``get_parked_job_ids`` reports jobs that still cannot be restored.
     """
 
     def __init__(self, *args, **kwargs):
@@ -52,17 +52,27 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         ).order_by(self.jobs_t.c.next_run_time)
         selectable = selectable.where(and_(*conditions)) if conditions else selectable
         unrestorable: list = []
+        restored: list = []
 
         with self.engine.begin() as connection:
             if statement_timeout is not None:
                 _limit(connection, statement_timeout, "statement_timeout")
             for row in connection.execute(selectable):
                 try:
-                    jobs.append(self._reconstitute_job(row.job_state))
+                    job = self._reconstitute_job(row.job_state)
                 except (KeyboardInterrupt, SystemExit):
                     raise
                 except BaseException as e:
                     unrestorable.append((row, e))
+                else:
+                    jobs.append(job)
+                    if row.next_run_time is None and job.next_run_time is not None:
+                        restored.append((row, job.next_run_time))
+
+            for row, next_run_time in restored:
+                if self._unpark(connection, row, next_run_time):
+                    self._parked_ids.discard(row.id)
+                    self._logger.info('Resuming restored job "%s"', row.id)
 
             for row, error in unrestorable:
                 if not self._park(connection, row):
@@ -145,6 +155,20 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         )
         return result.rowcount == 1
 
+    def _unpark(self, connection, row, next_run_time) -> bool:
+        result = connection.execute(
+            self.jobs_t.update()
+            .where(
+                and_(
+                    self.jobs_t.c.id == row.id,
+                    self.jobs_t.c.job_state == row.job_state,
+                    self.jobs_t.c.next_run_time.is_(None),
+                )
+            )
+            .values(next_run_time=datetime_to_utc_timestamp(next_run_time))
+        )
+        return result.rowcount == 1
+
     def get_parked_job_ids(self, limit: int | None = None) -> list[str]:
         """Ids of rows that are paused *and* still unrestorable.
 
@@ -181,8 +205,9 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         copy and refuses. Writing that copy back to None makes it an
         ordinary paused job, which resume revives.
 
-        ``jobstore_backfill`` already repairs the rows it rewrites, so this is
-        the path for a repair made some other way, and it is not run at
+        Listings automatically resume restorable jobs. This explicit operator
+        path instead normalizes them to paused before a listing resumes them;
+        ``jobstore_backfill`` also pauses rows it rewrites. It is not run at
         startup. It walks the whole paused set in id order, a batch per
         transaction: a cap alone would keep re-reading the first page and
         never reach a repaired row behind a backlog nothing deletes, while one

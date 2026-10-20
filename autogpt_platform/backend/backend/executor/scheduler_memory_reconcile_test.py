@@ -18,11 +18,12 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -81,6 +82,7 @@ def _scheduler_on(url: str) -> Iterator[Scheduler]:
     store = ResilientSQLAlchemyJobStore(url=url)
     apscheduler = BackgroundScheduler()
     apscheduler.add_jobstore(store, _EXECUTION)
+    apscheduler.add_jobstore(MemoryJobStore(), "memory_cron_reconcile")
     apscheduler.start(paused=True)
     scheduler = Scheduler(register_system_tasks=False)
     scheduler.scheduler = apscheduler
@@ -168,6 +170,39 @@ def test_a_cron_the_reconcile_registers_lists_as_its():
 
     assert (tagged.job_id, tagged.reconciled) == (nightly.job_id(EXPERT), True)
     assert untagged.reconciled is False
+
+
+@pytest.mark.parametrize(
+    "prefix", [COMMUNITY_REBUILD_JOB_PREFIX, NIGHTLY_BATCH_JOB_PREFIX]
+)
+def test_expert_crons_use_a_separate_callable_reference(prefix):
+    job = dream_system_job(prefix)
+    body, crontab = scheduler_module._MEMORY_CRONS[prefix]
+    with _sqlite_file() as url, _scheduler_on(url) as scheduler:
+        expert = scheduler._add_memory_job(body, crontab, job, EXPERT, "UTC")
+        account = scheduler._add_memory_job(
+            body, crontab, job, MemoryScope.for_user("user-1"), "UTC"
+        )
+
+        assert (
+            expert.func_ref == "backend.executor.scheduler:execute_expert_memory_cron"
+        )
+        assert expert.kwargs == {
+            "func": body,
+            "user_id": "user-1",
+            "expert_id": "expert-1",
+        }
+        assert account.func is body
+        assert account.kwargs == {"user_id": "user-1"}
+
+
+def test_expert_cron_dispatch_preserves_the_body_arguments_and_result():
+    body = MagicMock(return_value="completed")
+
+    result = scheduler_module.execute_expert_memory_cron(body, "user-1", "expert-1")
+
+    body.assert_called_once_with(user_id="user-1", expert_id="expert-1")
+    assert result == "completed"
 
 
 @pytest.mark.parametrize(
@@ -454,8 +489,7 @@ def test_the_system_task_waits_for_a_running_scheduler(caplog) -> None:
 
 
 class TestRegistration:
-    """Registered after start and left alone while unchanged, as the PostHog
-    sweep is, so neither a restart nor a second scheduler postpones it."""
+    """Each scheduler runs an immediate pass without persisting the system job."""
 
     def _register(self, existing=None) -> MagicMock:
         scheduler = Scheduler.__new__(Scheduler)
@@ -464,7 +498,8 @@ class TestRegistration:
         Scheduler._register_memory_cron_reconcile(scheduler)
         return scheduler.scheduler.add_job
 
-    def test_registers_the_interval_job_when_missing(self) -> None:
+    def test_registers_an_immediate_interval_job(self) -> None:
+        before = datetime.now(timezone.utc)
         add_job = self._register()
 
         add_job.assert_called_once()
@@ -472,44 +507,36 @@ class TestRegistration:
         assert str(add_job.call_args.args[1]) == str(
             IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
         )
-        assert add_job.call_args.kwargs == {
+        kwargs = dict(add_job.call_args.kwargs)
+        assert before <= kwargs.pop("next_run_time") <= datetime.now(timezone.utc)
+        assert kwargs == {
             "id": _RECONCILE_JOB,
             "replace_existing": True,
             "max_instances": 1,
             "coalesce": True,
-            "jobstore": _EXECUTION,
+            "jobstore": "memory_cron_reconcile",
         }
 
-    def test_leaves_an_unchanged_job_alone(self) -> None:
-        existing = MagicMock(
-            trigger=IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
-        )
-
-        self._register(existing=existing).assert_not_called()
-
-    def test_replaces_a_job_whose_interval_changed(self) -> None:
-        existing = MagicMock(trigger=IntervalTrigger(minutes=60))
-
-        self._register(existing=existing).assert_called_once()
-
-    def test_a_second_scheduler_starting_keeps_an_overdue_pass_due(self) -> None:
-        """The review's probe on a shared SQLite jobstore: the first
-        scheduler registers the job, the pass falls overdue, and a second
-        scheduler starting registers it again. One job, still due when it
-        was."""
-        overdue = datetime.now(timezone.utc) - timedelta(minutes=5)
+    def test_overlapping_schedulers_and_a_restart_each_get_an_immediate_pass(
+        self,
+    ) -> None:
         with _sqlite_file() as url:
-            with _scheduler_on(url) as first:
+            with _scheduler_on(url) as first, _scheduler_on(url) as second:
+                before = datetime.now(timezone.utc)
                 first._register_memory_cron_reconcile()
-                first.scheduler.modify_job(
-                    _RECONCILE_JOB, jobstore=_EXECUTION, next_run_time=overdue
-                )
-            with _scheduler_on(url) as second:
                 second._register_memory_cron_reconcile()
-                jobs = second.scheduler.get_jobs(jobstore=_EXECUTION)
-
-        assert [job.id for job in jobs] == [_RECONCILE_JOB]
-        assert jobs[0].next_run_time == overdue
+                for service in (first, second):
+                    [job] = service.scheduler.get_jobs(jobstore="memory_cron_reconcile")
+                    assert job.id == _RECONCILE_JOB
+                    assert before <= job.next_run_time <= datetime.now(timezone.utc)
+                    assert service._execution_jobstore.get_all_jobs() == []
+            with _scheduler_on(url) as restarted:
+                assert restarted.scheduler.get_jobs() == []
+                before = datetime.now(timezone.utc)
+                restarted._register_memory_cron_reconcile()
+                [job] = restarted.scheduler.get_jobs(jobstore="memory_cron_reconcile")
+                assert before <= job.next_run_time <= datetime.now(timezone.utc)
+                assert restarted._execution_jobstore.get_all_jobs() == []
 
 
 def test_a_removal_another_scheduler_made_first_is_no_error() -> None:

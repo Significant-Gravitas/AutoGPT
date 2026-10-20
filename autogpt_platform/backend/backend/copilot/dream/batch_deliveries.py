@@ -242,20 +242,18 @@ async def _finalize_stuck_duplicate(bp: BatchPass, ops: DreamOperations) -> None
 
 def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
     """The first delivery's per-edge outcomes (and dream session id) died
-    with it: the writes and proposals it queued are counted pending, none
-    written, and the demotion counts are the clamped *attempted* ops —
-    annotated so the admin UI doesn't present them as confirmed apply
-    results."""
+    with it, so the counts here are the clamped *attempted* ops — annotated
+    so the admin UI doesn't present them as confirmed apply results."""
     note = (
-        "[finalized after duplicate delivery — writes and proposals were "
-        "queued by the original delivery, counted pending; demotion counts "
-        "reflect attempted operations] "
+        "[finalized after duplicate delivery — counts reflect attempted "
+        "operations; the original delivery may or may not have written them] "
     )
     return DreamPassResult(
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        pending_writes=len(ops.writes) + len(ops.proposals),
+        consolidated_count=len(ops.writes),
+        proposal_count=len(ops.proposals),
         demotion_count=len(ops.demotions),
         entity_invalidation_count=len(ops.entity_invalidations),
         # Batch apply never drains in-line by design; the first

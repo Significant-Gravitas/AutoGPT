@@ -286,37 +286,23 @@ async def _run_phase(
     (OpenRouter's ``usage.cost``, what we were billed), else the model's
     catalog list rate; unknown when the response reported no usage at all.
 
-    Raises ``InferenceError`` when the phase got no usable answer. An answer
-    that came back but did not parse was still billed, so its usage is
-    recorded like a completed phase's (the cost row and the trace show the
-    attempt) and leaves on the error, priced, for the pass's failure result.
+    Raises ``InferenceError`` when the phase got no usable answer. Failed
+    phases are absorbed; their usage remains on the error for tracing.
     """
     job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
     route = resolve_route(run.scope, job, config=run.config)
     ctx = InferenceContext(scope=run.scope, job=job, route=route)
     async with trace(ctx) as call:
-        try:
-            completion = await structured_complete(
-                call.ctx,
-                messages,
-                response_model,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            )
-        except InferenceError as exc:
-            await _record_failed_attempt(call.ctx, exc)
-            raise
+        completion = await structured_complete(
+            call.ctx,
+            messages,
+            response_model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
         usage = await record_phase_cost(call.ctx, completion.usage)
         call.usage = usage
     return completion.value, phase_usage(phase, usage)
-
-
-async def _record_failed_attempt(ctx: InferenceContext, exc: InferenceError) -> None:
-    """Record the usage a failed call was billed for, and put it back on the
-    error priced. A call that got no response carries none: nothing to
-    record, and the trace closes on the error alone."""
-    if exc.usage is not None:
-        exc.usage = await record_phase_cost(ctx, exc.usage)
 
 
 async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
@@ -642,17 +628,15 @@ async def _phase(
     phase: DreamPhase,
     call: Callable[[], Awaitable[tuple[_Output, PhaseUsage]]],
 ) -> _Output:
-    """One phase's output, once the pass's row shows no stop and its lease
-    is renewed (``lease.checkpoint``). A phase with no usable answer ends the
-    pass (``PassEnded``) with the usage billed so far, the failed attempt's
-    included when its answer came back. A phase whose charge failed
-    (``PhaseChargeError``) joins that usage too, then its error ends the pass
-    as a crash does."""
+    """One phase's output. A phase with no usable answer ends the pass
+    (``PassEnded``) with the completed phases' usage. Failed inference
+    attempts are absorbed. A completed phase whose charge failed
+    (``PhaseChargeError``) joins that usage too, then its error ends the
+    pass as a crash does."""
     await checkpoint(run, phase)
     try:
         output, usage = await call()
     except InferenceError as exc:
-        run.bill_failed_phase(phase, exc)
         raise PassEnded(run.failure(f"{phase}: {exc}")) from exc
     except PhaseChargeError as exc:
         run.phases.append(phase_usage(phase, exc.usage))
@@ -710,13 +694,13 @@ def _applied_result(
         completed_at=datetime.now(timezone.utc),
         elapsed_seconds=run.elapsed_seconds(),
         execution_path=run.execution_path,
+        dropped_forgotten=_as_int("dropped_forgotten"),
+        pending_writes=_as_int("pending_writes"),
+        failed_writes=_as_int("failed_writes"),
         consolidated_count=_as_int("consolidated_count"),
         proposal_count=_as_int("proposal_count"),
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
-        dropped_forgotten=_as_int("dropped_forgotten"),
-        pending_writes=_as_int("pending_writes"),
-        failed_writes=_as_int("failed_writes"),
         protected_demotions=_as_int("protected_demotions"),
         indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
         # Only apply's own False marks the count unconfirmed.

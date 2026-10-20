@@ -20,6 +20,35 @@ _KEY = write_lock_key(_GROUP)
 
 
 @pytest.mark.asyncio
+async def test_lock_works_without_python311_asyncio_timeout(
+    lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delattr(asyncio, "timeout", raising=False)
+
+    async with graph_write_lock(_GROUP, wait_seconds=0) as lock:
+        assert lock is LockState.HELD
+        assert _KEY in lock_redis.values
+
+    assert _KEY not in lock_redis.values
+
+
+@pytest.mark.asyncio
+async def test_redis_deadline_without_python311_asyncio_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delattr(asyncio, "timeout", raising=False)
+    monkeypatch.setattr(scope_lock, "_REDIS_TIMEOUT_SECONDS", 0.01)
+
+    async def hang() -> FakeRedis:
+        await asyncio.sleep(60)
+        return FakeRedis()
+
+    monkeypatch.setattr(scope_lock, "get_redis_async", hang)
+    with pytest.raises(asyncio.TimeoutError):
+        await scope_lock._script(scope_lock.UNLOCK_SCRIPT, _KEY, "token")
+
+
+@pytest.mark.asyncio
 async def test_holds_the_key_with_its_token_and_releases_it(
     lock_redis: FakeRedis,
 ) -> None:

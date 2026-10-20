@@ -241,10 +241,11 @@ def _registered(outcome: Any) -> bool:
 def _next_job_id(
     row: MemoryScopeSchedule, job: DreamSystemJob, outcome: Any, stale: bool
 ) -> str | None:
-    """A new registration's id; otherwise the recorded id, unless that job
-    was registered in a timezone that no longer holds."""
+    """Keep failed registration intent so reconciliation can retry it."""
     if _registered(outcome):
         return outcome["id"]
+    if outcome and outcome.get("reason") == "registration_failed":
+        return recorded_job_id(row, job)
     return None if stale else recorded_job_id(row, job)
 
 

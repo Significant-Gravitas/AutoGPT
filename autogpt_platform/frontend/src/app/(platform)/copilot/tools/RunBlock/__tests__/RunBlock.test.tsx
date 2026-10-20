@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getGetV1ListAvailableBlocksMockHandler } from "@/app/api/__generated__/endpoints/blocks/blocks.msw";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { RunBlockTool, type RunBlockToolPart } from "../RunBlock";
 
 const blockId = "87840993-2053-44b7-8da4-187ad4ee518c";
@@ -42,5 +42,33 @@ describe("RunBlockTool block name lookup", () => {
       />,
     );
     expect(screen.getByText('Running "My Block"')).not.toBeNull();
+  });
+});
+
+describe("RunBlockTool session replay privacy", () => {
+  it("keeps the block's output out of session replays", async () => {
+    const email = "Quarterly numbers: revenue is down 12%";
+    render(
+      <RunBlockTool
+        part={makePart({
+          state: "output-available",
+          output: {
+            type: "block_output",
+            message: "Block executed",
+            block_id: blockId,
+            block_name: "Gmail Read",
+            provider: "google",
+            success: true,
+            outputs: { email: [email] },
+          },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Gmail Read/ }));
+
+    const output = await screen.findByText(email, { exact: false });
+    expect(output.closest(".ph-no-capture")).not.toBeNull();
+    expect(output.closest(".sentry-block")).not.toBeNull();
   });
 });

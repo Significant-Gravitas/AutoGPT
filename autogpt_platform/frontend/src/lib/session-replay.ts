@@ -2,10 +2,14 @@ import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
 import * as Sentry from "@sentry/nextjs";
 
 function createReplayIntegrations() {
-  // Canvas first: Replay looks it up by name when it sets up.
+  // Everything on screen is masked unless an element opts in with
+  // `sentry-unmask`, which only copy that is the same for every user should.
+  // No canvas recording: its pixels are sent as drawn, with no masking.
   return [
-    Sentry.replayCanvasIntegration(),
     Sentry.replayIntegration({
+      maskAllText: true,
+      maskAllInputs: true,
+      blockAllMedia: true,
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
   ];

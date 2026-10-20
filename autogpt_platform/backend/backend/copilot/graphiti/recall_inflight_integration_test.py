@@ -74,7 +74,7 @@ def boundaries(mocker, scope_graph, stub_graphiti_client):
 @pytest_asyncio.fixture(loop_scope="function")
 async def ingest_worker_cleanup(mocker: MockerFixture) -> AsyncIterator[None]:
     mocker.patch(
-        "backend.copilot.dream.registry.ensure_dream_system_scheduled",
+        "backend.copilot.graphiti.ingest.ensure_scope_scheduled",
         AsyncMock(return_value=None),
     )
     yield
@@ -134,7 +134,7 @@ async def _watch(scope: MemoryScope, answered: asyncio.Event, seen: list[bool]):
 async def _searched(seen: list[bool], times: int) -> None:
     """Wait until the watcher has searched ``times`` times since the
     forget answered."""
-    async with asyncio.timeout(20):
+    async with scope_lock.timeout(20):
         while len(seen) < times:
             await asyncio.sleep(0.05)
 

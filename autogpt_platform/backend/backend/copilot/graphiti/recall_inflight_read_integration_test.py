@@ -27,11 +27,15 @@ import pytest
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodicNode
+from graphiti_core.search.search_config import SearchConfig
+from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools import graphiti_forget
 from backend.copilot.tools.graphiti_search import MemorySearchTool
+from backend.copilot.tools.models import MemoryForgetCandidatesResponse
 
-from . import context, recall
+from . import context, context_refresh, recall
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_forget import retract
 from .recall_integration_fixtures import (
@@ -119,12 +123,18 @@ async def test_warm_context_paused_at_its_reranker_shows_nothing_forgotten(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recipe",
+    [EDGE_HYBRID_SEARCH_CROSS_ENCODER, context_refresh.REFRESH_RECIPE],
+    ids=["first-turn", "follow-up-refresh"],
+)
 async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
-    scope_graph, stub_graphiti_client
+    scope_graph, stub_graphiti_client, recipe: SearchConfig
 ) -> None:
     """The fact check has kept Alice's fact, a forget answers, then the rest
     of the read runs: its one last statement finds neither her fact nor her
-    episode."""
+    episode. The same holds for a follow-up turn's refresh (SECRT-2378),
+    which reads through the same ``_fetch`` with the RRF-reranked recipe."""
     driver, scope = scope_graph
     alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
     live_now = recall.live_now
@@ -143,7 +153,10 @@ async def test_warm_context_after_its_fact_check_passed_shows_nothing_forgotten(
         return patch.object(recall, "live_now", checked)
 
     shown = await _forget_while_paused(
-        scope, alice, lambda: context._fetch(scope, "Alice Bob Atlas"), pause
+        scope,
+        alice,
+        lambda: context._fetch(scope, "Alice Bob Atlas", recipe=recipe),
+        pause,
     )
 
     assert ALICE[2] in passed, "the fact check passed before the forget"
@@ -183,3 +196,41 @@ async def test_memory_search_paused_as_its_search_returns_shows_nothing_forgotte
     assert ALICE[2] in searched, "the search read the fact before the forget"
     assert ALICE[2] not in shown
     assert BOB[2] in shown
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_forget_search_rechecks_live_candidates_after_forgotten_search(
+    scope_graph, stub_graphiti_client, mocker
+) -> None:
+    driver, scope = scope_graph
+    alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
+    mocker.patch.object(
+        graphiti_forget, "is_enabled_for_user", mocker.AsyncMock(return_value=True)
+    )
+    search = graphiti_forget.search_forgotten_facts
+
+    def pause(reached: asyncio.Event, release: asyncio.Event):
+        async def paused(*args: Any, **kwargs: Any):
+            reached.set()
+            await release.wait()
+            return await search(*args, **kwargs)
+
+        return patch.object(graphiti_forget, "search_forgotten_facts", paused)
+
+    async def read():
+        session = ChatSession.new(scope.owner_user_id, dry_run=False)
+        return await graphiti_forget.MemoryForgetSearchTool()._execute(
+            scope.owner_user_id, session, query="Atlas", include_forgotten=True
+        )
+
+    shown = await _forget_while_paused(scope, alice, read, pause)
+
+    assert isinstance(shown, MemoryForgetCandidatesResponse)
+    assert ALICE[2] not in shown.model_dump_json()
+    assert BOB[2] in shown.model_dump_json()
+    candidates = [
+        candidate for candidate in shown.candidates if candidate["uuid"] == alice
+    ]
+    assert len(candidates) == 1
+    assert candidates[0]["fact"] == recall.FORGOTTEN_FACT

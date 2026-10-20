@@ -95,8 +95,11 @@ class TestExpertMemoryScope:
 
 
 class TestForgetSearchCandidates:
+    @pytest.mark.parametrize("status", [None, "active", "tentative"])
     @pytest.mark.asyncio
-    async def test_candidates_carry_uuid_fact_and_validity(self) -> None:
+    async def test_candidates_carry_uuid_fact_and_validity(
+        self, status: str | None
+    ) -> None:
         edge = EntityEdge(
             uuid="e1",
             group_id="user_user-abc",
@@ -106,6 +109,7 @@ class TestForgetSearchCandidates:
             name="works_on",
             fact="Alice works on Atlas",
             valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            attributes={"status": status} if status else {},
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
@@ -123,6 +127,7 @@ class TestForgetSearchCandidates:
                 "fact": "Alice works on Atlas",
                 "valid_from": "2025-01-01 00:00:00+00:00",
                 "valid_to": "present",
+                **({"status": status} if status else {}),
             }
         ]
 
@@ -156,6 +161,7 @@ class TestForgetSearchForgottenCandidates:
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
             patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
+            patch(f"{_MODULE}.recheck", AsyncMock(return_value=(live, []))),
         ):
             response = await MemoryForgetSearchTool()._execute(
                 "user-abc",
@@ -242,7 +248,7 @@ class TestForgetSearchForgottenCandidates:
         gone = [
             self._edge("e2", FORGOTTEN_FACT, forgotten_at=secret),
             self._edge(
-                "e3", FORGOTTEN_FACT, forgotten_at="2026-01-01T07:30:15.25+02:00"
+                "e3", FORGOTTEN_FACT, forgotten_at="2026-01-01T07:30:15.250+02:00"
             ),
             self._edge("e4", FORGOTTEN_FACT, forgotten_at="0001-01-01T00:00:00+05:00"),
         ]

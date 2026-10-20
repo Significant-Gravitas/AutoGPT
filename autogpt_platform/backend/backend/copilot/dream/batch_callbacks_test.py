@@ -865,21 +865,16 @@ class TestErrorPaths:
             )
         mark_errored.assert_awaited_once()
         assert error in mark_errored.call_args.kwargs["error"]
-        if error == "max_tokens":
-            record_cost.assert_awaited_once()
-            usage = record_cost.await_args.args[1]
-            assert usage.input_tokens == 10
-            assert usage.output_tokens == 20
-        else:
-            record_cost.assert_not_awaited()
+        record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert stored["error"] == error
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis):
-        """A row whose content is not parseable JSON must NOT chain to
-        the next phase — the next phase's prompt would be built on
-        garbage. Pydantic's default ``model_validate`` is permissive
-        about unknown fields (extra="ignore"), so the failure mode the
-        test pins is invalid-JSON not unknown-field."""
+    @pytest.mark.parametrize("content", ["this is not JSON", '{"facts": "invalid"}'])
+    async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis, content):
         await _persist_autopilot_bundle()
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
@@ -894,41 +889,51 @@ class TestErrorPaths:
                 [
                     _row(
                         custom_id="p1:consolidate",
-                        content="this is not JSON at all",
+                        content=content,
                     )
                 ],
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        record_cost.assert_not_awaited()
+        redis, _, _ = fake_redis
+        stored = json.loads(redis.hset.await_args.args[2])
+        assert "invalid output shape" in stored["error"]
+        assert stored["input_tokens"] == 10
+        assert stored["output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_a_row_that_did_not_parse_is_still_billed(self, fake_redis):
-        """The provider billed the answer even though it did not parse: the
-        failed phase gets exactly one cost row with its tokens, on the batch
-        route, and the pass still ends errored without chaining."""
+    @pytest.mark.parametrize(
+        "content,error",
+        [
+            (_RECOMBINE_CONTENT, "max_tokens"),
+            ('{"proposals": "invalid"}', None),
+            ("", "provider error"),
+        ],
+    )
+    async def test_failed_phase_only_charges_earlier_completed_phase(
+        self, fake_redis, content, error
+    ):
         await _persist_autopilot_bundle()
-        submit_phase = AsyncMock()
-        mark_errored = AsyncMock()
-        persist = AsyncMock()
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        record_cost = AsyncMock()
         with (
-            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
-            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
-            patch("backend.copilot.inference.record.persist_and_record_usage", persist),
+            patch("backend.copilot.dream.job_status.mark_errored", AsyncMock()),
+            patch("backend.copilot.dream.batch_costs.record_phase_cost", record_cost),
         ):
             await handle_dream_batch_result(
-                _entry(phase="consolidate"),
-                [_row(custom_id="p1:consolidate", content="this is not JSON at all")],
+                _entry(phase="recombine"),
+                [_row(custom_id="p1:recombine", content=content, error=error)],
             )
-        submit_phase.assert_not_awaited()
-        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
-        persist.assert_awaited_once()
-        row = persist.await_args.kwargs
-        assert (row["prompt_tokens"], row["completion_tokens"]) == (10, 20)
-        assert row["block_name_override"] == "copilot:dream:consolidate"
-        assert row["extra_metadata"]["execution_path"] == "anthropic_batch"
-        # Sonnet 5 at half its $2 / $10 per Mtok list price.
-        assert row["cost_usd"] == pytest.approx((10 * 2.0 + 20 * 10.0) / 1e6 / 2)
+        record_cost.assert_awaited_once()
+        ctx, usage = record_cost.await_args.args
+        assert ctx.job.phase == "consolidate"
+        assert (usage.input_tokens, usage.output_tokens) == (10, 20)
 
     @pytest.mark.asyncio
     async def test_text_answer_around_the_json_still_chains(self, fake_redis):
@@ -2337,14 +2342,20 @@ async def test_an_unattributed_result_stops_its_batch_before_the_mark_goes(
     entry = _entry(phase="recombine")
     del entry.payload["cost_context"]
     stop = AsyncMock(return_value=stopped)
+    charge = AsyncMock()
 
-    with patch("backend.copilot.dream.cleanup.provider_batch_stopped", stop):
+    with (
+        patch("backend.copilot.dream.cleanup.provider_batch_stopped", stop),
+        patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+    ):
         with pytest.raises(UsageActivationUnavailable):
             await handle_dream_batch_result(
                 entry, [_row(custom_id="p1:recombine", content="", error="expired")]
             )
 
     stop.assert_awaited_once_with("msgbatch_recombine")
+    charge.assert_awaited_once()
+    assert charge.await_args.args[0].job.phase == "consolidate"
     row = fake_dream_db.rows["p1"]
     assert row["status"] is DreamPassStatus.ERRORED
     assert (row["cleanup_pending_at"] is None) is stopped

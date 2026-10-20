@@ -109,10 +109,6 @@ async def run_nightly_batch_submit(
 ) -> NightlyBatchResult:
     """Fan out one memory scope's nightly batch-family submissions, in order.
 
-    ``expert_id`` picks the expert's scope instead of the account's; the
-    budget check stays on the owner either way, since an expert's dreams
-    are paid from the owner's allowance.
-
     Today the order is dream-pass → ratification-supersession-sweep.
     Future additions land as new sequential calls between these two
     (e.g. P2 dedup goes before dream so the dream pass operates on a
@@ -250,13 +246,10 @@ async def _submit_ratification(result: NightlyBatchResult) -> None:
 
 async def _submit_learning(result: NightlyBatchResult) -> None:
     """Skill learning, when its own flag is on for the user: the dream pass
-    never implies it. Once per account: its pass reviews the account's skills
-    and its experts', so an expert's nightly batch leaves it out. A failure
-    stays isolated, as the other submitters' do."""
+    never implies it. A failure stays isolated, as the other submitters' do."""
     user_id = result.user_id
-    expert_id = result.expert_id
     try:
-        if expert_id is None and await is_feature_enabled(
+        if result.expert_id is None and await is_feature_enabled(
             Flag.DREAM_SKILL_LEARNING_ENABLED, user_id
         ):
             result.learning = await run_skill_learning_pass(user_id, trigger="nightly")

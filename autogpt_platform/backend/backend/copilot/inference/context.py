@@ -129,9 +129,9 @@ class InferenceError(RuntimeError):
     """A background call produced no usable answer.
 
     ``usage`` is the provider's spend when the failure came *after* a response
-    (empty content, unparseable JSON, a schema mismatch): those tokens were
-    billed, so a caller keeping a cost ledger records them. ``None`` means no
-    call completed and nothing was charged.
+    (empty content, unparseable JSON, a schema mismatch). Callers retain it
+    for telemetry and apply their own charging policy; failed dream phases
+    are absorbed. ``None`` means no call completed.
     """
 
     def __init__(self, message: str, usage: InferenceUsage | None = None) -> None:
