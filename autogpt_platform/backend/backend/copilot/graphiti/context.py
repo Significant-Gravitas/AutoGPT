@@ -2,13 +2,14 @@
 
 Recall must not depend on the model choosing to call ``memory_search``
 (SECRT-2378), so the chat engines put a ``<temporal_context>`` block, keyed
-on the user's message, into the turn themselves. The first turn of a
-session calls ``fetch_warm_context``: graphiti's cross-encoder recipe (BM25,
-cosine and BFS edge search, then a per-candidate LLM rerank),
-``context_max_facts`` facts, the five newest recallable episodes,
-``context_timeout``, and a ratification hit for every fact shown. Every
-later user turn refreshes it through the same fetch with a cheaper recipe
-(``context_refresh.py``).
+on the user's message, into the turn themselves: into that turn's model
+input only, marked, and never into the stored message or a transcript
+(``context_marker.py``). The first turn of a session calls
+``fetch_warm_context``: graphiti's cross-encoder recipe (BM25, cosine and
+BFS edge search, then a per-candidate LLM rerank), ``context_max_facts``
+facts, the five newest recallable episodes, ``context_timeout``, and a
+ratification hit for every fact shown. Every later user turn refreshes it
+through the same fetch with a cheaper recipe (``context_refresh.py``).
 
 Both read through the recall policy (``recall.py``) the same way: live facts
 only, recallable episodes only, one last check of both by uuid right before
