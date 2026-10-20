@@ -30,14 +30,15 @@ from backend.copilot.credit_billing import (
     credit_billing,
 )
 from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.expert_check import (
+    checked_expert,
+    remember_expert_check,
+    sharing_expert_checks,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
-)
-from backend.copilot.expert_tenancy import (
-    remember_expert_tenancy,
-    sharing_expert_tenancy,
 )
 from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.model import maybe_append_user_message
@@ -236,16 +237,15 @@ async def _normalize_private_expert_session_tenancy(
     from backend.data.db_accessors import experts_db
 
     try:
-        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
+        check = await experts_db().check_private_expert(
             session.user_id, session.expert_id
         )
     except ExpertNotFoundError as e:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
     except ExpertPrivateTenancyNotFoundError as e:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
-    remember_expert_tenancy(
-        session.user_id, session.expert_id, (organization_id, team_id)
-    )
+    remember_expert_check(session.user_id, session.expert_id, check)
+    organization_id, team_id = check.organization_id, check.team_id
     if (session.organization_id, session.team_id) == (organization_id, team_id):
         return session
 
@@ -259,6 +259,10 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
     """Hold a fresh hire's turn until its skills and workflows are installed,
     or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
     if session.expert_id is None:
+        return
+    # The turn's expert check read the setup status a moment ago.
+    check = checked_expert(session.user_id, session.expert_id)
+    if check is not None and check.expert.setup_status != "installing":
         return
     from backend.data.db_accessors import experts_db
 
@@ -615,7 +619,7 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
-        with turn_transaction(entry) as turn, sharing_expert_tenancy():
+        with turn_transaction(entry) as turn, sharing_expert_checks():
             await self._run_turn(entry, cancel, cluster_lock, log, turn)
 
     async def _run_turn(
