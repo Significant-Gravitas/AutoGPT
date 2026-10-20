@@ -85,7 +85,11 @@ export function CredentialMentionEditor({
     const input = document.getElementById(inputId);
     const pending = pendingSelection.current;
     pendingSelection.current = null;
-    if (input && wasRich.current !== rich && hasFocus.current) {
+    if (
+      input &&
+      wasRich.current !== rich &&
+      (!isTouchDevice() || hasFocus.current)
+    ) {
       input.focus();
       if (pending?.value === value) restoreSelection(input, pending);
     }

@@ -5,6 +5,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { useChatInput } from "../../ChatInput/useChatInput";
 import { CredentialMentionEditor } from "../CredentialMentionEditor";
 
@@ -73,6 +74,7 @@ describe("mobile composer focus", () => {
   );
 
   it("keeps desktop focus after submitting a badge", async () => {
+    const user = userEvent.setup();
     vi.spyOn(window, "matchMedia").mockReturnValue({
       matches: false,
     } as MediaQueryList);
@@ -81,9 +83,7 @@ describe("mobile composer focus", () => {
     const textarea = screen.getByRole("textbox");
     expect(document.activeElement).toBe(textarea);
     fireEvent.change(textarea, { target: { value: MESSAGE } });
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Send" }).closest("form")!,
-    );
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(onSend).toHaveBeenCalledWith(MESSAGE));
     expect(document.activeElement).toBe(screen.getByRole("textbox"));
   });
