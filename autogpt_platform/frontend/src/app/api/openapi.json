@@ -14640,6 +14640,81 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}/answered": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Answered Reviews Waiting to Run for Chat Session",
+        "description": "The chat's answered cards whose calls have not run yet, oldest first, so\nits box still shows them as answered, with Close and continue, after a reload.",
+        "operationId": "getV2Get answered reviews waiting to run for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Answered Reviews Waiting To Run For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/session/{chat_session_id}/continue": {
+      "post": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Continue Chat With Answered Reviews",
+        "description": "Start the chat's turn with the cards answered so far; the rest stay open\nand the turn is told how many still wait.",
+        "operationId": "postV2Continue chat with answered reviews",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -31437,6 +31512,12 @@
             "type": "array",
             "title": "Reviews",
             "description": "All reviews with their approval status, data, and messages"
+          },
+          "wait_for_other_cards": {
+            "type": "boolean",
+            "title": "Wait For Other Cards",
+            "description": "Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+            "default": false
           }
         },
         "type": "object",
@@ -31465,6 +31546,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if operation failed"
+          },
+          "awaiting_other_cards": {
+            "type": "boolean",
+            "title": "Awaiting Other Cards",
+            "description": "The answers start no chat turn yet: other cards in the chat still wait",
+            "default": false
           }
         },
         "type": "object",
