@@ -10,7 +10,7 @@ is raised so the webhook retries and resumes.
 An unpaid subscription that is the customer's only plan is not cancelled:
 access ends at once, while Stripe keeps retrying the invoice and its payment
 link stays usable. Paying it later restores access through the
-subscription's own update event. One the customer has replaced with another
+subscription's own update event. One the customer has replaced with a newer
 active or trialing plan is cancelled and its unpaid invoices voided instead:
 paying it would reactivate the old plan, whose update event would then
 cancel the newer one as a duplicate.
@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from backend.data.credit import (
     REPLACED_PLAN_CANCELLATION_COMMENT,
     _invoice_subscription_id,
+    replaced_by_newer_plan,
     sync_subscription_from_stripe,
 )
 from backend.data.stripe_client import stripe_call, stripe_list_items
@@ -48,8 +49,6 @@ logger = logging.getLogger(__name__)
 # paying. ``incomplete`` is left alone: its first payment may still be
 # authenticated, and Stripe expires it on its own.
 _UNPAID_STATUSES = ("past_due", "unpaid")
-# Subscription states that give the customer a plan.
-_LIVE_STATUSES = ("active", "trialing")
 # Invoice states still payable through a payment link or the portal.
 _PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
 # Tiers with no paid plan to keep: the wallet starts no payment for them.
@@ -107,7 +106,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     - A payment still processing (e.g. a bank debit) is left to settle before
       anything else: the wallet is not touched and the tier sync cuts access.
-    - A subscription another active or trialing plan replaced is cancelled
+    - A subscription a newer active or trialing plan replaced is cancelled
       and its unpaid invoices voided, never paid: paying would reactivate
       it, and its update event would then cancel the newer plan as a
       duplicate. A wallet debit already started for it is refunded.
@@ -128,7 +127,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
     if await _left_to_settle(failed, payment):
         return
-    replaced = failed.is_unpaid and await _replaced_by_another_plan(failed)
+    replaced = failed.is_unpaid and await replaced_by_newer_plan(
+        failed.customer_id, failed.subscription
+    )
     if payment is not None:
         await settle_wallet_payment(
             failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid and not replaced
@@ -200,30 +201,6 @@ async def _wallet_may_start_payment(failed: FailedInvoice) -> bool:
         and trial.converted_at is None
         and trial.subscription_id == failed.sub_id
     )
-
-
-async def _replaced_by_another_plan(failed: FailedInvoice) -> bool:
-    """Whether the customer has another active or trialing subscription.
-
-    A trial cancelled to end at ``trial_end`` does not count: it ends without
-    an invoice and never becomes a plan, so the failed one is not replaced.
-    Paying it later would end the trial through the stale-plan cleanup, as
-    buying any plan during a cancel-pending trial does.
-    """
-    for status in _LIVE_STATUSES:
-        subscriptions = await stripe_call(
-            stripe.Subscription.list_async,
-            customer=failed.customer_id,
-            status=status,
-            limit=10,
-        )
-        async for subscription in stripe_list_items(subscriptions):
-            if subscription["id"] == failed.sub_id:
-                continue
-            if status == "trialing" and subscription.get("cancel_at_period_end"):
-                continue
-            return True
-    return False
 
 
 async def _load_failed_invoice(invoice: dict) -> FailedInvoice | None:

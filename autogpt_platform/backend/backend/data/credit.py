@@ -2881,11 +2881,13 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def _replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
+async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
     """Whether the customer has an active or trialing plan created after this one.
 
-    A trial cancelled to end at ``trial_end`` does not count: it never becomes a
-    plan. Without a ``created`` on both, nothing is treated as newer.
+    An older plan never replaces a newer one, even when a failed cleanup left
+    it active. A trial cancelled to end at ``trial_end`` does not count: it
+    ends without an invoice and never becomes a plan. Without a ``created``,
+    nothing is treated as newer.
     """
     created = subscription.get("created")
     if not created:
@@ -3025,7 +3027,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             invalidate_subscription_caches(user.id)
             return
     price_id = ""
-    if status == "active" and await _replaced_by_newer_plan(
+    if status == "active" and await replaced_by_newer_plan(
         customer_id, stripe_subscription
     ):
         # Paying an old past-due plan revives it next to the plan that
