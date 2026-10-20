@@ -536,6 +536,9 @@ services:
       # directly; tables live in the platform schema (Prisma migrations).
       DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres
       AUTH_DB_SCHEMA: platform
+      # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
+      # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.
+      KEEP_ALIVE_TIMEOUT: "65000"
 volumes:
   workspace-data:
   store-media-data:
