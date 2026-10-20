@@ -10,6 +10,7 @@ from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
 
 from backend.util.cache import cached
+from backend.util.settings import FeatureFlagBackend
 
 from . import (
     ANONYMOUS_USER,
@@ -21,7 +22,9 @@ from . import (
     _flag_backend_gave_up,
     defined_flag_keys,
     evaluate_flags_in_memory,
+    settings,
 )
+from .defaults import DEFAULT_ON_FLAGS
 
 # A consenting visitor's analytics id (a UUID); anything else counts as no id.
 VISITOR_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
@@ -153,9 +156,18 @@ async def _visitor_flags(visitor_id: str) -> dict[FrontendFlag, Any]:
 
 async def _evaluate(user_id: str) -> dict[FrontendFlag, Any]:
     defined = _defined_flags()
-    # A flag the vendor has no definition of is never read (on PostHog that is a
-    # /flags call each) and is answered None, so the page stops waiting for it.
-    readable = [f for f in FrontendFlag if defined is None or f.value in defined]
+    # Mature PostHog switches use the route gates' remote omission rules even
+    # when local definitions lack them; other missing flags keep their defaults.
+    posthog_defaults = (
+        DEFAULT_ON_FLAGS
+        if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG
+        else frozenset()
+    )
+    readable = [
+        f
+        for f in FrontendFlag
+        if defined is None or f.value in defined or f.value in posthog_defaults
+    ]
     results = await asyncio.gather(*(_read(flag, user_id) for flag in readable))
     undefined = {flag: _forced(flag) for flag in FrontendFlag if flag not in readable}
     return undefined | {

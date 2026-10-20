@@ -122,6 +122,74 @@ async def test_frontend_gets_inactive_remote_flag_as_off(remote_flags):
         frontend._defined_flags.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        ({"flags": {}, "errorsWhileComputingFlags": False}, (False, True)),
+        ({"flags": {}, "errorsWhileComputingFlags": True}, (True, False)),
+        (
+            {
+                "featureFlags": {"hire-experts": True},
+                "errorsWhileComputingFlags": False,
+            },
+            (True, True),
+        ),
+    ],
+)
+async def test_frontend_matches_route_gate_when_mature_flag_missing_locally(
+    remote_flags, body, expected
+):
+    client, _, response = remote_flags
+    client.feature_flags = [
+        {"id": 1, "key": "unrelated-flag", "active": False, "filters": {"groups": []}}
+    ]
+    response._content = json.dumps(body).encode()
+    frontend._defined_flags.cache_clear()
+    try:
+        assert ff.posthog.defined_flag_keys() == frozenset({"unrelated-flag"})
+        assert await ff.evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == expected
+        values = (await frontend.evaluate_frontend_flags("u-1")).model_dump(mode="json")
+        assert values["configured"] is True
+        flags = values["flags"]
+        if expected[1]:
+            assert flags["hire-experts"] is expected[0]
+        else:
+            assert "hire-experts" not in flags
+        assert flags["dream-pass-enabled"] is None
+        assert flags["marketplace-search-terms"] is None
+    finally:
+        frontend._defined_flags.cache_clear()
+
+
+@pytest.mark.parametrize("forced", [False, True])
+async def test_frontend_honors_env_for_mature_flag_missing_locally(
+    remote_flags, monkeypatch, forced
+):
+    client, request, response = remote_flags
+    client.feature_flags = [
+        {"id": 1, "key": "unrelated-flag", "active": False, "filters": {"groups": []}}
+    ]
+    response._content = json.dumps(
+        {"flags": {}, "errorsWhileComputingFlags": False}
+    ).encode()
+    monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", str(forced).lower())
+    frontend._defined_flags.cache_clear()
+    try:
+        assert await ff.evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (
+            forced,
+            True,
+        )
+        values = await frontend.evaluate_frontend_flags("u-1")
+        assert values.flags[frontend.FrontendFlag.HIRE_EXPERTS] is forced
+        assert all(
+            "hire-experts"
+            not in json.loads(call.kwargs["data"])["flag_keys_to_evaluate"]
+            for call in request.call_args_list
+        )
+    finally:
+        frontend._defined_flags.cache_clear()
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("completeness", [{"errorsWhileComputingFlags": True}, {}])
 async def test_present_boolean_survives_partial_or_legacy_response(

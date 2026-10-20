@@ -23,6 +23,7 @@ from backend.util.feature_flag import (
     is_feature_enabled,
 )
 from backend.util.feature_flag import posthog as ph
+from backend.util.feature_flag.defaults import DEFAULT_ON_FLAGS
 from backend.util.feature_flag.frontend import (
     FrontendFlag,
     _anonymous_flags,
@@ -211,8 +212,9 @@ async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker)
     assert flags == {}
 
 
-async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker):
-    """Each would be a remote /flags call on the executor every flag read shares."""
+async def test_a_signed_in_read_asks_posthog_only_about_defined_or_mature_flags(
+    mocker,
+):
     mocker.patch.object(
         ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
     )
@@ -227,8 +229,9 @@ async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker
     finally:
         client.shutdown()
 
-    # hire-experts is defined but needs /flags; nothing else may ask.
-    assert (remote.call_count, flags.get(CHAT_SEARCH, "left out")) == (1, None)
+    assert remote.call_count == sum(f.value in DEFAULT_ON_FLAGS for f in FrontendFlag)
+    assert flags.get(CHAT_SEARCH, "left out") == "left out"
+    assert flags[FrontendFlag.CHAT_MODE_OPTION.value] is None
 
 
 @pytest.mark.parametrize("loaded", [True, False])
@@ -249,9 +252,11 @@ async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
     finally:
         client.shutdown()
 
-    # hire-experts is defined but needs /flags, which is down: left out either way.
-    expected = (False, None) if loaded else (False, "left out")
-    assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == expected
+    # Missing mature switches use remote evaluation; other flags keep the shortcut.
+    assert HIRE_EXPERTS not in flags
+    assert CHAT_SEARCH not in flags
+    expected = None if loaded else "left out"
+    assert flags.get(FrontendFlag.CHAT_MODE_OPTION.value, "left out") == expected
 
 
 async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(mocker):
