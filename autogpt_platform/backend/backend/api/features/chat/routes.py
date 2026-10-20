@@ -2795,6 +2795,16 @@ async def perf_db_probe(
         )
     )
 
+    txpool_query = dict(session_query)
+    txpool_query["statement_cache_size"] = "100"
+    txpool_query["connection_limit"] = "8"
+    txpool_url = _up.urlunsplit(
+        parts._replace(
+            netloc=parts.netloc.rsplit(":", 1)[0] + ":6543",
+            query=_up.urlencode(txpool_query),
+        )
+    )
+
     def tcp(port: int) -> dict:
         out = []
         for _ in range(6):
@@ -2881,6 +2891,49 @@ async def perf_db_probe(
         "pg", asyncio.to_thread(pg_select1, session_url)
     )
     result["prisma_pooled"] = await guarded("prisma", prisma_series(_db.prisma))
+    async def stress(client: Prisma) -> dict:
+        """Concurrent mixed statements: named prepared statements that a
+        transaction pooler can't follow fail as duplicate or missing."""
+        errors: dict[str, int] = {}
+        done = 0
+        t0 = _time.perf_counter()
+        for _ in range(6):
+            calls = []
+            for i in range(24):
+                if i % 3 == 0:
+                    calls.append(client.user.find_unique(where={"id": user_id}))
+                elif i % 3 == 1:
+                    calls.append(
+                        client.user.find_unique(
+                            where={"id": user_id}, include={"ChatSessions": {"take": 1}}
+                        )
+                    )
+                else:
+                    calls.append(client.query_raw("SELECT 1"))
+            for res in await asyncio.gather(*calls, return_exceptions=True):
+                if isinstance(res, BaseException):
+                    key = type(res).__name__ + ": " + str(res)[:80].replace(user_id, "<u>")
+                    errors[key] = errors.get(key, 0) + 1
+                else:
+                    done += 1
+        return {"ok": done, "errors": errors, "wall_ms": ms(t0)}
+
+    txpool_client = Prisma(datasource={"url": txpool_url})
+    try:
+        await txpool_client.connect()
+        result["prisma_txpool_cached"] = await guarded(
+            "prisma", prisma_series(txpool_client)
+        )
+        result["prisma_txpool_cached_stress"] = await guarded(
+            "stress", stress(txpool_client)
+        )
+    except Exception as exc:
+        result["prisma_txpool_cached"] = f"error: {type(exc).__name__}"
+    finally:
+        if txpool_client.is_connected():
+            await txpool_client.disconnect()
+    result["prisma_current_stress"] = await guarded("stress", stress(_db.prisma))
+
     session_client = Prisma(datasource={"url": session_url})
     try:
         await session_client.connect()
