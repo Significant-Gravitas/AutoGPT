@@ -1,6 +1,9 @@
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 // Paths that carry the ID as the next segment: /embed/ID, /shorts/ID, ...
 const ID_PATH_PREFIXES = new Set(["embed", "v", "e", "shorts", "live"]);
+// Embed paths for a playlist or a channel's stream, not one video, though
+// they are 11 characters long like an ID.
+const NOT_VIDEO_IDS = new Set(["videoseries", "live_stream"]);
 
 function parseHttpUrl(url: string): URL | null {
   const trimmed = url.trim();
@@ -57,7 +60,9 @@ export function getYouTubeVideoId(url: string): string | null {
   } else if (segments[0] && ID_PATH_PREFIXES.has(segments[0])) {
     candidate = segments[1];
   }
-  return candidate && VIDEO_ID.test(candidate) ? candidate : null;
+  return candidate && VIDEO_ID.test(candidate) && !NOT_VIDEO_IDS.has(candidate)
+    ? candidate
+    : null;
 }
 
 /** Where the link asks playback to start (`t=90`, `t=1m30s`, `start=90`). */

@@ -34,6 +34,8 @@ describe("getYouTubeVideoId", () => {
     "https://www.youtube.com/playlist?list=PL123",
     "https://www.youtube.com/watch?v=short",
     "https://www.youtube.com/shorts/",
+    "https://www.youtube.com/embed/videoseries?list=PL123",
+    "https://www.youtube.com/embed/live_stream?channel=UC123",
     `https://youtube.com.example.com/watch?v=${ID}`,
     `https://example.com/watch?v=${ID}`,
     `javascript:alert(1)//youtu.be/${ID}`,
