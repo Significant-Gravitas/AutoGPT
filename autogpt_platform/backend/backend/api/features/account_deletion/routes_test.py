@@ -41,7 +41,7 @@ from backend.data.auth.api_key import create_api_key
 from backend.data.credit import ACCOUNT_DELETION_CANCELLATION_COMMENT
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.notifications import NotificationResult
-from backend.data.user import get_user_by_id
+from backend.data.user import get_user_by_id, is_user_banned
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.integrations.credentials_store import ollama_credentials
 from backend.util.json import SafeJson
@@ -122,6 +122,7 @@ async def account(server: SpinTestServer) -> AsyncIterator[Account]:
         await AuthUser.prisma().delete_many(where={"id": user_id})
         await User.prisma().delete_many(where={"id": user_id})
         get_user_by_id.cache_delete(user_id)
+        is_user_banned.cache_delete(user_id)
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -434,6 +435,48 @@ async def test_the_old_token_is_refused_afterwards(
 
     assert (right_after.status_code, right_after.json()) == (401, CLOSED)
     assert (on_another_worker.status_code, on_another_worker.json()) == (401, CLOSED)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_deleted_account_is_answered_as_closed_not_banned(
+    account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
+):
+    """Closing the account bans its sign-in too. The API still answers it as
+    closed, and the deletion route still answers its repeat request."""
+    first = await api.post(DELETE, json=account.confirm())
+    # Another worker has no cached answers: it reads the ban and the closure.
+    is_user_banned.cache_delete(account.user_id)
+    forget_account_state(account.user_id)
+    repeat = await api.post(DELETE, json=account.confirm())
+    elsewhere = await api.post(FEEDBACK, json=ANSWER)
+
+    assert (first.status_code, repeat.status_code) == (200, 200)
+    assert (elsewhere.status_code, elsewhere.json()) == (401, CLOSED)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_banned_for_another_reason_cannot_delete_itself(
+    account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
+):
+    """Deleting must not wipe a ban for abuse: the route refuses the account,
+    and the ban keeps its reason."""
+    await AuthUser.prisma().update(
+        where={"id": account.user_id}, data={"banned": True, "banReason": "spam"}
+    )
+
+    response = await api.post(DELETE, json=account.confirm())
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "account_banned"
+    edges.stripe_list.assert_not_awaited()
+    edges.revoke.assert_not_awaited()
+    edges.mailer.send_email_or_raise.assert_not_called()
+    assert (
+        await AccountDeletionRequest.prisma().count(where={"userId": account.user_id})
+        == 0
+    )
+    auth_user = await AuthUser.prisma().find_unique(where={"id": account.user_id})
+    assert auth_user is not None and auth_user.banReason == "spam"
 
 
 @pytest.mark.asyncio(loop_scope="session")

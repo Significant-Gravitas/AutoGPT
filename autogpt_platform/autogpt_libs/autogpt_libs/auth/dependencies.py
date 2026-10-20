@@ -159,9 +159,15 @@ async def get_unbanned_jwt_payload(
 
     The resolvers below all read it, and FastAPI resolves it once per request.
     Under impersonation the subject is the admin, who may act as a banned user.
+    Deleting an account bans it too. A closed account passes, so the resolvers
+    answer it as closed and the deletion route can answer a repeat request.
     """
     user_id = jwt_payload.get("sub")
-    if user_id and await _is_banned(user_id):
+    if (
+        user_id
+        and await _is_banned(user_id)
+        and await get_account_state(user_id) is not AccountState.CLOSED
+    ):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
     return jwt_payload
 
@@ -232,13 +238,15 @@ async def get_user_id(
 
 
 async def get_user_id_allowing_closed(
-    request: fastapi.Request, jwt_payload: dict = fastapi.Security(get_jwt_payload)
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> str:
     """``get_user_id`` that still resolves a closed account.
 
     Only for the account deletion route, so a repeat request for an account it
-    already closed can still answer. A closed account is never self-healed:
-    that would re-create the User row its erasure removes.
+    already closed can still answer. A ban that did not come from deleting the
+    account is still refused. A closed account is never self-healed: that
+    would re-create the User row its erasure removes.
     """
     return await _resolve_user_id(request, jwt_payload, allow_closed=True)
 
