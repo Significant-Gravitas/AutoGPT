@@ -72,6 +72,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.sdk import perf_loopwatch  # do-not-merge probe (#15739)
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
@@ -4498,6 +4499,10 @@ async def _run_stream_attempt(
         yield StreamStatus(
             message=f"perf:cli_connect:{_probe_ms()}"
         )  # do-not-merge probe
+        _st_n, _st_max, _st_sum = perf_loopwatch.stalls_since(
+            perf_loopwatch.TURN_T0.get()
+        )
+        yield StreamStatus(message=f"perf:stalls:{_st_n}:{int(_st_max)}:{int(_st_sum)}")
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
             "query_len=%d, attached_files=%d, image_blocks=%d",
@@ -5142,6 +5147,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user LaunchDarkly targeting.
     """
+    perf_loopwatch.ensure_watch()  # do-not-merge probe (#15739)
+    perf_loopwatch.TURN_T0.set(time.monotonic())
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
