@@ -223,6 +223,7 @@ class AllQuietUpdateIncidentBlock(Block):
                 ("severity", IncidentSeverity.CRITICAL),
             ],
             test_mock={"update_incident": lambda *args, **kwargs: TEST_INCIDENT},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

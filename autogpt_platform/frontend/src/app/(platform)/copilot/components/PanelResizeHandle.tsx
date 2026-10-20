@@ -18,6 +18,29 @@ interface Props {
   onResizingChange?: (isResizing: boolean) => void;
 }
 
+// A drag reports at most one width per animation frame: pointer moves arrive
+// faster than the screen paints, and every width written re-renders the panel.
+interface PendingWidth {
+  width: number | null;
+  frame: number | null;
+}
+
+// Reports the pending width, if any, and cancels its scheduled frame. Called
+// once per frame during a drag, and on pointer up/cancel/unmount before the
+// drag ends, so the panel applies the last width with its tween still off.
+function commitPendingWidth(
+  pending: PendingWidth,
+  onWidthChange: (width: number) => void,
+) {
+  if (pending.frame != null) {
+    cancelAnimationFrame(pending.frame);
+    pending.frame = null;
+  }
+  const width = pending.width;
+  pending.width = null;
+  if (width != null) onWidthChange(width);
+}
+
 export function PanelResizeHandle({
   panelSelector,
   onWidthChange,
@@ -43,6 +66,8 @@ export function PanelResizeHandle({
   const onResizingChangeRef = useRef(onResizingChange);
   onResizingChangeRef.current = onResizingChange;
 
+  const pendingRef = useRef<PendingWidth>({ width: null, frame: null });
+
   useEffect(() => {
     onResizingChangeRef.current?.(isDragging);
   }, [isDragging]);
@@ -54,6 +79,7 @@ export function PanelResizeHandle({
   // dragging, torn down on unmount so closing the panel mid-drag is safe.
   useEffect(() => {
     if (!isDragging) return;
+    const pending = pendingRef.current;
 
     function handlePointerMove(moveEvent: PointerEvent) {
       const delta = startXRef.current - moveEvent.clientX;
@@ -66,10 +92,16 @@ export function PanelResizeHandle({
         effectiveMax,
         Math.max(minWidthRef.current, startWidthRef.current + delta),
       );
-      onWidthChangeRef.current(newWidth);
+      pending.width = newWidth;
+      if (pending.frame != null) return;
+      pending.frame = requestAnimationFrame(() => {
+        pending.frame = null;
+        commitPendingWidth(pending, onWidthChangeRef.current);
+      });
     }
 
     function handlePointerUp() {
+      commitPendingWidth(pending, onWidthChangeRef.current);
       setIsDragging(false);
     }
 
@@ -80,6 +112,8 @@ export function PanelResizeHandle({
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("pointercancel", handlePointerUp);
+      // Closing the panel mid-drag still keeps the last width.
+      commitPendingWidth(pending, onWidthChangeRef.current);
     };
   }, [isDragging]);
 
@@ -113,6 +147,7 @@ export function PanelResizeHandle({
       }
       pointerIdRef.current = null;
     }
+    commitPendingWidth(pendingRef.current, onWidthChangeRef.current);
     setIsDragging(false);
   }
 

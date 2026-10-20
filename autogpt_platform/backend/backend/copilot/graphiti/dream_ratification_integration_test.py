@@ -19,7 +19,7 @@ Only the LLM boundary is stubbed — no API key, no network.
 
 Lives in ``graphiti/`` rather than ``dream/`` for the local conftest, which
 supplies the ``falkordb_available`` skip guard, the stubbed Graphiti client,
-and the no-op ``server`` / ``graph_cleanup`` overrides that keep this suite
+and the no-op ``server`` override that keeps this suite
 off SpinTestServer (postgres + rabbitmq). ``dream/`` has no conftest, and
 adding one would change how the existing dream unit tests run.
 
@@ -207,9 +207,9 @@ def stub_boundaries(
 
     * ``get_graphiti_client`` — patched on ``ingest`` (where it is used) to
       return a Graphiti wired to the test's real driver with the LLM stubbed.
-    * ``ensure_dream_system_scheduled`` — ``_ensure_worker`` imports it lazily
-      from ``dream.scheduling``, so that module IS the use site. Left live it
-      would fire LaunchDarkly + scheduler RPCs from a background task.
+    * ``ensure_scope_scheduled`` — patched on ``ingest`` (where the first
+      write per group calls it). Left live it would fire LaunchDarkly,
+      registry and scheduler calls from a background task.
     * ``get_redis_async`` — likewise imported lazily by the hit tracker.
     """
     driver, _user_id = dream_graph
@@ -217,9 +217,8 @@ def stub_boundaries(
     mocker.patch.object(
         ingest_mod, "get_graphiti_client", mocker.AsyncMock(return_value=client)
     )
-    mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
-        mocker.AsyncMock(return_value={}),
+    mocker.patch.object(
+        ingest_mod, "ensure_scope_scheduled", mocker.AsyncMock(return_value={})
     )
     mocker.patch(
         "backend.data.redis_client.get_redis_async",
@@ -386,7 +385,7 @@ async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) ->
     """Promote leg of the SWEEP: distinct from the warm-context hook.
 
     ``try_ratify_on_hit`` promotes via ``_promote_if_tentative``; the sweep
-    reaches ``_promote_edge`` only through ``_process_edge``'s ``hits >= 1``
+    reaches that same write only through ``_process_edge``'s ``hits >= 1``
     branch, keyed off the Redis counter — this is the test that makes the
     ``_FakeRedis`` counter load-bearing.
     """

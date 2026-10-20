@@ -28,6 +28,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -112,6 +113,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -195,6 +197,8 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
+
+    freeze_startup_heap()
 
     yield
 
@@ -525,6 +529,11 @@ app.include_router(
 app.include_router(
     backend.api.features.admin.memory_admin_routes.router,
     tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
     prefix="/api",
 )
 # Dev-only surface: the test-data seeder is never mounted outside a local

@@ -1,9 +1,9 @@
 """Reviewer model call and cost accounting for one learning review.
 
-Routes through the same transport + JSON-mode wrapper the dream pass uses
-(``dream/llm.structured_completion``) so every transport the platform
-supports works unchanged, and charges the spend through the normal usage
-ledger so learning appears next to chat spend under one provider label.
+Goes through the inference layer every background call takes
+(``copilot/inference``): the chat transport's provider and the platform's
+key, on the reviewer's model, the call traced, and its spend recorded in the
+usage ledger so learning appears next to chat spend under one provider label.
 """
 
 from __future__ import annotations
@@ -11,16 +11,18 @@ from __future__ import annotations
 import logging
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.dream.llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
-    structured_completion,
+from backend.copilot.inference.complete import StructuredCompletion, structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceJob,
+    InferenceScope,
+    InferenceUsage,
 )
-from backend.copilot.dream.model_pricing import compute_cost_usd
-from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.inference.record import price, record
+from backend.copilot.inference.routing import resolve_route
+from backend.copilot.inference.trace import trace
 from backend.copilot.tools.skills import ParsedSkill
-from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 
 from .contract import EvidenceBundle
 from .packages import ReviewedPackage
@@ -31,6 +33,10 @@ logger = logging.getLogger(__name__)
 REVIEW_TEMPERATURE = 0.1
 REVIEW_MAX_OUTPUT_TOKENS = 12_288
 REVIEW_TIMEOUT_SECONDS = 240
+
+# The learning pass's name for a review that failed: the inference layer's
+# error, carrying the usage a provider billed for an answer that did not parse.
+DreamLLMError = InferenceError
 
 __all__ = ["DreamLLMError", "review_evidence", "record_review_cost", "reviewer_model"]
 
@@ -43,52 +49,43 @@ async def review_evidence(
     config: ChatConfig,
     bundle: EvidenceBundle,
     existing_skills: list[ParsedSkill],
-    packages: dict[str, ReviewedPackage] | None = None,
+    packages: dict[str, ReviewedPackage] | None,
+    user_id: str,
+    run_id: str,
 ) -> StructuredCompletion[LearningProposal]:
-    """One reviewer call. Raises ``DreamLLMError`` on provider/parse failure."""
-    return await structured_completion(
-        model=reviewer_model(config),
-        messages=build_review_messages(bundle, existing_skills, packages),
-        response_model=LearningProposal,
-        temperature=REVIEW_TEMPERATURE,
-        max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,
-        timeout_seconds=REVIEW_TIMEOUT_SECONDS,
-    )
+    """One reviewer call for *user_id*'s learning run *run_id*. Raises
+    ``DreamLLMError`` on provider/parse failure; its spend is the caller's to
+    record (``record_review_cost``)."""
+    ctx = _review_context(user_id, run_id, reviewer_model(config), config)
+    async with trace(ctx) as call:
+        completion = await structured_complete(
+            call.ctx,
+            build_review_messages(bundle, existing_skills, packages),
+            LearningProposal,
+            temperature=REVIEW_TEMPERATURE,
+            max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,
+        )
+        call.usage = completion.usage
+    return completion
 
 
 async def record_review_cost(
-    *, user_id: str, run_id: str, usage: CompletionUsage
+    *, user_id: str, run_id: str, usage: InferenceUsage
 ) -> int | None:
     """Charge one review against the user's weekly window; returns microdollars.
 
     Never raises — an accounting hiccup must not fail the review whose tokens
     were already paid for; the ledger row still records the token counts.
     """
-    cost = usage.cost_usd
-    if cost is None:
-        cost = compute_cost_usd(
-            model=usage.model,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cache_read_tokens=usage.cache_read_tokens,
-            cache_creation_tokens=usage.cache_creation_tokens,
-        )
+    priced = usage
     try:
-        await persist_and_record_usage(
-            session=None,
-            user_id=user_id,
-            prompt_tokens=usage.input_tokens,
-            completion_tokens=usage.output_tokens,
-            cache_read_tokens=usage.cache_read_tokens,
-            cache_creation_tokens=usage.cache_creation_tokens,
-            log_prefix="[learning:review]",
-            cost_usd=cost,
-            model=usage.model,
-            provider=routing_kwargs_for_chat_transport().cost_log_provider,
-            block_name_override="copilot:learning:review",
-            graph_exec_id_override=run_id,
-            extra_metadata={"source": "skill_learning", "learning_run_id": run_id},
-            skip_daily=True,
+        ctx = _review_context(user_id, run_id, usage.model, ChatConfig())
+        priced = price(usage, ctx.route)
+        await record(
+            ctx,
+            priced,
+            block_name="copilot:learning:review",
+            metadata={"learning_run_id": run_id},
         )
     except Exception:
         logger.warning(
@@ -97,4 +94,24 @@ async def record_review_cost(
             run_id[:12],
             exc_info=True,
         )
+    cost = priced.cost_usd
     return int(round(cost * 1_000_000)) if cost is not None else None
+
+
+def _review_context(
+    user_id: str, run_id: str, model: str, config: ChatConfig
+) -> InferenceContext:
+    """A review on the account's own scope, pinned to *model*, its spend
+    joined under the learning run."""
+    scope = InferenceScope(user_id=user_id)
+    job = InferenceJob(
+        kind="skill_learning",
+        correlation_id=run_id,
+        latency_class="deferred",
+        tier="standard",
+        timeout_seconds=REVIEW_TIMEOUT_SECONDS,
+        pinned_model=model,
+    )
+    return InferenceContext(
+        scope=scope, job=job, route=resolve_route(scope, job, config=config)
+    )
