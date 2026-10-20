@@ -1372,20 +1372,20 @@ class TestListDiscussions:
             _list_discussions([categories], category="Ideas")
 
 
-def _graphql_via_requests(responses: list[object], **kwargs):
-    """Run list_discussions through the real `Requests` stack (only
-    aiohttp.ClientSession stubbed); return the result and (url, json) sent."""
+def _via_requests(call, responses: list[object]):
+    """Run `call` through the real `Requests` stack (only aiohttp.ClientSession
+    stubbed); return its result and the (method, url, json) of each request."""
     import contextlib
     import json
 
     from backend.util import request as request_module
 
-    sent: list[tuple[str, dict | None]] = []
+    sent: list[tuple[str, str, dict | None]] = []
     queue = list(responses)
 
     @contextlib.asynccontextmanager
     async def fake_request(method, url, **req_kwargs):
-        sent.append((url, copy.deepcopy(req_kwargs.get("json"))))
+        sent.append((method, url, copy.deepcopy(req_kwargs.get("json"))))
         response = mock.Mock(status=200, headers={}, reason="OK")
         response.read = mock.AsyncMock(return_value=json.dumps(queue.pop(0)).encode())
         yield response
@@ -1394,14 +1394,23 @@ def _graphql_via_requests(responses: list[object], **kwargs):
     async def fake_session(**session_kwargs):
         yield mock.Mock(request=fake_request)
 
+    with mock.patch.object(request_module.aiohttp, "ClientSession", fake_session):
+        result = asyncio.run(call())
+    return result, sent
+
+
+def _graphql_via_requests(responses: list[object], **kwargs):
+    """list_discussions via `_via_requests`; returns the result and (url, json)."""
     input_data = GithubListDiscussionsBlock.Input.model_validate(
         {"credentials": TEST_CREDENTIALS_INPUT, "repo_url": REPO_URL, **kwargs}
     )
-    with mock.patch.object(request_module.aiohttp, "ClientSession", fake_session):
-        result = asyncio.run(
-            GithubListDiscussionsBlock.list_discussions(TEST_CREDENTIALS, input_data)
-        )
-    return result, sent
+    result, sent = _via_requests(
+        lambda: GithubListDiscussionsBlock.list_discussions(
+            TEST_CREDENTIALS, input_data
+        ),
+        responses,
+    )
+    return result, [(url, body) for _, url, body in sent]
 
 
 _NOT_FOUND = {
@@ -1466,6 +1475,24 @@ class TestListDiscussionsRequests:
     def test_not_found_on_category_lookup_raises_a_clear_error(self):
         with pytest.raises(ValueError, match="Could not resolve"):
             _graphql_via_requests([_NOT_FOUND], category="Q&A")
+
+
+class TestCreateRepositoryRequest:
+    def test_posts_to_user_repos(self):
+        created = {
+            "html_url": "https://github.com/octocat/new-repo",
+            "clone_url": "https://github.com/octocat/new-repo.git",
+        }
+        result, sent = _via_requests(
+            lambda: repo.GithubCreateRepositoryBlock.create_repository(
+                TEST_CREDENTIALS, "new-repo", "", True, False, ""
+            ),
+            [created],
+        )
+        assert [(method, url) for method, url, _ in sent] == [
+            ("POST", "https://api.github.com/user/repos")
+        ]
+        assert result == (created["html_url"], created["clone_url"])
 
 
 # ── get_user tests ──
