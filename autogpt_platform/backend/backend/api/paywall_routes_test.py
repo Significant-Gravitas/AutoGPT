@@ -49,7 +49,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/user/timezone",
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
-    "POST /api/experiments/assignments",
+    "GET /api/experiments/assignments/{experiment}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
