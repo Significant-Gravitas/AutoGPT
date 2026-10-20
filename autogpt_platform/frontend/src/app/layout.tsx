@@ -125,10 +125,7 @@ export default async function RootLayout({
           >
             <SetupAnalytics
               host={host}
-              ga={{
-                gaId:
-                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-              }}
+              ga={{ gaId: environment.getGAMeasurementID() }}
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch supports-[min-height:100dvh]:min-h-dvh">
               {children}

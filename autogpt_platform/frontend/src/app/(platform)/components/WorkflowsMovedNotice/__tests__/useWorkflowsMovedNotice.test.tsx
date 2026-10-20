@@ -28,10 +28,7 @@ const context = vi.hoisted(() => ({
   search: "",
   ready: true,
   flagReadiness: {} as Record<string, boolean>,
-  flags: { "hire-experts": true, "autogpt-new-layout": true } as Record<
-    string,
-    boolean
-  >,
+  flags: { "hire-experts": true } as Record<string, boolean>,
 }));
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: context.user }),
@@ -43,7 +40,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     HIRE_EXPERTS: "hire-experts",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
     ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
   },
   useFlagStatus: (flag: string) => ({
@@ -102,7 +98,7 @@ beforeEach(() => {
   context.search = "";
   context.ready = true;
   context.flagReadiness = {};
-  context.flags = { "hire-experts": true, "autogpt-new-layout": true };
+  context.flags = { "hire-experts": true };
   mockOnboarding();
 });
 
@@ -287,13 +283,10 @@ describe("migration notice eligibility", () => {
     await waitFor(() => expect(result.current.isOpen).toBe(true));
   });
 
-  it.each(["hire-experts", "autogpt-new-layout"])(
-    "stays closed with %s disabled",
-    (flag) => {
-      context.flags[flag] = false;
-      expectDeferred();
-    },
-  );
+  it("stays closed with hire-experts disabled", () => {
+    context.flags["hire-experts"] = false;
+    expectDeferred();
+  });
 
   it("waits for feature flag readiness", () => {
     context.ready = false;

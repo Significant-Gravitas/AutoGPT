@@ -37,6 +37,8 @@ function makeProps(
     onRename: vi.fn(),
     onExport: vi.fn(),
     onShare: vi.fn(),
+    isLearningEnabled: false,
+    onExcludeFromLearning: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
   };
@@ -176,6 +178,27 @@ describe("RecentChatItem — actions menu", () => {
       await screen.findByRole("menuitem", { name: /share chat/i }),
     );
     expect(onShare).toHaveBeenCalledWith("s1");
+  });
+
+  it("offers Exclude from learning only while skill learning is on", async () => {
+    const onExcludeFromLearning = vi.fn();
+    renderItem(makeProps({ isLearningEnabled: true, onExcludeFromLearning }));
+
+    openActions();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /exclude from learning/i }),
+    );
+    expect(onExcludeFromLearning).toHaveBeenCalledWith("s1");
+  });
+
+  it("hides Exclude from learning while skill learning is off", async () => {
+    renderItem(makeProps());
+
+    openActions();
+    await screen.findByRole("menuitem", { name: /rename/i });
+    expect(
+      screen.queryByRole("menuitem", { name: /exclude from learning/i }),
+    ).toBeNull();
   });
 
   it("shows an exporting label while an export is in flight", async () => {
