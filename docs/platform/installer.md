@@ -179,10 +179,9 @@ private installer identity still match.
 `https://setup.agpt.co/install.sh`, `https://setup.agpt.co/install.ps1`, and
 `https://setup.agpt.co/install.bat` redirect to the files of the same name in
 `autogpt_platform/installer/` on `master`, so the hosted installers change
-whenever those files change on `master`. `install.bat` serves the older
-Windows command and runs `install.ps1` the same way as the PowerShell command
-above. Repository CI cannot prove this public bootstrap handoff, so each
-release must keep every gate below passing:
+whenever those files change on `master`. `install.bat` runs `install.ps1` the
+same way as the PowerShell command above. Repository CI cannot prove this
+public bootstrap handoff, so each release must keep every gate below passing:
 
 - Only a published, non-prerelease `autogpt-platform-beta-vX.Y.Z` release
   publishes images. Its run smoke-tests and scans both architectures, then
@@ -208,9 +207,9 @@ release must keep every gate below passing:
 
 The scripts below are the other supported path: they clone the repository and
 start every service with Docker Compose. Use them for development, or for a
-fully offline install with a local LLM. The appliance described above is the image documented in
-[Run AutoGPT in one Docker container](single-container.md); these scripts do
-not use it.
+fully offline install with a local LLM. The appliance described above is the
+image documented in [Run AutoGPT in one Docker container](single-container.md);
+these scripts do not use it.
 
 ### Manual Installation
 
