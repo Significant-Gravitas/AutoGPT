@@ -7,6 +7,12 @@ handling the distinction between:
 """
 
 from functools import cache
+from typing import TYPE_CHECKING
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 
 from backend.blocks.desktop._api import DISPLAY
 
@@ -203,6 +209,16 @@ no service exists or the user asked for it. A service query also lists up to
 three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
 vendor API directly with the user's host-scoped credentials when nothing else
 covers the service.
+
+When more than one capability covers the job, prefer what the user has
+connected (`connected: true`), then a platform tool (`tool:<name>`) over a
+block. Use a block when only it covers the job, or when the user asked for it.
+
+To post to Discord, Slack, Telegram or Teams, use `tool:post_to_chat_platform`
+when its listing names that platform in `linked` (`dm_linked` for a DM to the
+user): it posts as the AutoGPT bot with no credential into a linked server's
+channels or the user's own DMs. For anywhere else, or with nothing linked, use
+the user's connected block, or tell them they can link the platform.
 
 If `find_capability` returns nothing for a named service, `web_search` for
 "<service> MCP server" and call `run_capability` with the server URL as `id`.
@@ -591,7 +607,8 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
-To read these files, use `Read` — it reads from the host filesystem.
+To read these files, use `read_tool_result` with the full path as `file_path`.
+It reads the session's SDK result files from the host filesystem.
 
 ### Large tool outputs saved to workspace
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the
@@ -645,7 +662,61 @@ def _get_cloud_sandbox_supplement() -> str:
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
-        extra_notes=_E2B_TOOL_NOTES,
+        extra_notes=_E2B_TOOL_NOTES + _placeholder_notes(),
+    )
+
+
+def _placeholder_notes() -> str:
+    """What a sandbox behind the credential swap proxy holds instead of the
+    user's tokens, and where they work.  The same for every user and session
+    (it follows the deployment's proxy setting and the provider table), so the
+    system prompt stays cacheable."""
+    from backend.util.e2b_network import proxy_address
+
+    if proxy_address() is None:
+        return ""
+    lines = [
+        f"- `{'`/`'.join(entry['env_vars'])}` ({entry['name']}): "
+        + ", ".join(h.lstrip(".") for h in entry["swap_hosts"])
+        for entry in SUPPORTED_PROVIDERS.values()
+        if entry["swap_hosts"]
+    ]
+    return (
+        "\n### Connected accounts are placeholders\n"
+        "A connected account's variables hold a placeholder (`hsurr:...`), "
+        "never the token. The real token is put in outside the sandbox, only "
+        "in the `Authorization` header of HTTPS requests to that provider's "
+        "hosts, so `gh`, `git` over HTTPS and API clients work as usual:\n"
+        + "\n".join(lines)
+        + "\nSeeing the placeholder when printing the variable is expected. It "
+        "does nothing in a URL, a request body or on any other host.\n"
+    )
+
+
+def get_provider_ceiling_supplement(
+    permissions: "CopilotPermissions | None",
+) -> str:
+    """The connected accounts a restricted run may use, so the model does not
+    find the limit by failing (and ask the user to connect an account that is
+    connected).  Empty for an unrestricted run, which keeps its prompt
+    identical to every other run's."""
+    from backend.copilot.permissions import allowed_providers
+
+    allowed = allowed_providers(permissions)
+    if allowed is None:
+        return ""
+    names = [SUPPORTED_PROVIDERS[p]["name"] for p in allowed]
+    reach = (
+        f"only these of the user's connected accounts: {', '.join(names)}"
+        if names
+        else "none of the user's connected accounts"
+    )
+    return (
+        "\n\n### Connected accounts this run may use\n"
+        f"Code in the sandbox may use {reach}. Requests to any other "
+        "provider are not authenticated, and connecting that account again "
+        "will not change it: tell the user it is outside what this run was "
+        "allowed to do.\n"
     )
 
 

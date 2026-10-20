@@ -34,6 +34,15 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
+            0
+        ]
+        assert "`read_tool_result`" in guidance
+        assert "`Read`" not in guidance
+
 
 class TestComputerNote:
     """A plain chat on E2B is told it has a screen; an expert session is told
@@ -341,3 +350,57 @@ class TestMathGuidance:
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
         assert "`$…$` inline, `$$…$$` for display" in result
+
+
+class TestConnectedAccountNotes:
+    """What the model is told about connected accounts: that they are
+    placeholders behind the swap proxy, and which a restricted run may use."""
+
+    @pytest.fixture(autouse=True)
+    def fresh_supplements(self):
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+        yield
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+
+    def test_behind_the_proxy_the_sandbox_notes_say_where_placeholders_work(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value="p:1080"):
+            text = prompting.get_sdk_supplement(use_e2b=True)
+        assert "hsurr:" in text
+        assert "`GH_TOKEN`/`GITHUB_TOKEN` (GitHub): github.com, api.github.com" in text
+
+    def test_without_the_proxy_nothing_is_said(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value=None):
+            assert "hsurr:" not in prompting.get_sdk_supplement(use_e2b=True)
+
+    def test_an_unrestricted_run_gets_no_ceiling_note(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        assert prompting.get_provider_ceiling_supplement(None) == ""
+        assert prompting.get_provider_ceiling_supplement(CopilotPermissions()) == ""
+
+    def test_a_run_allowed_some_accounts_is_told_which(self):
+        """The branch that names them: unreachable while GitHub is the only
+        provider in the table, so pinned here with a stubbed ceiling."""
+        from unittest.mock import patch
+
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.permissions.allowed_providers", return_value=("github",)
+        ):
+            note = prompting.get_provider_ceiling_supplement(CopilotPermissions())
+        assert "only these of the user's connected accounts: GitHub" in note
+
+    def test_a_restricted_run_is_told_what_it_may_use(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        none = prompting.get_provider_ceiling_supplement(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        assert "none of the user's connected accounts" in none

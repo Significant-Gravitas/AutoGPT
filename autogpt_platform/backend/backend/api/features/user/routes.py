@@ -24,6 +24,7 @@ from backend.data.user import (
     update_user_timezone,
     verify_preference_token,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -180,11 +181,15 @@ async def apply_email_preference_choice(
     if user_id is None:
         raise HTTPException(status_code=400, detail="Invalid or expired link")
 
-    current = await get_user_notification_preference(user_id)
-    updated = _preference_with_choice(current, choice)
-    if updated is None:
-        raise HTTPException(status_code=400, detail="Unknown preference choice")
-    return await update_user_notification_preference(user_id, updated)
+    try:
+        current = await get_user_notification_preference(user_id)
+        updated = _preference_with_choice(current, choice)
+        if updated is None:
+            raise HTTPException(status_code=400, detail="Unknown preference choice")
+        return await update_user_notification_preference(user_id, updated)
+    except NotFoundError:
+        # A deleted user's link is refused like a forged one.
+        raise HTTPException(status_code=400, detail="Invalid or expired link") from None
 
 
 def _preference_with_choice(
