@@ -699,6 +699,7 @@ class CoPilotProcessor:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause)
                     if (entry.message_metadata or {}).get("background_task_id"):
+                        # The finally block persists this as the subtask's failure.
                         error_msg = (
                             "Background work could not start within its usage limits."
                         )

@@ -22,6 +22,22 @@ const wake = {
 const now = Date.parse("2026-10-19T12:00:00Z");
 
 describe("background subtask delivery", () => {
+  it.each([undefined, null, 42, ""])(
+    "hides the internal prompt when the display label is unusable (%s)",
+    (display_content) => {
+      const result = convertChatSessionMessagesToUiMessages(
+        "session",
+        [{ ...wake, metadata: { ...wake.metadata, display_content } }],
+        { isComplete: true },
+      );
+      expect(result.messages[0].role).toBe("assistant");
+      expect(JSON.stringify(result.messages)).not.toContain("Internal prompt");
+      expect(JSON.stringify(result.messages)).toContain(
+        "Otto is following up.",
+      );
+    },
+  );
+
   it("keeps checking after the original reply and through a queued wake", () => {
     expect(
       backgroundRefreshInterval(

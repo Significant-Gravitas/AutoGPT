@@ -34,8 +34,9 @@ export function backgroundRefreshInterval(
 }
 
 export function backgroundNotice(metadata: Record<string, unknown> | null) {
-  return metadata?.background_task_stage === "followup" &&
-    typeof metadata.display_content === "string"
+  if (metadata?.background_task_stage !== "followup") return null;
+  return typeof metadata.display_content === "string" &&
+    metadata.display_content
     ? metadata.display_content
-    : null;
+    : "Otto is following up.";
 }

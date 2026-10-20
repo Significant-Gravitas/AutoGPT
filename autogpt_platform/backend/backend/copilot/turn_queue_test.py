@@ -478,6 +478,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("answer_kind", ["typed", "approval", "background"])
 @pytest.mark.parametrize(
     (
         "expert_id",
@@ -501,6 +502,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 )
 async def test_promoted_turn_tracking_preserves_session_attribution(
     tracked_message: MagicMock,
+    answer_kind: str,
     expert_id: str | None,
     origin: str,
     source_platform: str | None,
@@ -517,7 +519,17 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
     head.metadata.origin = origin
     head.metadata.source_platform = source_platform
     head.metadata.llm_auth_provider = "codex"
-    pending = _pyd_message(role=role)
+    metadata = {}
+    if answer_kind == "approval":
+        metadata = {"envelope": _CHILD, "held_calls_answered": True}
+    elif answer_kind == "background":
+        metadata = {
+            "envelope": _CHILD,
+            "background_task_id": "task",
+            "background_task_stage": "followup",
+            "turn_id": "wake",
+        }
+    pending = _pyd_message(role=role, metadata=metadata)
     db = MagicMock()
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     db.update_chat_session_status = AsyncMock(return_value=True)
@@ -542,7 +554,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
         else:
             assert await turn_queue.dispatch_next_for_user("u1") is claim
 
-    if expected_event:
+    if expected_event and answer_kind != "background":
         tracked_message.assert_called_once_with(
             user_id="u1",
             session_id="s1",

@@ -602,12 +602,7 @@ async def _promote_head(user_id: str) -> bool | None:
             )
         raise
 
-    if (
-        pending.role == "user"
-        and pending.content
-        and not spawned
-        and not is_answer_row(pending)
-    ):
+    if pending.role == "user" and pending.content and not spawned and not background:
         try:
             track_user_message(
                 user_id=user_id,
