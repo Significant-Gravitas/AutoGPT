@@ -2340,14 +2340,20 @@ async def test_an_unattributed_result_stops_its_batch_before_the_mark_goes(
     entry = _entry(phase="recombine")
     del entry.payload["cost_context"]
     stop = AsyncMock(return_value=stopped)
+    charge = AsyncMock()
 
-    with patch("backend.copilot.dream.cleanup.provider_batch_stopped", stop):
+    with (
+        patch("backend.copilot.dream.cleanup.provider_batch_stopped", stop),
+        patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+    ):
         with pytest.raises(UsageActivationUnavailable):
             await handle_dream_batch_result(
                 entry, [_row(custom_id="p1:recombine", content="", error="expired")]
             )
 
     stop.assert_awaited_once_with("msgbatch_recombine")
+    charge.assert_awaited_once()
+    assert charge.await_args.args[0].job.phase == "consolidate"
     row = fake_dream_db.rows["p1"]
     assert row["status"] is DreamPassStatus.ERRORED
     assert (row["cleanup_pending_at"] is None) is stopped
