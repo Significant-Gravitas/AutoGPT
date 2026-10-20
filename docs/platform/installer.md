@@ -14,28 +14,26 @@ Before running the installer:
 
 - Install and start Docker from the
   [official Docker Engine](https://docs.docker.com/engine/install/) or
-  [Docker Desktop](https://docs.docker.com/desktop/) documentation.
-- Select a local `unix://` Docker endpoint on Linux or macOS. Remote and
-  non-Unix contexts are rejected.
+  [Docker Desktop](https://docs.docker.com/desktop/) documentation. On
+  Windows, use Docker Desktop with its default WSL 2 backend.
+- Select a local Docker endpoint: `unix://` on Linux and macOS, or a local
+  `npipe://` named pipe on Windows, such as Docker Desktop's `desktop-linux`
+  context. Remote and TCP contexts are rejected.
 - Configure the daemon for Linux containers on `amd64` or `arm64`.
 - Allow about 25 GB of free disk; at least 8 GB RAM is recommended.
-- Have Bash, curl, and `sha256sum` or `shasum` available for the bootstrap.
-  Docker Compose, Git, Node.js, and npm are not required.
+- Have Bash, curl, and `sha256sum` or `shasum` available on Linux and macOS.
+  On Windows, use Windows PowerShell 5.1 or PowerShell 7 and the `curl.exe`
+  included in Windows 10 and 11. Docker Compose, Git, Node.js, and npm are not
+  required, and neither are administrator rights.
 
 Docker Desktop is a separate product with its own license terms. AutoGPT does
 not install it or grant a Docker license.
 
 ## Install
 
-This first appliance-installer release supports Linux and macOS. Windows is
-intentionally withheld until its standard-user filesystem checks and native
-Docker argument handling are validated. On Windows, follow the
-[single-container guide](single-container.md) with Docker Desktop, or use the
-[Compose setup scripts](#installing-from-source-compose).
-
-The command below uses a unique temporary file, executes it only after the HTTPS
-download succeeds, and removes it afterward. Do not stream a network response
-directly into a shell.
+Each command below downloads the installer to a unique temporary file, runs it
+only after the HTTPS download succeeds, and removes it afterward. Do not stream
+a network response directly into a shell.
 
 ### Linux and macOS
 
@@ -49,25 +47,50 @@ directly into a shell.
 )
 ```
 
+### Windows
+
+Run this in PowerShell. `-ExecutionPolicy Bypass` applies only to the
+installer's own PowerShell process.
+
+```powershell
+& {
+  $installer = Join-Path ([IO.Path]::GetTempPath()) "autogpt-install-$([guid]::NewGuid().ToString('N')).ps1"
+  try {
+    curl.exe --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o $installer https://setup.agpt.co/install.ps1
+    if ($LASTEXITCODE -eq 0) {
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+    }
+  } finally {
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+  }
+}
+```
+
 ### Options
 
-| Goal | Linux/macOS |
-| --- | --- |
-| Current published appliance | _(no flag)_ |
-| Specific published version | `--release=vX.Y.Z` |
-| Appliance release-tag form | `--release=autogpt-platform-beta-vX.Y.Z` |
-| Hardware and Docker checks only | `--preflight-only` |
-| Print image selection only | `--resolve-only` |
-| Skip RAM/disk checks | `--skip-preflight` |
-| Custom private state directory | `--dir=PATH` |
+Add a flag after `bash "$installer"` on Linux and macOS, or after
+`-File $installer` on Windows.
 
-`--skip-preflight` does not skip the local-endpoint, Linux-container, or
-architecture checks.
+| Goal | Linux/macOS | Windows |
+| --- | --- | --- |
+| Current published appliance | _(no flag)_ | _(no flag)_ |
+| Specific published version | `--release=vX.Y.Z` | `-Release vX.Y.Z` |
+| Appliance release-tag form | `--release=autogpt-platform-beta-vX.Y.Z` | `-Release autogpt-platform-beta-vX.Y.Z` |
+| Hardware and Docker checks only | `--preflight-only` | `-PreflightOnly` |
+| Print image selection only | `--resolve-only` | `-ResolveOnly` |
+| Skip RAM/disk checks | `--skip-preflight` | `-SkipPreflight` |
+| Custom private state directory | `--dir=PATH` | `-Dir PATH` |
+
+`--skip-preflight` and `-SkipPreflight` do not skip the local-endpoint,
+Linux-container, or architecture checks.
 
 The default state directory is `$XDG_CONFIG_HOME/autogpt`, or
-`$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset. A custom directory
-must be user-owned and private; the installer rejects symlink paths and shared
-or unsafe locations.
+`$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset, and
+`%LOCALAPPDATA%\AutoGPT` on Windows. A custom directory must be user-owned and
+private; the installer rejects symlink paths and shared or unsafe locations. On
+Windows it also rejects junctions, and any folder on the path that another
+account can rename, delete, or re-permission. Only you, SYSTEM, and
+Administrators may have access to the state directory itself.
 
 ## Artifact and Runtime Contract
 
@@ -153,10 +176,13 @@ private installer identity still match.
 
 ## Maintainer Release Gates
 
-`https://setup.agpt.co/install.sh` redirects to
-`autogpt_platform/installer/install.sh` on `master`, so the hosted installer
-changes whenever that file changes on `master`. Repository CI cannot prove this
-public bootstrap handoff, so each release must keep every gate below passing:
+`https://setup.agpt.co/install.sh`, `https://setup.agpt.co/install.ps1`, and
+`https://setup.agpt.co/install.bat` redirect to the files of the same name in
+`autogpt_platform/installer/` on `master`, so the hosted installers change
+whenever those files change on `master`. `install.bat` serves the older
+Windows command and runs `install.ps1` the same way as the PowerShell command
+above. Repository CI cannot prove this public bootstrap handoff, so each
+release must keep every gate below passing:
 
 - Only a published, non-prerelease `autogpt-platform-beta-vX.Y.Z` release
   publishes images. Its run smoke-tests and scans both architectures, then
@@ -172,18 +198,17 @@ public bootstrap handoff, so each release must keep every gate below passing:
   docker buildx imagetools inspect significantgravitas/autogpt:latest
   ```
 
-- Fetch the hosted installer into a new temporary file from an external
-  machine and compare it with the released repository file. On each supported
-  operating system, perform a clean install against the public image, wait for
+- Fetch each hosted installer into a new temporary file from an external
+  machine and compare it with the released repository file. On Linux, macOS,
+  and Windows, perform a clean install against the public image, wait for
   health, verify the loopback endpoint, rerun to prove exact-contract
   idempotency, and confirm no mutable tag was used to create the container.
 
 ## Installing from source (Compose)
 
 The scripts below are the other supported path: they clone the repository and
-start every service with Docker Compose. Use them for development, on Windows
-instead of the appliance installer, or for a fully offline install with a local
-LLM. The appliance described above is the image documented in
+start every service with Docker Compose. Use them for development, or for a
+fully offline install with a local LLM. The appliance described above is the image documented in
 [Run AutoGPT in one Docker container](single-container.md); these scripts do
 not use it.
 
@@ -247,7 +272,8 @@ Re-running with `--with-ollama` is idempotent — the wiring block is rewritten 
 
 ## Troubleshooting
 
-1. Confirm `docker info` succeeds against a local Linux-container daemon.
+1. Confirm `docker info` succeeds against a local Linux-container daemon. On
+   Windows, start Docker Desktop and keep it on Linux containers.
 2. If an image pull fails just after release, wait for public manifest
    publication and retry; the installer never falls back to a source build.
 3. If the installer reports state or runtime drift, preserve the named volume,

@@ -103,9 +103,9 @@ troubleshooting.
 
 ### Appliance installer
 
-The [appliance installer](installer.md#linux-and-macos) wraps these steps in one
-command for Linux and macOS: it checks your Docker setup, pins the pulled image
-by digest, and keeps its configuration in a private directory.
+The [appliance installer](installer.md#install) wraps these steps in one command
+for Linux, macOS, and Windows: it checks your Docker setup, pins the pulled
+image by digest, and keeps its configuration in a private directory.
 
 ## Manual Setup
 

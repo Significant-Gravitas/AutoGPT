@@ -114,7 +114,7 @@ covered in the guide:
 
 [Read the single-container guide →](https://agpt.co/docs/platform/self-hosting/single-container)
 
-On Linux and macOS, the [installer](https://agpt.co/docs/platform/self-hosting/installer#linux-and-macos)
+On Linux, macOS, and Windows, the [installer](https://agpt.co/docs/platform/self-hosting/installer#install)
 sets up the same image with one command.
 
 To run each service in its own container with Docker Compose, or to develop from
