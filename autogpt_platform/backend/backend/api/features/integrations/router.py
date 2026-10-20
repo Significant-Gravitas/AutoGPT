@@ -53,6 +53,10 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_input import (
+    InvalidCredentialInputError,
+    normalize_user_supplied_credentials,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -1093,6 +1097,10 @@ async def create_credentials(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provider-runtime credentials cannot be created directly",
         )
+    try:
+        normalize_user_supplied_credentials(credentials)
+    except InvalidCredentialInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
