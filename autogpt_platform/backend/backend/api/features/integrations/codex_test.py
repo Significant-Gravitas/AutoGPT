@@ -1,12 +1,13 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth import get_optional_user_id
 from pydantic import SecretStr
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import LockError
+from redis.exceptions import LockError, RedisClusterException
 
 from backend.api.features.integrations.codex import (
     CODEX_LOGIN_STATE_KEY,
@@ -31,6 +32,8 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+
+_CLUSTER = "127.0.0.1:17000, 127.0.0.1:17001"
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
@@ -814,6 +817,7 @@ def test_codex_delete_removes_expired_credential_whose_refresh_fails(mocker):
         (ValueError("Credentials not found"), 404),
         (RuntimeError("Credential identity changed before deletion"), 500),
         (CodexAuthError("access-secret refresh-secret"), 500),
+        (RedisClusterException(f"Redis Cluster cannot be connected: {_CLUSTER}"), 500),
     ],
 )
 def test_codex_delete_never_reports_deleted_when_row_remains(error, expected_status):
@@ -836,6 +840,7 @@ def test_codex_delete_never_reports_deleted_when_row_remains(error, expected_sta
     assert response.status_code == expected_status
     assert response.json().get("deleted") is not True
     assert "access-secret" not in response.text
+    assert "127.0.0.1" not in response.text
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])
@@ -866,6 +871,8 @@ def test_codex_status_routes_report_expired_connection_as_conflict(route):
         LockError("Cannot release a lock that's no longer owned"),
         TimeoutError("Timed out waiting for a Redis lock"),
         OSError("network unreachable"),
+        RedisClusterException(f"Redis Cluster cannot be connected: {_CLUSTER}"),
+        aiohttp.ClientConnectionError("Cannot connect to host auth.openai.com:443"),
     ],
 )
 def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_error):
@@ -882,12 +889,81 @@ def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_er
 
         response = client.get(f"/codex/credentials/codex-credential/{route}")
 
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+def _assert_unavailable(response) -> None:
     assert response.status_code == 503
     assert response.json() == {
         "detail": "ChatGPT connection is temporarily unavailable; try again"
     }
-    assert "redis" not in response.text
+    for leaked in ("redis", "127.0.0.1", "198.18.0.1", "auth.openai.com"):
+        assert leaked not in response.text
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_hide_url_guard_refresh_failure(mocker, route):
+    manager, _rows, _lock = _manager_with_stored_row(mocker, _expired_credentials())
+    mocker.patch.object(
+        manager,
+        "refresh_if_needed",
+        AsyncMock(
+            side_effect=ValueError(
+                "Access to blocked or private IP address 198.18.0.1 "
+                "for hostname auth.openai.com is not allowed."
+            )
+        ),
+    )
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager", manager
+        ),
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
     get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_hide_redis_cluster_outage(mocker, route):
+    manager, _rows, _lock = _manager_with_stored_row(mocker, _credentials())
+    mocker.patch.object(
+        manager,
+        "_locked",
+        side_effect=RedisClusterException(
+            f"Redis Cluster cannot be connected: {_CLUSTER}"
+        ),
+    )
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager", manager
+        ),
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+def test_codex_status_route_hides_unexpected_acquisition_error():
+    with patch(
+        "backend.api.features.integrations.codex.codex_credentials_manager"
+    ) as manager:
+        manager.acquire_lease = AsyncMock(side_effect=RuntimeError("access-secret"))
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get("/codex/credentials/codex-credential/account")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not load the ChatGPT connection"}
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])
