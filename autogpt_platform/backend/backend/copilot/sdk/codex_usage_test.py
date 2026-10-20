@@ -115,51 +115,7 @@ async def usage_gateway(
     async def respond(_request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        if ending == "early_failure" or (calls % 2 == 0 and ending == "disconnect"):
-            raise httpx.ReadError("provider disconnected")
-        if calls % 2 == 0 and ending == "timeout":
-            await asyncio.Event().wait()
-        if calls % 2 == 0 and ending.startswith("stream_"):
-            return httpx.Response(
-                200,
-                headers={"content-type": "text/event-stream"},
-                stream=response_stream or _InterruptedStream(ending),
-            )
-        tool = calls % 2 == 1
-        success = ending == "success" or (ending == "failed_then_success" and calls > 2)
-        kind = "response.completed" if tool or success else "response.failed"
-        if not tool and ending == "incomplete":
-            kind = "response.incomplete"
-        usage = (
-            USAGE
-            if tool or success or ending in ("failed_with_usage", "incomplete")
-            else None
-        )
-        response = {"id": f"resp-{calls}", "model": "gpt-5.6-sol", "usage": usage}
-        events: list[dict[str, object]] = [
-            {
-                "type": "response.created",
-                "response": {**response, "usage": usage if tool or success else None},
-            }
-        ]
-        if tool:
-            events.append(
-                {
-                    "type": "response.output_item.done",
-                    "item": {
-                        "type": "function_call",
-                        "name": "lookup",
-                        "arguments": "{}",
-                        "call_id": f"call-{calls}",
-                    },
-                }
-            )
-        events.append({"type": kind, "response": response})
-        return httpx.Response(
-            200,
-            headers={"content-type": "text/event-stream"},
-            content="".join(f"data: {json.dumps(event)}\n\n" for event in events),
-        )
+        return await _provider_response(ending, calls, response_stream)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         session = CodexHttpSession(
@@ -183,6 +139,61 @@ async def usage_gateway(
             agent_session=session, model="gpt-5.6-sol"
         ) as gateway:
             yield gateway
+
+
+async def _provider_response(
+    ending: str, calls: int, response_stream: httpx.AsyncByteStream | None
+) -> httpx.Response:
+    if ending == "early_failure" or (calls % 2 == 0 and ending == "disconnect"):
+        raise httpx.ReadError("provider disconnected")
+    if calls % 2 == 0 and ending == "timeout":
+        await asyncio.Event().wait()
+    if calls % 2 == 0 and ending.startswith("stream_"):
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=response_stream or _InterruptedStream(ending),
+        )
+    events = _response_events(ending, calls)
+    return httpx.Response(
+        200,
+        headers={"content-type": "text/event-stream"},
+        content="".join(f"data: {json.dumps(event)}\n\n" for event in events),
+    )
+
+
+def _response_events(ending: str, calls: int) -> list[dict[str, object]]:
+    tool = calls % 2 == 1
+    success = ending == "success" or (ending == "failed_then_success" and calls > 2)
+    kind = "response.completed" if tool or success else "response.failed"
+    if not tool and ending == "incomplete":
+        kind = "response.incomplete"
+    usage = (
+        USAGE
+        if tool or success or ending in ("failed_with_usage", "incomplete")
+        else None
+    )
+    response = {"id": f"resp-{calls}", "model": "gpt-5.6-sol", "usage": usage}
+    events: list[dict[str, object]] = [
+        {
+            "type": "response.created",
+            "response": {**response, "usage": usage if tool or success else None},
+        }
+    ]
+    if tool:
+        events.append(
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "function_call",
+                    "name": "lookup",
+                    "arguments": "{}",
+                    "call_id": f"call-{calls}",
+                },
+            }
+        )
+    events.append({"type": kind, "response": response})
+    return events
 
 
 class _InterruptedStream(httpx.AsyncByteStream):
