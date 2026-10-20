@@ -412,7 +412,8 @@ async def _write_locked(
     it; False, writing nothing, when another writer kept it for the wait.
     A dream write has its citations marked first, failing closed; one
     resting on a forget is then dropped under the same lock, its marker
-    withdrawn; one that is written is recorded after it
+    withdrawn, as is the marker of one whose check raised; one that is
+    written is recorded after it
     (``marked_write.py``), so a forget waiting for the lock finds them. A
     user's chat turn promotes the tentative facts it states under the same
     lock (``_promote_restated``)."""
@@ -436,7 +437,16 @@ async def _write_locked(
         )
         if citations is not None and marked is None:
             return True
-        if await _dropped_as_forgotten(client, payload, citations, completion):
+        try:
+            dropped = await _dropped_as_forgotten(
+                client, payload, citations, completion
+            )
+        except Exception:
+            # Nothing is placed yet. Left pending, the marker would hold up
+            # the forgets of what it cites until it expired.
+            await marked_write.withdrawn(client.driver, marked)
+            raise
+        if dropped:
             await marked_write.withdrawn(client.driver, marked)
             return True
         episode = marked.episode if marked is not None else None

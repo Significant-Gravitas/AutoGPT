@@ -5,8 +5,8 @@ ingestion worker's side of ``recall_derivation.py``.
 and calls these in turn. ``marked`` draws the uuid the write's episode will
 have and writes the write's citation marker under it before anything else;
 when the marker cannot be written the write is not made and counts as
-failed (it fails closed). A write the check against forgets then drops has
-its marker taken back (``withdrawn``). ``placed`` puts the episode in the
+failed (it fails closed). A write the check against forgets then drops, or
+whose check raises, has its marker taken back (``withdrawn``). ``placed`` puts the episode in the
 graph under that uuid, ``write_pending`` (hidden from recall), and
 graphiti's ``add_episode`` is handed the uuid: graphiti-core 0.30.2 loads
 the episode it names (``EpisodicNode.get_by_uuid``) instead of creating

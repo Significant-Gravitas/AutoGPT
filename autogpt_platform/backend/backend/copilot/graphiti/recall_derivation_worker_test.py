@@ -90,10 +90,11 @@ async def _work(
     mark: AsyncMock | None = None,
     record: AsyncMock | None = None,
     forgotten: str | None = None,
+    check_error: Exception | None = None,
 ) -> _Worker:
     """One payload through the worker, marking through ``mark``, recording
     through ``record``, and finding the write resting on a forget when
-    ``forgotten`` says why."""
+    ``forgotten`` says why, or the check raising ``check_error``."""
     order: list[str] = []
     client = MagicMock()
 
@@ -101,6 +102,8 @@ async def _work(
         if citations is None:
             return None
         order.append("check")
+        if check_error is not None:
+            raise check_error
         return forgotten
 
     async def add_episode(**kwargs):
@@ -236,6 +239,27 @@ class TestTheWorker:
         assert worker.withdraw.await_args.args[1] == "m1"
         worker.add_episode.assert_not_awaited()
         assert (completion.dropped_forgotten, completion.failed) == (1, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_check_that_raised_withdraws_the_marker_and_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing is placed yet: a marker left pending would hold up the
+        forgets of what it cites until it expired."""
+        completion = ingest.IngestionCompletion()
+        completion.register()
+
+        worker = await _work(
+            _payload(Citations(fact_uuids=["f1"]), completion),
+            _landed(lambda uuid: {"new": [uuid]}),
+            monkeypatch,
+            check_error=RuntimeError("graph down"),
+        )
+
+        assert worker.order == ["mark", "check", "withdraw"]
+        assert worker.withdraw.await_args.args[1] == "m1"
+        worker.add_episode.assert_not_awaited()
+        assert (completion.dropped_forgotten, completion.failed) == (0, 1)
 
     @pytest.mark.asyncio
     async def test_a_failed_record_is_noted_and_reported_pending(
