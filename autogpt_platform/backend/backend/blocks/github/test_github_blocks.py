@@ -748,27 +748,33 @@ def _requested_url(call, body: object) -> str:
 
 
 class TestReadBranchRef:
-    def test_read_file_sends_branch_ref(self):
+    @pytest.mark.parametrize(
+        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
+    )
+    def test_read_file_ref(self, branch, query):
         url = _requested_url(
             lambda: GithubReadFileBlock.read_file(
-                TEST_CREDENTIALS, "https://github.com/owner/repo", "a.md", "feature/x"
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "a.md", branch
             ),
             {"type": "file", "content": "eA==", "size": 1},
         )
-        assert url == (
-            "https://api.github.com/repos/owner/repo/contents/a.md?ref=feature%2Fx"
-        )
+        assert url == f"https://api.github.com/repos/owner/repo/contents/a.md{query}"
 
-    def test_read_folder_sends_branch_ref(self):
+    @pytest.mark.parametrize(
+        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
+    )
+    def test_read_folder_ref(self, branch, query):
         url = _requested_url(
             lambda: GithubReadFolderBlock.read_folder(
-                TEST_CREDENTIALS, "https://github.com/owner/repo", "src", "feature/x"
+                TEST_CREDENTIALS, "https://github.com/owner/repo", "src", branch
             ),
             [],
         )
-        assert url == (
-            "https://api.github.com/repos/owner/repo/contents/src?ref=feature%2Fx"
-        )
+        assert url == f"https://api.github.com/repos/owner/repo/contents/src{query}"
+
+    def test_branch_defaults_to_repository_default(self):
+        for block in (GithubReadFileBlock, GithubReadFolderBlock):
+            assert block.Input.model_fields["branch"].default == ""
 
 
 def test_subject_html_url_of_a_repo_root_is_not_rewritten():
