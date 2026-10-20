@@ -233,7 +233,7 @@ def test_list_all_schedules_does_not_scope_to_a_graph(
 def test_delete_schedule_returns_the_id(mocker: pytest_mock.MockFixture) -> None:
     sched = _patch_scheduler(mocker, delete_schedule=AsyncMock())
     mocker.patch(
-        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
         AsyncMock(),
     )
 
@@ -251,7 +251,7 @@ def test_deleting_a_schedule_forgets_its_failure_streak(
     its alert, or answer Resume."""
     _patch_scheduler(mocker, delete_schedule=AsyncMock())
     forget = mocker.patch(
-        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
         AsyncMock(),
     )
 
@@ -270,7 +270,7 @@ def test_a_retried_delete_still_forgets_the_streak(
         mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
     )
     forget = mocker.patch(
-        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
         AsyncMock(),
     )
 
@@ -285,7 +285,7 @@ def test_a_delete_whose_streak_cleanup_fails_still_reports_the_delete(
     failed; the paused row it leaves is cleared by deleting it again."""
     _patch_scheduler(mocker, delete_schedule=AsyncMock())
     mocker.patch(
-        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
         AsyncMock(side_effect=RuntimeError("database down")),
     )
 
@@ -370,7 +370,7 @@ def test_delete_schedule_maps_not_found_to_404(
         mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
     )
     mocker.patch(
-        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
         AsyncMock(),
     )
 

@@ -43,7 +43,7 @@ class CredentialSource(Protocol):
     async def bound_names(self, host: str) -> set[str]: ...
 
     async def resolve(
-        self, user_id: str, name: str, host: str
+        self, user_id: str, name: str, host: str, box: str
     ) -> Optional[Credential]: ...
 
 
@@ -53,7 +53,7 @@ class BackendCredentialSource:
         self._client = client or httpx.AsyncClient(timeout=_TIMEOUT)
         self._bindings: Optional[tuple[float, dict[str, tuple[str, ...]]]] = None
         self._credentials: dict[
-            tuple[str, str, str], tuple[float, Optional[Credential]]
+            tuple[str, str, str, str], tuple[float, Optional[Credential]]
         ] = {}
 
     async def bindings(self) -> dict[str, tuple[str, ...]]:
@@ -79,15 +79,20 @@ class BackendCredentialSource:
         table = await self.bindings()
         return {name for name, hosts in table.items() if host_in_list(host, hosts)}
 
-    async def resolve(self, user_id: str, name: str, host: str) -> Optional[Credential]:
-        key = (user_id, name, host.lower())
+    async def resolve(
+        self, user_id: str, name: str, host: str, box: str
+    ) -> Optional[Credential]:
+        """*user_id*'s credential *name* for *host*, asked for the box whose
+        proxy credential is *box*: the backend answers only for a live box of
+        that user's, with what was granted to that box."""
+        key = (user_id, name, host.lower(), box)
         now = time.monotonic()
         cached = self._credentials.get(key)
         if cached and cached[0] > now:
             return cached[1]
         data = await self._call(
             "resolve_swap_credential",
-            {"user_id": user_id, "name": name, "host": host},
+            {"user_id": user_id, "name": name, "host": host, "box": box},
         )
         credential = None
         if data is not None:

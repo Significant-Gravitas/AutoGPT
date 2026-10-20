@@ -77,7 +77,7 @@ export function PlanOffer({
         </div>
         {amount && (
           <div className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl" unmask={!freshUsage}>
+            <Text variant="h4" className="!text-2xl">
               {amount}
             </Text>
             <Text variant="small" className="!text-zinc-500">
@@ -105,7 +105,6 @@ export function PlanOffer({
         className="w-full"
         onClick={onUpgrade}
         disabled={disabled}
-        unmask={!freshUsage}
         rightIcon={<Icon icon={ArrowRight02Icon} size={16} />}
       >
         {actionLabel ??

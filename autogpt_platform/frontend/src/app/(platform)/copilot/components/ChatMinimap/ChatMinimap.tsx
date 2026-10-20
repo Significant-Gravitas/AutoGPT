@@ -17,6 +17,9 @@ const CARD_TRANSITION = { duration: 0.15, delay: 0.0875 } as const;
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  /** Scrolls to a message whose row is not in the DOM: the transcript only
+   *  mounts the rows near the viewport. */
+  onJumpToUnmounted?: (messageID: string) => void;
 }
 
 /**
@@ -25,7 +28,10 @@ interface Props {
  * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
-export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
+export const ChatMinimap = memo(function ChatMinimap({
+  messages,
+  onJumpToUnmounted,
+}: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
   const entries = useMemo(() => toMinimapEntries(messages), [messages]);
@@ -47,11 +53,11 @@ export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
             onBlur={() => setHovered(null)}
-            onClick={() => scrollToMessage(entry.id)}
+            onClick={() => scrollToMessage(entry.id, onJumpToUnmounted)}
             onKeyDown={(e) => {
               if (isKey(e, "Enter", " ")) {
                 e.preventDefault();
-                scrollToMessage(entry.id);
+                scrollToMessage(entry.id, onJumpToUnmounted);
               }
               if (isKey(e, "Escape")) {
                 setHovered(null);
@@ -102,8 +108,14 @@ function areSameMinimapProps(prev: Props, next: Props) {
   return haveSameMinimapRows(prev.messages, next.messages);
 }
 
-function scrollToMessage(id: string) {
-  document
-    .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
-    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+function scrollToMessage(
+  id: string,
+  onJumpToUnmounted?: (messageID: string) => void,
+) {
+  const row = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  onJumpToUnmounted?.(id);
 }

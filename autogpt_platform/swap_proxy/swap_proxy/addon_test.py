@@ -48,7 +48,7 @@ class Source:
             raise SourceUnavailable("bindings")
         return {"github"} if host == HOST else set()
 
-    async def resolve(self, user_id, name, host):
+    async def resolve(self, user_id, name, host, box):
         if self.down:
             raise SourceUnavailable("resolve")
         if self.token is None:
@@ -75,7 +75,9 @@ def addon_for(
     source = source or Source()
     source.anywhere = anywhere
     addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source, EgressGuard())
-    addon._owners[flow.client_conn] = Owner("session:s-a", "user-a", "sb-1", swaps)
+    addon._owners[flow.client_conn] = Owner(
+        "session:s-a", "user-a", "sb-1", swaps, box="box-0123456789abcdef"
+    )
     flow.request.host, flow.request.scheme = HOST, "https"
     flow.request.headers["host"] = HOST
     flow.server_conn.sni = HOST
