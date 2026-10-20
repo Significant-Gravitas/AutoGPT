@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.api.features.chat.routes import cancel_session_task
 from backend.copilot import (
     background_delivery,
+    background_execution,
     background_subtasks,
     background_task_db,
     model,
@@ -435,6 +436,56 @@ async def test_rejected_pickup_closes_with_its_terminal_reason(
             else stream_registry.CANCELLED_MESSAGE
         )
     ]
+    run_turn.assert_not_awaited()
+
+
+@pytest.mark.parametrize("followup", [False, True])
+@pytest.mark.parametrize("reason", ["deadline", "budget"])
+async def test_claimed_admission_failure_closes_with_its_terminal_reason(
+    world: World, monkeypatch: pytest.MonkeyPatch, followup: bool, reason: str
+):
+    task = await world.launch()
+    session_id = task.child_session_id
+    if followup:
+        await world.finish_parent()
+        await world.finish_child(task)
+        await background_delivery.reconcile_background_subtasks()
+        session_id = task.parent_session_id
+    entry = world.entry(session_id)
+    error = (
+        TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
+        if reason == "deadline"
+        else TreeRefusal("This task's budget has been used up.")
+    )
+    if reason == "deadline":
+        monkeypatch.setattr(background_execution, "background_timeout", lambda _: 0)
+    else:
+        monkeypatch.setattr(
+            background_execution, "readmit_turn", AsyncMock(side_effect=error)
+        )
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    run_turn = AsyncMock()
+    monkeypatch.setattr(worker, "_run_turn", run_turn)
+
+    with pytest.raises(type(error)):
+        await asyncio.to_thread(worker.execute, entry, threading.Event(), MagicMock())
+
+    active = await stream_registry.get_session(session_id)
+    assert active and active.status == "failed"
+    assert await chat_db().get_chat_session_status(session_id) == "idle"
+    events: asyncio.Queue[stream_registry.StreamEntry] = asyncio.Queue()
+    await stream_registry._replay(await get_redis_async(), entry.turn_id, "0-0", events)
+    chunks = [events.get_nowait()[1] for _ in range(events.qsize())]
+    assert [c.errorText for c in chunks if isinstance(c, StreamError)] == [str(error)]
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored
+    if followup:
+        assert stored.followup_started_at and stored.followup_state == "finished"
+    else:
+        assert stored.started_at and stored.outcome == (
+            "timed_out" if reason == "deadline" else "failed"
+        )
     run_turn.assert_not_awaited()
 
 

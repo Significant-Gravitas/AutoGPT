@@ -1,5 +1,6 @@
 """Worker-side identity, deadline, and completion fences for background turns."""
 
+import logging
 from datetime import UTC, datetime
 
 from backend.copilot import stream_registry
@@ -13,6 +14,8 @@ from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.copilot.tree import readmit_turn
 from backend.data.db_accessors import background_task_db
+
+logger = logging.getLogger(__name__)
 
 
 async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
@@ -38,7 +41,15 @@ async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
             raise TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
         await readmit_turn(entry.envelope, user_id=entry.user_id)
     except Exception as error:
-        await finish_background_execution(entry, str(error))
+        message = str(error) or type(error).__name__
+        try:
+            await finish_background_execution(entry, message)
+        except Exception:
+            logger.exception("Could not persist background admission failure")
+        finally:
+            await stream_registry.mark_session_completed(
+                entry.session_id, error_message=message, turn_id=entry.turn_id
+            )
         raise
     return True
 
