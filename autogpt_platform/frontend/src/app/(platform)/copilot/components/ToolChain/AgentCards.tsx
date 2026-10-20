@@ -238,6 +238,7 @@ export function SubSessionCard({
       {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
+          background={background}
           backgroundExpiresAt={backgroundExpiresAt}
           active={["running", "queued"].includes(
             frozenStatus?.toLowerCase() ?? "",

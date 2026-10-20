@@ -24,10 +24,16 @@ import { asObject, str } from "./resultHelpers";
 import { RowIcon } from "./RowIcon";
 import { SwapText } from "./SwapText";
 import { getCatalogLabel } from "./toolCatalog";
+import {
+  getBackgroundOutcome,
+  isSessionLive,
+  isSessionPending,
+} from "./subSessionStatus";
 
 interface Props {
   subSessionId: string;
   active: boolean;
+  background?: boolean;
   backgroundExpiresAt?: string | null;
 }
 
@@ -54,12 +60,14 @@ interface LiveStep {
 export function SubSessionLive({
   subSessionId,
   active,
+  background = false,
   backgroundExpiresAt,
 }: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
     backgroundExpiresAt,
+    background,
   );
   if (!active) return null;
 
@@ -95,6 +103,7 @@ function useLiveSubSession(
   subSessionId: string,
   active: boolean,
   backgroundExpiresAt?: string | null,
+  background = false,
 ) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
@@ -121,7 +130,9 @@ function useLiveSubSession(
         if (query.state.status === "error" || isCapped) return false;
         const raw = query.state.data;
         const polled = raw && raw.status === 200 ? raw.data : null;
-        return !polled || isSessionLive(polled) ? POLL_MS : false;
+        return !polled || isSessionPending(polled, background)
+          ? POLL_MS
+          : false;
       },
       select: (res) => (res.status === 200 ? res.data : null),
     },
@@ -132,7 +143,7 @@ function useLiveSubSession(
     isError,
     // A capped poll on a finished session is not "paused" — the last
     // snapshot IS the final answer, so there is nothing left to watch.
-    isPaused: isCapped && (!session || isSessionLive(session)),
+    isPaused: isCapped && (!session || isSessionPending(session, background)),
   };
 }
 
@@ -401,6 +412,7 @@ export function useSubSessionEffectiveStatus(
     subSessionId ?? "",
     stale && !!subSessionId,
     backgroundExpiresAt,
+    background,
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
@@ -409,23 +421,15 @@ export function useSubSessionEffectiveStatus(
   if (isError || isPaused) return "unknown";
   if (!session) return status;
   if (background) {
-    for (const raw of session.messages) {
-      const metadata = asObject(asObject(raw)?.metadata);
-      if (typeof metadata?.background_task_outcome === "string") {
-        return metadata.background_task_outcome === "timed_out"
-          ? "timed out"
-          : metadata.background_task_outcome;
-      }
+    const outcome = getBackgroundOutcome(session);
+    if (outcome) {
+      return outcome === "timed_out" ? "timed out" : outcome;
     }
-    if (isSessionLive(session)) return session.chat_status ?? status;
+    return ["running", "queued"].includes(session.chat_status ?? "")
+      ? session.chat_status
+      : status;
   }
   return isSessionLive(session) ? status : "completed";
-}
-
-function isSessionLive(session: SessionDetailResponse): boolean {
-  if (session.active_stream) return true;
-  const status = session.chat_status?.toLowerCase();
-  return status === "running" || status === "queued";
 }
 
 function parseArguments(rawArguments: unknown): unknown {
