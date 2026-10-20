@@ -45,6 +45,9 @@ class _FakeTransport:
 async def _run_turn(client_factory, message: str = "hello") -> list[Any]:
     _FakeTransport.spawned = []
     session = _turns._make_session()
+    # The route saves the message before the turn runs, so the turn finds it
+    # already in the session and doesn't save it again.
+    session.messages[-1].content = message
     patches = scenarios._make_sdk_patches(
         session,
         original_transcript=build_test_transcript(
