@@ -457,6 +457,7 @@ async def _promote_head(user_id: str) -> bool | None:
     # The admitted envelope of a queued child, whose node a refusal gives back.
     child: TurnEnvelope | None = None
     spawned = False
+    background = False
     try:
         # Find the pending user message in this session (the most recent
         # user-role row with no following assistant rows — i.e. the one
@@ -573,7 +574,11 @@ async def _promote_head(user_id: str) -> bool | None:
         # Only a stored envelope is re-checked here; a root is never refused.
         await _refuse_queued_turn(
             head,
-            refused.message if spawned else f"{refused.message} {WAKE_LATER}",
+            (
+                refused.message
+                if spawned or background
+                else f"{refused.message} {WAKE_LATER}"
+            ),
             release=child,
         )
         return None

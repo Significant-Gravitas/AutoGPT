@@ -802,6 +802,23 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         # A tree that closed while it waited: no "your answer is kept" note.
         ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
         (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "turn_id": "wake",
+                "envelope": _CHILD,
+            },
+            "This tree has closed.",
+            "This tree has closed.",
+            False,
+        ),
+        (
+            {held._WAKE_KEY: True, "envelope": _CHILD},
+            "This tree has closed.",
+            f"This tree has closed. {turn_queue.WAKE_LATER}",
+            False,
+        ),
+        (
             {"background_task_id": "task", "background_task_stage": "followup"},
             None,
             "Otto couldn't start this background work because its saved limits are unavailable.",
@@ -847,6 +864,8 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         "envelope-unreadable-tree-known",
         "permissions-unreadable",
         "tree-refused",
+        "background-followup-tree-refused",
+        "approval-tree-refused",
         "background-limits-unreadable",
         "background-child-envelope-invalid",
         "background-child-envelope-null",
