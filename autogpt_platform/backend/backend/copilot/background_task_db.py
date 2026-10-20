@@ -1,12 +1,16 @@
 """Durable subtask handoffs; creation and wake enqueueing are transactional."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession
 
-from backend.copilot.background_task import BackgroundOutcome, BackgroundTask
+from backend.copilot.background_task import (
+    BACKGROUND_TIMEOUT_MESSAGE,
+    BackgroundOutcome,
+    BackgroundTask,
+)
 from backend.copilot.model import ChatSessionMetadata, _parse_json_field
 from backend.data import db
 from backend.util.json import SafeJson
@@ -132,12 +136,12 @@ async def finish_background_turn(
         return
     task = tasks[0]
     outcome: BackgroundOutcome = (
-        "timed_out"
-        if task.deadline <= datetime.now(UTC)
+        "completed"
+        if error is None
         else (
-            "cancelled"
-            if error == "Operation cancelled"
-            else "failed" if error else "completed"
+            "timed_out"
+            if error == BACKGROUND_TIMEOUT_MESSAGE
+            else "cancelled" if error == "Operation cancelled" else "failed"
         )
     )
     messages = await db.query_raw_with_schema(

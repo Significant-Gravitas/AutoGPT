@@ -18,6 +18,7 @@ FOLLOWUP_SECONDS = 120
 DELIVERY_SECONDS = 600
 BACKGROUND_TASK_KEY = "background_task_id"
 BACKGROUND_STAGE_KEY = "background_task_stage"
+BACKGROUND_TIMEOUT_MESSAGE = "Background work reached its deadline."
 
 BackgroundOutcome = Literal["completed", "failed", "cancelled", "timed_out"]
 BackgroundStage = Literal["child", "followup"]

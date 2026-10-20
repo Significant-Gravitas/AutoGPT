@@ -2,7 +2,11 @@
 
 from datetime import UTC, datetime
 
-from backend.copilot.background_task import BACKGROUND_STAGE_KEY, BACKGROUND_TASK_KEY
+from backend.copilot.background_task import (
+    BACKGROUND_STAGE_KEY,
+    BACKGROUND_TASK_KEY,
+    BACKGROUND_TIMEOUT_MESSAGE,
+)
 from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.tree import readmit_turn
 from backend.data.db_accessors import background_task_db
@@ -25,6 +29,8 @@ async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
     )
     if claimed:
         try:
+            if background_timeout(entry) == 0:
+                raise TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
             await readmit_turn(entry.envelope, user_id=entry.user_id)
         except Exception as error:
             await finish_background_execution(entry, str(error))

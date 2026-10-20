@@ -23,6 +23,7 @@ from backend.copilot.background_execution import (
     claim_background_execution,
     finish_background_execution,
 )
+from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
@@ -611,8 +612,8 @@ class CoPilotProcessor:
         with turn_transaction(entry) as turn:
             if not await claim_background_execution(entry):
                 return
-            async with asyncio.timeout(background_timeout(entry)):
-                await self._run_turn(entry, cancel, cluster_lock, log, turn)
+            async with asyncio.timeout(background_timeout(entry)) as deadline:
+                await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
 
     async def _run_turn(
         self,
@@ -621,6 +622,7 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
         turn: TurnTrace,
+        deadline: asyncio.Timeout | None = None,
     ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -944,8 +946,10 @@ class CoPilotProcessor:
                 log.error(f"Turn failed: {error_msg}")
             raise
         finally:
-            # If no exception but user cancelled, still mark as cancelled
-            if not error_msg and cancel.is_set():
+            # Keep the monotonic deadline distinct from a user's Stop.
+            if deadline is not None and deadline.expired():
+                error_msg = BACKGROUND_TIMEOUT_MESSAGE
+            elif not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
             try:
                 if credential_lease is not None:

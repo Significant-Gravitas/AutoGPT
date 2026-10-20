@@ -230,6 +230,64 @@ async def test_usage_refusal_is_a_failed_subtask(
     assert stored and stored.outcome == "failed"
 
 
+@pytest.mark.parametrize(
+    "error,outcome", [(None, "completed"), ("Operation cancelled", "cancelled")]
+)
+async def test_delayed_completion_preserves_the_workers_outcome(
+    world: World, error: str | None, outcome: str
+):
+    task = await world.launch()
+    await append_and_save_message(
+        task.child_session_id,
+        ChatMessage(role="assistant", content="The answer is 42."),
+    )
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
+        task.id,
+        datetime.now(UTC) - timedelta(seconds=1),
+    )
+    await background_task_db.finish_background_turn(
+        world.user_id, task.child_session_id, task.child_turn_id, error
+    )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == outcome
+    assert stored.result == "The answer is 42."
+
+
+@pytest.mark.parametrize("expired_before_pickup", [False, True])
+async def test_worker_timeout_does_not_depend_on_the_database_clock(
+    world: World, monkeypatch: pytest.MonkeyPatch, expired_before_pickup: bool
+):
+    task = await world.launch()
+    entry = world.entry(task.child_session_id)
+    assert entry.envelope
+    if expired_before_pickup:
+        entry.envelope = entry.envelope.model_copy(
+            update={"deadline_at": datetime.now(UTC) - timedelta(seconds=1)}
+        )
+
+    async def silent_model(**_kwargs: Any):
+        await asyncio.sleep(10)
+        yield StreamTextDelta(id="late", delta="Too late")
+
+    monkeypatch.setattr(processor, "background_timeout", lambda _: 0.1)
+    monkeypatch.setattr(processor, "ChatConfig", lambda: MagicMock(test_mode=True))
+    monkeypatch.setattr(processor, "stream_chat_completion_dummy", silent_model)
+    monkeypatch.setattr(processor, "refusal_for", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        processor, "close_browser_daemon", AsyncMock(return_value=False)
+    )
+    with pytest.raises(TimeoutError):
+        await processor.CoPilotProcessor()._execute_async(
+            entry,
+            threading.Event(),
+            MagicMock(),
+            CoPilotLogMetadata(logging.getLogger("background-timeout-test")),
+        )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "timed_out"
+
+
 async def test_child_stop_reports_cancellation_and_parent_stop_suppresses_wake(
     world: World,
 ):
