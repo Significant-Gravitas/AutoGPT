@@ -4,7 +4,19 @@ export async function dismissTabIntros(page: Page) {
   await page.addLocatorHandler(
     page.getByTestId("tab-intro-overlay"),
     async (intro) => {
-      await intro.getByRole("button", { name: "Got it", exact: true }).click();
+      const [button] = await intro
+        .getByRole("button", { name: "Got it", exact: true })
+        .elementHandles();
+      if (!button) return;
+      try {
+        await button.click();
+      } catch (error) {
+        // An expiring optional wait can re-enter a card's exit animation.
+        if (await button.evaluate((element) => element.isConnected))
+          throw error;
+      } finally {
+        await button.dispose();
+      }
     },
   );
 }

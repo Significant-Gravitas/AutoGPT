@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
+const readiness = vi.hoisted(() => ({ flags: true, onboarding: true }));
 vi.mock("posthog-js", () => ({ default: { capture } }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
@@ -15,12 +16,15 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: () => false,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
+  useFlagStatus: () => ({ enabled: true, ready: readiness.flags }),
 }));
 
 const completeStep = vi.hoisted(() => vi.fn());
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
-  useOnboarding: () => ({ state: { completedSteps: [] }, completeStep }),
+  useOnboarding: () => ({
+    state: readiness.onboarding ? { completedSteps: [] } : null,
+    completeStep,
+  }),
   default: ({ children }: { children: React.ReactNode }) => children,
 }));
 
@@ -53,6 +57,8 @@ beforeEach(() => {
   push.mockReset();
   startTutorial.mockReset();
   searchParams.current = "";
+  readiness.flags = true;
+  readiness.onboarding = true;
   useTutorialStore.getState().setIsTutorialRunning(false);
 });
 
@@ -142,6 +148,28 @@ describe("MarketplaceTabIntro", () => {
 });
 
 describe("BuildTabIntro", () => {
+  it.each(["flags", "onboarding"] as const)(
+    "does not interrupt a tutorial when %s resolves late, and preserves the intro",
+    async (pending) => {
+      readiness[pending] = false;
+      useTutorialStore.getState().setIsTutorialRunning(true);
+      const { rerender } = render(<BuildTabIntro />);
+      expect(screen.queryByText("Create your own workflows.")).toBeNull();
+
+      readiness[pending] = true;
+      rerender(<BuildTabIntro />);
+      expect(screen.queryByText("Create your own workflows.")).toBeNull();
+      expect(completeStep).not.toHaveBeenCalled();
+      expect(capture).not.toHaveBeenCalled();
+
+      act(() => useTutorialStore.getState().setIsTutorialRunning(false));
+      expect(
+        await screen.findByText("Create your own workflows."),
+      ).toBeDefined();
+      expect(completeStep).not.toHaveBeenCalled();
+    },
+  );
+
   it("sends the user to Otto from the primary CTA", async () => {
     render(<BuildTabIntro />);
     expect(await screen.findByText("Create your own workflows.")).toBeDefined();

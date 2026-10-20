@@ -16,9 +16,12 @@ export function BuildTabIntro() {
   // agent. Vetoing the visit leaves the step unrecorded, so a later blank
   // /build still gets the introduction.
   const isEditingSavedGraph = Boolean(useSearchParams().get("flowID"));
+  const isTutorialRunning = useTutorialStore(
+    (state) => state.isTutorialRunning,
+  );
   const { isOpen, dismiss, takeAction } = useTabIntroCard(
     "build",
-    !isEditingSavedGraph,
+    !isEditingSavedGraph && !isTutorialRunning,
   );
   const setIsTutorialRunning = useTutorialStore(
     (state) => state.setIsTutorialRunning,
