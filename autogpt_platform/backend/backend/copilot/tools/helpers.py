@@ -694,6 +694,8 @@ def _credential_rejected_response(
             "before the next run."
         ),
         error="credential_rejected",
+        # The scheduled chat's failure streak reads which connection to fix.
+        details={"provider": provider} if provider else None,
         session_id=session_id,
     ).from_outside()
 
@@ -887,8 +889,15 @@ async def unattended_missing_credentials_error(
         )
         + grant_hint,
         error="missing_credentials",
+        details=_single_provider(providers),
         session_id=session_id,
     ).from_outside()
+
+
+def _single_provider(providers: set[str]) -> dict[str, Any] | None:
+    """The provider to fix, for a scheduled chat's failure streak; only when
+    there is exactly one, since a reconnect button opens one."""
+    return {"provider": next(iter(providers))} if len(providers) == 1 else None
 
 
 async def _pinned_account_error(
@@ -947,6 +956,7 @@ async def _pinned_account_error(
             "another account for this schedule, before the next run."
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
+        details=_single_provider(set(lost + unfit)),
         session_id=session_id,
     ).from_outside()
 

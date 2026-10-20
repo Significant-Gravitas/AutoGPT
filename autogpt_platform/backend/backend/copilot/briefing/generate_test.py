@@ -325,6 +325,26 @@ def funnel(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_skips_a_banned_owner_before_any_work(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    monkeypatch.setattr(generate, "is_user_banned", AsyncMock(return_value=True))
+    get_user = AsyncMock()
+    monkeypatch.setattr(generate, "user_db", lambda: MagicMock(get_user_by_id=get_user))
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    # Not "flag_disabled": the cron stays registered for if the ban is lifted.
+    assert result == {"status": "skipped", "reason": "banned"}
+    get_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_generate_skips_when_already_delivered(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
 

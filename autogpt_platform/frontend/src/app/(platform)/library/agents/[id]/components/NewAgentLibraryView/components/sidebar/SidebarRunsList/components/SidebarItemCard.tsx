@@ -6,7 +6,7 @@ import React from "react";
 
 interface Props {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   descriptionTitle?: string;
   icon?: React.ReactNode;
   selected?: boolean;

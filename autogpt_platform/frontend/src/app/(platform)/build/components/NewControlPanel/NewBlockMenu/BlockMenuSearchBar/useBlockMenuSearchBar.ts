@@ -1,6 +1,7 @@
 import debounce from "lodash/debounce";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { getGetV2GetBuilderSuggestionsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
 
@@ -9,7 +10,13 @@ const SEARCH_DEBOUNCE_MS = 300;
 export const useBlockMenuSearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localQuery, setLocalQuery] = useState("");
-  const { setSearchQuery, setSearchId, searchQuery } = useBlockMenuStore();
+  const { setSearchQuery, setSearchId, searchQuery } = useBlockMenuStore(
+    useShallow((state) => ({
+      setSearchQuery: state.setSearchQuery,
+      setSearchId: state.setSearchId,
+      searchQuery: state.searchQuery,
+    })),
+  );
   const queryClient = getQueryClient();
 
   const clearSearchSession = useCallback(() => {

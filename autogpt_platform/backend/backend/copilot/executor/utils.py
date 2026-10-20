@@ -9,7 +9,7 @@
 import logging
 import time
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -273,6 +273,10 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    # A scheduled chat its owner set up, or a chat's own turn resumed or
+    # sent at its budget reset. Both alert; only a scheduled chat has a
+    # failure streak to count toward.
+    purpose: Literal["followup", "resume", "send"] = "followup"
 
 
 class CoPilotExecutionEntry(BaseModel):

@@ -43,6 +43,7 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.data.user import is_user_banned
 from backend.executor.utils import add_graph_execution
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
@@ -1263,6 +1264,11 @@ async def webhook_ingress_generic(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid webhook signature",
         )
+
+    # Acknowledged so the provider doesn't retry; nothing runs for a banned owner.
+    if await is_user_banned(user_id):
+        logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
+        return
 
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials

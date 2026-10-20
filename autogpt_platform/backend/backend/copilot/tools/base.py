@@ -33,6 +33,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.gate import Decision
     from backend.copilot.gate.headline import Headline
     from backend.copilot.gate.subject import Subject
 
@@ -325,6 +326,9 @@ async def _record_activity(
 # Passed to ``_execute`` of a tool with a gate subject when the user approved
 # this exact call; stripped from the model's own arguments so it cannot be forged.
 GATE_APPROVED = "_gate_approved"
+# Passed beside it when an active gate reached any verdict on the call: a card,
+# a rule, the mode or the supervisor. Stripped the same way.
+GATE_DECIDED = "_gate_decided"
 
 
 class BaseTool:
@@ -450,6 +454,7 @@ class BaseTool:
         **kwargs,
     ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
+        kwargs.pop(GATE_DECIDED, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -516,12 +521,15 @@ class BaseTool:
         # prompts of their own, so for a Google call their traces are redacted.
         google_call = is_google_call(kwargs)
         with tracing_google_data(google_call):
-            gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
+            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
         if gated is not None:
             return gated
         run_kwargs = kwargs
-        if approved and self.has_gate_subject:
-            run_kwargs = {**kwargs, GATE_APPROVED: True}
+        if decision is not None and self.has_gate_subject:
+            if decision.approved:
+                run_kwargs = {**run_kwargs, GATE_APPROVED: True}
+            if decision.decided:
+                run_kwargs = {**run_kwargs, GATE_DECIDED: True}
 
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
@@ -582,9 +590,9 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
-    ) -> tuple[StreamToolOutputAvailable | None, bool]:
+    ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
-        whether the user approved this exact call.
+        the gate's decision on a call that proceeds.
 
         A gate that crashes must not become a gate that passes, so an
         unexpected failure here refuses the call rather than falling through.
@@ -614,11 +622,11 @@ class BaseTool:
                     "settings, so nothing ran. Tell the user and stop.",
                     args=kwargs,
                 ),
-                False,
+                None,
             )
 
         if decision.allowed:
-            return None, decision.approved
+            return None, decision
         return (
             self._refusal(
                 tool_call_id,
@@ -628,7 +636,7 @@ class BaseTool:
                 args=kwargs,
                 headline=decision.headline,
             ),
-            False,
+            None,
         )
 
     async def _released_read(
