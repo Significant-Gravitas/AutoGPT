@@ -39,9 +39,8 @@ describe("shiki highlighter loading", () => {
   });
 
   it("loads the highlighter once, on first use", async () => {
-    const { getShikiHighlighter, SHIKI_THEMES } = await import(
-      "../shiki-highlighter"
-    );
+    const { getShikiHighlighter, SHIKI_THEMES } =
+      await import("../shiki-highlighter");
 
     const [highlighter, again] = await Promise.all([
       getShikiHighlighter(),
