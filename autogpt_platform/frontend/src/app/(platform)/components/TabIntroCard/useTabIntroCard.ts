@@ -5,6 +5,7 @@ import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { trackTabIntro } from "@/services/onboarding/tab-intro-analytics";
 import { useEffect, useState } from "react";
+import { isPreExpertsUser } from "../WorkflowsMovedNotice/helpers";
 import {
   peekTabIntroSeen,
   setTabIntroSeen,
@@ -27,6 +28,13 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   // that rollout, so they ship and roll back with it rather than on a flag
   // of their own.
   const { enabled, ready } = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
+  const experts = useFlagStatus(Flag.HIRE_EXPERTS);
+  const layout = useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
+  const isMigrationCohort =
+    tab === "agents" && isPreExpertsUser(user?.created_at);
+  const hasMigrationNotice =
+    isMigrationCohort &&
+    (!experts.ready || !layout.ready || (experts.enabled && layout.enabled));
   const step = TAB_INTRO_STEPS[tab];
 
   // Who closed the card in this mounted session, rather than a boolean: a
@@ -43,6 +51,7 @@ export function useTabIntroCard(tab: TabIntroTab, canShow = true) {
   // case never touches localStorage at all.
   const isOpen =
     canShow &&
+    !hasMigrationNotice &&
     ready &&
     Boolean(enabled) &&
     userId !== null &&

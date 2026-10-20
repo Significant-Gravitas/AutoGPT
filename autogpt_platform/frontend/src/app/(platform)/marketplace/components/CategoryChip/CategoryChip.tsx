@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
@@ -33,9 +34,35 @@ const CHIP_ICON_SIZE: Record<ChipSize, number> = {
 const NEUTRAL_ACCENT = getCategoryAccent(undefined).accent;
 const NEUTRAL_SELECTED = "border-transparent bg-zinc-100 text-zinc-900";
 
+// The same glossy pill for chips with no category colour (the hero's search
+// terms, "All"): a white-to-zinc fill, a top highlight and a small drop.
+const NEUTRAL_GLOSS =
+  "bg-gradient-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+const NEUTRAL_GLOSS_IDLE =
+  "border-zinc-200 from-white to-zinc-50 text-zinc-700 hover:border-zinc-300 hover:from-white hover:to-zinc-100";
+const NEUTRAL_GLOSS_SELECTED =
+  "border-zinc-300 from-zinc-100 to-zinc-200/80 text-zinc-900";
+
+/** A category chip in its own colour, with a soft top highlight so it reads
+ *  as a glossy pill: darker text for contrast, a light tint and a tinted
+ *  edge, all stronger once selected. */
+function glossyChipStyle(color: string, isSelected: boolean): CSSProperties {
+  return {
+    color: `color-mix(in srgb, ${color} ${isSelected ? 45 : 55}%, #18181b)`,
+    backgroundColor: `color-mix(in srgb, ${color} ${isSelected ? 30 : 12}%, white)`,
+    borderColor: `color-mix(in srgb, ${color} ${isSelected ? 60 : 38}%, white)`,
+    backgroundImage:
+      "linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0) 65%)",
+    boxShadow: isSelected
+      ? `inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(16,24,40,0.08), 0 0 0 1px color-mix(in srgb, ${color} 25%, transparent)`
+      : "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(16,24,40,0.05)",
+  };
+}
+
 interface Props {
   label: string;
   title?: string;
+  color?: string;
   /** The glyph and accent this category wears everywhere else. Left out for
    *  chips that are not categories, e.g. the hero's search terms. */
   icon?: IconSvgElement | null;
@@ -50,6 +77,7 @@ interface Props {
 export function CategoryChip({
   label,
   title,
+  color,
   icon,
   accent = NEUTRAL_ACCENT,
   size = "default",
@@ -66,12 +94,13 @@ export function CategoryChip({
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
-      unmask={false}
+      style={color ? glossyChipStyle(color, isSelected) : undefined}
       leftIcon={
         icon ? (
           <Icon
             icon={icon}
             size={CHIP_ICON_SIZE[size]}
+            style={color ? { color } : undefined}
             className={isSelected ? undefined : accent.icon}
             aria-hidden
           />
@@ -83,10 +112,19 @@ export function CategoryChip({
         "min-w-0 hover:border-[#e9e9e9]",
         CHIP_SHAPE,
         CHIP_SIZE[size],
+        !isSelected && icon && accent.icon,
         isSelected &&
-          (accent === NEUTRAL_ACCENT
-            ? NEUTRAL_SELECTED
-            : cn(accent.chip, "border-transparent")),
+          (color
+            ? "border-transparent text-zinc-900"
+            : accent === NEUTRAL_ACCENT
+              ? NEUTRAL_SELECTED
+              : cn(accent.chip, "border-transparent")),
+        !color &&
+          accent === NEUTRAL_ACCENT &&
+          cn(
+            NEUTRAL_GLOSS,
+            isSelected ? NEUTRAL_GLOSS_SELECTED : NEUTRAL_GLOSS_IDLE,
+          ),
       )}
     >
       {label}

@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -180,6 +181,7 @@ class ExaCreateResearchBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaCreateResearchBlock.Input,
             output_schema=ExaCreateResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -313,6 +315,7 @@ class ExaGetResearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetResearchBlock.Input,
             output_schema=ExaGetResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -403,6 +406,7 @@ class ExaWaitForResearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForResearchBlock.Input,
             output_schema=ExaWaitForResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -492,6 +496,7 @@ class ExaListResearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListResearchBlock.Input,
             output_schema=ExaListResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

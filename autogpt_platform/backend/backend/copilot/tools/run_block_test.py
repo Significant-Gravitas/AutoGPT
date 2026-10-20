@@ -21,6 +21,16 @@ from .run_block import RunBlockTool
 _TEST_USER_ID = "test-user-run-block"
 
 
+@pytest.fixture(autouse=True)
+def _no_pending_reviews():
+    """No test here seeds a review; unstubbed, this lookup is an RPC to a database
+    manager that only an earlier test's ``server`` fixture would have started."""
+    reviews = MagicMock()
+    reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+    with patch("backend.copilot.tools.helpers.review_db", return_value=reviews):
+        yield
+
+
 def make_mock_block(
     block_id: str, name: str, block_type: BlockType, disabled: bool = False
 ):
@@ -30,7 +40,7 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
     mock.input_schema.get_credentials_fields_info.return_value = {}
@@ -56,7 +66,7 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -205,11 +215,14 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
-        """Non-excluded blocks pass the filtering guard (may fail later for other reasons)."""
+        """A standard block passes the filtering guard and reaches the schema preview."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        standard_block = make_mock_block(
-            "standard-id", "HTTP Request", BlockType.STANDARD
+        standard_block = make_mock_block_with_schema(
+            block_id="standard-id",
+            name="HTTP Request",
+            input_properties={"url": {"type": "string"}},
+            required_fields=["url"],
         )
 
         with (
@@ -231,10 +244,7 @@ class TestRunBlockFiltering:
                 dry_run=False,
             )
 
-        # Should NOT be an ErrorResponse about CoPilot exclusion
-        # (may be other errors like missing credentials, but not the exclusion guard)
-        if isinstance(response, ErrorResponse):
-            assert "cannot be run directly" not in response.message
+        assert isinstance(response, BlockDetailsResponse)
 
 
 class TestRunBlockInputValidation:
@@ -806,7 +816,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(True, input_data)
         )
@@ -853,7 +863,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -908,7 +918,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["url"],
         )
-        mock_block.is_sensitive_action = False
+        mock_block.is_irreversible_action = False
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -1504,6 +1514,54 @@ class TestExecuteBlockCredentialRejection:
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_naming_the_rejected_credential(
+        self, caplog
+    ):
+        # Nobody answers a card on a scheduled turn (SECRT-2804): the reply has
+        # to say the step was skipped and which credential to reconnect.
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(wrapped)
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' (HTTP 401)" in response.message
+        assert "did not run" in response.message
+        assert "did not switch" in response.message
+        assert "sk-live-abc" not in response.message
+        assert "sk-live-abc" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_when_a_refresh_is_refused(
+        self, caplog
+    ):
+        from backend.util.request import HTTPClientError
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(
+                RuntimeError("the block must not run"),
+                load_error=HTTPClientError("HTTP 400: refresh_token=rt-secret", 400),
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' could not be refreshed" in response.message
+        assert "rt-secret" not in response.message
+        assert "rt-secret" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_non_auth_block_failure_still_returns_an_error(self):
         from backend.util.exceptions import BlockExecutionError
 
@@ -1878,6 +1936,40 @@ class TestRunBlockOptionalCredentials:
 
         assert isinstance(response, SetupRequirementsResponse), response
         assert seen == []
+
+    @pytest.mark.parametrize(
+        "pinned_provider, runs", [("openai", False), ("anthropic", True)]
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_schedule_pin_on_its_provider_is_never_run_around(
+        self, pinned_provider, runs
+    ):
+        """The schedule's account is gone: running without it is the switch
+        the pin exists to prevent. A pin on another provider changes nothing."""
+        from backend.copilot.credential_selection import (
+            CredentialPin,
+            set_turn_credential_pins,
+        )
+
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        set_turn_credential_pins(
+            {pinned_provider: CredentialPin(id="key-gone", title="Work key")}
+        )
+        try:
+            response = await self._run(
+                self._block(_OptionalKeyInput, seen), [], {"query": "q"}
+            )
+        finally:
+            set_turn_credential_pins(None)
+
+        if runs:
+            assert isinstance(response, BlockOutputResponse), response
+            assert seen == [None]
+        else:
+            assert isinstance(response, SetupRequirementsResponse), response
+            assert seen == []
 
 
 def _optional_schemas():

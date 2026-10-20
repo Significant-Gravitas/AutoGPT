@@ -3,15 +3,20 @@ import {
   getDeleteV1DeleteExecutionScheduleMockHandler422,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
+  getListPausedScheduledChatsMockHandler,
+  getResumeScheduledChatMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -94,6 +99,8 @@ describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
     pushMock.mockClear();
+    // Nothing paused unless a test says so.
+    server.use(getListPausedScheduledChatsMockHandler([]));
   });
 
   afterEach(() => {
@@ -208,13 +215,13 @@ describe("FollowupsPage", () => {
 
     // Followup row still renders.
     expect(await screen.findByText("First follow-up message")).toBeDefined();
-    // Graph-kind row renders with its agent name + the "Agent run" badge.
+    // Graph-kind row renders with its agent name + the "Workflow run" badge.
     expect(screen.getByText("Nightly cleanup")).toBeDefined();
     const graphRow = screen.getByTestId("schedule-row");
     expect(graphRow.getAttribute("data-schedule-kind")).toBe("graph");
     expect(
       within(graphRow).getByTestId("schedule-kind-badge").textContent,
-    ).toBe("Agent run");
+    ).toBe("Workflow run");
   });
 
   test("shows a destructive toast when the delete API fails", async () => {
@@ -282,7 +289,7 @@ describe("FollowupsPage", () => {
     expect(within(onceRow).getByText("Runs once")).toBeDefined();
   });
 
-  test("graph row: agentLabel falls back to schedule name then 'Scheduled agent' when agent_name missing", async () => {
+  test("graph row: agentLabel falls back to schedule name then 'Scheduled workflow' when agent_name missing", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([
@@ -303,9 +310,9 @@ describe("FollowupsPage", () => {
 
     // Second-tier fallback: schedule name renders when agent_name is empty.
     expect(await screen.findByText("My schedule name")).toBeDefined();
-    // Final fallback: the literal "Scheduled agent" renders when BOTH
+    // Final fallback: the literal "Scheduled workflow" renders when BOTH
     // agent_name and name are empty.
-    expect(screen.getByText("Scheduled agent")).toBeDefined();
+    expect(screen.getByText("Scheduled workflow")).toBeDefined();
   });
 
   test("graph row: clicking View opens the dialog with graph metadata", async () => {
@@ -395,7 +402,7 @@ describe("FollowupsPage", () => {
 
     await vi.waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith(
-        expect.stringContaining("/copilot#prompt="),
+        expect.stringContaining("/home#prompt="),
       );
     });
     const url = pushMock.mock.calls[0][0] as string;
@@ -414,7 +421,7 @@ describe("FollowupsPage", () => {
 
     const empty = await screen.findByTestId("followups-empty");
     expect(empty.textContent).toContain("Nothing scheduled yet");
-    expect(empty.textContent).toContain("schedule an agent from the builder");
+    expect(empty.textContent).toContain("schedule a workflow from the builder");
   });
 
   test("copilot follow-up rows show a New chat badge when they fire into a new chat", async () => {
@@ -493,5 +500,199 @@ describe("FollowupsPage", () => {
     expect(await screen.findByText(/scheduled items/i)).toBeDefined();
     expect(screen.queryByTestId("followups-list")).toBeNull();
     expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
+  });
+
+  test("a paused list that fails to load is an error, not the empty state", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/schedules/followups/paused",
+        () => HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText(/scheduled items/i)).toBeDefined();
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+  });
+
+  test("a paused chat stays listed when the schedules fail to load", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.error(),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByTestId("paused-chat-row")).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
+  });
+
+  test("lists a paused scheduled chat with why, and Resume resumes it", async () => {
+    let resumedKey: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+      getResumeScheduledChatMockHandler(({ params }) => {
+        resumedKey = String(params.scheduleKey);
+        return { resumed: true };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(within(row).getByText("Discord monitor")).toBeDefined();
+    expect(
+      within(row).getByText("Paused: can't post to Discord"),
+    ).toBeDefined();
+    // A paused chat is still something scheduled: no empty state.
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Resume Discord monitor" }),
+    );
+    await waitFor(() => expect(resumedKey).toBe("routine-1"));
+    // Home lists the paused chat under Needs you, so it is refreshed too.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: getGetHomeDashboardQueryKey(),
+      }),
+    );
+    invalidate.mockRestore();
+  });
+
+  test("a paused follow-up can be deleted from its row", async () => {
+    let deletedID: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      getDeleteV1DeleteExecutionScheduleMockHandler(({ params }) => {
+        deletedID = String(params.scheduleId);
+        return { id: deletedID };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(deletedID).toBe("sched-1"));
+  });
+
+  test("a paused follow-up whose schedule was gone already reads as deleted", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      http.delete("*/api/schedules/:scheduleId", () =>
+        HttpResponse.json(
+          { detail: "Schedule #sched-1 not found" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Scheduled chat deleted" }),
+      ),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    );
+  });
+
+  test("a paused routine offers no Delete: it goes with its expert", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Morning sweep",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: true,
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(
+      within(row).getByRole("button", { name: "Resume Morning sweep" }),
+    ).toBeDefined();
+    expect(
+      within(row).queryByRole("button", { name: "Delete Morning sweep" }),
+    ).toBeNull();
   });
 });

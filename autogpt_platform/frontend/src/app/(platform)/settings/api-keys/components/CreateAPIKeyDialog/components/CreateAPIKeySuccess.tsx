@@ -31,7 +31,8 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
       </Text>
 
       <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
-        <code className="flex-1 break-all font-mono text-xs text-zinc-800">
+        {/* ph-no-capture keeps the one-time key out of PostHog session replays. */}
+        <code className="ph-no-capture flex-1 break-all font-mono text-xs text-zinc-800">
           {plainTextKey}
         </code>
         <Button

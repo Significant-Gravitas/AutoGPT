@@ -1,8 +1,11 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -14,6 +17,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
@@ -50,6 +54,8 @@ export function ExpertTeamCard({
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
+  // The area the expert works in, in the chip the marketplace already uses.
+  const topic = expert.categories?.[0];
   const {
     handleResume,
     isResuming,
@@ -60,6 +66,7 @@ export function ExpertTeamCard({
     closeFire,
   } = useExpertTeamCard(expert);
   const isPaused = Boolean(expert.schedules_paused_at);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
 
   function handleInstallClick() {
     onInstallWorkflow(expert.id);
@@ -75,7 +82,7 @@ export function ExpertTeamCard({
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         <Button
-          variant="floating"
+          variant="secondary"
           size="icon-sm"
           aria-label="Edit Soul"
           leadingIcon={PencilEdit02Icon}
@@ -105,8 +112,9 @@ export function ExpertTeamCard({
               name={expert.name}
               avatarUrl={expert.avatar_url}
               color={expert.color}
+              backgroundColor={cover.color}
               size={88}
-              className="rounded-full ring-4 ring-background"
+              className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
             />
           </span>
 
@@ -118,7 +126,6 @@ export function ExpertTeamCard({
               <Text
                 variant="small-medium"
                 tone="secondary"
-                unmask={false}
                 className="tabular-nums"
               >
                 {weeklySpend
@@ -139,13 +146,21 @@ export function ExpertTeamCard({
             name={expert.name}
             role={expert.role}
             jobTitle={expert.job_title}
-            nameAccessory={
-              <IntegrationIcons
-                expertName={expert.name}
-                providers={expert.credential_providers ?? []}
-              />
-            }
+            nameAlign="baseline"
+            areaColor={getCategoryHex(topic)}
           />
+          <div className="flex items-center gap-2 empty:hidden">
+            {topic ? <CategoryTag category={topic} /> : null}
+            {isAutoModeEnabled && expert.autopilot_mode === "unsupervised" ? (
+              <Badge variant="warning" size="small">
+                Unsupervised
+              </Badge>
+            ) : null}
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
+          </div>
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 

@@ -65,6 +65,24 @@ BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
 CapabilityKind = Literal["service", "primitive"]
 
 
+class BlockEffect(Enum):
+    """What running the block does, ranked; declared per block, never derived.
+
+    Undeclared (``None``) means unreadable, which every consumer treats as EXTERNAL.
+    """
+
+    NONE = "none"  # pure computation: no network, no disk, no database
+    READ = "read"  # fetches or computes; changes nothing
+    WORKSPACE = "workspace"  # writes only to the user's workspace or key-value store
+    PLATFORM = "platform"  # changes only the user's own objects on the platform
+    # Changes something outside the platform where a mistake is cheap and the
+    # norms casual: a chat-channel post, a label, a draft, a new record.
+    EXTERNAL_JUDGED = "external_judged"
+    # Changes something outside the platform that is hard to take back, or reaches
+    # people or money in the user's name: an email, a payment, a delete, a public post.
+    EXTERNAL = "external"
+
+
 class BlockType(Enum):
     STANDARD = "Standard"
     INPUT = "Input"
@@ -589,8 +607,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
-        is_sensitive_action: bool = False,
+        is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
+        effect: BlockEffect | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -608,10 +627,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            is_irreversible_action: The effect has reached someone outside the platform
+                by the time the block returns (a send, public post, payment or order,
+                external permanent delete, access grant, on-call page); an external
+                write the user can edit back is not one.
             capability_kind: How the copilot ranks this block as a capability.
                 Defaults to ``service`` when the block's credentials name exactly
                 one provider and ``primitive`` otherwise; set it explicitly on
                 provider-backed generic blocks (code sandboxes, SQL, HTTP).
+            effect: What running the block does; see BlockEffect. Irreversible
+                implies EXTERNAL or EXTERNAL_JUDGED.
         """
         self.id = id
         self.input_schema = input_schema
@@ -627,8 +652,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.is_sensitive_action = is_sensitive_action
+        self.is_irreversible_action = is_irreversible_action
         self._capability_kind: CapabilityKind | None = capability_kind
+        self.effect = effect
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -833,7 +859,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
         if not (
-            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
         ):
             return False, input_data
 
@@ -856,6 +882,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             chat_session_id=(
                 None if is_graph_execution else execution_context.session_id
             ),
+            block=self,
+            execution_context=execution_context,
         )
 
         if decision is None:

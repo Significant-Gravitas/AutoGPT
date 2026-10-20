@@ -27,8 +27,10 @@ from backend.blocks.desktop._common import (
     user_volume_name,
     workspace_volume_mounts,
 )
+from backend.util.e2b_template import DESKTOP_IMAGE
 from backend.util.sandbox_metadata import deployment_env
 
+from . import e2b_sandbox
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
@@ -263,6 +265,8 @@ class TestGetOrCreateSandbox:
         # A box whose screen was never on pays no command on the way back.
         sb.commands.run.assert_not_awaited()
         mock_cls.create.assert_not_called()
+        # One made before login baselines existed gets its baseline here.
+        e2b_sandbox.take_baseline.assert_awaited_once_with(sb, only_if_missing=True)
         # redis.set called once to refresh TTL, not to claim a creation slot
         redis.set.assert_awaited_once()
 
@@ -281,6 +285,8 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         mock_cls.create.assert_awaited_once()
+        # Taken before the box is handed to anything the agent does.
+        e2b_sandbox.take_baseline.assert_awaited_once_with(new_sb)
         # Verify lifecycle: pause + auto_resume enabled
         _, kwargs = mock_cls.create.call_args
         assert kwargs.get("lifecycle") == {
@@ -321,13 +327,20 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(side_effect=fake_create)
             asyncio.run(
                 get_or_create_sandbox(
-                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, template="agpt-desktop-1x2"
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    template="agpt-desktop-1x2-004d6e73",
                 )
             )
 
         # The build can take longer than the creation slot's TTL, so it must
         # finish before the slot is claimed.
-        assert order == [f"ensure:agpt-desktop-1x2:{_API_KEY}", "claim", "create"]
+        assert order == [
+            f"ensure:agpt-desktop-1x2-004d6e73:{_API_KEY}",
+            "claim",
+            "create",
+        ]
 
     def test_create_with_on_timeout_kill(self):
         """on_timeout='kill' disables auto_resume automatically."""
@@ -1551,6 +1564,76 @@ class TestExpertShellBox:
         assert _turn_acquires(redis) == []
 
 
+class TestSupersededImage:
+    """A box built from a superseded image is swapped for one on the current one."""
+
+    _OLD = "sb-old"
+    _STAMP = {"autogpt_template": "agpt-desktop-1x2", "autogpt_mounts": "attached"}
+
+    def _run(
+        self,
+        stamp: dict[str, str],
+        redis_values: dict[str, str | None],
+        template: str = DESKTOP_IMAGE.alias,
+    ):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        old = _mock_sandbox(self._OLD, owner=owner)
+        _STAMPS[self._OLD].metadata = {**owner.metadata(), **stamp}
+        new = _mock_sandbox("sb-new", owner=owner)
+        values = {_EXPERT_SHELL_KEY: self._OLD, **redis_values}
+        redis = _keyed_redis(values)
+        redis.delete = AsyncMock(
+            side_effect=lambda *keys: [values.pop(k, 0) for k in keys]
+        )
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch("backend.copilot.tools.e2b_sandbox.ensure_template", AsyncMock()),
+        ):
+            mock_cls.connect = AsyncMock(return_value=old)
+            mock_cls.create = AsyncMock(return_value=new)
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    template=template,
+                    expert_id=_EXPERT_ID,
+                )
+            )
+        return result, old, new, mock_cls
+
+    def test_an_idle_box_on_a_superseded_image_is_replaced(self):
+        result, _, new, mock_cls = self._run(self._STAMP, {})
+
+        assert result is new
+        # Killed by id without connecting: a paused box is not resumed to die.
+        mock_cls.connect.assert_not_awaited()
+        mock_cls.kill.assert_awaited_once_with(self._OLD, api_key=_API_KEY)
+        assert mock_cls.create.await_args.kwargs["template"] == DESKTOP_IMAGE.alias
+
+    @pytest.mark.parametrize(
+        "stamp, redis_values, template",
+        [
+            # Its ~/workspace is not a volume: replacing it would lose the files.
+            ({**_STAMP, "autogpt_mounts": "none"}, {}, DESKTOP_IMAGE.alias),
+            # Another turn is running commands on it.
+            (_STAMP, {_EXPERT_ACTIVE_KEY: "1"}, DESKTOP_IMAGE.alias),
+            # Still the configured image, e.g. pinned by an env override.
+            (_STAMP, {}, "agpt-desktop-1x2"),
+        ],
+        ids=["no-volumes", "turn-in-flight", "configured-image"],
+    )
+    def test_a_box_that_cannot_be_replaced_safely_is_kept(
+        self, stamp, redis_values, template
+    ):
+        result, old, _, mock_cls = self._run(stamp, redis_values, template)
+
+        assert result is old
+        mock_cls.kill.assert_not_awaited()
+        mock_cls.create.assert_not_awaited()
+
+
 class TestExpertPause:
     def test_last_turn_pauses_the_box(self):
         sb = _mock_sandbox()
@@ -1941,3 +2024,142 @@ class TestProxyCredentialIsRevoked:
             mock_cls.connect = AsyncMock(return_value=sb)
             assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
         forget.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# The box's own environment behind the swap proxy
+# ---------------------------------------------------------------------------
+
+
+class TestCreationEnvBehindTheSwapProxy:
+    """A new box behind the proxy starts with placeholders in its own env, for
+    what does not run through a command, and those credentials are granted to
+    it; without the proxy it starts with no integration env at all, as
+    before."""
+
+    def _create(self, *, proxy: str | None, user_id: str | None) -> dict:
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ) as lookup,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.grant_to_box", AsyncMock()
+            ) as grant,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ),
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, user_id=user_id
+                )
+            )
+        _, kwargs = mock_cls.create.call_args
+        self.lookup, self.grant = lookup, grant
+        return kwargs
+
+    def test_behind_the_proxy_the_box_starts_with_granted_placeholders(self):
+        kwargs = self._create(proxy="proxy:1080", user_id="user-a")
+        assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
+        assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
+        # A chat's own box starts with the chat's pick.
+        self.lookup.assert_awaited_once_with(
+            "user-a", selected={"github": "cred-default"}
+        )
+        self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
+
+    @pytest.mark.parametrize(
+        "session_id, selected",
+        [("sess-1", {"github": "cred-b"}), (None, None)],
+        ids=["a chat's box: its pick", "an expert's box: the default"],
+    )
+    def test_the_box_is_granted_the_chats_pick_not_the_default(
+        self, session_id, selected
+    ):
+        """A chat that picked account B is not also granted the default A."""
+        from backend.util.e2b_network import EgressOwner
+
+        from .e2b_sandbox import _placeholder_grants
+
+        owner = EgressOwner(kind="session", id="sess-1", user_id="user-a")
+        with (
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address",
+                return_value="proxy:1080",
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-b"}),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={}),
+            ) as lookup,
+        ):
+            asyncio.run(_placeholder_grants(owner, session_id))
+        lookup.assert_awaited_once_with("user-a", selected=selected)
+
+    def test_without_the_proxy_the_create_call_is_unchanged(self):
+        kwargs = self._create(proxy=None, user_id="user-a")
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+        self.grant.assert_not_awaited()
+
+    def test_a_box_with_no_user_gets_none(self):
+        kwargs = self._create(proxy="proxy:1080", user_id=None)
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+
+
+class TestGrantsAreRenewedOnReconnect:
+    """An expert's box can stay paused longer than a grant lasts: a reconnect
+    that will run work renews its grants, behind the proxy only."""
+
+    def _reconnect(self, *, proxy, pin_egress=True, user_id="user-a"):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.renew_box_grants", AsyncMock()
+            ) as renew,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned(
+                    "sb-1", owner, _API_KEY, user_id=user_id, pin_egress=pin_egress
+                )
+            )
+        return renew
+
+    def test_behind_the_proxy_a_reconnect_renews_the_grants(self):
+        self._reconnect(proxy="proxy:1080").assert_awaited_once_with("sb-1")
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"proxy": None},
+            {"proxy": "proxy:1080", "pin_egress": False},
+            {"proxy": "proxy:1080", "user_id": "user-b"},  # not the box's user
+        ],
+        ids=["no proxy", "pause or kill", "another user"],
+    )
+    def test_otherwise_nothing_is_renewed(self, kwargs):
+        self._reconnect(**kwargs).assert_not_awaited()

@@ -4,6 +4,7 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -75,6 +76,7 @@ class ConditionBlock(Block):
                 ("result", True),
                 ("yes_output", "Greater"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -188,6 +190,7 @@ class IfInputMatchesBlock(Block):
                 # ("result", True),
                 # ("yes_output", "Yes"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

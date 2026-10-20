@@ -1,4 +1,5 @@
 import datetime
+from types import SimpleNamespace
 from typing import AsyncGenerator
 
 import httpx
@@ -9,12 +10,25 @@ from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app
+from backend.blocks.github._auth import TEST_CREDENTIALS
+from backend.blocks.github.issues import GithubMakeIssueBlock
+from backend.copilot.gate.held import HeldCall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    GraphExecutionEntry,
     NodeExecutionResult,
+    create_graph_execution,
+    update_graph_execution_stats,
 )
-from backend.data.graph import GraphSettings
+from backend.data.graph import (
+    Graph,
+    GraphSettings,
+    Node,
+    create_graph,
+    make_graph_model,
+)
+from backend.util.exceptions import BlockExecutionError
 
 from .model import PendingHumanReviewModel
 
@@ -1370,3 +1384,253 @@ async def test_process_review_action_per_review_auto_approve_granularity(
     assert "node_def_node_1_auto" in node_ids_with_auto_approval
     assert "node_def_node_3_auto" in node_ids_with_auto_approval
     assert "node_def_node_2_manual" not in node_ids_with_auto_approval
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "graph_exec_id, session_id, woken",
+    [(None, "s1", "s1"), ("test_graph_exec_456", None, None)],
+)
+async def test_an_answer_on_a_chat_card_wakes_that_chat(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+    graph_exec_id: str | None,
+    session_id: str | None,
+    woken: str | None,
+) -> None:
+    """A held call finishes on the chat's next turn; nothing else starts one."""
+    review = sample_pending_review.model_copy(
+        update={"graph_exec_id": graph_exec_id, "session_id": session_id}
+    )
+    routes = "backend.api.features.graph_executions.review.routes"
+    mocker.patch(
+        f"{routes}.get_reviews_by_node_exec_ids",
+        return_value={"test_node_123": review},
+    )
+    meta = mocker.Mock()
+    meta.status = ExecutionStatus.REVIEW
+    mocker.patch(f"{routes}.get_graph_execution_meta", return_value=meta)
+    mocker.patch(
+        f"{routes}.process_all_reviews_for_execution",
+        return_value={
+            "test_node_123": review.model_copy(update={"status": ReviewStatus.APPROVED})
+        },
+    )
+    mocker.patch(f"{routes}.has_pending_reviews_for_graph_exec", return_value=True)
+    wake = mocker.patch(f"{routes}.wake_for_held_calls")
+
+    response = await client.post(
+        "/api/review/action",
+        json={"reviews": [{"node_exec_id": "test_node_123", "approved": True}]},
+    )
+
+    assert response.status_code == 200
+    if woken:
+        wake.assert_awaited_once()
+        assert wake.await_args.args[:2] == (test_user_id, woken)
+        assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
+    else:
+        wake.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+@pytest.mark.parametrize(
+    "tool, rule_key",
+    [
+        ("run_capability", "mcp:h/t"),
+        # A bare tool's card rules on the tool itself.
+        ("create_agent", "create_agent"),
+    ],
+)
+async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+    scope: str,
+    tool: str,
+    rule_key: str,
+) -> None:
+    """The rule lands on the subject the gate stored with the held call."""
+    review = sample_pending_review.model_copy(
+        update={"graph_exec_id": None, "session_id": "s1"}
+    )
+    held_call = HeldCall(
+        review_id="test_node_123",
+        tool_name=tool,
+        tool_call_id="c",
+        args={},
+        rule_key=rule_key,
+    )
+    # The turn the answer wakes claims the held call, so it is gone afterwards.
+    held_calls = {"test_node_123": held_call}
+    mocker.patch(
+        "backend.copilot.gate.held._held", side_effect=lambda _: dict(held_calls)
+    )
+    routes = "backend.api.features.graph_executions.review.routes"
+    mocker.patch(
+        f"{routes}.get_reviews_by_node_exec_ids",
+        return_value={"test_node_123": review},
+    )
+    approved = review.model_copy(update={"status": ReviewStatus.APPROVED})
+
+    async def process_and_claim(**_):
+        held_calls.clear()
+        return {"test_node_123": approved}
+
+    mocker.patch(
+        f"{routes}.process_all_reviews_for_execution", side_effect=process_and_claim
+    )
+    mocker.patch(f"{routes}.wake_for_held_calls")
+    set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
+    set_scoped_rule = mocker.patch("backend.copilot.gate.chat_rules.set_scoped_rule")
+    mocker.patch(
+        "backend.copilot.gate.chat_rules.get_chat_session_metadata",
+        return_value=SimpleNamespace(expert_id="frankie"),
+    )
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": "test_node_123",
+                    "approved": True,
+                    "chat_rule": "allow",
+                    "chat_rule_scope": scope,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    set_rule.assert_awaited_once_with("s1", rule_key, "allow")
+    if scope == "chat":
+        set_scoped_rule.assert_not_called()
+    else:
+        expert = "frankie" if scope == "expert" else None
+        set_scoped_rule.assert_awaited_once_with(
+            scope, test_user_id, expert, rule_key, "allow"
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """#15300 through the real route, review rows and gate.
+
+    The node pauses at the real gate, the user rejects it through
+    ``POST /api/review/action``, and the resume the route publishes is replayed
+    through ``Block.execute`` with that entry's context, as the executor would.
+    Only the queue, the outbound GitHub call and the user's safe-mode setting
+    are stubbed. Without the
+    identity pin the resumed context has no ``graph_exec_id``, the gate is
+    skipped and the issue is created anyway.
+    """
+    block = GithubMakeIssueBlock()
+    create_issue = mocker.patch.object(
+        GithubMakeIssueBlock,
+        "create_issue",
+        new=mocker.AsyncMock(
+            return_value=(1, "https://github.com/owner/repo/issues/1")
+        ),
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=mocker.AsyncMock(return_value=queue),
+    )
+
+    graph = make_graph_model(
+        Graph(
+            name="Rejected irreversible action",
+            description="",
+            nodes=[Node(block_id=block.id)],
+            links=[],
+        ),
+        test_user_id,
+    )
+    graph.reassign_ids(user_id=test_user_id, reassign_graph_id=True)
+    await create_graph(graph, user_id=test_user_id)
+    # The user's library setting that asks for irreversible actions to pause.
+    mocker.patch(
+        "backend.api.features.graph_executions.review.routes.get_graph_settings",
+        new=mocker.AsyncMock(
+            return_value=GraphSettings(sensitive_action_safe_mode=True)
+        ),
+    )
+
+    node_id = graph.nodes[0].id
+    input_data = dict(block.test_input)
+    graph_exec = await create_graph_execution(
+        graph_id=graph.id,
+        graph_version=graph.version,
+        starting_nodes_input=[(node_id, input_data)],
+        inputs={},
+        user_id=test_user_id,
+    )
+    node_exec_id = graph_exec.node_executions[0].node_exec_id
+
+    async def run_node(context: ExecutionContext) -> list:
+        return [
+            output
+            async for output in block.execute(
+                input_data,
+                execution_context=context.model_copy(
+                    update={"node_id": node_id, "node_exec_id": node_exec_id}
+                ),
+                credentials=TEST_CREDENTIALS,
+                user_id=test_user_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec.id,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+        ]
+
+    # First pass: the gate parks the node for review.
+    assert (
+        await run_node(
+            ExecutionContext(
+                user_id=test_user_id,
+                graph_id=graph.id,
+                graph_exec_id=graph_exec.id,
+                graph_version=graph.version,
+                root_execution_id=graph_exec.id,
+                sensitive_action_safe_mode=True,
+            )
+        )
+        == []
+    )
+    create_issue.assert_not_awaited()
+    assert await update_graph_execution_stats(
+        graph_exec_id=graph_exec.id, status=ExecutionStatus.REVIEW
+    )
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {"node_exec_id": node_exec_id, "approved": False, "message": "No"}
+            ]
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["rejected_count"] == 1
+
+    queue.publish_message.assert_awaited_once()
+    resumed = GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    ).execution_context
+    assert resumed.graph_exec_id == graph_exec.id
+
+    with pytest.raises(BlockExecutionError, match="rejected by reviewer"):
+        await run_node(resumed)
+    create_issue.assert_not_awaited()

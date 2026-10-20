@@ -24,9 +24,9 @@ export function MarketplaceTabIntro() {
     <TabIntroCard
       isOpen={isOpen}
       icon={Store01Icon}
-      title="Agents ready to work."
+      title="Workflows ready to work."
       body="Hundreds built by the community. Install one in a single click and run it today."
-      cta={{ label: "Browse featured agents", onClick: browseFeatured }}
+      cta={{ label: "Browse featured workflows", onClick: browseFeatured }}
       onDismiss={dismiss}
     />
   );

@@ -20,7 +20,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.data.db_accessors import chat_db
@@ -29,6 +29,7 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .hidden_rows import visible_to_model
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -656,6 +657,32 @@ def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
 
+def cli_session_cost_usd(content: str, session_id: str) -> float:
+    """The running cost the CLI restores on ``--resume`` from this session file.
+
+    The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
+    so its ``total_cost_usd`` counts on from this figure (0 with no such row).
+    """
+    entry = cli_session_cost_state(content, session_id)
+    return float(entry["totalCostUSD"]) if entry else 0.0
+
+
+def cli_session_cost_state(content: str, session_id: str) -> dict[str, Any] | None:
+    """Return the last matching native CLI cost snapshot, including model usage."""
+    for line in reversed(content.splitlines()):
+        if "cost-state" not in line:
+            continue
+        entry = json.loads(line, fallback=None)
+        if (
+            isinstance(entry, dict)
+            and entry.get("type") == "cost-state"
+            and entry.get("sessionId") == session_id
+            and isinstance(entry.get("totalCostUSD"), (int, float))
+        ):
+            return entry
+    return None
+
+
 def _cli_session_storage_path_parts(
     user_id: str, session_id: str
 ) -> tuple[str, str, str]:
@@ -1028,9 +1055,9 @@ async def extract_context_messages(
       preserving structured ``tool_calls``.
 
     Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.
+    transcript is available.  Excludes ``role="reasoning"`` rows, and rows
+    posted for the user only (``hidden_rows``).  The current user turn at
+    ``session_messages[-1]`` is excluded — callers append it themselves.
     """
     # Drop reasoning rows — their content lives in transcript paths,
     # not the public turn list.  Queue lifecycle is tracked on the
@@ -1040,10 +1067,10 @@ async def extract_context_messages(
     prior = session_messages[:-1]
 
     if download is None:
-        return prior
+        return visible_to_model(prior)
     transcript_msgs = _parse_transcript_to_messages(download)
     if transcript_msgs is None:
-        return prior
+        return visible_to_model(prior)
 
     gap = detect_gap(download, session_messages)
     hole: list[ChatMessage] = []
@@ -1051,7 +1078,8 @@ async def extract_context_messages(
         hole = await fill_hole_between_transcript_and_gap(
             session_id, download.message_count, gap
         )
-    return transcript_msgs + hole + gap
+    # After the watermark slicing above, which counts hidden rows too.
+    return transcript_msgs + visible_to_model(hole + gap)
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

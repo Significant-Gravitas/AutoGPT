@@ -166,7 +166,10 @@ const exceptionMap: Record<string, string> = {
   Json: "JSON",
   Ai: "AI",
   "You Tube": "YouTube",
+  "Linked In": "LinkedIn",
+  "Tik Tok": "TikTok",
   "All Quiet": "AllQuiet",
+  "Any Search": "AnySearch",
 };
 
 const applyExceptions = (str: string): string => {

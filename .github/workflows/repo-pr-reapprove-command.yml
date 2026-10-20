@@ -14,12 +14,19 @@ name: repo-pr-reapprove-command
 #
 # Notes:
 #   - Only PRs that already received an APPROVED review from a user with write
-#     access are eligible. Dismissed approvals are recovered via the timeline
-#     API (review_dismissed events carry the review's original state), so a
+#     access, or from the repo's PR reviewer bot (autogpt-pr-reviewer[bot]),
+#     are eligible. Dismissed approvals are recovered via the timeline API
+#     (review_dismissed events carry the review's original state), so a
 #     dismissed CHANGES_REQUESTED review does not count, and neither does an
 #     approval from a drive-by user without write access (on a public repo
 #     anyone can submit an APPROVE review). `/reapprove` can restore a
 #     dismissed approval but never substitute for the first one.
+#   - The reviewer bot's approval already satisfies the required-reviews rule
+#     until a push dismisses it, so restoring it is no different from
+#     restoring a human approval. Bots are matched by login against an
+#     explicit allowlist: no other bot qualifies (not even this workflow's own
+#     earlier re-approval), and the collaborator-permission lookup only
+#     applies to user accounts.
 #   - Residual risk (accepted by design): the prior approval is not tied to the
 #     current head SHA, so commits pushed after it get re-approved without a
 #     fresh human review. That is the point of the command — restoring an
@@ -87,26 +94,38 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            const approvers = new Set(
-              [
-                ...reviews.filter((r) => r.state === 'APPROVED'),
-                ...timeline
-                  .filter((e) => e.event === 'review_dismissed' && e.dismissed_review?.state === 'approved')
-                  .map((e) => reviewByID.get(e.dismissed_review.review_id))
-                  .filter(Boolean),
-              ]
-                .filter((r) => r.user && r.user.type !== 'Bot')
-                .map((r) => r.user.login),
-            );
+            const priorApprovals = [
+              ...reviews.filter((r) => r.state === 'APPROVED'),
+              ...timeline
+                .filter((e) => e.event === 'review_dismissed' && e.dismissed_review?.state === 'approved')
+                .map((e) => reviewByID.get(e.dismissed_review.review_id))
+                .filter(Boolean),
+            ].filter((r) => r.user);
 
-            // On a public repo anyone can submit an APPROVE review, so the prior
-            // approval only counts when the approver has write access.
+            // The PR reviewer bot's approval counts as a real review, so a dismissed
+            // one can be restored like a human's. Bots are matched by login against
+            // this allowlist; no other bot qualifies.
+            const APPROVER_BOTS = ['autogpt-pr-reviewer[bot]'];
+            if (
+              priorApprovals.some(
+                (r) => r.user.type === 'Bot' && APPROVER_BOTS.includes(r.user.login),
+              )
+            ) {
+              return;
+            }
+
+            // On a public repo anyone can submit an APPROVE review, so a prior
+            // approval from a user only counts when the approver has write access.
+            // The collaborator-permission lookup only applies to user accounts.
+            const approvers = new Set(
+              priorApprovals.filter((r) => r.user.type !== 'Bot').map((r) => r.user.login),
+            );
             for (const approver of approvers) {
               if (await hasWriteAccess(approver)) return;
             }
             core.setFailed(
-              'No prior approval from a user with write access found — /reapprove ' +
-              'only restores dismissed approvals, it cannot grant the first one.',
+              'No prior approval from a user with write access or the PR reviewer bot ' +
+              'found — /reapprove only restores dismissed approvals, it cannot grant the first one.',
             );
             return;
 

@@ -129,6 +129,18 @@ model User {
 
   timezone String @default("not-set")
 
+  // Consent captured at signup. termsVersion names the terms and privacy
+  // policy text the account agreed to (frontend lib/legal.ts TERMS_VERSION).
+  // A set marketingOptOutAt keeps the account out of MailerLite entirely.
+  termsAcceptedAt       DateTime?
+  termsVersion          String?
+  marketingOptOutAt     DateTime?
+  marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+  // The first Iranian or Russian country a checkout saw for the account (its
+  // IP or billing country). Like an opt-out, it keeps the account out of
+  // MailerLite for good (backend/notifications/consent.py).
+  marketingExcludedCountry String?
+
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
   // the server picks, exactly as it did before this setting existed. The
@@ -139,6 +151,8 @@ model User {
 
   subscriptionTier  SubscriptionTier   @default(NO_TIER)
   subscriptionTrial SubscriptionTrial?
+  paidUsageActivation PaidUsageActivation?
+  proActivationAttempt ProActivationAttempt?
 
   // Relations
 
@@ -149,6 +163,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  ChatMessageFeedback  ChatMessageFeedback[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
@@ -156,7 +171,17 @@ model User {
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
+  SkillLearningSources SkillLearningSource[]
+  SkillLearningReviews SkillLearningReview[]
+  SkillHeads           SkillHead[]
+  SkillVersions        SkillVersion[]
+  SkillSuppressions    SkillSuppression[]
+  SkillUseEvents       SkillUseEvent[]
+
+
   ExpertRoutines       ExpertRoutine[]
+  ScheduledChatStreaks ScheduledChatStreak[]
+  MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -263,6 +288,38 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
+// One immutable generation for the first settled trial-to-Pro/Max conversion. Never reset on replay.
+model PaidUsageActivation {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeInvoiceId      String @unique
+  readyAt              DateTime?
+  createdAt            DateTime @default(now())
+}
+
+// Cutover fence: old settled payments cannot become new activation resets on replay.
+model PaidUsageActivationPolicy {
+  id        String @id
+  startsAt  DateTime @default(now())
+}
+
+model ProActivationAttempt {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeCustomerId     String
+  terms                Json
+  returnTo             String
+  status               String @default("quoted")
+  confirmedAt          DateTime?
+  invoiceId            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
 model SubscriptionTrial {
   id                        String    @id @default(uuid())
   userId                    String    @unique
@@ -312,6 +369,8 @@ model UserOnboarding {
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
   completedSteps                String[]  @default([])
+  wizardProgress                Json?
+  wizardRevision                Int       @default(0)
   walletShown                   Boolean   @default(false)
   notified                      String[]  @default([])
   rewardedFor                   String[]  @default([])
@@ -324,6 +383,13 @@ model UserOnboarding {
   agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
   consecutiveRunDays            Int       @default(0)
+
+  // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
+  // with the typed text in roleOther. Written only by POST /onboarding/profile:
+  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
+  // of the pick (backend/data/onboarding_role.py).
+  role      String?
+  roleOther String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -753,6 +819,18 @@ model ChatMessage {
   llmAuthProvider String?
   llmCredentialId String?
 
+  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
+  // row, so a rating of the reply can be scored against that trace. Null on
+  // user/tool rows, on baseline turns (no turn-level trace) and on rows
+  // predating this column.
+  langfuseTraceId String?
+
+  // PostHog trace of the turn that wrote this assistant or reasoning row:
+  // the `$ai_trace_id` its generations and spans carry, so a rating of the
+  // reply can name the trace. Null on user/tool rows, on rows written
+  // outside an executor turn and on rows predating this column.
+  traceId String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -760,7 +838,39 @@ model ChatMessage {
   // Generic so future per-row state can land here without a migration.
   metadata Json?
 
+  Feedback ChatMessageFeedback[]
+
   @@unique([sessionId, sequence])
+}
+
+// A user's rating of an AutoPilot reply: thumbs up/down from the message
+// actions, or a copy of the reply. One row per user, message and score name,
+// so voting again updates the rating in place. The row id is also the id of
+// the matching Langfuse score, which makes re-sending a rating idempotent.
+model ChatMessageFeedback {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messageId String
+  Message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  // Copied from the message so a chat's ratings read without a join.
+  sessionId String
+
+  scoreName  String // "user-feedback" (1 = up, 0 = down) or "copy" (always 1)
+  scoreValue Int
+  comment    String?
+
+  // The trace the Langfuse score was attached to. Null when the reply had
+  // none and the score went on the chat's Langfuse session instead.
+  langfuseTraceId String?
+
+  @@unique([messageId, userId, scoreName])
+  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -998,7 +1108,9 @@ model PushSubscription {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint String
+  // An endpoint belongs to one browser profile, so to one account at a time:
+  // subscribing moves it to whoever signed in last.
+  endpoint String @unique
   p256dh   String
   auth     String
 
@@ -1006,6 +1118,10 @@ model PushSubscription {
   failCount    Int       @default(0)
   lastFailedAt DateTime?
 
+  // Implied by the unique endpoint and kept only so a backend release that
+  // still upserts on (userId, endpoint) keeps working through a rolling
+  // deploy; it also serves per-user lookups. Safe to drop once no deployed
+  // release upserts on it.
   @@unique([userId, endpoint])
 }
 
@@ -1130,6 +1246,9 @@ model Expert {
   dayOne Json?
 
   isTemplate       Boolean  @default(false)
+  // Stable roster key from the skills catalog (`maria`, `alex`). Templates are
+  // resolved by this on every publish, never by display name. Null on hires.
+  templateKey      String?  @unique
   sourceTemplateId String?
   SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
   HiredCopies      Expert[] @relation("ExpertFromTemplate")
@@ -1143,6 +1262,16 @@ model Expert {
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
+
+  // Set when the owner paused nightly skill learning for this expert. Only
+  // future learning stops; existing skills stay usable and ordinary work is
+  // unaffected. Cleared by the resume-learning endpoint.
+  learningPausedAt DateTime?
+
+  // Approval mode every new web chat with this expert starts on
+  // ("ask_first" | "auto" | "unsupervised"). null = platform default.
+  // Hire-only: templates never carry one and a hire copies nothing.
+  autopilotMode String?
 
   // Null until the credential allow-list has been seeded from the expert's
   // installed workflows. Distinguishes "never curated" from "deliberately
@@ -1165,6 +1294,7 @@ model Expert {
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
   Routines        ExpertRoutine[]
+  MemorySchedule  MemoryScopeSchedule?
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1321,6 +1451,10 @@ model ExpertRoutine {
   // Seeded and shared rows always arrive false; only an owner binding this
   // routine to their connections sets it.
   grantsCredentials     Boolean   @default(false)
+  // {provider: {id, title}}: the account each turn uses where the owner has
+  // several for one provider, chosen in the chat that set the routine up. A
+  // pinned account that is gone fails the step instead of switching accounts.
+  credentialPins        Json?
   // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
   // what archiving paused, never one the owner had switched off themselves.
   pausedByExpertArchive Boolean   @default(false)
@@ -1328,6 +1462,44 @@ model ExpertRoutine {
   @@unique([expertId, key])
   @@index([expertId, createdAt, id])
   @@index([userId, createdAt, id])
+}
+
+// The runs a scheduled chat (an Expert routine or a follow-up) has failed the
+// same way in a row. The third run that fails outright pauses it, and its
+// owner is told once, with the fix; a run that works removes the row.
+model ScheduledChatStreak {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The routine's id, or the follow-up's schedule id: a routine with several
+  // fire times is one scheduled chat.
+  scheduleKey String
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
+  scheduleIds String[]
+  title       String
+  // The chat its latest run went to, where the owner is told.
+  sessionId   String?
+
+  // What the runs have in common: compared by key, explained by the rest.
+  failureKey  String
+  failureKind String
+  provider    String?
+  tool        String?
+  // Runs in a row that failed this way, and how many of the latest of those
+  // failed outright, in a row.
+  failures         Int @default(1)
+  wholeRunFailures Int @default(0)
+
+  notifiedAt DateTime?
+  pausedAt   DateTime?
+
+  @@unique([userId, scheduleKey])
+  @@index([userId, pausedAt])
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its
@@ -1388,6 +1560,252 @@ model ExpertPauseEvent {
   @@index([expertId, createdAt])
 }
 
+////////////////////////////////////////////////////////////
+////////////   SKILL LEARNING (nightly stage)   ////////////
+////////////////////////////////////////////////////////////
+
+// One revision of a learning source (an ordinary chat session today; other
+// adapters register their own sourceKind). The row is the durable half of
+// the generic approval-aware source contract: it carries the owner/scope,
+// the immutable revision, bounded evidence references, outcome signals,
+// the eligibility state, and an approval checkpoint when the source kind
+// requires one. Eligibility is re-checked live by the adapter before any
+// publication — this row alone never authorises a change.
+model SkillLearningSource {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Scope owner: an expert id, or null for the personal (AutoPilot) scope.
+  expertId String?
+  // "personal" or the expert id — makes the owner part of unique keys.
+  ownerKey String
+
+  sourceKind String // e.g. "chat_session"
+  sourceId   String // adapter-specific id (session id)
+  // Latest observed immutable revision (message sequence for chats).
+  revision   String
+  // Last revision with a durable review disposition; the learner only
+  // considers revisions newer than this cursor.
+  processedRevision String?
+
+  // "ordinary" | "requested" (an explicit "learn this" request)
+  origin String @default("ordinary")
+
+  // "eligible" | "waiting_approval" | "excluded" | "inaccessible"
+  eligibility String @default("eligible")
+  // Bumped on exclusion / revocation so a queued review can detect that
+  // its eligibility snapshot is stale.
+  epoch Int @default(0)
+
+  // Approval checkpoint (adapters with a review lifecycle only).
+  approvalEventId String?
+  approvalActorId String?
+  approvedRevision String?
+
+  // Bounded evidence references and deterministic outcome signals
+  // (lists of small JSON objects; never full transcripts).
+  evidenceRefs   Json @default("[]")
+  outcomeSignals Json @default("[]")
+
+  excludedAt       DateTime?
+  excludedByUserId String?
+
+  Reviews SkillLearningReview[]
+
+  @@unique([userId, sourceKind, sourceId])
+  @@index([userId, ownerKey, eligibility, updatedAt])
+}
+
+// Durable review ledger: one row per (source, revision, policy version).
+// A retryable failure updates the same row instead of inserting another
+// so a crashed worker never re-applies a completed change.
+model SkillLearningReview {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  completedAt DateTime?
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+
+  sourceId       String
+  Source         SkillLearningSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRevision String
+  policyVersion  Int
+  // Correlates every review of one nightly (or requested) run.
+  runId String
+
+  // "applied" | "skipped" | "deferred" | "conflict" | "needs_decision" |
+  // "blocked_content" | "provider_error" | "budget_exhausted" |
+  // "stale_eligibility" | "inaccessible_evidence" | "no_novel_procedure" |
+  // "suppressed" | "paused"
+  disposition String
+  reason      String @default("")
+  attempts    Int    @default(1)
+  // Model-call reservations also bound retries after an ambiguous crash.
+  modelAttempts Int  @default(0)
+  // Validated publication input only; cleared when the review settles.
+  reviewReplay Json?
+  // Normalised fingerprint of the proposed behaviour (see fingerprint.py).
+  changeFingerprint String?
+  skillName         String?
+  appliedVersionId  String?
+
+  model            String?
+  inputTokens      Int     @default(0)
+  outputTokens     Int     @default(0)
+  costMicrodollars BigInt?
+
+  @@unique([sourceId, sourceRevision, policyVersion])
+  @@index([userId, ownerKey, createdAt])
+  @@index([runId])
+}
+
+// Current-version pointer and per-skill learning policy. The workspace
+// SKILL.md stays the content surface; this row is what compare-and-swap
+// publication races against.
+model SkillHead {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  currentVersion   Int     @default(0)
+  currentVersionId String?
+  // sha256 of the SKILL.md the head last wrote; a differing workspace file
+  // means a write bypassed version tracking and is treated as a human edit.
+  contentHash String?
+
+  // "Automatic improvements": when false, automated changes become
+  // proposals that need the owner's decision.
+  autoImprove Boolean @default(true)
+  // "Pause learning" for this skill (future automated changes stop).
+  learningPausedAt DateTime?
+  // "Stop using this skill" (excluded from retrieval; history kept).
+  usePausedAt DateTime?
+
+  Versions SkillVersion[]
+
+  @@unique([userId, ownerKey, skillName])
+  @@index([userId, ownerKey])
+}
+
+// Immutable skill versions. Every write to a skill (overnight, during
+// work, human edit, restore, import) appends one; version numbers are
+// monotonic per skill and restoration creates a new version that refers
+// to the prior content.
+model SkillVersion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  headId String
+  Head   SkillHead @relation(fields: [headId], references: [id], onDelete: Cascade)
+
+  version Int
+  // Full rendered SKILL.md for this version (frontmatter + body).
+  content     String
+  contentHash String
+  // Null for legacy Markdown-only versions; [] is an explicitly empty package.
+  packageFiles Json?
+  contentApprovals Json @default("[]")
+  description String
+  triggers    String[] @default([])
+
+  // "saved_overnight" | "saved_during_work" | "requested" | "edited" |
+  // "restored" | "imported"
+  origin      String
+  actorUserId String?
+  // Plain explanation of what changed and why.
+  summary String @default("")
+
+  baseVersionId         String?
+  restoredFromVersionId String?
+  reviewId              String?
+
+  // [{source_id, source_kind, source_ref, revision}] — contributing source
+  // revisions (inherited by descendants until independently re-authored).
+  sources Json @default("[]")
+  // [{kind, label, ref}] — concrete evidence labels and limits.
+  evidence Json @default("[]")
+  limits   String[] @default([])
+
+  // "ready" | "pending_write" | "candidate" | "needs_decision" |
+  // "blocked_content" | "paused" | "archived" | "invalidated" | "stale"
+  state       String @default("ready")
+  stateReason String @default("")
+  // Content-check outcome for blocked versions: pattern class + step only.
+  blockedPatternClass String?
+  blockedStep         String?
+
+  @@unique([headId, version])
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([userId, state, createdAt])
+}
+
+// Suppression record for an undone learned change: identifies the
+// normalised proposed behaviour so a paraphrase cannot silently
+// re-apply it. Evidence fingerprints are kept for audit only.
+model SkillSuppression {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  behaviorFingerprint  String
+  // Normalised step tokens behind the fingerprint so a near-identical
+  // proposal can be routed to review instead of silently reapplied.
+  behaviorTokens       String[] @default([])
+  evidenceFingerprints String[] @default([])
+  actorUserId          String?
+  reason               String   @default("")
+
+  @@unique([userId, ownerKey, skillName, behaviorFingerprint])
+}
+
+// Load / outcome events attached to the exact version used. A load is
+// never a success claim; only a concrete check or an explicit user
+// report can record an outcome.
+model SkillUseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+  versionId String?
+  sessionId String?
+
+  // "loaded" | "succeeded" | "failed" | "stopped_mid_use" | "outcome_unknown"
+  kind        String
+  detail      String  @default("")
+  actorUserId String?
+
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([versionId, kind])
+}
+
 // A user-owned named group of the user's own experts. Distinct from the
 // org-tenancy Team model: pods are a personal roster grouping with no
 // members, invites, or org. Deleting a pod detaches its experts (SetNull).
@@ -1404,6 +1822,56 @@ model ExpertPod {
 
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+// One row per memory scope (the account, or one hired expert) that the
+// nightly dream and weekly community-rebuild crons serve. It is the source of
+// truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
+// crons may run, the timezone they were registered in, and their APScheduler
+// job ids. Replaces the Redis registration markers.
+model MemoryScopeSchedule {
+  // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
+  // for an expert. Also the suffix of both job ids.
+  scopeKey String @id
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Null for the account scope, whose scopeKey equals userId (a CHECK in the
+  // migration holds that).
+  expertId String? @unique
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // The IANA timezone the recorded jobs were registered in.
+  timezone String
+  state    MemoryScopeScheduleState @default(ACTIVE)
+
+  // Null while that cron is not registered: its flag is off, registration
+  // failed, or the scope is paused or wiped. Skill learning runs per account,
+  // so an expert's scope never records a learning job.
+  communityJobId String?
+  nightlyJobId   String?
+  learningJobId  String?
+
+  // When each job body last ran its pass without an error.
+  lastNightlyRunAt   DateTime?
+  lastCommunityRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([state])
+}
+
+// ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
+// its schedules are paused; the crons are removed until it resumes. WIPED: the
+// scope's memory was erased; the crons are removed and no registry operation
+// reactivates the scope (the wipe work decides what brings one back).
+enum MemoryScopeScheduleState {
+  ACTIVE
+  PAUSED
+  WIPED
 }
 
 ////////////////////////////////////////////////////////////
@@ -1903,18 +2371,18 @@ model PlatformCostLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId       String?
-  User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  graphExecId  String?
+  userId        String?
+  User          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  graphExecId   String?
   // The AutoPilot chat the cost came from, when it did not come from a graph run.
   chatSessionId String?
-  nodeExecId   String?
-  graphId      String?
-  nodeId       String?
-  blockId      String?
-  blockName    String?
-  provider     String
-  credentialId String?
+  nodeExecId    String?
+  graphId       String?
+  nodeId        String?
+  blockId       String?
+  blockName     String?
+  provider      String
+  credentialId  String?
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?
@@ -2312,6 +2780,18 @@ model SkillListingVersion {
   // scan; a later install writing the same bytes skips the scan.
   scannedSha256 String[] @default([])
 
+  // Content identity of the whole package: SHA-256 over the canonical JSON of
+  // the sorted `(path, sha256, executable)` file list, SKILL.md included. The
+  // same formula the skills catalog records as `tree_sha256`, so a package is
+  // identified identically in the repo, on this row and in a user's copy.
+  // A version with a hash is immutable; publishing re-uses it by hash.
+  // Null on creator submissions.
+  packageSha256 String?
+  // The SKILL.md exactly as published, installed byte-for-byte so a copy's
+  // checksum can be compared to the catalog's. Null on versions written
+  // before the catalog publisher, whose installs render from the fields.
+  skillMarkdown String?
+
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
@@ -2347,10 +2827,29 @@ model SkillListingVersion {
   Files SkillListingFile[]
 
   @@unique([skillListingId, version])
+  @@unique([skillListingId, packageSha256])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+// One publish of the skills catalog into this database: which commit, which
+// manifest, and what changed. Append-only audit log; rollback is publishing an
+// older commit, since versions are immutable and content-addressed.
+model SkillCatalogRelease {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  repository     String
+  revision       String
+  releaseKey     String
+  manifestSha256 String
+  // {created: [slug], updated: [slug], unchanged: n, retired: [slug],
+  //  experts: {created: [key], updated: [key], retired: [key]}}
+  summary        Json
+
+  @@index([createdAt])
 }
 
 /// One file beside a published version's SKILL.md, snapshotted at submit time

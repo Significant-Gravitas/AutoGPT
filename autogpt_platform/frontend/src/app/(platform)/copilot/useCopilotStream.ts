@@ -26,6 +26,7 @@ import {
 import {
   deduplicateMessages,
   extractSendMessageText,
+  extractSendMessageAttachments,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -44,10 +45,11 @@ import {
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
-import { useCopilotStop } from "./useCopilotStop";
+import { sdkStopStream, useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 import { RESTORE_STALL_TIMEOUT_MS } from "./restoreConstants";
 import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
+import { useFollowBackendTurn } from "./useFollowBackendTurn";
 import { useWakeResync } from "./useWakeResync";
 
 /**
@@ -93,6 +95,9 @@ interface UseCopilotStreamArgs {
   /** Id of the first hydrated message of the turn the backend is still
    *  running — the point the GET-resume replay starts from. */
   activeTurnStartMessageId?: string | null;
+  /** ``active_stream.started_at`` of that turn. Known with no start message
+   *  above, it means the turn has persisted nothing yet. */
+  activeTurnStartedAt?: string | null;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Model tier override. `undefined` = let backend decide. */
@@ -107,6 +112,7 @@ export function useCopilotStream({
   sessionAuthProvider = null,
   sessionCredentialId = null,
   activeTurnStartMessageId = null,
+  activeTurnStartedAt = null,
   hasActiveStream,
   refetchSession,
   copilotModel,
@@ -254,57 +260,60 @@ export function useCopilotStream({
           clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
         }).catch(() => undefined);
       }
+      // Backend raises 429 and 402 BEFORE persisting the user message, so the
+      // optimistic user bubble added by useChat is a lie. Restore the text
+      // into the composer (via the same store slot URL pre-fills use) and
+      // drop the unsent bubble so the user can edit/resend.
+      const restoreUnsentSend = () => {
+        const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+        const unsentText = coord.lastSubmittedMessageText;
+        if (unsentText) {
+          // The expert-kickoff control prompt must never surface in the
+          // user's composer — drop the recovery slot instead of restoring
+          // it. Its bubble below is dropped too; the once-per-expert
+          // pending latch expires so a later visit can retry the kickoff.
+          if (kickoffExpertId) {
+            useCopilotStreamStore.getState().updateCoord(sessionId, {
+              lastSubmittedMessageText: null,
+              lastSubmittedKickoffExpertId: null,
+              lastSubmittedKickoffAttemptToken: null,
+            });
+          } else {
+            // The refusal lands async — by the time it does, the user
+            // may have started typing a new draft. Only restore + clear the
+            // recovery slot when the composer is empty; otherwise leave the
+            // unsent text in the per-session store so a reload / resume can
+            // surface it later instead of silently dropping it.
+            const composer = document.getElementById(
+              "chat-input",
+            ) as HTMLTextAreaElement | null;
+            const composerEmpty = !composer || composer.value.length === 0;
+            if (composerEmpty) {
+              setInitialPrompt(unsentText);
+              useCopilotStreamStore.getState().updateCoord(sessionId, {
+                lastSubmittedMessageText: null,
+                lastSubmittedKickoffExpertId: null,
+                lastSubmittedKickoffAttemptToken: null,
+              });
+            }
+          }
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+            useCopilotStreamStore
+              .getState()
+              .setMessageSnapshot(sessionId, next);
+            return next;
+          });
+        }
+      };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
         onRateLimit: (message, limitFailure, origin) => {
-          // Backend raises 429 BEFORE persisting the user message, so the
-          // optimistic user bubble added by useChat is a lie. Restore the text
-          // into the composer (via the same store slot URL pre-fills use) and
-          // drop the unsent bubble so the user can edit/resend after reset.
-          const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-          const unsentText = coord.lastSubmittedMessageText;
-          if (unsentText) {
-            // The expert-kickoff control prompt must never surface in the
-            // user's composer — drop the recovery slot instead of restoring
-            // it. Its bubble below is dropped too; the once-per-expert
-            // pending latch expires so a later visit can retry the kickoff.
-            if (kickoffExpertId) {
-              useCopilotStreamStore.getState().updateCoord(sessionId, {
-                lastSubmittedMessageText: null,
-                lastSubmittedKickoffExpertId: null,
-                lastSubmittedKickoffAttemptToken: null,
-              });
-            } else {
-              // The 429 callback fires async — by the time it lands, the user
-              // may have started typing a new draft. Only restore + clear the
-              // recovery slot when the composer is empty; otherwise leave the
-              // unsent text in the per-session store so a reload / resume can
-              // surface it later instead of silently dropping it.
-              const composer = document.getElementById(
-                "chat-input",
-              ) as HTMLTextAreaElement | null;
-              const composerEmpty = !composer || composer.value.length === 0;
-              if (composerEmpty) {
-                setInitialPrompt(unsentText);
-                useCopilotStreamStore.getState().updateCoord(sessionId, {
-                  lastSubmittedMessageText: null,
-                  lastSubmittedKickoffExpertId: null,
-                  lastSubmittedKickoffAttemptToken: null,
-                });
-              }
-            }
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              const next = last?.role === "user" ? prev.slice(0, -1) : prev;
-              useCopilotStreamStore
-                .getState()
-                .setMessageSnapshot(sessionId, next);
-              return next;
-            });
-          }
+          restoreUnsentSend();
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
           //
@@ -333,6 +342,7 @@ export function useCopilotStream({
           }
         },
         onReconnect: () => handleReconnectRef.current(),
+        onPaywall: restoreUnsentSend,
         isUserStoppingRef,
       });
       if (kickoffExpertId) {
@@ -458,6 +468,19 @@ export function useCopilotStream({
       // backend) cannot redraw it. When the hint does carry the text, the
       // transcript draws the bubble at the drain point and drops the
       // matching fallback row (`splitMessagesAtDrainHints`).
+      const last = prev[prev.length - 1];
+      // When the running turn's start is known and no hydrated row falls at
+      // or after it, nothing of that turn is persisted yet — a turn started
+      // by Keep going or a resume at the reset saves its note row before the
+      // turn opens. Every hydrated row then belongs to earlier turns and the
+      // replay only appends, so none is cut; only a partial this mount
+      // streamed itself goes, because the replay redraws it.
+      if (activeTurnStartedAt !== null && activeTurnStartMessageId === null) {
+        return hasInProgressAssistantParts(last) &&
+          extractDbSequence(last) === null
+          ? prev.slice(0, -1)
+          : prev;
+      }
       const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
       const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
       const activeTurnIndex = activeTurnStartMessageId
@@ -474,7 +497,6 @@ export function useCopilotStream({
           .map(asMidTurnFallbackRow);
         return [...prev.slice(0, cutIndex), ...drainedFollowUps];
       }
-      const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
     resumeStream();
@@ -516,9 +538,11 @@ export function useCopilotStream({
 
     const suppressReason = getSendSuppressionReason({
       text,
+      attachments: extractSendMessageAttachments(args[0]),
       isReconnectScheduled: reconnectScheduledRef.current,
       lastSubmittedText: coord?.lastSubmittedMessageText ?? null,
-      messages: rawMessages,
+      messages: chatRuntime?.chat.messages ?? rawMessages,
+      status: chatRuntime?.chat.status ?? status,
     });
 
     if (suppressReason === "reconnecting") {
@@ -553,7 +577,12 @@ export function useCopilotStream({
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
-  const messages = deduplicateMessages(rawMessages);
+  // Memoised so `messages` keeps its identity across renders that did not
+  // change the chat, instead of being a new array every render.
+  const messages = useMemo(
+    () => deduplicateMessages(rawMessages),
+    [rawMessages],
+  );
 
   useEffect(() => {
     if (!sessionId) return;
@@ -574,7 +603,7 @@ export function useCopilotStream({
 
   useEffect(() => {
     if (!sessionId || !rawSessionMessages?.length) return;
-    const historical = latestProviderFailure(
+    const latest = latestProviderFailure(
       rawSessionMessages,
       sessionAuthProvider
         ? {
@@ -583,6 +612,10 @@ export function useCopilotStream({
           }
         : null,
     );
+    // The dialog answers a spent quota, as on the live path. Reopening it for
+    // an expired login or a refused prompt would tell the user they hit a
+    // limit they never hit.
+    const historical = latest?.kind === "usage_limit" ? latest : null;
     const dismissed = dismissedProviderFailureRef.current;
     if (
       historical &&
@@ -633,8 +666,7 @@ export function useCopilotStream({
 
   const stop = useCopilotStop({
     sessionId,
-    sdkStop,
-    setMessages,
+    stopStream: sdkStopStream(sdkStop, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
@@ -661,9 +693,21 @@ export function useCopilotStream({
   //    not tear down its live SSE stream.
   // ---------------------------------------------------------------------------
   useMountEffect(() => {
+    // Strict Mode runs mount → cleanup → mount in development. Without this
+    // reset the simulated unmount left the flag false for the whole life of
+    // the real mount, so `handleFinish` never cleared `isFinishProbing` and
+    // every consumer gated on it (post-finish hydration, a held follow-up)
+    // stayed stuck after the first turn.
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
+  });
+
+  const { followBackendTurn } = useFollowBackendTurn({
+    status,
+    refetchSession,
+    hasResumedRef,
   });
 
   // Wake detection: refetch + optional resume when the page becomes visible
@@ -713,9 +757,8 @@ export function useCopilotStream({
   // `useCopilotReconnect`, which watches `status` internally.
   // `lastSubmittedMessageText` is intentionally NOT cleared here: it prevents
   // `getSendSuppressionReason` from allowing a duplicate POST of the same
-  // message immediately after a successful turn (the "duplicate" branch
-  // checks both the store and the visible last user message, so legitimate
-  // re-sends after a different reply are still allowed).
+  // message immediately after a successful turn. Failed turns are exempt
+  // from duplicate suppression so the error card can retry the same text.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
@@ -856,6 +899,7 @@ export function useCopilotStream({
     !hasConnectedThisMountRef.current;
 
   return {
+    followBackendTurn,
     messages,
     setMessages,
     sendMessage,

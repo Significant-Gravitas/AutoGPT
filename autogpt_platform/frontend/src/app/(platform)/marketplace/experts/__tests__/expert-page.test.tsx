@@ -194,7 +194,7 @@ describe("Marketplace expert page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.getByText(/Marketing Strategist/)).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
@@ -238,7 +238,7 @@ describe("Marketplace expert page", () => {
     await waitFor(() =>
       expect(
         funnelCalls().find((body) => body.type === "hire_started")?.data,
-      ).toEqual({ template_id: mariaTemplate.id }),
+      ).toEqual({ template_id: mariaTemplate.id, surface: "expert_page" }),
     );
   });
 

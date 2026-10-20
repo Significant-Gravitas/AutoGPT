@@ -62,9 +62,9 @@ class TestRateCardUsd:
         # win over the shared K2.x default.  Sourced from the catalog
         # entry's provider_*_usd_per_1m, which tracks OpenRouter's
         # published price for moonshotai/kimi-k3 (/api/v1/models,
-        # re-checked 2026-09-22).  It briefly dropped to $1.70/$8.50 after
-        # SECRT-2701, but OpenRouter's live default route repriced back up
-        # to $3/$15 — this pin follows the current default-route price.
+        # re-checked 2026-09-25).  A same-day snapshot had briefly shown
+        # $0.8845/$10.5346, but that had already drifted back to the
+        # pinned $3.00/$15.00 rate by the time of this check.
         assert rate_card_usd("moonshotai/kimi-k3") == (3.00, 15.00)
 
     def test_future_moonshot_sku_inherits_default(self) -> None:

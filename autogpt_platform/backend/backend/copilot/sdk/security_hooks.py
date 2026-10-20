@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
 
+from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import (
     get_execution_context,
     is_allowed_local_path,
@@ -19,6 +20,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
+from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
@@ -72,6 +74,21 @@ def _deny(reason: str) -> dict[str, Any]:
             "permissionDecisionReason": reason,
         }
     }
+
+
+def _landing_refusal(governor: TurnGovernor | None) -> str | None:
+    """The governor's refusal for the next tool call, if it is landing the turn.
+
+    A governor failure lets the call run: the CLI's own budget and turn limits
+    still stop the turn, and failing every tool call would strand it instead.
+    """
+    if governor is None:
+        return None
+    try:
+        return governor.refusal()
+    except Exception:
+        logger.warning("[SDK] Turn governor could not decide a refusal", exc_info=True)
+        return None
 
 
 def _validate_workspace_path(
@@ -195,6 +212,8 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    governor: TurnGovernor | None = None,
+    builtin_tool_spans: bool = True,
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -212,6 +231,11 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        governor: The turn's spend and step governor. Once it is landing the
+            turn, every tool call -- the main agent's and its sub-agents' --
+            is refused with a reason that asks for a checkpoint.
+        builtin_tool_spans: Send a PostHog span for each call of the CLI's
+            built-in tools (``ChatConfig.posthog_builtin_tool_spans``).
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -222,17 +246,29 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        #
-        # LIMITATION: For background (async) agents the SDK returns the
-        # Agent/Task tool immediately with {isAsync: true}, which triggers
-        # PostToolUse and releases the slot while the agent is still running.
-        # SubagentStop fires later when the background process finishes but
-        # does not currently hold a slot.  This means the concurrency limit
-        # only gates *launches*, not true concurrent execution.  To fix this
-        # we would need to track background agent_ids separately and release
-        # in SubagentStop, but the SDK does not guarantee SubagentStop fires
-        # for every background agent (e.g. on session abort).
+        # Sub-agents run in the foreground (build_sdk_env sets
+        # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
+        # as long as the sub-agent and PostToolUse releases the slot when it
+        # finishes.
         subagent_tool_use_ids: set[str] = set()
+        # The CLI runs its built-in tools (Bash, Task, WebSearch, ...) itself,
+        # so they never pass through ``BaseTool``; their PostHog spans are
+        # timed from these hooks. Our MCP tools get theirs in ``BaseTool``.
+        builtin_spans = ToolSpanTimer(enabled=builtin_tool_spans)
+
+        def _finish_builtin_span(
+            tool_name: str, tool_use_id: str | None, *, is_error: bool
+        ) -> None:
+            if tool_use_id is None or tool_name.startswith(MCP_TOOL_PREFIX):
+                return
+            _, session = get_execution_context()
+            builtin_spans.finish(
+                tool_use_id,
+                tool_name,
+                user_id=user_id,
+                session_id=session.session_id if session is not None else None,
+                is_error=is_error,
+            )
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -244,12 +280,19 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
+            refusal = _landing_refusal(governor)
+            if governor is not None and refusal is not None:
+                logger.info(
+                    "[SDK] Refusing %s: turn is landing (%s), user=%s",
+                    tool_name,
+                    governor.landing,
+                    user_id,
+                )
+                return cast(SyncHookJSONOutput, _deny(refusal))
+
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
             if tool_name in _SUBAGENT_TOOLS:
-                # Background agents are allowed — the SDK returns immediately
-                # with {isAsync: true} and the model polls via TaskOutput.
-                # Still count them against the concurrency limit.
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
@@ -283,6 +326,8 @@ def create_security_hooks(
             # Reserve the sub-agent slot only after all validations pass
             if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
+            if not is_copilot_tool and tool_use_id is not None:
+                builtin_spans.start(tool_use_id, tool_name)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (
@@ -328,6 +373,7 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
 
             _release_subagent_slot(tool_name, tool_use_id)
+            _finish_builtin_span(tool_name, tool_use_id, is_error=False)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
             safe_tool_use_id = _sanitize(str(tool_use_id or ""), max_len=12)
             logger.info(
@@ -406,6 +452,7 @@ def create_security_hooks(
             )
 
             _release_subagent_slot(tool_name, tool_use_id)
+            _finish_builtin_span(tool_name, tool_use_id, is_error=True)
 
             return cast(SyncHookJSONOutput, {})
 

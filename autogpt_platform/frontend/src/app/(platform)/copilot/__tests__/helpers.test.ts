@@ -1,14 +1,22 @@
 import type { UIMessage } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
-  formatNotificationTitle,
   getCopilotAuthHeaders,
+  extractSendMessageAttachments,
   getSendSuppressionReason,
+  hasVisibleAssistantContent,
   parseSessionIDs,
   isEngineSwitchPart,
   resolveSessionDryRun,
@@ -30,29 +38,31 @@ import { getSystemHeaders } from "@/lib/impersonation";
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
 
-describe("formatNotificationTitle", () => {
-  it("returns base title when count is 0", () => {
-    expect(formatNotificationTitle(0)).toBe(ORIGINAL_TITLE);
+describe("hasVisibleAssistantContent", () => {
+  function assistant(parts: UIMessage["parts"]): UIMessage[] {
+    return [{ id: "a1", role: "assistant", parts }];
+  }
+
+  it("counts a Paused card, the only thing a turn refused before it ran shows", () => {
+    expect(
+      hasVisibleAssistantContent(
+        assistant([
+          { type: "data-status", data: { message: "Picking it up…" } },
+          { type: "data-turn-paused", data: { reason: "daily" } },
+        ]),
+      ),
+    ).toBe(true);
   });
 
-  it("returns formatted title with count", () => {
-    expect(formatNotificationTitle(3)).toBe(
-      `(3) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-
-  it("returns base title for negative count", () => {
-    expect(formatNotificationTitle(-1)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns base title for NaN", () => {
-    expect(formatNotificationTitle(NaN)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title for count of 1", () => {
-    expect(formatNotificationTitle(1)).toBe(
-      `(1) New activity - ${ORIGINAL_TITLE}`,
-    );
+  it("does not count bookkeeping alone", () => {
+    expect(
+      hasVisibleAssistantContent(
+        assistant([
+          { type: "step-start" },
+          { type: "data-status", data: { message: "Picking it up…" } },
+        ]),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -227,6 +237,80 @@ describe("shouldSuppressDuplicateSend", () => {
 });
 
 describe("getSendSuppressionReason", () => {
+  const failedMessages = [
+    makeMsg("user", "hello"),
+    makeMsg(
+      "assistant",
+      "[__COPILOT_RETRYABLE_ERROR_a9c2__] The model returned an empty response.",
+    ),
+  ];
+
+  it.each(["ready", "error"] as const)(
+    "allows retrying a failed turn when status is %s",
+    (status) => {
+      expect(
+        getSendSuppressionReason({
+          text: "hello",
+          isReconnectScheduled: false,
+          lastSubmittedText: "hello",
+          messages: failedMessages,
+          status,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it("allows resending after an SDK error without a persisted marker", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [makeMsg("user", "hello")],
+        status: "error",
+      }),
+    ).toBeNull();
+  });
+
+  it.each(["streaming", "submitted"] as const)(
+    "still suppresses duplicates while status is %s",
+    (status) => {
+      expect(
+        getSendSuppressionReason({
+          text: "hello",
+          isReconnectScheduled: false,
+          lastSubmittedText: "hello",
+          messages: failedMessages,
+          status,
+        }),
+      ).toBe("duplicate");
+    },
+  );
+
+  it("still suppresses a retry during reconnect", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: true,
+        lastSubmittedText: "hello",
+        messages: failedMessages,
+        status: "error",
+      }),
+    ).toBe("reconnecting");
+  });
+
+  it("does not treat an earlier turn's error marker as a failed current turn", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [...failedMessages, makeMsg("user", "hello")],
+        status: "ready",
+      }),
+    ).toBe("duplicate");
+  });
+
   it("returns 'reconnecting' when reconnect is scheduled", () => {
     expect(
       getSendSuppressionReason({
@@ -257,6 +341,48 @@ describe("getSendSuppressionReason", () => {
         text: "hello",
         isReconnectScheduled: false,
         lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe("duplicate");
+  });
+
+  it("lets the same caption through when it carries other attachments", () => {
+    const messages = [
+      makeMsg("user", "summarize this"),
+      makeMsg("assistant", "ok"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [{ type: "file", mediaType: "image/png", url: "/f/new" }],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
+        messages,
+      }),
+    ).toBeNull();
+  });
+
+  it("still drops a resend of the same caption with the same attachments", () => {
+    const file = { type: "file" as const, mediaType: "image/png", url: "/f/1" };
+    const messages: UIMessage[] = [
+      {
+        id: "msg-with-file",
+        role: "user",
+        parts: [file, { type: "text", text: "summarize this" }],
+      },
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [file],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
         messages,
       }),
     ).toBe("duplicate");
@@ -502,6 +628,95 @@ describe("deduplicateMessages", () => {
     // user + step-start + step-end kept; the second step-start dedupes against a1.
     expect(result).toHaveLength(3);
     expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
+  });
+
+  it("returns the input array itself when nothing is a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "question 1"),
+      makeMsgWithId("a1", "assistant", "answer 1"),
+      makeMsgWithId("u2", "user", "question 2"),
+      makeMsgWithId("a2", "assistant", "answer 2"),
+    ];
+    expect(deduplicateMessages(msgs)).toBe(msgs);
+    expect(deduplicateMessages([])).toEqual([]);
+  });
+
+  it("returns a new array when it removes a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "hello"),
+      makeMsgWithId("a1", "assistant", "hi there"),
+      makeMsgWithId("a2", "assistant", "hi there"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).not.toBe(msgs);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
+
+  describe("fingerprint cache", () => {
+    let stringify: MockInstance<typeof JSON.stringify>;
+    beforeEach(() => {
+      stringify = vi.spyOn(JSON, "stringify");
+    });
+    afterEach(() => {
+      stringify.mockRestore();
+    });
+
+    it("fingerprints an unchanged assistant message once, and the newest one on every call", () => {
+      const older = makeMsgWithId("a1", "assistant", "answer 1");
+      const msgs = [
+        makeMsgWithId("u1", "user", "question 1"),
+        older,
+        makeMsgWithId("u2", "user", "question 2"),
+        makeMsgWithId("a2", "assistant", "answer 2"),
+      ];
+
+      deduplicateMessages(msgs);
+      expect(stringify).toHaveBeenCalledTimes(2);
+
+      stringify.mockClear();
+      const streamed = {
+        ...msgs[3],
+        parts: [{ type: "text" as const, text: "answer 2, longer" }],
+      };
+      deduplicateMessages([...msgs.slice(0, 3), streamed]);
+      expect(stringify).toHaveBeenCalledTimes(1);
+      expect(stringify.mock.calls[0][0]).toEqual(["answer 2, longer"]);
+    });
+
+    it("fingerprints a message again once it gets new parts", () => {
+      const msgs: UIMessage[] = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        makeMsgWithId("a2", "assistant", "other"),
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      msgs[2] = { ...msgs[2], parts: [{ type: "text", text: "same" }] };
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
+
+    it("fingerprints a message again when parts are added to it in place", () => {
+      const growing: UIMessage = { id: "a2", role: "assistant", parts: [] };
+      const msgs = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        growing,
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      growing.parts.push({ type: "text", text: "same" });
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
   });
 });
 

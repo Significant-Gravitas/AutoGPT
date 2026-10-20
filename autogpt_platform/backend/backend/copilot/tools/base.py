@@ -3,22 +3,49 @@
 import json
 import logging
 from collections import deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import get_current_envelope
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    is_google_call,
+    remember_cut_google_output,
+    remember_google_output,
+    tracing_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util import tracing
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
 from .capability_gates import gate_denied, gate_denied_error
-from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
+from .models import (
+    ApprovalRequiredResponse,
+    ErrorResponse,
+    NeedLoginResponse,
+    ResponseType,
+    ToolResponseBase,
+)
+
+if TYPE_CHECKING:
+    from backend.copilot.gate import Decision
+    from backend.copilot.gate.headline import Headline
+    from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
+
+# Outputs that stop a call to wait on the user (an approval card, a sign-in),
+# which is not the tool failing.
+_AWAITING_THE_USER = frozenset(
+    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+)
 
 # Persist full tool output to workspace when it exceeds this threshold.
 # Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
@@ -74,6 +101,7 @@ async def _persist_and_summarize(
     session_id: str,
     tool_call_id: str,
     digest: bool = False,
+    google_data: bool = False,
 ) -> str:
     """Persist full output to workspace and return a preview with retrieval
     instructions — a structural outline when *digest*, else a middle-out slice.
@@ -103,7 +131,10 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
-            metadata={"purpose": "tool-output"},
+            metadata={
+                "purpose": "tool-output",
+                **({GOOGLE_DATA_METADATA_KEY: True} if google_data else {}),
+            },
             overwrite=True,
         )
     except Exception:
@@ -300,12 +331,33 @@ async def _record_activity(
         )
 
 
+# Passed to ``_execute`` of a tool with a gate subject when the user approved
+# this exact call; stripped from the model's own arguments so it cannot be forged.
+GATE_APPROVED = "_gate_approved"
+# Passed beside it when an active gate reached any verdict on the call: a card,
+# a rule, the mode or the supervisor. Stripped the same way.
+GATE_DECIDED = "_gate_decided"
+
+
+def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
+    raw = output.output
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return False
+    return isinstance(raw, dict) and raw.get("type") in _AWAITING_THE_USER
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
     # Opt-in for the digest: an outline is only readable back in windows, so a
     # tool whose bulk is one long text (a guide, a docs page) must not set it.
     digest_large_output: bool = False
+    # True where ``gate_subject`` is implemented; ``_execute`` then accepts
+    # GATE_APPROVED.
+    has_gate_subject: bool = False
 
     @property
     def name(self) -> str:
@@ -321,6 +373,11 @@ class BaseTool:
     def parameters(self) -> dict[str, Any]:
         """Tool parameters schema for OpenAI."""
         raise NotImplementedError
+
+    @property
+    def model_parameters(self) -> dict[str, Any]:
+        """``parameters`` as the model is sent them: without the card's hints."""
+        return without_card_hints(self.parameters)
 
     @property
     def requires_auth(self) -> bool:
@@ -353,6 +410,21 @@ class BaseTool:
         """
         return None
 
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> "Subject | None":
+        """What this call acts on, where the tool's name alone does not say.
+
+        None leaves the decision to the tool's own effect; a tool that runs a
+        block or a workflow names it, so the gate decides on its effect.
+        """
+        return None
+
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """The content of files this call runs, by path, for the supervisor; None
+        for one that could not be read, which holds the call."""
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -360,7 +432,7 @@ class BaseTool:
             function={
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.model_parameters,
             },
         )
 
@@ -373,6 +445,11 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
+        Each call is its own Sentry ``copilot.tool`` transaction, named after
+        the tool, in the trace of the turn that made it, and a PostHog
+        ``$ai_span`` in the trace of the reply (``copilot.ai_spans``): its
+        name, latency and whether it failed, never its input or output.
+
         Args:
             user_id: User ID (None for anonymous users)
             session_id: Chat session ID
@@ -382,6 +459,32 @@ class BaseTool:
             Pydantic response object
 
         """
+        with (
+            tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            tool_span(
+                self.name,
+                user_id=user_id,
+                session_id=session.session_id,
+                tool_call_id=tool_call_id,
+            ) as outcome,
+        ):
+            output = await self._execute_checked(
+                user_id, session, tool_call_id, **kwargs
+            )
+            span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            if not output.success and not _awaits_the_user(output):
+                outcome.is_error = True
+            return output
+
+    async def _execute_checked(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        **kwargs,
+    ) -> StreamToolOutputAvailable:
+        kwargs.pop(GATE_APPROVED, None)
+        kwargs.pop(GATE_DECIDED, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -433,16 +536,43 @@ class BaseTool:
                 success=False,
             )
 
+        # A released read is answered from its row, never re-run, so the bytes
+        # the user approved are the bytes the model gets.
+        released = await self._released_read(user_id, session, tool_call_id, kwargs)
+        if released is not None:
+            return released
+
+        # Auto-mode gate. Sits here because both engines funnel every registry
+        # tool through this method — baseline via ``execute_tool``, SDK via
+        # ``_execute_tool_sync`` — so there is one place to add, not two.
+        # Must stay AFTER the envelope and name gates: a call the envelope refuses can
+        # never run, so approving it would spend a user's decision on nothing.
+        # The gate's model calls quote the call's arguments and result in
+        # prompts of their own, so for a Google call their traces are redacted.
+        google_call = is_google_call(kwargs)
+        with tracing_google_data(google_call):
+            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
+        if gated is not None:
+            return gated
+        run_kwargs = kwargs
+        if decision is not None and self.has_gate_subject:
+            if decision.approved:
+                run_kwargs = {**run_kwargs, GATE_APPROVED: True}
+            if decision.decided:
+                run_kwargs = {**run_kwargs, GATE_DECIDED: True}
+
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
         # whether it was dispatched rather than whether it succeeded.
         session.announce_inflight_tool_call(self.name, kwargs)
 
         try:
-            result = await self._execute(user_id, session, **kwargs)
+            result = await self._execute(user_id, session, **run_kwargs)
+            if result.type == ResponseType.ERROR:
+                mark_tool_failed()
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
-            raw_output = result.model_dump_json(exclude_none=True)
+            raw_output = full = result.model_dump_json(exclude_none=True)
 
             digest = (
                 self.digest_large_output
@@ -452,16 +582,26 @@ class BaseTool:
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
             if len(raw_output) > threshold and user_id and session.session_id:
                 raw_output = await _persist_and_summarize(
-                    raw_output, user_id, session.session_id, tool_call_id, digest
+                    raw_output,
+                    user_id,
+                    session.session_id,
+                    tool_call_id,
+                    digest,
+                    google_data=result.holds_google_data,
                 )
-
-            return StreamToolOutputAvailable(
+            output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
             )
+            # Remembered as the model gets it, previews and caps included, so
+            # the traces can redact it even where it no longer parses.
+            if result.holds_google_data and isinstance(output.output, str):
+                remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            tracing.set_status("internal_error")
+            mark_tool_raised(e)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
@@ -472,6 +612,164 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
+        with tracing_google_data(google_call or result.holds_google_data):
+            return await self._screen_read(
+                user_id, session, tool_call_id, kwargs, output, result.outside, full
+            )
+
+    async def _gate(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
+        """A refusal to return instead of running (or None to proceed), and
+        the gate's decision on a call that proceeds.
+
+        A gate that crashes must not become a gate that passes, so an
+        unexpected failure here refuses the call rather than falling through.
+        """
+        from backend.copilot.gate import check_action
+
+        async def subject_of() -> "Subject | None":
+            return await self.gate_subject(user_id or "", session, kwargs)
+
+        try:
+            decision = await check_action(
+                self.name,
+                kwargs,
+                user_id,
+                session,
+                tool_call_id,
+                subject_of=subject_of if self.has_gate_subject else None,
+                context_of=lambda: self.gate_context(kwargs),
+            )
+        except Exception:
+            logger.warning(f"Action gate failed for {self.name}", exc_info=True)
+            return (
+                self._refusal(
+                    tool_call_id,
+                    session,
+                    "This action could not be checked against your approval "
+                    "settings, so nothing ran. Tell the user and stop.",
+                    args=kwargs,
+                ),
+                None,
+            )
+
+        if decision.allowed:
+            return None, decision
+        return (
+            self._refusal(
+                tool_call_id,
+                session,
+                decision.reason,
+                review_id=decision.review_id,
+                args=kwargs,
+                headline=decision.headline,
+            ),
+            None,
+        )
+
+    async def _released_read(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> StreamToolOutputAvailable | None:
+        from backend.copilot.gate.reads import release_held_read
+
+        try:
+            release = await release_held_read(self.name, kwargs, user_id, session)
+        except Exception:
+            logger.warning(f"Held-read lookup failed for {self.name}", exc_info=True)
+            return self._refusal(
+                tool_call_id,
+                session,
+                "This read could not be checked against your approvals, so "
+                "nothing ran. Tell the user and stop.",
+            )
+        if release is None:
+            return None
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=release.output,
+            success=release.success,
+        )
+
+    async def _screen_read(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+        result: StreamToolOutputAvailable,
+        outside: tuple[Any, ...] | None,
+        full: str,
+    ) -> StreamToolOutputAvailable:
+        """Judge the output as the model will receive it, after every cap: the
+        parts ``outside`` declares, or all of it when nothing was declared."""
+        from backend.copilot.gate.reads import model_view, readable_parts, screen_read
+
+        seen = (
+            result.output
+            if isinstance(result.output, str)
+            else json.dumps(result.output)
+        )
+        view = model_view.get()
+        if view is not None:
+            whole, seen = seen, view(seen, result.success)
+            remember_cut_google_output(whole, seen)
+        text, images = readable_parts(seen)
+        stub = await screen_read(
+            self.name,
+            kwargs,
+            user_id,
+            session,
+            output=seen,
+            success=result.success,
+            text=text,
+            images=images,
+            tool_call_id=tool_call_id,
+            outside=outside,
+            full=full,
+        )
+        if stub is None:
+            return result
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id, toolName=self.name, output=stub, success=False
+        )
+
+    def _refusal(
+        self,
+        tool_call_id: str,
+        session: ChatSession,
+        reason: str,
+        review_id: str | None = None,
+        args: dict[str, Any] | None = None,
+        headline: "Headline | None" = None,
+    ) -> StreamToolOutputAvailable:
+        from backend.copilot.gate import refusal_message
+        from backend.copilot.gate.headline import headline_for
+
+        headline = headline or headline_for(self.name, args or {})
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=ApprovalRequiredResponse(
+                message=refusal_message(reason, review_id),
+                session_id=session.session_id,
+                tool_name=self.name,
+                reason=reason,
+                review_id=review_id,
+                ask=headline.ask,
+                object=headline.object,
+            ).model_dump_json(),
+            success=False,
+        )
 
     async def _execute(
         self,
@@ -491,3 +789,21 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+# Read by the approval card (gate/review.py, gate/references.py), never by the
+# model: a label, how to show the value, and what platform thing an id names.
+CARD_HINTS = frozenset({"title", "format", "entity"})
+
+
+def without_card_hints(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not properties:
+        return schema
+    return {
+        **schema,
+        "properties": {
+            key: {k: v for k, v in spec.items() if k not in CARD_HINTS}
+            for key, spec in properties.items()
+        },
+    }

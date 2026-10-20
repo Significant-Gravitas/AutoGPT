@@ -21,6 +21,7 @@ from urllib.parse import quote
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -246,6 +247,7 @@ class StripeLinkGetPaymentChallengeBlock(Block):
                     + '", description="Test charge"',
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     # Instance method to match `_pay_with_token`, so both API seams patch
@@ -380,6 +382,8 @@ class StripeLinkMPPPayBlock(Block):
                 },
                 "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}, True),
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
