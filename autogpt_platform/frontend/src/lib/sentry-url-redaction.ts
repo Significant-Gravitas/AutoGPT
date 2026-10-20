@@ -131,6 +131,9 @@ function redactAttributeURLs(attributes: Record<string, unknown>) {
     if (typeof value !== "string") continue;
     if (name.startsWith(HEADER_ATTRIBUTE_PREFIX)) {
       attributes[name] = redactHeader(name, value);
+    } else if (QUERY_ATTRIBUTES.has(name)) {
+      // The semantic conventions give a query or fragment without its ? or #.
+      attributes[name] = redactQuery(value);
     } else if (URL_ATTRIBUTES.has(name)) {
       attributes[name] = redactURL(value);
     }
@@ -179,6 +182,12 @@ const REDIRECT_QUERY_KEYS = new Set([
   "callbackurl",
   "redirect_uri",
   "returnto",
+]);
+const QUERY_ATTRIBUTES = new Set([
+  "url.query",
+  "url.fragment",
+  "http.query",
+  "http.fragment",
 ]);
 const HEADER_ATTRIBUTE_PREFIX = "http.request.header.";
 const ROUTER_STATE_HEADER = /next[-_]router[-_]state[-_]tree$/i;

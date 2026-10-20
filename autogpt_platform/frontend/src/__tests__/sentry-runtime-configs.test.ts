@@ -294,6 +294,30 @@ describe.each([
     });
   });
 
+  it("masks a span's query and fragment whether or not they keep their ? or #", async () => {
+    await load();
+
+    const { beforeSendSpan } = initMock.mock.calls[0][0];
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      data: {
+        "url.query": `token=${URL_MARKER}&page=2`,
+        "url.fragment": `access_token=${URL_MARKER}`,
+        "http.query": `?token=${URL_MARKER}`,
+        "http.fragment": "#section",
+      },
+    });
+
+    expect(span.data).toEqual({
+      "url.query": "token=[REDACTED]&page=[REDACTED]",
+      "url.fragment": "access_token=[REDACTED]",
+      "http.query": "?token=[REDACTED]",
+      "http.fragment": "#section",
+    });
+  });
+
   it("sends no user email or IP address", async () => {
     await load();
 
