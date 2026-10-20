@@ -49,25 +49,6 @@ const createIcon = <P extends React.SVGProps<SVGSVGElement>>(
   return Icon;
 };
 
-/**
- * Toy brick icon component.
- *
- * @component IconToyBrick
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The toy brick icon.
- *
- * @example
- * // Default usage this is the standard usage
- * <IconToyBrick />
- *
- * @example
- * // With custom color and size these should be used sparingly and only when necessary
- * <IconToyBrick className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconToyBrick size="sm" onClick={handleOnClick} />
- */
 export const IconToyBrick = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -86,25 +67,6 @@ export const IconToyBrick = createIcon((props) => (
   </svg>
 ));
 
-/**
- * A circle alert icon component.
- *
- * @component IconCircleAlert
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The circle alert icon.
- *
- * @example
- * // Default usage this is the standard usage
- * <IconCircleAlert />
- *
- * @example
- * // With custom color and size these should be used sparingly and only when necessary
- * <IconCircleAlert className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconCircleAlert size="sm" onClick={handleOnClick} />
- */
 export const IconCircleAlert = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -123,25 +85,6 @@ export const IconCircleAlert = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Refresh icon component.
- *
- * @component IconRefresh
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The refresh icon.
- *
- * @example
- * // Default usage this is the standard usage
- * <IconRefresh />
- *
- * @example
- * // With custom color and size these should be used sparingly and only when necessary
- * <IconRefresh className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconRefresh size="sm" onClick={handleOnClick} />
- */
 export const IconRefresh = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -161,25 +104,6 @@ export const IconRefresh = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Key icon component.
- *
- * @component IconKey
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The key icon.
- *
- * @example
- * // Default usage
- * <IconKey />
- *
- * @example
- * // With custom color and size
- * <IconKey className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconKey size="sm" onClick={handleOnClick} />
- */
 export const IconKey = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -197,25 +121,6 @@ export const IconKey = createIcon((props) => (
   </svg>
 ));
 
-/**
- * User icon component.
- *
- * @component IconUser
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The user icon.
- *
- * @example
- * // Default usage
- * <IconUser />
- *
- * @example
- * // With custom color and size
- * <IconUser className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconUser size="sm" onClick={handleOnClick} />
- */
 export const IconUser = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -233,13 +138,6 @@ export const IconUser = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Edit icon component.
- *
- * @component IconEdit
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The edit icon.
- */
 export const IconEdit = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -256,13 +154,6 @@ export const IconEdit = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Log out icon component.
- *
- * @component IconLogOut
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The log out icon.
- */
 export const IconLogOut = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -281,13 +172,6 @@ export const IconLogOut = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Settings icon component.
- *
- * @component IconSettings
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The settings icon.
- */
 export const IconSettings = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -305,13 +189,6 @@ export const IconSettings = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Upload cloud icon component.
- *
- * @component IconUploadCloud
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The upload cloud icon.
- */
 export const IconUploadCloud = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -330,13 +207,6 @@ export const IconUploadCloud = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Marketplace icon component.
- *
- * @component IconMarketplace
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The marketplace icon.
- */
 export const IconMarketplace = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -360,13 +230,6 @@ export const IconMarketplace = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Library icon component.
- *
- * @component IconLibrary
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The library icon.
- */
 export const IconLibrary = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -443,13 +306,6 @@ export function StarRatingIcons(avgRating: number): JSX.Element[] {
   return stars;
 }
 
-/**
- * Dashboard Layout icon component.
- *
- * @component IconDashboardLayout
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The dashboard layout icon.
- */
 export const IconDashboardLayout = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -469,25 +325,6 @@ export const IconDashboardLayout = createIcon((props) => (
   </svg>
 ));
 
-/**
- * Sliders icon component.
- *
- * @component IconSliders
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The sliders icon.
- *
- * @example
- * // Default usage this is the standard usage
- * <IconSliders />
- *
- * @example
- * // With custom color and size these should be used sparingly and only when necessary
- * <IconSliders className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconSliders size="sm" onClick={handleOnClick} />
- */
 export const IconSliders = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -512,21 +349,6 @@ export const IconSliders = createIcon((props) => (
   </svg>
 ));
 
-/**
- * More (vertical dots) icon component.
- *
- * @component IconMore
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The more options icon.
- *
- * @example
- * // Default usage
- * <IconMore />
- *
- * @example
- * // With custom color and size
- * <IconMore className="text-neutral-800" size="lg" />
- */
 export const IconMore = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -547,13 +369,6 @@ export const IconMore = createIcon((props) => (
   </svg>
 ));
 
-/**
- * AutoGPT Logo icon component.
- *
- * @component IconAutoGPTLogo
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The AutoGPT logo icon.
- */
 export const IconAutoGPTLogo = createIcon((props) => (
   <svg
     width="89"
