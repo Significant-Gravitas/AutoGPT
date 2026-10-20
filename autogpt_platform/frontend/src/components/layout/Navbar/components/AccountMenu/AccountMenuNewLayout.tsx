@@ -3,10 +3,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import { environment } from "@/services/environment";
 import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
+import { AccountMenuFeedbackRow } from "./components/AccountMenuFeedbackRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
@@ -124,9 +126,16 @@ export function AccountMenuNewLayout({
                     );
                   })}
                   {groupIndex === 0 && (
-                    <li>
-                      <AccountMenuActivityRow />
-                    </li>
+                    <>
+                      <li>
+                        <AccountMenuActivityRow />
+                      </li>
+                      {environment.isCloud() && (
+                        <li>
+                          <AccountMenuFeedbackRow />
+                        </li>
+                      )}
+                    </>
                   )}
                 </ul>
               </div>

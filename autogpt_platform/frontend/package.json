@@ -19,6 +19,7 @@
     "test-ui": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:ui",
     "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
+    "test:tooltip": "playwright test --config playwright.tooltip.config.ts",
     "test:e2e": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:no-build",
     "test:e2e:no-build": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -29,14 +30,16 @@
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
     "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts",
-    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs"
+    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs",
+    "perf": "npx --yes tsx scripts/perf/measure.ts",
+    "perf:compare": "npx --yes tsx scripts/perf/compare.ts"
   },
   "browserslist": [
     "defaults"
   ],
   "dependencies": {
     "@ai-sdk/react": "3.0.61",
-    "@better-auth/core": "1.6.22",
+    "@better-auth/core": "1.6.33",
     "@faker-js/faker": "10.0.0",
     "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
@@ -69,13 +72,14 @@
     "@streamdown/math": "1.0.1",
     "@streamdown/mermaid": "1.0.1",
     "@tanstack/react-query": "5.90.6",
+    "@tanstack/react-virtual": "3.13.18",
     "@types/jaro-winkler": "0.2.4",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
     "ai": "6.0.134",
     "bcryptjs": "3.0.3",
-    "better-auth": "1.6.22",
+    "better-auth": "1.6.33",
     "boring-avatars": "2.0.4",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
@@ -158,7 +162,6 @@
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
     "@vitest/coverage-v8": "4.1.0",
-    "agentation": "3.0.2",
     "concurrently": "9.2.1",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
@@ -179,6 +182,7 @@
     "storybook": "9.1.5",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
+    "vite": "7.3.1",
     "vite-tsconfig-paths": "6.0.4",
     "vitest": "4.1.0"
   },

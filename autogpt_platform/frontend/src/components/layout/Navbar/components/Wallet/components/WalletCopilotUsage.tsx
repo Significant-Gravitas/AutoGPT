@@ -83,13 +83,7 @@ function UsageWindows({ usage }: { usage: CoPilotUsagePublic }) {
 }
 
 function TrialUsage() {
-  const {
-    data: trial,
-    isPending,
-    refetch,
-  } = useTrialStatus({
-    refetchInterval: 30_000,
-  });
+  const { data: trial, isPending, refetch } = useTrialStatus();
   if (isPending) return <UsageLoading />;
   if (trial?.allowance_used_percent == null) {
     return <UsageUnavailable onRetry={() => void refetch()} />;

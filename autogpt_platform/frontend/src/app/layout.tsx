@@ -6,7 +6,6 @@ import "./globals.css";
 
 import { Providers } from "@/app/providers";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
-import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { buildConsentDefaultsScript } from "@/services/analytics/consent-mode";
@@ -17,7 +16,6 @@ import {
   COOKIEBOT_SCRIPT_URL,
 } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
-import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 import Script from "next/script";
@@ -74,6 +72,12 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen">
+        {process.env.NEXT_PUBLIC_RENDER_COUNTER === "1" ? (
+          <Script
+            src="/devtools/render-counter.js"
+            strategy="beforeInteractive"
+          />
+        ) : null}
         {/* Without a Cookiebot domain group there is no banner and every
             optional category stays denied. With one, the Consent Mode
             defaults are queued before anything else can reach the Google
@@ -117,7 +121,6 @@ export default async function RootLayout({
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
-              <TallyPopupSimple />
               <VercelAnalyticsWrapper />
 
               {/* React Query DevTools is only available in development */}
@@ -130,7 +133,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ConsentWithdrawalReload />
-            {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

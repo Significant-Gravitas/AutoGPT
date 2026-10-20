@@ -161,6 +161,7 @@ vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
 }));
 vi.mock("../components/JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../components/CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: () => null,
@@ -325,7 +326,10 @@ describe("useChatSession — expert sessions", () => {
       // No route travels unless the user picked one. Naming it here would
       // make the server skip its own default, which is how a connection
       // chosen for one chat leaked into every later chat.
-      expect(createBody).toEqual({ expert_id: "expert-maria" });
+      expect(createBody).toEqual({
+        expert_id: "expert-maria",
+        session_id: expect.any(String),
+      });
     });
     await waitFor(() =>
       expect(

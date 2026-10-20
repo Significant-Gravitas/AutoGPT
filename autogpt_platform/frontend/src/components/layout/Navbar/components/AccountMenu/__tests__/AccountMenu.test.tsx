@@ -1,6 +1,6 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
@@ -18,6 +18,14 @@ vi.mock("next/link", () => ({
     </a>
   ),
   useLinkStatus: () => ({ pending: false }),
+}));
+
+vi.mock("@/lib/auth/actions", () => ({
+  getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  getReplay: vi.fn(),
 }));
 
 vi.mock("@/components/molecules/Popover/Popover", () => {
@@ -74,6 +82,14 @@ const baseGroups: MenuItemGroup[] = [
 ];
 
 describe("AccountMenu", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("renders user name and email when loaded", () => {
     render(
       <AccountMenu
@@ -184,7 +200,56 @@ describe("AccountMenu", () => {
     expect(screen.getByText("Activity")).toBeDefined();
   });
 
-  test("classic layout does not render org/activity triggers", () => {
+  test("new layout renders Give feedback right after Activity", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    const activity = screen.getByTestId("account-menu-activity-trigger");
+    const feedback = screen.getByRole("button", { name: "Give feedback" });
+
+    expect(activity.closest("li")?.nextElementSibling).toBe(
+      feedback.closest("li"),
+    );
+  });
+
+  test("new layout does not load the Tally script before feedback is asked for", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Give feedback" })).toBeDefined();
+    expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
+      0,
+    );
+  });
+
+  test("new layout leaves Give feedback out when not running in the cloud", () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
+  });
+
+  test("classic layout does not render org, activity or feedback triggers", () => {
     render(
       <AccountMenu
         userName="Ada"
@@ -195,5 +260,6 @@ describe("AccountMenu", () => {
 
     expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
     expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });

@@ -1,9 +1,10 @@
 """Database operations for resource transfer management."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma import Prisma
+from prisma.types import TransferRequestWhereInput
 
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import NotFoundError
@@ -101,11 +102,16 @@ async def approve_transfer(
         raise ValueError(f"Cannot approve a transfer with status '{tr.status}'")
 
     update_data: dict = {}
+    where: TransferRequestWhereInput = {
+        "id": transfer_id,
+        "status": {"in": _OPEN_STATUSES},
+    }
 
     if org_id == tr.sourceOrganizationId:
         if tr.sourceApprovedByUserId is not None:
             raise ValueError("Source organization has already approved this transfer")
         update_data["sourceApprovedByUserId"] = user_id
+        where["sourceApprovedByUserId"] = None
         if tr.targetApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
             update_data["status"] = "TARGET_APPROVED"
@@ -116,6 +122,7 @@ async def approve_transfer(
         if tr.targetApprovedByUserId is not None:
             raise ValueError("Target organization has already approved this transfer")
         update_data["targetApprovedByUserId"] = user_id
+        where["targetApprovedByUserId"] = None
         if tr.sourceApprovedByUserId is not None:
             # Both sides approved — ready for execution (NOT completed yet)
             update_data["status"] = "SOURCE_APPROVED"
@@ -125,9 +132,13 @@ async def approve_transfer(
     else:
         raise ValueError("Your active organization is not a party to this transfer")
 
-    updated = await prisma.transferrequest.update(
-        where={"id": transfer_id},
-        data=update_data,
+    approved = await prisma.transferrequest.update_many(where=where, data=update_data)
+    if approved == 0:
+        raise ValueError(
+            "Transfer is no longer open or your organization already approved"
+        )
+    updated = await prisma.transferrequest.find_unique_or_raise(
+        where={"id": transfer_id}
     )
     return TransferResponse.from_db(updated)
 
@@ -228,7 +239,7 @@ async def execute_transfer(
                     "sourceApprovedByUserId": {"not": None},
                     "targetApprovedByUserId": {"not": None},
                 },
-                data={"status": "COMPLETED", "completedAt": datetime.now(timezone.utc)},
+                data={"status": "COMPLETED", "completedAt": datetime.now(UTC)},
             )
             if claimed == 0:
                 raise ValueError("Transfer is no longer open for execution")

@@ -828,10 +828,25 @@ class TestExecutionUserIdIsolationExtended:
         mock_actions = AsyncMock()
         mock_actions.update_many = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.execution.AgentGraphExecution.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.SharedExecutionFile.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.ChatLinkedShare.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.transaction"
+            ) as mock_transaction,
         ):
+            mock_transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+            mock_transaction.return_value.__aexit__ = AsyncMock(return_value=False)
             from backend.data.execution import delete_graph_execution
 
             await delete_graph_execution(EXEC_ID, USER_ID, soft_delete=True)
@@ -2614,7 +2629,10 @@ class TestPR16Transfers:
             status="SOURCE_APPROVED",
             source_approved_by=USER_ID,
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2625,7 +2643,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "SOURCE_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["sourceApprovedByUserId"] == USER_ID
         assert update_data["status"] == "SOURCE_APPROVED"
 
@@ -2640,7 +2660,10 @@ class TestPR16Transfers:
             status="TARGET_APPROVED",
             target_approved_by="user-target",
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2651,7 +2674,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "TARGET_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["targetApprovedByUserId"] == "user-target"
         assert update_data["status"] == "TARGET_APPROVED"
 
@@ -3574,18 +3599,22 @@ class TestReviewFindings:
 
         async def capture_update(*, where, data):
             update_capture.update(data)
-            result = self._make_transfer(
-                status=data.get("status", "SOURCE_APPROVED"),
-                sourceApprovedByUserId=USER_ID,
-                targetApprovedByUserId="user-target",
-            )
-            return result
+            return 1
 
         with patch("backend.api.features.transfers.db.prisma") as mock_prisma:
             mock_prisma.transferrequest.find_unique = AsyncMock(
                 return_value=source_approved
             )
-            mock_prisma.transferrequest.update = AsyncMock(side_effect=capture_update)
+            mock_prisma.transferrequest.update_many = AsyncMock(
+                side_effect=capture_update
+            )
+            mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+                side_effect=lambda **kwargs: self._make_transfer(
+                    status=update_capture.get("status", "SOURCE_APPROVED"),
+                    sourceApprovedByUserId=USER_ID,
+                    targetApprovedByUserId="user-target",
+                )
+            )
 
             from backend.api.features.transfers.db import approve_transfer
 

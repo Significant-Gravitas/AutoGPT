@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 
 class ResponseType(str, Enum):
@@ -175,6 +176,19 @@ class ToolResponseBase(BaseModel):
     def outside(self) -> tuple[Any, ...] | None:
         return self._outside
 
+    _google_data: bool = PrivateAttr(default=False)
+
+    def with_google_data(self, google_data: bool = True) -> Self:
+        """Mark this response as carrying what a Google block returned."""
+        self._google_data = self._google_data or google_data
+        return self
+
+    @property
+    def holds_google_data(self) -> bool:
+        """Whether this carries what a Google block returned, which must stay
+        out of LLM traces (see ``backend.copilot.google_data_redaction``)."""
+        return self._google_data
+
 
 # Agent discovery models
 class AgentInfo(BaseModel):
@@ -236,7 +250,7 @@ class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
     type: ResponseType = ResponseType.AGENTS_FOUND
-    title: str = "Available Agents"
+    title: str = "Available Workflows"
     agents: list[AgentInfo]
     count: int
     name: str = "agents_found"
@@ -1025,6 +1039,10 @@ class BlockOutputResponse(ToolResponseBase):
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
     )
+
+    @property
+    def holds_google_data(self) -> bool:
+        return self.provider == ProviderName.GOOGLE.value or self._google_data
 
 
 class ReviewRequiredResponse(ToolResponseBase):

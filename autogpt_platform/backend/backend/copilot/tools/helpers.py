@@ -19,9 +19,11 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     MAX_TOOL_WAIT_SECONDS,
 )
-from backend.copilot.context import is_unattended_turn
+from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_block_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
@@ -54,6 +56,10 @@ from backend.util.request import HTTPClientError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
+from .ayrshare_managed import is_ayrshare, is_not_linked_error
+from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
+from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
+from .chat_platform_hint import bot_link_hint
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -607,6 +613,10 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        if is_ayrshare(get_block_provider(block)) and is_not_linked_error(e):
+            return await ayrshare_not_linked_response(
+                user_id, block, block_id, e, session_id, expert_id
+            )
         status_code = credential_rejection_status(e)
         if status_code is not None and matched_credentials:
             logger.warning(
@@ -687,6 +697,8 @@ def _credential_rejected_response(
             "before the next run."
         ),
         error="credential_rejected",
+        # The scheduled chat's failure streak reads which connection to fix.
+        details={"provider": provider} if provider else None,
         session_id=session_id,
     ).from_outside()
 
@@ -818,8 +830,18 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
+    # An optional field runs without a credential, as in the executor. Picker
+    # kwargs are not model fields; discriminated fields were decided above.
+    required_fields = block.input_schema.get_required_fields()
+    optional_fields = {
+        name
+        for name, info in requirements.items()
+        if name not in required_fields
+        and name in block.input_schema.model_fields
+        and not info.discriminator
+    }
     return await match_credentials_to_requirements(
-        user_id, requirements, expert_id, session_id
+        user_id, requirements, expert_id, session_id, optional_fields
     )
 
 
@@ -880,8 +902,15 @@ async def unattended_missing_credentials_error(
         )
         + grant_hint,
         error="missing_credentials",
+        details=_single_provider(providers),
         session_id=session_id,
     ).from_outside()
+
+
+def _single_provider(providers: set[str]) -> dict[str, Any] | None:
+    """The provider to fix, for a scheduled chat's failure streak; only when
+    there is exactly one, since a reconnect button opens one."""
+    return {"provider": next(iter(providers))} if len(providers) == 1 else None
 
 
 async def _pinned_account_error(
@@ -940,6 +969,7 @@ async def _pinned_account_error(
             "another account for this schedule, before the next run."
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
+        details=_single_provider(set(lost + unfit)),
         session_id=session_id,
     ).from_outside()
 
@@ -1040,6 +1070,12 @@ async def prepare_block_for_execution(
             session_id=session_id,
         ).from_outside()
 
+    # Before credentials: resolving them can provision a managed profile.
+    if denied := _permission_denied(block_id, block.name, session_id):
+        return denied
+    if denied := _provider_denied(block, block_id, session_id):
+        return denied
+
     emit_tool_display_name(block.name)
 
     # LLMs sometimes pass `"credentials": null` instead of omitting the field.
@@ -1053,6 +1089,18 @@ async def prepare_block_for_execution(
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data, session.expert_id, session_id=session_id
     )
+    # Ayrshare's credential is a profile AutoGPT provisions, never one the
+    # user brings: create it now and hand back the account-linking link.
+    if (
+        any(is_ayrshare(m.provider) for m in missing_credentials)
+        and not (dry_run or validate_only)
+        and (
+            managed := await provision_ayrshare_for_block(
+                user_id, block, block_id, session_id, session.expert_id
+            )
+        )
+    ):
+        return managed
 
     try:
         input_schema: dict[str, Any] = block.input_schema.jsonschema()
@@ -1105,28 +1153,47 @@ async def prepare_block_for_execution(
         missing_entries = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
+        missing_providers = {provider_slug(m.provider) for m in missing_credentials}
+        grant_hint = (
+            await ungranted_credential_hint(
+                user_id,
+                session.expert_id,
+                missing_providers,
+                missing_entries.values(),
+            )
+            if missing_credentials
+            else ""
+        )
+        # A pinned account or an ungranted credential is the fix the owner
+        # set up, so its error or grant card stands; the bot is the hint
+        # only when nothing of theirs would be.
+        owners_fix = bool(grant_hint) or bool(
+            set(turn_credential_pins()) & missing_providers
+        )
+        bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
         if missing_credentials and is_unattended_turn():
-            return await unattended_missing_credentials_error(
+            unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
                 missing_entries,
                 session_id,
                 user_id,
                 session.expert_id,
             )
+            unattended.message += bot_hint
+            return unattended
         missing_creds_dict = await annotate_expert_grants(
             user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
             message = (
-                f"Block '{block.name}' requires credentials that are not "
-                "configured. Please set up the required credentials before "
-                "running this block."
-            ) + await ungranted_credential_hint(
-                user_id,
-                session.expert_id,
-                {provider_slug(m.provider) for m in missing_credentials},
-                missing_entries.values(),
+                (
+                    f"Block '{block.name}' requires credentials that are not "
+                    "configured. Please set up the required credentials before "
+                    "running this block."
+                )
+                + grant_hint
+                + bot_hint
             )
         else:
             message = (
@@ -1188,6 +1255,52 @@ async def prepare_block_for_execution(
         synthetic_graph_id=synthetic_graph_id,
         synthetic_node_id=synthetic_node_id,
     )
+
+
+def _permission_denied(
+    block_id: str, block_name: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when the session's permissions do not allow this block."""
+    perms = get_current_permissions()
+    if perms is None or perms.is_block_allowed(block_id, block_name):
+        return None
+    available_hint = (
+        f"Allowed identifiers: {perms.blocks!r}. "
+        if not perms.blocks_exclude and perms.blocks
+        else (
+            f"Blocked identifiers: {perms.blocks!r}. "
+            if perms.blocks_exclude and perms.blocks
+            else ""
+        )
+    )
+    return ErrorResponse(
+        message=(
+            f"Block '{block_name}' ({block_id}) is not permitted "
+            f"by the current execution permissions. {available_hint}"
+            "Use find_capability to discover blocks that are allowed."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _provider_denied(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when *block* would act with a provider's stored credential
+    the run may not use.  The run's ceiling on connected accounts covers
+    blocks too, as the sandbox's placeholders are by the swap service."""
+    denied = denied_block_providers(get_current_permissions(), block)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Block '{block.name}' ({block_id}) acts with the user's {names} "
+            "account, which this run is not permitted to use. Tell the user it "
+            "is outside what this run was allowed to do."
+        ),
+        session_id=session_id,
+    ).from_outside()
 
 
 def required_input_keys(block: AnyBlockSchema) -> set[str]:
@@ -1599,15 +1712,15 @@ def require_library_check(session: ChatSession, tool_name: str):
         return None
     return ErrorResponse(
         message=(
-            f"Before tool:{tool_name} can run, search the user's library for an "
-            "agent that already does what they want. Call "
+            f"Before tool:{tool_name} can run, search the user's library for a "
+            "workflow that already does what they want. Call "
             "`find_library_agent` with `for_creation=true` and "
             "`goal_summary=<one-sentence description of the user's goal>` "
             "(default-mode substring search does NOT satisfy this gate). "
-            "If any agents are returned, present them to the user and ask "
+            "If any workflows are returned, present them to the user and ask "
             "whether they want to reuse one. Only retry "
             f"tool:{tool_name} with `library_check_ack=true` if the user "
-            "explicitly chooses to build a new agent anyway."
+            "explicitly chooses to build a new workflow anyway."
         ),
         session_id=session.session_id,
     )

@@ -222,6 +222,7 @@ class FakeProvider:
             raise web.HTTPBadRequest(text=f"unknown model {model}")
         call = Call(
             turn=self.turn,
+            request=self._requests_per_turn.get(self.turn, 0),
             route=route,
             model=model,
             usage=usage,
