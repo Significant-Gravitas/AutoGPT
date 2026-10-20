@@ -848,6 +848,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
+    )
+
     dream_pass_retention_days: int = Field(
         default=90,
         ge=1,

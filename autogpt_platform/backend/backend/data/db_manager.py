@@ -91,6 +91,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -486,6 +487,9 @@ class DatabaseManager(AppService):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = _(delete_expired_ip_events)
 
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
@@ -1062,6 +1066,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = d.delete_expired_ip_events
 
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
