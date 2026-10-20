@@ -55,28 +55,30 @@ export function estimateRowHeight(message: ChatMessage): number {
   );
 }
 
-/** First row index that stays mounted however far the user scrolls: the
- *  newest user row, when the turn below it is short enough to pin. */
-function pinnedTailStart(
+/** Rows that stay mounted however far the user scrolls: the newest user row,
+ *  which `TailSpacer` measures from, and the rows of its turn up to the last
+ *  `MAX_PINNED_TAIL_ROWS`. */
+function pinnedIndexes(
   rows: TranscriptRow[],
   lastUserMessageID: string | null,
-): number {
-  if (!lastUserMessageID) return rows.length;
-  const tailStart = Math.max(0, rows.length - MAX_PINNED_TAIL_ROWS);
-  for (let i = rows.length - 1; i >= tailStart; i--) {
-    if (rows[i].message.id === lastUserMessageID) return i;
-  }
-  return rows.length;
+): number[] {
+  if (!lastUserMessageID) return [];
+  const userIndex = rows.findLastIndex(
+    (row) => row.message.id === lastUserMessageID,
+  );
+  if (userIndex < 0) return [];
+  const pinned = [userIndex];
+  const tailStart = Math.max(userIndex + 1, rows.length - MAX_PINNED_TAIL_ROWS);
+  for (let i = tailStart; i < rows.length; i++) pinned.push(i);
+  return pinned;
 }
 
-/** The window's row indexes plus the pinned tail, ascending and unique. */
+/** The window's row indexes plus the pinned ones, ascending and unique. */
 function mergeRenderedIndexes(
   windowIndexes: number[],
-  pinnedFrom: number,
-  count: number,
+  pinned: number[],
 ): number[] {
-  const merged = new Set(windowIndexes);
-  for (let i = pinnedFrom; i < count; i++) merged.add(i);
+  const merged = new Set([...windowIndexes, ...pinned]);
   return Array.from(merged).sort((a, b) => a - b);
 }
 
@@ -164,8 +166,7 @@ export function windowLayout({
   }
   const indexes = mergeRenderedIndexes(
     windowIndexes,
-    pinnedTailStart(rows, lastUserMessageID),
-    rows.length,
+    pinnedIndexes(rows, lastUserMessageID),
   );
   return {
     indexes,

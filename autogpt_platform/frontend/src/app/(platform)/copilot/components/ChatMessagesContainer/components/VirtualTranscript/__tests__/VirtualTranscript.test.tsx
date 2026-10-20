@@ -183,6 +183,22 @@ describe("VirtualTranscript", () => {
     expect(ids).not.toContain("m250");
   });
 
+  it("keeps the newest user message mounted when its turn runs past eight rows", () => {
+    // The newest user message is row 480; nineteen assistant rows follow it.
+    const messages = Array.from({ length: 500 }, (_, i) =>
+      message(i, i <= 480 ? undefined : "assistant"),
+    );
+    renderTranscript(messages);
+    stick.state.isAtBottom = false;
+    scrollTo(0);
+
+    const ids = mountedIDs();
+    // TailSpacer measures the turn from this row.
+    expect(ids).toContain("m480");
+    expect(ids).toContain("m499");
+    expect(ids).not.toContain("m485");
+  });
+
   it("mounts a message appended while pinned to the bottom", () => {
     const messages = Array.from({ length: 500 }, (_, i) => message(i));
     const { rerender } = renderTranscript(messages);
