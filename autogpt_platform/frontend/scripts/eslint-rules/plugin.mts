@@ -14,6 +14,11 @@ const HOOK_NAME = /^use[A-Z0-9]/;
 const MEMO_APIS = new Set(["useMemo", "useCallback", "memo"]);
 const MEMO_DIRECTIVES = new Set(["use memo", "use no memo"]);
 const MEMO_BOUNDARY_COMMENT = /^\s*memo-boundary:\s*\S/;
+const FUNCTION_TYPES = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
 
 export const MANUAL_MEMO_BASELINE_FILE = fileURLToPath(
   new URL("./manual-memo-baseline.json", import.meta.url),
@@ -42,6 +47,20 @@ function isHookName(name: string | null) {
   return name === "use" || (name !== null && HOOK_NAME.test(name));
 }
 
+function hasDirective(fn: Node, directive: string) {
+  if (
+    fn.type !== "FunctionDeclaration" &&
+    fn.type !== "FunctionExpression" &&
+    fn.type !== "ArrowFunctionExpression"
+  )
+    return false;
+  if (fn.body.type !== "BlockStatement") return false;
+  return fn.body.body.some(
+    (statement) =>
+      (statement as { directive?: string }).directive === directive,
+  );
+}
+
 function functionName(node: Node) {
   if (node.type === "FunctionDeclaration") return node.id?.name ?? null;
   if (node.type === "FunctionExpression" && node.id) return node.id.name;
@@ -54,7 +73,9 @@ function functionName(node: Node) {
 /**
  * A `use*` function that calls no hook is compiled by the React Compiler as
  * a plain function, so nothing it returns is memoised. Hook calls inside a
- * nested function belong to that function, not to the outer one.
+ * nested function belong to that function, not to the outer one. A function
+ * that says "use no memo" is hook-named on purpose (its callers must not
+ * cache the call), so it is left alone.
  */
 const noHooklessUseFunction: Rule.RuleModule = {
   meta: {
@@ -66,7 +87,10 @@ const noHooklessUseFunction: Rule.RuleModule = {
     const frames: { name: string | null; callsHook: boolean }[] = [];
 
     function enter(node: Node) {
-      frames.push({ name: functionName(node), callsHook: false });
+      frames.push({
+        name: functionName(node),
+        callsHook: hasDirective(node, "use no memo"),
+      });
     }
 
     function exit(node: Node) {
@@ -99,11 +123,14 @@ function hasMemoBoundaryComment(
   context: Rule.RuleContext,
   node: Node,
 ): boolean {
+  // From the call up to its statement, so a comment above an enclosing
+  // function does not count for a memo() inside it.
   let current: Node | null = node;
   while (current && current.type !== "Program") {
     const comments = context.sourceCode.getCommentsBefore(current);
     if (comments.some((comment) => MEMO_BOUNDARY_COMMENT.test(comment.value)))
       return true;
+    if (FUNCTION_TYPES.has(current.parent?.type ?? "")) return false;
     current = current.parent;
   }
   return false;

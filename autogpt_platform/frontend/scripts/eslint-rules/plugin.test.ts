@@ -31,6 +31,8 @@ tester.run(
       "function formatCount(count) { return String(count); }",
       "function user() { return 1; }",
       "const useStore = create(() => ({}));",
+      // Hook-named on purpose and kept out of the compiler.
+      'function useReadEveryRender(read) { "use no memo"; return read(); }',
     ],
     invalid: [
       {
@@ -114,6 +116,12 @@ tester.run(
       },
       {
         code: `${importMemo}export const Row = memo(function Row() { return null; });`,
+        filename: COPILOT_FILE,
+        errors: [{ message: /memo-boundary/ }],
+      },
+      {
+        // The comment belongs to the outer function, not to the memo() call.
+        code: `${importMemo}// memo-boundary: one row per message.\nexport function makeRow() {\n  return memo(function Row() { return null; });\n}`,
         filename: COPILOT_FILE,
         errors: [{ message: /memo-boundary/ }],
       },
