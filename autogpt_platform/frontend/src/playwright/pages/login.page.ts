@@ -19,10 +19,7 @@ export class LoginPage {
   }
 
   async login(email: string, password: string) {
-    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
-      email,
-      password,
-    });
+    console.log(`ℹ️ Attempting login on ${this.page.url()} as ${email}`);
 
     // Wait for the form to be ready
     await this.page.waitForSelector("form", { state: "visible" });
@@ -53,7 +50,7 @@ export class LoginPage {
       this.page.waitForFunction(
         () => {
           const pathname = window.location.pathname;
-          return /^\/(marketplace|onboarding(\/.*)?|library|copilot)$/.test(
+          return /^\/(marketplace|onboarding(\/.*)?|library|copilot|home)$/.test(
             pathname,
           );
         },

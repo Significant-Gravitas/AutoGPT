@@ -18,20 +18,30 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.google_data_redaction import (
+    is_google_call,
+    is_google_output,
+    remember_google_output,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
+from .policy import PARKABLE, effect_for
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
         PendingHumanReviewModel,
     )
+    from backend.copilot.model import ChatMessage
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -47,10 +57,20 @@ _MAX_RESULT_CHARS = 120_000
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+# Metadata on the user rows an answered card writes: the wake, and each result.
+_WAKE_KEY = "held_calls_answered"
+_RESULT_KEY = "held_call"
 _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+
+
+def is_answer_row(message: "ChatMessage") -> bool:
+    """A user row the gate wrote for an answered card, not something the user typed."""
+    return bool(message.metadata) and (
+        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+    )
 
 
 class HeldResult(PendingMessage):
@@ -70,6 +90,10 @@ class HeldCall(BaseModel):
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # Rebuilt from a card whose stored copy of the arguments no longer binds.
     lost: bool = False
+    # The turn that held it. Its wake starts under this, re-checked against the
+    # tree; a call rebuilt from its card has none and is not woken.
+    envelope: TurnEnvelope | None = None
+    cost_context: TrialCostContext | None = None
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
@@ -101,7 +125,8 @@ async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
 
 
 async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]:
-    """The subject each held card named; a bare tool or a held read names none."""
+    """The key each held card can set a rule on; a held read or a money card
+    has none."""
     if not review_ids:
         return {}
     try:
@@ -118,7 +143,7 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
         for review_id in review_ids
         if (call := held.get(review_id))
         and call.rule_key
-        and call.rule_key != call.tool_name
+        and (call.rule_key != call.tool_name or effect_for(call.tool_name) in PARKABLE)
     }
 
 
@@ -190,12 +215,21 @@ async def wake(
     from backend.copilot.active_turns import (
         ConcurrentTurnLimitError,
         acquire_turn_slot,
+        get_delegated_turn_limit,
         get_inflight_turn_limit,
     )
     from backend.copilot.executor.utils import dispatch_turn
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.session_permissions import resolve_session_permissions
-    from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
+    from backend.copilot.turn_queue import (
+        UNRECORDED_WAKE,
+        WAKE_LATER,
+        InflightCapExceeded,
+        is_users_own_chat,
+        post_refusal,
+        try_enqueue_turn,
+        wakes_sub_work,
+    )
 
     try:
         await _restore(user_id, session_id, answered_rows)
@@ -213,53 +247,83 @@ async def wake(
         info = await chat_db().get_chat_session_metadata(session_id)
         if info is None or info.user_id != user_id:
             return
+        refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
+        latest = max(calls, key=lambda c: c.held_at)
+        envelope = latest.envelope
+        if envelope is None and not is_users_own_chat(info):
+            # Deriving one from the turn that just ended would run the approved
+            # action under that turn's limits, not the ones it was held under.
+            await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
+            return
+        if latest.cost_context is None or latest.cost_context.user_id != user_id:
+            await post_refusal(session_id, _RESEND, message_id=refusal_id)
+            return
         permissions = resolve_session_permissions(info)
-        metadata = {"held_calls_answered": True}
-        try:
-            async with acquire_turn_slot(user_id, session_id) as slot:
-                # Not admitted: a turn is already running, and its end wakes us.
-                if not slot.admitted:
-                    return
-                if (
-                    await append_and_save_message(
-                        session_id,
-                        ChatMessage(
-                            id=wake_id,
-                            role="user",
-                            content=WAKE_MESSAGE,
-                            metadata=metadata,
-                        ),
+        metadata = {_WAKE_KEY: True}
+        capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
+        with restore_cost_context(user_id, latest.cost_context):
+            try:
+                async with acquire_turn_slot(
+                    user_id, session_id, capacity=capacity
+                ) as slot:
+                    # Not admitted: a turn is already running, and its end wakes us.
+                    if not slot.admitted:
+                        return
+                    if (
+                        await append_and_save_message(
+                            session_id,
+                            ChatMessage(
+                                id=wake_id,
+                                role="user",
+                                content=WAKE_MESSAGE,
+                                metadata=metadata,
+                            ),
+                        )
+                        is None
+                    ):
+                        return
+                    turn_id = str(uuid.uuid4())
+                    await dispatch_turn(
+                        slot,
+                        session_id=session_id,
+                        user_id=user_id,
+                        turn_id=turn_id,
+                        message=WAKE_MESSAGE,
+                        organization_id=info.organization_id,
+                        team_id=info.team_id,
+                        llm_auth_provider=info.metadata.llm_auth_provider,
+                        llm_credential_id=info.metadata.llm_credential_id,
+                        permissions=permissions,
+                        message_metadata=metadata,
+                        envelope=envelope,
+                        # Lost in the user's own chat: a root, as their message would be.
+                        root=envelope is None,
                     )
-                    is None
-                ):
-                    return
-                await dispatch_turn(
-                    slot,
-                    session_id=session_id,
+                    # A channel that answered one of these follows this turn.
+                    await woken_turns.record(
+                        session_id, [c.review_id for c in calls], turn_id
+                    )
+            except ConcurrentTurnLimitError:
+                await try_enqueue_turn(
                     user_id=user_id,
-                    turn_id=str(uuid.uuid4()),
+                    inflight_cap=get_inflight_turn_limit(),
+                    session_id=session_id,
                     message=WAKE_MESSAGE,
-                    organization_id=info.organization_id,
-                    team_id=info.team_id,
+                    message_id=wake_id,
+                    message_metadata=metadata,
                     llm_auth_provider=info.metadata.llm_auth_provider,
                     llm_credential_id=info.metadata.llm_credential_id,
-                    permissions=permissions,
-                    message_metadata=metadata,
+                    permissions=(
+                        permissions.model_dump(exclude_none=True)
+                        if permissions
+                        else None
+                    ),
+                    envelope=envelope,
                 )
-        except ConcurrentTurnLimitError:
-            await try_enqueue_turn(
-                user_id=user_id,
-                inflight_cap=get_inflight_turn_limit(),
-                session_id=session_id,
-                message=WAKE_MESSAGE,
-                message_id=wake_id,
-                message_metadata=metadata,
-                llm_auth_provider=info.metadata.llm_auth_provider,
-                llm_credential_id=info.metadata.llm_credential_id,
-                permissions=(
-                    permissions.model_dump(exclude_none=True) if permissions else None
-                ),
-            )
+            except TreeRefusal as refused:
+                await post_refusal(
+                    session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
+                )
     except InflightCapExceeded:
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
@@ -271,14 +335,26 @@ async def _deliver(
 ) -> PendingMessage:
     from backend.copilot.tools import get_tool
 
-    outcome, output = await _outcome(user_id, session, call, get_tool(call.tool_name))
+    if call.cost_context is None or call.cost_context.user_id != user_id:
+        await review_store.consume(call.review_id, user_id)
+        return _result_row(call, _RESEND, "closed")
+    rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
+    card = rows.get(call.review_id)
+    with restore_cost_context(user_id, call.cost_context):
+        outcome, output = await _outcome(
+            user_id, session, call, get_tool(call.tool_name), card
+        )
+    shown = _card_copy(card)
+    google_data = is_google_call(call.args) or is_google_output(output)
     try:
-        return _result_row(call, cap(output), outcome)
+        return _result_row(call, cap(output), outcome, shown, google_data)
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
-        return _result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome)
+        return _result_row(
+            call, output[: _MAX_RESULT_CHARS // 2], outcome, shown, google_data
+        )
 
 
 async def _recover(
@@ -305,30 +381,51 @@ async def _recover(
     ]
 
 
-def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage:
+def _result_row(
+    call: HeldCall,
+    output: str,
+    outcome: Outcome,
+    shown: dict[str, Any] | None = None,
+    google_data: bool = False,
+) -> PendingMessage:
+    content = (
+        f'<held_call_result tool="{call.tool_name}" '
+        f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'
+        f"{output}\n</held_call_result>"
+    )
+    # A user row, not a tool result, so the traces cannot tie it to a Google
+    # call, and its cut may no longer parse: remember it as delivered.
+    if google_data:
+        remember_google_output(content)
     return HeldResult(
-        content=(
-            f'<held_call_result tool="{call.tool_name}" '
-            f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'
-            f"{output}\n</held_call_result>"
-        ),
+        content=content,
         metadata={
-            "held_call": {
+            _RESULT_KEY: {
                 "review_id": call.review_id,
                 "tool_name": call.tool_name,
                 "tool_call_id": call.tool_call_id,
                 # The chain row shows the answer without parsing the text.
                 "outcome": outcome,
+                **(shown or {}),
             }
         },
     )
 
 
+def _card_copy(card: "PendingHumanReviewModel | None") -> dict[str, Any]:
+    """The arguments as the card showed them, redacted and clipped by
+    ``review_payload``, for the chain row once the card itself is consumed."""
+    payload = card.payload if card and isinstance(card.payload, dict) else {}
+    return {k: payload[k] for k in ("arguments", "fields", "clipped") if k in payload}
+
+
 async def _outcome(
-    user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool | None"
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    tool: "BaseTool | None",
+    row: "PendingHumanReviewModel | None",
 ) -> tuple[Outcome, str]:
-    rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
-    row = rows.get(call.review_id)
     if row is None or row.status == ReviewStatus.WAITING:
         return "closed", "Nothing ran: this card is no longer open."
     # Deferred: reads imports this package's __init__, which imports this module.

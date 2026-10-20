@@ -60,6 +60,7 @@ vi.mock("@/components/ui/sidebar", () => ({
 // Mock hooks that hit the network. Exercise the `select` callback so its
 // line counts as covered alongside the rest of the options.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   useGetV2GetCopilotUsage: (opts: {
     query?: { select?: (r: { data: unknown }) => unknown };
   }) => {
@@ -196,7 +197,7 @@ describe("CopilotPage test-mode banner", () => {
   it("does not show test-mode banner when there is no active session", () => {
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -209,7 +210,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -222,7 +223,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.getByText(/test mode.*this session runs agents/i),
+      screen.getByText(/test mode.*this session runs workflows/i),
     ).toBeDefined();
   });
 
@@ -234,7 +235,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 

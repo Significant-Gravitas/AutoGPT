@@ -205,7 +205,7 @@ class ListPresetsTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -282,6 +282,7 @@ class UpdatePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to update.",
+                    "entity": "preset",
                 },
                 "name": {"type": "string", "description": "New name."},
                 "description": {
@@ -291,6 +292,7 @@ class UpdatePresetTool(BaseTool):
                 "is_active": {
                     "type": "boolean",
                     "description": "Set false to pause the trigger, true to resume.",
+                    "title": "Active",
                 },
                 "inputs": {
                     "type": "object",
@@ -404,6 +406,7 @@ class DeletePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to delete.",
+                    "entity": "preset",
                 },
             },
             "required": ["preset_id"],

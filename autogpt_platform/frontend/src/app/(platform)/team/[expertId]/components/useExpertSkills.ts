@@ -14,6 +14,7 @@ import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkil
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSkillsUpdate } from "@/app/api/__generated__/models/expertSkillsUpdate";
 import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -88,9 +89,9 @@ export function useExpertSkills(expert: Expert) {
       )
     : attached;
 
-  async function save(skills: string[], successTitle: string) {
+  async function save(data: ExpertSkillsUpdate, successTitle: string) {
     try {
-      await updateSkills({ expertId: expert.id, data: { skills } });
+      await updateSkills({ expertId: expert.id, data });
       await refreshExpert();
       toast({ title: successTitle, variant: "success" });
       return true;
@@ -105,7 +106,7 @@ export function useExpertSkills(expert: Expert) {
   }
 
   async function addSkill(name: string) {
-    const saved = await save([...expert.skills, name], `Added ${name}`);
+    const saved = await save({ skills: [name] }, `Added ${name}`);
     if (saved) setIsAddOpen(false);
   }
 
@@ -143,10 +144,7 @@ export function useExpertSkills(expert: Expert) {
   }
 
   function removeSkill(name: string) {
-    return save(
-      expert.skills.filter((skill) => skill !== name),
-      `Removed ${name}`,
-    );
+    return save({ remove: [name] }, `Removed ${name}`);
   }
 
   return {

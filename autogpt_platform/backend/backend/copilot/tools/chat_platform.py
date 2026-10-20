@@ -266,10 +266,12 @@ class PostToChatPlatformTool(BaseTool):
                         "Channel name (#standup) or numeric ID. Required "
                         "unless target='dm'."
                     ),
+                    "entity": None,
                 },
                 "content": {
                     "type": "string",
                     "description": "Message body to post.",
+                    "title": "Message",
                 },
                 "mode": {
                     "type": "string",
@@ -400,6 +402,8 @@ class PostToChatPlatformTool(BaseTool):
             return ErrorResponse(
                 message=_error_message(result.error, platform_name),
                 error=result.error or "chat_platform_post_failed",
+                # A scheduled chat's failure streak reads which platform.
+                details={"provider": platform_name},
                 session_id=session_id,
             )
 
@@ -466,6 +470,7 @@ class EditChatPlatformMessageTool(BaseTool):
                         "The `channel_id` post_to_chat_platform returned for "
                         "the message being edited."
                     ),
+                    "entity": None,
                 },
                 "ref_id": {
                     "type": "string",
@@ -473,10 +478,13 @@ class EditChatPlatformMessageTool(BaseTool):
                         "The `ref_id` post_to_chat_platform returned for the "
                         "message being edited."
                     ),
+                    "title": "Message",
+                    "entity": None,
                 },
                 "content": {
                     "type": "string",
                     "description": "New message body, replacing the original content.",
+                    "title": "New text",
                 },
             },
             "required": ["channel_id", "ref_id", "content"],
@@ -565,6 +573,7 @@ class EditChatPlatformMessageTool(BaseTool):
             return ErrorResponse(
                 message=_error_message(result.error, platform_name),
                 error=result.error or "chat_platform_edit_failed",
+                details={"provider": platform_name},
                 session_id=session_id,
             )
         return ChatPlatformEditedResponse(

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import type { ApprovalSpend } from "../helpers";
 import referenceCardsJson from "./referenceCards.json";
 import realCardsJson from "./realCards.json";
 
@@ -134,6 +135,25 @@ export function shell(id = "shell") {
   });
 }
 
+export function createAgent(id = "agent") {
+  return heldReview({
+    id,
+    tool: "create_agent",
+    mode: "auto",
+    reason: "it creates an agent the user did not ask for.",
+    reasonKind: "supervisor",
+    subject: {
+      kind: "tool",
+      key: "create_agent",
+      name: "Create a workflow",
+      effect: "platform",
+      irreversible: false,
+    },
+    chatRules: ["allow", "judge"],
+    headline: { ask: "Create a workflow" },
+  });
+}
+
 export function deleteFolder(id: string, folderId: string) {
   return heldReview({
     id,
@@ -188,7 +208,7 @@ export function workflow(id = "wf") {
     },
     args: { library_agent_id: "lib-1", inputs: { topic: "Q3 invoices" } },
     fields: [
-      { key: "library_agent_id", label: "Library agent" },
+      { key: "library_agent_id", label: "Library workflow" },
       { key: "inputs", label: "Inputs" },
     ],
     headline: { ask: "Run", object: "Morning digest" },
@@ -273,7 +293,11 @@ export function realCardSchemaHandler(cards: RealCard[]) {
   });
 }
 // A paid read over the task's spend ceiling; money in microdollars.
-export function spendCard(id = "spend", chatRules: string[] = []) {
+export function spendCard(
+  id = "spend",
+  chatRules: string[] = [],
+  spend: Partial<ApprovalSpend> = {},
+) {
   return heldReview({
     id,
     tool: "run_capability",
@@ -298,6 +322,7 @@ export function spendCard(id = "spend", chatRules: string[] = []) {
         spent: 2_410_000,
         ceiling: 2_000_000,
         unit: 1_000_000,
+        ...spend,
       },
     },
   });

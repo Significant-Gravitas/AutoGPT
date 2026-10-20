@@ -8,17 +8,12 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
-import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
-// The atom sizes a lone action; on a card it is a label with a glyph. Ghost's
-// hover fill is the resting state here, so the button reads as a button
-// against the card's pastel band; hover takes it one step darker.
-const TEXT_BUTTON =
-  "min-w-0 gap-1.5 px-2 text-base bg-zinc-50 border-zinc-50 hover:bg-zinc-100 hover:border-zinc-100";
-const HIRE_ICON = <Icon icon={AddTeamIcon} size={20} aria-hidden />;
+// A small secondary pill, like the team cards' corner buttons.
+const HIRE_ICON = <Icon icon={AddTeamIcon} size={16} aria-hidden />;
 
 interface Props {
   expert: ExpertTemplate;
@@ -54,11 +49,13 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
   } = useHireFlow(expert);
   const isInFlight = isHiring || isVoicePickOpen || hireResult !== null;
 
-  // The clock starts on the click, not on the request: the flow finishes in
-  // a dialog, and sometimes on another page entirely.
+  // The card runs the expert page's hire flow, which reports the hire as
+  // `expert_page`, so its hire_started does too.
   function handleHire() {
-    markHireStarted(expert.id);
-    trackFunnel("hire_started", { template_id: expert.id });
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
     hire();
   }
 
@@ -79,10 +76,9 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
       <Button
         as="NextLink"
         href={`/signup?next=${next}`}
-        variant="ghost"
+        variant="secondary"
         size="small"
         leftIcon={HIRE_ICON}
-        className={TEXT_BUTTON}
       >
         Hire
       </Button>
@@ -90,12 +86,11 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
   } else {
     control = (
       <Button
-        variant="ghost"
+        variant="secondary"
         size="small"
         loading={isHiring}
         leftIcon={HIRE_ICON}
         onClick={handleHire}
-        className={TEXT_BUTTON}
       >
         Hire
       </Button>

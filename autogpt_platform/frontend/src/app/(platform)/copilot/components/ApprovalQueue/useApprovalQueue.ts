@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
 import {
   type ApprovalItem,
@@ -19,14 +20,20 @@ interface Args {
   onAnswered: () => void;
 }
 
+// How long the box lingers once nothing waits, then how long it fades.
+const LINGER_MS = 1000;
+const FADE_MS = 200;
+
 export function useApprovalQueue({ items, onAnswered }: Args) {
   const outcomes = useContext(HeldOutcomesContext);
   const { processReviews } = useProcessReviews();
+  const recordAnswers = useHeldAnswersStore((state) => state.record);
   const [statuses, setStatuses] = useState<Record<string, CardStatus>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmRejectAll, setConfirmRejectAll] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const seen = useRef(new Map<string, ApprovalItem>());
   const answeredHere = useRef(new Set<string>());
 
@@ -77,6 +84,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
       ok = false;
     }
     if (ok) {
+      recordAnswers(ids, approved);
       setReceipts((prev) => [
         ...prev,
         ...batch.map((item) => ({
@@ -99,14 +107,38 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
 
   const receiptIds = new Set(receipts.map((r) => r.item.reviewId));
   const currentIds = new Set(items.map((item) => item.reviewId));
+  const pending = items.filter((item) => !receiptIds.has(item.reviewId));
+  // A receipt stays until the chain row shows the answer.
+  const shown = receipts.filter((r) =>
+    r.item.toolCallId
+      ? !outcomes.has(r.item.toolCallId)
+      : currentIds.has(r.item.reviewId),
+  );
+  // Once every card is answered and off the server's list, the box leaves; a
+  // card still listed would come back if its receipt went with it.
+  const settled =
+    pending.length === 0 &&
+    shown.length > 0 &&
+    shown.every((r) => !currentIds.has(r.item.reviewId));
+
+  useEffect(() => {
+    if (!settled) return;
+    const fade = setTimeout(() => setLeaving(true), LINGER_MS);
+    const gone = setTimeout(
+      () => setReceipts([]),
+      LINGER_MS + (prefersReducedMotion() ? 0 : FADE_MS),
+    );
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(gone);
+      setLeaving(false);
+    };
+  }, [settled]);
+
   return {
-    pending: items.filter((item) => !receiptIds.has(item.reviewId)),
-    // A receipt stays until the chain row shows the answer.
-    receipts: receipts.filter((r) =>
-      r.item.toolCallId
-        ? !outcomes.has(r.item.toolCallId)
-        : currentIds.has(r.item.reviewId),
-    ),
+    pending,
+    receipts: shown,
+    leaving,
     statusOf: (id: string) => statuses[id] ?? "idle",
     hasFailed: (id: string) => failed.includes(id),
     openId,
@@ -120,4 +152,8 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
 function receiptText(item: ApprovalItem, approved: boolean) {
   if (isHeldRead(item)) return approved ? "Released" : "Kept out";
   return approved ? "Approved" : "Rejected";
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

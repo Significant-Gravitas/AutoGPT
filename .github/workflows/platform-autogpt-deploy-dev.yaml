@@ -10,7 +10,7 @@ on:
       git_ref:
         description: 'Git ref (branch/tag) of AutoGPT to deploy'
         required: true
-        default: 'master'
+        default: 'dev'
         type: string
       resolve_rolled_back:
         description: >-

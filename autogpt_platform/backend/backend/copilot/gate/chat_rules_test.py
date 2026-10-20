@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -6,6 +7,8 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules, held
+from backend.data import redis_client
+from backend.util.testing import is_tcp_port_reachable
 
 
 class _Redis:
@@ -17,6 +20,9 @@ class _Redis:
 
     async def get(self, key: str) -> str | None:
         return self.data.get(key)
+
+    async def mget_nonatomic(self, keys: list[str]) -> list[str | None]:
+        return [self.data.get(key) for key in keys]
 
 
 @pytest.fixture
@@ -44,7 +50,7 @@ async def test_an_approved_card_rules_on_the_subject_it_named(redis):
     [
         (ReviewStatus.REJECTED, {"a": "mcp:h/t"}),
         (ReviewStatus.WAITING, {"a": "mcp:h/t"}),
-        # A bare tool or a held read names no subject, so a click cannot rule on it.
+        # A held read or a money card offers no key, so a click cannot rule on it.
         (ReviewStatus.APPROVED, {}),
     ],
 )
@@ -106,6 +112,49 @@ async def test_a_rejection_writes_no_wider_rule_where_there_was_none(redis):
     assert await _rule("other-chat", "mcp:h/t", "frankie") is None
 
 
+async def test_every_level_is_read_in_one_call(redis):
+    """The lookup sits on every gated call, so it must not pay a round trip per level."""
+    await _set("team", "allow")
+    reads = AsyncMock(side_effect=redis.mget_nonatomic)
+    with (
+        patch.object(redis, "mget_nonatomic", reads),
+        patch.object(redis, "get", AsyncMock(side_effect=AssertionError)),
+    ):
+        assert await _rule("s", "mcp:h/t", "frankie") == "allow"
+    reads.assert_awaited_once()
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="local redis cluster not reachable",
+)
+async def test_the_narrowest_rule_decides_on_a_real_cluster():
+    """The three keys hash to different slots, which only a real cluster refuses
+    to read together."""
+    user, chat, key = (f"u-{uuid.uuid4()}", f"s-{uuid.uuid4()}", "mcp:h/t")
+    keys = [
+        chat_rules._key(chat, key),
+        chat_rules._scoped_key("expert", user, "frankie", key),
+        chat_rules._scoped_key("team", user, None, key),
+    ]
+    try:
+        await chat_rules.set_scoped_rule("team", user, None, key, "judge")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("judge", "team")
+
+        await chat_rules.set_scoped_rule("expert", user, "frankie", key, "allow")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("allow", "expert")
+
+        await chat_rules.set_rule(chat, key, "ask")
+        hit = await chat_rules.rule_for(chat, key, user, "frankie")
+        assert hit is not None and (hit.rule, hit.scope) == ("ask", "chat")
+    finally:
+        redis = await redis_client.get_redis_async()
+        for k in keys:
+            await redis.delete(k)
+
+
 @pytest.mark.parametrize(
     "scope, otto, reason",
     [
@@ -121,7 +170,7 @@ def test_a_decline_names_its_scope_and_day(scope, otto, reason):
     assert hit.reason == reason
 
 
-async def test_only_a_held_call_with_a_subject_offers_a_key():
+async def test_a_held_call_offers_the_key_its_card_can_rule_on():
     calls = {
         "mcp": held.HeldCall(
             review_id="mcp",
@@ -140,10 +189,18 @@ async def test_only_a_held_call_with_a_subject_offers_a_key():
         "read": held.HeldCall(
             review_id="read", tool_name="web_fetch", tool_call_id="c", args={}
         ),
+        # Parked over the spend ceiling: reads never consult a rule.
+        "paid": held.HeldCall(
+            review_id="paid",
+            tool_name="consult_teammate",
+            tool_call_id="c",
+            args={},
+            rule_key="consult_teammate",
+        ),
     }
     with patch.object(held, "_held", AsyncMock(return_value=calls)):
-        keys = await held.subject_keys("s", ["mcp", "tool", "read", "gone"])
-    assert keys == {"mcp": "mcp:h/t"}
+        keys = await held.subject_keys("s", ["mcp", "tool", "read", "paid", "gone"])
+    assert keys == {"mcp": "mcp:h/t", "tool": "bash_exec"}
 
 
 async def test_an_unreadable_store_approves_without_a_rule():

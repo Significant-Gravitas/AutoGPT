@@ -1,11 +1,12 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { matchesRoute } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { getRouteTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
+import { isCopilotPathname } from "./helpers";
 
 // Routes that must stay outside the new top-level sidebar layout. Login,
 // signup and onboarding already live in the (no-navbar) group. These
@@ -21,12 +22,17 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
   "/unauthorized",
 ];
 
+// Nothing here may read the search params (directly or through useAuth): this
+// runs at the platform layout root, so it would re-render the whole chrome on
+// every URL-param write. See useIsChatSession.
 export function usePlatformChrome() {
   const pathname = usePathname();
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
-  // Also initializes the auth store — required here because the tour shell
-  // replaces the Navbar, which is what normally kicks off the session check.
-  const { isLoggedIn, isUserLoading } = useAuth();
+  // The store, not useAuth: useAuth reads the search params too. The app-root
+  // providers (CredentialsProvider, OnboardingProvider) call useAuth on every
+  // page, so the session check still starts in the tour shell.
+  const isLoggedIn = useAuthStore((state) => Boolean(state.user));
+  const isUserLoading = useAuthStore((state) => state.isUserLoading);
 
   // The LaunchDarkly flag is client-side data that can resolve differently on
   // the server vs the client's first render. Switching the whole layout shell
@@ -42,7 +48,7 @@ export function usePlatformChrome() {
 
   const isMarketplaceRoute = matchesRoute(pathname, "/marketplace");
 
-  const isCopilotRoute = matchesRoute(pathname, "/copilot");
+  const isCopilotRoute = isCopilotPathname(pathname);
 
   const isBuilderRoute = matchesRoute(pathname, "/build");
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security
 
+from backend.copilot.rate_limit import enforce_payment_paywall
+
 from . import service
 from .model import GlobalSearchResponse
 from .rate_limit import enforce_global_search_rate_limit
@@ -60,10 +62,10 @@ async def global_search_endpoint(
     ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> GlobalSearchResponse:
-    # Skip rate-limit on the empty-query branch — it hits the per-user
-    # cache, not OpenAI. Only the non-empty path triggers paid embedding
-    # calls, so that's where the QPS cap matters.
+    # Only a query makes a paid embedding call; the empty one reads the
+    # per-user cache, so it skips the paywall and the QPS cap.
     if q.strip():
+        await enforce_payment_paywall(user_id)
         await enforce_global_search_rate_limit(user_id)
     return await service.global_search(
         query=q, user_id=user_id, per_type_limit=per_type_limit

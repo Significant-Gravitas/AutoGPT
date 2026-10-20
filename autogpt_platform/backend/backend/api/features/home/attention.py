@@ -11,6 +11,7 @@ from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
@@ -28,12 +29,14 @@ def compose_attention_items(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
+    paused_chats: list[PausedScheduledChat] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
     items.extend(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
     )
+    items.extend(_paused_chat_attention(chat) for chat in paused_chats or [])
     items.extend(
         _question_attention(session, question, expert_by_id)
         for session, question in _open_questions(questions or [])
@@ -103,9 +106,18 @@ def _gate_attention(
             )
         )
         or None,
-        review=review,
+        review=_without_held_bytes(review),
         primary_action=HomeAction(label="Open chat", href=_review_link(review)),
     )
+
+
+def _without_held_bytes(review: PendingHumanReviewModel) -> PendingHumanReviewModel:
+    # A held read's `content` is up to 70k chars the card never shows (it renders
+    # `passage`), shipped per row on every Home poll.
+    if not isinstance(review.payload, dict) or "content" not in review.payload:
+        return review
+    payload = {k: v for k, v in review.payload.items() if k != "content"}
+    return review.model_copy(update={"payload": payload})
 
 
 def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:
@@ -172,7 +184,7 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
             priority="high",
             title=f"Review {expert.name}'s paused work",
             description=description,
-            why_it_matters="Upcoming tasks will not run while this agent is paused.",
+            why_it_matters="Upcoming tasks will not run while this expert is paused.",
             expert=summary,
             created_at=as_utc(expert.schedules_paused_at),
             primary_action=HomeAction(
@@ -194,6 +206,27 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
         expert=summary,
         # The Team page carries the setup card that names and fixes the gap.
         primary_action=HomeAction(label="Finish setup", href="/team"),
+    )
+
+
+def _paused_chat_attention(chat: PausedScheduledChat) -> HomeAttentionItem:
+    """A scheduled chat paused after failing the same way three runs in a
+    row (SECRT-2879). The fix is on the card in its chat, so that is where
+    the item goes."""
+    href = (
+        f"/copilot?sessionId={quote(chat.session_id)}"
+        if chat.session_id
+        else "/library/followups"
+    )
+    return HomeAttentionItem(
+        id=f"paused-chat-{chat.schedule_key}",
+        kind="paused",
+        priority="high",
+        title=f"Scheduled chat “{chat.title}”",
+        description=chat.summary,
+        why_it_matters="It won't run again until it is fixed and resumed.",
+        created_at=as_utc(chat.paused_at),
+        primary_action=HomeAction(label="Fix it", href=href),
     )
 
 
@@ -264,7 +297,7 @@ def _credits_attention(schedule_count: int) -> HomeAttentionItem:
         description=(
             f"{schedule_count} upcoming task{'s' if schedule_count != 1 else ''} may not run."
         ),
-        why_it_matters="Agents need a positive balance before paid blocks can start.",
+        why_it_matters="Experts and workflows need a positive balance before paid blocks can start.",
         primary_action=HomeAction(label="Add credits", href="/profile/credits"),
     )
 
@@ -275,7 +308,7 @@ def _review_expert(review: PendingHumanReviewModel) -> HomeExpert | None:
     return HomeExpert(
         id=review.expert_id,
         name=review.expert_name,
-        role="Agent",
+        role="Expert",
         avatar_url=review.expert_avatar_url,
     )
 
