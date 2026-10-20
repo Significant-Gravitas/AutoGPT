@@ -232,14 +232,14 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_an_unconfigured_client_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         mocker.patch.object(ph, "get_flag_client", return_value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_raises_is_not(self, mocker, user_context):
@@ -247,7 +247,7 @@ class TestPostHogBackend:
         client = stub_posthog(mocker, value=True)
         client.get_feature_flag_result.side_effect = Exception("evaluation exploded")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_a_degraded_user_context_is_not(self, mocker):
@@ -275,7 +275,7 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=True, payload={"some": "object"})
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_targeting_attributes_are_passed_as_person_properties(self, mocker):
@@ -544,7 +544,9 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            result = await evaluate_feature_flag(
+                Flag.HIRE_EXPERTS, "u-1", default=False
+            )
             await drain_shadow_evaluations()
 
         assert result == (False, True)
@@ -985,7 +987,7 @@ class TestSentryFlagContext:
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
         assert sentry_flags.get() == [
-            {"flag": Flag.HIRE_EXPERTS.value, "result": False},
+            {"flag": Flag.HIRE_EXPERTS.value, "result": True},
             {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
         ]
 
@@ -1030,16 +1032,15 @@ class TestSentryFlagContext:
         ld_client.is_initialized.return_value = initialized
         ld_client.variation_detail.return_value = served(answer)
         # A stale earlier answer must not be what an error from this route carries.
-        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
+        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, False)
 
-        with pytest.raises(HTTPException):
-            if gate == "decorator":
-                await _gated_route()(user_id="u-1")
-            else:
-                await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        if gate == "decorator":
+            await _gated_route()(user_id="u-1")
+        else:
+            await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
 
         assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
-            Flag.HIRE_EXPERTS.value: False,
+            Flag.HIRE_EXPERTS.value: True,
             f"{Flag.HIRE_EXPERTS.value}.fallback": True,
         }
 
@@ -1058,7 +1059,7 @@ class TestSentryFlagContext:
         finally:
             scope.span = previous
 
-        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": False}
+        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": True}
 
     @pytest.mark.asyncio
     async def test_a_real_answer_clears_an_earlier_fallback(

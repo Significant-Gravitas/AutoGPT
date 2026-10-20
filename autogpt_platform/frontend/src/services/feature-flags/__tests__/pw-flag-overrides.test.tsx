@@ -39,18 +39,18 @@ describe("Playwright runtime flag overrides", () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "true");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": true }),
+      JSON.stringify({ "hire-experts": false }),
     );
     const { Flag, useGetFlag, useFlagStatus } = await loadFlags();
 
     expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      true,
+      false,
     );
     expect(
       renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS)).result.current,
-    ).toEqual({ enabled: true, ready: true, answered: true });
+    ).toEqual({ enabled: false, ready: true, answered: true });
     expect(renderHook(() => useGetFlag(Flag.SKILLS_HUB)).result.current).toBe(
-      false,
+      true,
     );
   });
 
@@ -73,12 +73,12 @@ describe("Playwright runtime flag overrides", () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "false");
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "hire-experts": true }),
+      JSON.stringify({ "hire-experts": false }),
     );
     const { Flag, useGetFlag } = await loadFlags();
 
     expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
+      true,
     );
   });
 
@@ -91,12 +91,12 @@ describe("Playwright runtime flag overrides", () => {
     const { Flag, useGetFlag } = await loadFlags();
 
     expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
+      true,
     );
 
     window.localStorage.setItem(STORAGE_KEY, "{not json");
     expect(renderHook(() => useGetFlag(Flag.HIRE_EXPERTS)).result.current).toBe(
-      false,
+      true,
     );
   });
 

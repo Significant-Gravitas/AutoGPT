@@ -99,7 +99,7 @@ describe("FeatureFlagProvider while the session loads", () => {
       </FeatureFlagProvider>,
     );
 
-    expect(screen.getByText("hire: false ready: false")).toBeDefined();
+    expect(screen.getByText("hire: true ready: false")).toBeDefined();
   });
 
   it("hands the resolved session to LaunchDarkly without remounting the page", () => {
@@ -155,7 +155,7 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
       vi.advanceTimersByTime(10_000);
     });
 
-    expect(screen.getByText("hire: false ready: false")).toBeDefined();
+    expect(screen.getByText("hire: true ready: false")).toBeDefined();
   });
 
   it("gives LaunchDarkly its full timeout once the session resolves", () => {
@@ -173,7 +173,7 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
-    expect(screen.getByText("hire: false ready: false")).toBeDefined();
+    expect(screen.getByText("hire: true ready: false")).toBeDefined();
 
     ld.flags = { "hire-experts": true };
     rerender(
@@ -197,11 +197,11 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
     act(() => {
       vi.advanceTimersByTime(4_999);
     });
-    expect(screen.getByText("hire: false ready: false")).toBeDefined();
+    expect(screen.getByText("hire: true ready: false")).toBeDefined();
 
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.getByText("hire: false ready: true")).toBeDefined();
+    expect(screen.getByText("hire: true ready: true")).toBeDefined();
   });
 });

@@ -265,9 +265,7 @@ async def _compose_fresh_briefing(
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
-    enabled, authoritative = await evaluate_feature_flag(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    )
+    enabled, authoritative = await evaluate_feature_flag(Flag.HIRE_EXPERTS, user_id)
     if not enabled:
         # Only a flag that actually evaluated may unregister the cron (see
         # ``execute_morning_briefing``). A failed read yields False too, and

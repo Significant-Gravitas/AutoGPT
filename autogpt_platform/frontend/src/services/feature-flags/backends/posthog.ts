@@ -1,19 +1,25 @@
 "use client";
 
-import {
-  useFeatureFlagEnabled,
-  useFeatureFlagPayload,
-  usePostHog,
-} from "@posthog/react";
-import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import type { FlagSourceResult } from "../flag-source";
+import { type Flag, resolveFlagValue } from "../use-get-flag";
+import { usePostHogFlagResolution } from "./posthog-resolution";
 
 export function usePostHogFlag(key: string): FlagSourceResult {
-  const enabled = useFeatureFlagEnabled(key);
-  const payload = useFeatureFlagPayload(key);
-  // Not `enabled !== undefined`: posthog-js serves its persisted snapshot
-  // before /flags runs, and answers `undefined` for a flag it has never heard of.
-  const resolved = useFlagsLoaded();
+  const posthog = usePostHog();
+  const resolved = usePostHogFlagResolution(posthog);
+  const enabled = posthog?.isFeatureEnabled(key);
+  const payload = posthog?.getFeatureFlagPayload(key);
+
+  // The SDK omits inactive flags, but also hides partial evaluation errors.
+  // Honor the off switch without calling an omitted value authoritative.
+  if (
+    resolved &&
+    enabled === undefined &&
+    resolveFlagValue(key as Flag, undefined) === true
+  ) {
+    return { value: false, resolved: false };
+  }
 
   // An explicit off wins over a payload, as on the backend.
   if (enabled === false) {
@@ -27,19 +33,4 @@ export function usePostHogFlag(key: string): FlagSourceResult {
   }
 
   return { value: enabled, resolved };
-}
-
-function useFlagsLoaded() {
-  const posthog = usePostHog();
-  const [loaded, setLoaded] = useState(
-    () => posthog?.featureFlags?.hasLoadedFlags ?? false,
-  );
-
-  useEffect(() => {
-    return posthog?.onFeatureFlags((_flags, _variants, context) => {
-      if (!context?.errorsLoading) setLoaded(true);
-    });
-  }, [posthog]);
-
-  return loaded;
 }

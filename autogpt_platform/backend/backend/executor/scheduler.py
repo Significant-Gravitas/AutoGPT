@@ -4141,7 +4141,7 @@ class Scheduler(AppService):
 
     # --- Graphiti community detection (P-1.7) ---
     #
-    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``.
+    # Communities default on behind flag ``GRAPHITI_COMMUNITIES_ENABLED``.
     # Registration checks the flag here too (defense in depth: the registry
     # gates first). Rebuilds run weekly at owner-local 04:00 on Mondays
     # (``0 4 * * 0``: APScheduler counts weekdays from 0 = Monday) to avoid

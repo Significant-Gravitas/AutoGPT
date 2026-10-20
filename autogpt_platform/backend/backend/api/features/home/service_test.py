@@ -479,7 +479,7 @@ class TestPendingQuestionsFlagGate:
 
         assert result == []
         get_sessions.assert_not_awaited()
-        is_enabled.assert_awaited_once_with(Flag.HIRE_EXPERTS, "user-1", default=False)
+        is_enabled.assert_awaited_once_with(Flag.HIRE_EXPERTS, "user-1")
 
     @pytest.mark.asyncio
     async def test_flag_on_reads_pending_questions_from_chat_db(

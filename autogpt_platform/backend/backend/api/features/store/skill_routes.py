@@ -23,12 +23,7 @@ MAX_VIEWABLE_FILE_BYTES = 256 * 1024
 async def require_skills_hub_flag(
     user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
 ) -> None:
-    """Gate every skills route on the skills-hub flag, fail-closed.
-
-    Deliberately not ``create_feature_flag_dependency``: that helper 404s
-    whenever LaunchDarkly has no SDK key, before consulting the
-    ``FORCE_FLAG_SKILLS_HUB`` override every local environment relies on.
-    """
+    """Gate every skills route on the default-on skills-hub flag and its overrides."""
     if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or _ANONYMOUS_FLAG_KEY):
         raise fastapi.HTTPException(status_code=404, detail="Feature not available")
 

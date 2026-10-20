@@ -15,9 +15,11 @@ const postHog = vi.hoisted(() => ({
 }));
 const postHogClient = vi.hoisted(() => ({
   capture: (...args: unknown[]) => postHog.capture(...args),
+  isFeatureEnabled: (flag: string) => postHog.enabled(flag),
+  getFeatureFlagPayload: (flag: string) => postHog.payload(flag),
   featureFlags: {
     get hasLoadedFlags() {
-      return postHog.loaded && !postHog.errorsLoading;
+      return postHog.loaded;
     },
   },
   onFeatureFlags: (
@@ -39,8 +41,6 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
 }));
 
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagEnabled: (flag: string) => postHog.enabled(flag),
-  useFeatureFlagPayload: (flag: string) => postHog.payload(flag),
   usePostHog: () => postHogClient,
 }));
 
@@ -102,7 +102,7 @@ describe("launchdarkly backend", () => {
     const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
     expect(result.current).toEqual({
-      enabled: false,
+      enabled: true,
       ready: false,
       answered: false,
     });
@@ -161,7 +161,7 @@ describe("posthog backend", () => {
     expect(result.current.answered).toBe(false);
   });
 
-  it("answers a flag PostHog has never heard of with its default", async () => {
+  it("keeps an omitted flag off without treating it as an authoritative answer", async () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(undefined);
 
@@ -169,8 +169,8 @@ describe("posthog backend", () => {
 
     expect(result.current).toEqual({
       enabled: false,
-      ready: true,
-      answered: true,
+      ready: false,
+      answered: false,
     });
   });
 
@@ -319,7 +319,7 @@ describe("dual backend", () => {
     expect(postHog.capture).not.toHaveBeenCalled();
   });
 
-  it("reports a flag LaunchDarkly has and PostHog has never heard of", async () => {
+  it("does not report a disagreement for an omitted PostHog flag", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
     vi.spyOn(console, "info").mockImplementation(() => {});
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
@@ -327,11 +327,7 @@ describe("dual backend", () => {
 
     renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
-    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatched", {
-      flag: HIRE_EXPERTS,
-      launchdarkly: { value: true, resolved: true },
-      posthog: { value: null, resolved: true },
-    });
+    expect(postHog.capture).not.toHaveBeenCalled();
   });
 
   it("stays quiet while only one vendor has answered", async () => {
@@ -408,10 +404,12 @@ describe("Sentry's flag context", () => {
 
     renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
-    expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
-      HIRE_EXPERTS,
-      true,
-    );
+    expect(sentry.addFeatureFlag).toHaveBeenCalledWith(HIRE_EXPERTS, true);
+    expect(
+      sentry.addFeatureFlag.mock.calls.every(
+        ([flag, value]) => flag === HIRE_EXPERTS && value === true,
+      ),
+    ).toBe(true);
   });
 
   it("records a flag read by a component that throws in the same render", async () => {
@@ -452,10 +450,10 @@ describe("Sentry's flag context", () => {
 
     const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
-    expect(result.current).toBe(false);
+    expect(result.current).toBe(true);
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
       HIRE_EXPERTS,
-      false,
+      true,
     );
   });
 
@@ -504,7 +502,7 @@ describe("posthog flags follow the provider's gate", () => {
     const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
     expect(result.current).toEqual({
-      enabled: false,
+      enabled: true,
       ready: true,
       answered: true,
     });

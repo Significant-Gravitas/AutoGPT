@@ -12,6 +12,7 @@ import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
 import { usesPostHog } from "@/services/feature-flags/flag-backend";
 import { buildFlagPersonProperties } from "@/services/feature-flags/helpers";
+import { trackPostHogFlagResolution } from "@/services/feature-flags/backends/posthog-resolution";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
@@ -31,6 +32,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
     captureFirstLanding();
     const unfollowIdentity = followAnalyticsConsentForIdentity();
     let unfollowConsent = () => {};
+    let stopTrackingFlags = () => {};
     if (postHogCredentials.key) {
       // Seed PostHog's anonymous identity with the first-party anonymous id
       // LaunchDarkly and the backend also use, so pre-signup activity from
@@ -38,6 +40,9 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
+      if (usesPostHog()) {
+        stopTrackingFlags = trackPostHogFlagResolution(posthog);
+      }
       posthog.init(postHogCredentials.key, {
         ...getPostHogClientHosts(postHogCredentials),
         defaults: "2025-11-30",
@@ -55,6 +60,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
     return () => {
       unfollowConsent();
       unfollowIdentity();
+      stopTrackingFlags();
     };
   }, []);
 

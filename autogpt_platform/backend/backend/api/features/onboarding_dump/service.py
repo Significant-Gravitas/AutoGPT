@@ -546,8 +546,8 @@ async def _expert_team_enabled(user_id: str) -> bool:
     cannot hire must not be shown hire cards.
     """
     return await is_feature_enabled(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    ) and await is_feature_enabled(Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False)
+        Flag.HIRE_EXPERTS, user_id
+    ) and await is_feature_enabled(Flag.ONBOARDING_EXPERT_TEAM, user_id)
 
 
 async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:

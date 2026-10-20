@@ -5148,7 +5148,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # same boolean — a flag-off turn must not be told to call tools that
         # were never registered with the MCP server.
         experts_enabled = bool(user_id) and await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
+            Flag.HIRE_EXPERTS, user_id
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         oversight_supplement = get_expert_oversight_supplement(

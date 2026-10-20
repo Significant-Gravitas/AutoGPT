@@ -104,9 +104,9 @@ describe("onboarding layout readiness", () => {
       act(() => vi.advanceTimersByTime(5000));
 
       expect(result.current.isReady).toBe(true);
-      expect(result.current.isBrainDumpEnabled).toBe(false);
-      expect(result.current.steps.hire).toBeUndefined();
-      expect(result.current.steps.subscription).toBe(5);
+      expect(result.current.isBrainDumpEnabled).toBe(true);
+      expect(result.current.steps.hire).toBe(5);
+      expect(result.current.steps.subscription).toBe(6);
       unmount();
     } finally {
       vi.useRealTimers();

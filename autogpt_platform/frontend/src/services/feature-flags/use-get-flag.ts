@@ -20,27 +20,23 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
+  [Flag.ARTIFACTS_PAGE]: true,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
+  [Flag.CHAT_SEARCH]: true,
+  [Flag.AUTOGPT_NEW_LAYOUT]: true,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
-  [Flag.HIRE_EXPERTS]: false,
-  [Flag.SKILLS_HUB]: false,
+  [Flag.HIRE_EXPERTS]: true,
+  [Flag.SKILLS_HUB]: true,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
-  // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
-  // the wizard falls back to this map, and a ``true`` here renders the
-  // brain dump for everyone — which is what the backend 404s are meant to
-  // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
-  [Flag.ONBOARDING_BRAIN_DUMP]: false,
-  [Flag.ONBOARDING_EXPERT_TEAM]: false,
-  [Flag.GRAPHITI_MEMORY]: false,
-  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
+  [Flag.ONBOARDING_BRAIN_DUMP]: true,
+  [Flag.ONBOARDING_EXPERT_TEAM]: true,
+  [Flag.GRAPHITI_MEMORY]: true,
+  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: true,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,

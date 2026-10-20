@@ -343,8 +343,8 @@ graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
 async def is_enabled_for_user(user_id: str | None) -> bool:
     """Check if Graphiti memory is enabled for a specific user.
 
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
-    (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
+    Gated by ``graphiti-memory``, which defaults on. An explicit vendor or
+    environment override can disable it.
     """
     if not user_id:
         return False
@@ -354,7 +354,6 @@ async def is_enabled_for_user(user_id: str | None) -> bool:
     return await is_feature_enabled(
         Flag.GRAPHITI_MEMORY,
         user_id,
-        default=False,
     )
 
 
@@ -364,8 +363,8 @@ async def is_communities_enabled_for_user(user_id: str | None) -> bool:
     Distinct from ``is_enabled_for_user`` — a user can have Graphiti
     memory enabled (writes + reads work) without the weekly Leiden
     rebuild + LLM summarization running on their graph. Gated by
-    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``; defaults False so the cost
-    only lands behind explicit opt-in.
+    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``, which defaults on. An explicit
+    vendor or environment override can disable the scheduled work.
     """
     if not user_id:
         return False
@@ -375,5 +374,4 @@ async def is_communities_enabled_for_user(user_id: str | None) -> bool:
     return await is_feature_enabled(
         Flag.GRAPHITI_COMMUNITIES_ENABLED,
         user_id,
-        default=False,
     )

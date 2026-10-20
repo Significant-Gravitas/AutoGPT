@@ -266,7 +266,7 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
     try:
         # Question items ship with the expert-team surface; without the flag
         # the Home page stays exactly what it was.
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id):
             return []
         return await chat_db.get_sessions_with_pending_question(user_id)
     except Exception:
@@ -284,7 +284,7 @@ async def _get_work_events(
     # Recent work card, not the page. Ships with the expert-team surface,
     # so it is gated exactly like pending questions.
     try:
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id):
             return []
         return await activity_db.list_activity_events(
             user_id,

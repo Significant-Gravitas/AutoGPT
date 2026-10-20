@@ -1,7 +1,7 @@
 """SDK-engine coverage for the hire-experts flag guard and tool hiding.
 
 ``stream_chat_completion_sdk`` resolves ``experts_enabled = bool(user_id)
-and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)``
+and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id)``
 and feeds the result into ``expert_tool_disabled_groups`` (tested directly
 in ``handoff_to_expert_test.py``) before registering tools with the MCP
 server. This file proves the SDK call SITE wires that correctly:
@@ -122,6 +122,10 @@ def _make_patches(*, hire_experts_enabled: bool):
         (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+        ),
+        (
+            f"{_SVC}._fetch_graphiti_context",
+            {"new_callable": AsyncMock, "return_value": (False, "")},
         ),
         (
             f"{_SVC}.ClaudeSDKClient",

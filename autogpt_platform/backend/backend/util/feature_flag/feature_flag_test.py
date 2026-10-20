@@ -896,14 +896,14 @@ class TestEvaluateFeatureFlag:
     @pytest.mark.asyncio
     async def test_an_uninitialised_client_is_not(self, ld_client, user_context):
         ld_client.is_initialized.return_value = False
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_raises_is_not(self, ld_client, user_context):
         """The regression this class exists for: a LIVE client can still fail
         to produce a value, and that must not read as a real "off"."""
         ld_client.variation_detail.side_effect = Exception("evaluation exploded")
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_a_degraded_user_context_is_not(self, ld_client, mocker):
@@ -926,7 +926,7 @@ class TestEvaluateFeatureFlag:
     @pytest.mark.asyncio
     async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):
         ld_client.variation_detail.return_value = served({"some": "object"})
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
 
     @pytest.mark.asyncio
     async def test_an_env_override_answers_without_launchdarkly(
@@ -944,11 +944,11 @@ class TestEvaluateFeatureFlag:
     async def test_is_feature_enabled_still_returns_the_bare_value(
         self, ld_client, user_context
     ):
-        """The refactor must not change what existing callers see."""
+        """The boolean helper returns both real answers and the selected fallback."""
         ld_client.variation_detail.return_value = served(True)
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
         ld_client.variation_detail.side_effect = Exception("boom")
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
 
 
 class TestRequestAttributes:

@@ -1,9 +1,14 @@
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "posthog";
+});
+
 const posthog = vi.hoisted(() => ({
   init: vi.fn(),
   register: vi.fn(),
+  onFeatureFlags: vi.fn(() => () => {}),
 }));
 const credentials = vi.hoisted(() => ({
   key: "phc_test" as string,
@@ -50,6 +55,7 @@ describe("PostHogProvider", () => {
   beforeEach(() => {
     posthog.init.mockClear();
     posthog.register.mockClear();
+    posthog.onFeatureFlags.mockClear();
     credentials.key = "phc_test";
     credentials.host = "https://eu.i.posthog.com";
   });
@@ -102,5 +108,16 @@ describe("PostHogProvider", () => {
 
     expect(posthog.init).not.toHaveBeenCalled();
     expect(posthog.register).not.toHaveBeenCalled();
+    expect(posthog.onFeatureFlags).not.toHaveBeenCalled();
+  });
+
+  it("observes flag resolution before init can deliver its first answer", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    expect(posthog.onFeatureFlags.mock.invocationCallOrder[0]).toBeLessThan(
+      posthog.init.mock.invocationCallOrder[0],
+    );
   });
 });

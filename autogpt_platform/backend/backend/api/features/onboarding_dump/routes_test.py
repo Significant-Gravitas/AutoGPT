@@ -174,6 +174,7 @@ def setup_app_auth(mock_jwt_user):
 @pytest.fixture(autouse=True)
 def flag_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(FLAG_ENV_VAR, "true")
+    monkeypatch.setenv("FORCE_FLAG_ONBOARDING_EXPERT_TEAM", "false")
 
 
 @pytest.fixture(autouse=True)

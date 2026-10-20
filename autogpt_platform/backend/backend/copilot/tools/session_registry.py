@@ -135,7 +135,7 @@ async def session_expert_entries(
     work to; ``[]`` when hire-experts is off or a read fails, so an experts
     hiccup never takes capability search down with it."""
     try:
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id):
             return []
         team = await experts_db().list_experts(user_id, with_metrics=False)
         templates = await _hireable_roster(user_id) if may_hire(session) else []

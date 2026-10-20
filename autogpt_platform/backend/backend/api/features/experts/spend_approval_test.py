@@ -13,6 +13,11 @@ NEEDED = sa.SpendApprovalNeeded(
 )
 
 
+@pytest.fixture(autouse=True)
+def enabled_credit(monkeypatch):
+    monkeypatch.setattr(sa.settings.config, "enable_credit", True)
+
+
 def _arm(
     mocker,
     *,
@@ -57,6 +62,21 @@ async def test_disabled_check_reads_no_spend(mocker, threshold, flag) -> None:
 
     assert await sa.spend_approval_required("owner", "e-1") is None
     get_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disabled_credit_skips_approval_despite_existing_spend(
+    mocker, monkeypatch
+) -> None:
+    get_spend, reviews = _arm(mocker, spent=1_000)
+    flag = mocker.patch.object(sa, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(sa.settings.config, "enable_credit", False)
+
+    assert await sa.spend_approval_required("owner", "e-1") is None
+
+    flag.assert_not_awaited()
+    get_spend.assert_not_awaited()
+    reviews.find_first.assert_not_awaited()
 
 
 @pytest.mark.asyncio

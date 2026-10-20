@@ -102,7 +102,7 @@ async def ensure_scope_scheduled(
         # can read the real timezone.
         return results | skip_all(enabled, "timezone_lookup_failed")
     return results | await register_scope_jobs(
-        scope, enabled, row, user_timezone, force_refresh
+        scope, enabled, row, user_timezone, force_refresh, results
     )
 
 

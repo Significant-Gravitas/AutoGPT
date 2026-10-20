@@ -39,6 +39,17 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 
 const HIRE_EXPERTS = "hire-experts";
 const VISITOR = "0b6c1f3e-visitor-0001";
+const MATURE_FLAGS = [
+  Flag.AUTOGPT_NEW_LAYOUT,
+  Flag.CHAT_SEARCH,
+  Flag.ARTIFACTS_PAGE,
+  Flag.HIRE_EXPERTS,
+  Flag.SKILLS_HUB,
+  Flag.ONBOARDING_BRAIN_DUMP,
+  Flag.ONBOARDING_EXPERT_TEAM,
+  Flag.GRAPHITI_MEMORY,
+  Flag.GRAPHITI_COMMUNITIES_ENABLED,
+] as const;
 
 vi.mock("posthog-js", () => ({
   default: { __loaded: true, get_distinct_id: () => VISITOR },
@@ -72,21 +83,43 @@ describe("server backend", () => {
     expect(result.current.hire.enabled).toBe(true);
     // A gated route must keep waiting rather than 404 on a flag the vendor never answered.
     expect(result.current.search).toMatchObject({
-      enabled: false,
+      enabled: true,
       answered: false,
     });
   });
 
-  it("answers every flag with its default when the server has no vendor", async () => {
-    serveFlags({ flags: {}, configured: false });
+  it.each(MATURE_FLAGS)(
+    "defaults %s on when the server has no vendor",
+    async (flag) => {
+      serveFlags({ flags: {}, configured: false });
 
-    const { result } = renderHook(() => useFlagStatus(Flag.CHAT_SEARCH), {
-      wrapper: withQueryClient(),
-    });
+      const { result } = renderHook(() => useFlagStatus(flag), {
+        wrapper: withQueryClient(),
+      });
 
-    await waitFor(() => expect(result.current.answered).toBe(true));
-    expect(result.current.enabled).toBe(false);
-  });
+      await waitFor(() => expect(result.current.answered).toBe(true));
+      expect(result.current.enabled).toBe(true);
+    },
+  );
+
+  it.each(MATURE_FLAGS)(
+    "honors the server's explicit off for %s",
+    async (flag) => {
+      serveFlags({ flags: { [flag]: false }, configured: true });
+
+      const { result } = renderHook(() => useFlagStatus(flag), {
+        wrapper: withQueryClient(),
+      });
+
+      await waitFor(() =>
+        expect(result.current).toEqual({
+          enabled: false,
+          ready: true,
+          answered: true,
+        }),
+      );
+    },
+  );
 
   describe("while the server has no answer for a flag", () => {
     beforeEach(() => {
@@ -129,7 +162,7 @@ describe("server backend", () => {
       });
       await waitFor(() =>
         expect(result.current).toMatchObject({
-          enabled: false,
+          enabled: true,
           answered: true,
         }),
       );
@@ -169,7 +202,7 @@ describe("server backend", () => {
         }),
       );
 
-      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
         wrapper: withQueryClient(),
       });
       await waitFor(() => expect(requests).toBe(1));
@@ -178,6 +211,11 @@ describe("server backend", () => {
       // Every 2.5 s would be 240; backing off to a minute is a dozen or so.
       expect(requests).toBeGreaterThan(4);
       expect(requests).toBeLessThan(20);
+      expect(result.current).toEqual({
+        enabled: true,
+        ready: true,
+        answered: false,
+      });
     });
 
     it("backs off to about once a minute when it never answers", async () => {

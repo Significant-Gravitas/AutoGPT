@@ -242,9 +242,7 @@ async def build_expert_context(
         # execute_tool when the hire-experts flag is off, so the roster block
         # must not tell the model to call it. Same boolean the engines use to
         # gate the delegation supplement and the tool groups.
-        delegation_enabled = await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        )
+        delegation_enabled = await is_feature_enabled(Flag.HIRE_EXPERTS, user_id)
         if expert_id:
             return await _expert_session_context(
                 user_id,
@@ -505,9 +503,7 @@ async def _team_context(
         not any(e.id != exclude_expert_id for e in experts)
         and exclude_expert_id is None
         and delegation_enabled
-        and await is_feature_enabled(
-            Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
-        )
+        and await is_feature_enabled(Flag.ONBOARDING_EXPERT_TEAM, user_id)
     ):
         hiring_roster = await experts_db().list_templates()
     return render_team_context(

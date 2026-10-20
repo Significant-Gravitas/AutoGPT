@@ -8,6 +8,56 @@ install and CI get. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
+## Product defaults and operator overrides
+
+The backend's `util/feature_flag/defaults.py` enables these mature boolean
+flags when no vendor answer is available: `autogpt-new-layout`, `chat-search`,
+`artifacts-page`, `hire-experts`, `skills-hub`, `onboarding-brain-dump`,
+`onboarding-expert-team`, `graphiti-memory`, `graphiti-communities-enabled`,
+`expert-spend-approval`, and `ai-agent-execution-summary`. The frontend's
+`defaultFlags` map matches the flags it consumes. The marketplace search-term
+payload defaults to `["Research", "Marketing", "Product", "SEO", "Business"]`.
+
+Omitting a boolean helper's `default` argument (or passing `None`) selects the
+per-flag default; an explicit `default=False` or `default=True` overrides only
+the fallback. A vendor's boolean answer and `FORCE_FLAG_<NAME>` /
+`NEXT_PUBLIC_FORCE_FLAG_<NAME>` overrides still win, including explicit false.
+Unlisted flags still default false unless their caller supplies another
+fallback. Payment, hosted Stripe/trial payloads, the recent stream runtime,
+and experimental dream gates are unchanged.
+
+A fallback is not authoritative. The backend's frontend endpoint omits
+unanswered values so the browser applies its matching defaults. Memory
+registration may use the community fallback to register work, but an
+unavailable flag cannot erase an existing schedule's recorded intent.
+Unauthoritative reads are reported as `flag_unavailable`, separately from
+registration failures; actual off answers retain the existing cleanup
+behavior. User, authentication, organization, entitlement, and activity
+prerequisites still apply. Spend approvals do not run with `ENABLE_CREDIT=false`.
+
+Memory and community defaults require the existing FalkorDB and model
+configuration; community maintenance, briefings, and execution summaries can
+perform background model work. Operators can disable their individual flags
+without enabling payments or any experimental dream stage.
+
+PostHog's single-flag SDK result conflates inactive or missing keys with failed
+reads. Backend reads of the selected mature booleans therefore try loaded local
+definitions, then at most one
+remote decision request. A complete response (`errorsWhileComputingFlags=false`)
+that omits the key means off; an incomplete or failed response omitting the key
+uses the fallback without authority. Valid per-key answers, including false,
+still win in partial responses. Unselected flags, payloads, and experiment reads
+retain their existing path and fallback semantics.
+In direct browser PostHog mode, the public SDK cannot distinguish inactive
+omissions from partial evaluation omissions: after a successful response an
+omitted mature boolean is conservatively false with `answered=false`. HTTP failures
+retain usable cached values; when none is available, or the provider is
+unconfigured, the selected fallback applies. The backend-served mode
+remains the default.
+
+Use the [Tuesday audit prompt](feature-flag-audit-prompt.md) to evaluate later
+default changes against rollout history and actual consumer behavior.
+
 ## One PostHog project per environment
 
 Dev and Prod each have their own PostHog project, and each project holds its

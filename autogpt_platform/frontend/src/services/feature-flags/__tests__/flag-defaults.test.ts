@@ -1,83 +1,125 @@
 import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
 vi.hoisted(() => {
   process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
 });
 import { Flag, useGetFlag } from "../use-get-flag";
 
-// LD is enabled but has not answered for any key — the exact window
-// (init lag, outage, missing flag key) where useGetFlag falls through
-// to defaultFlags in production.
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
+const vendor = vi.hoisted(() => ({
+  configured: true,
+  flags: {} as Record<string, unknown>,
 }));
 
-vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
-  DEFAULT_SEARCH_TERMS: [],
+vi.mock("launchdarkly-react-client-sdk", () => ({
+  useFlags: () => vendor.flags,
 }));
 
 vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
+  environment: { areFeatureFlagsEnabled: () => vendor.configured },
 }));
 
-const DREAM_GRAPHITI_FLAGS = [
+const MATURE_FLAGS = [
+  Flag.AUTOGPT_NEW_LAYOUT,
+  Flag.CHAT_SEARCH,
+  Flag.ARTIFACTS_PAGE,
+  Flag.HIRE_EXPERTS,
+  Flag.SKILLS_HUB,
+  Flag.ONBOARDING_BRAIN_DUMP,
+  Flag.ONBOARDING_EXPERT_TEAM,
   Flag.GRAPHITI_MEMORY,
   Flag.GRAPHITI_COMMUNITIES_ENABLED,
-  Flag.DREAM_PASS_ENABLED,
-  Flag.DREAM_PASS_INVALIDATE_ENTITY,
 ] as const;
 
-describe("dream/graphiti flag defaults fail closed", () => {
+const DEFAULT_SEARCH_TERMS = [
+  "Research",
+  "Marketing",
+  "Product",
+  "SEO",
+  "Business",
+];
+
+beforeEach(() => {
+  vendor.configured = true;
+  vendor.flags = {};
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("NEXT_PUBLIC_FORCE_FLAG_")) {
+      vi.stubEnv(key, undefined);
+    }
+  }
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe.each([true, false])("vendor configured: %s", (configured) => {
   beforeEach(() => {
-    Object.keys(process.env)
-      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
-      .forEach((k) => delete process.env[k]);
+    vendor.configured = configured;
   });
 
-  it.each(DREAM_GRAPHITI_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
-    (flag) => {
-      const { result } = renderHook(() => useGetFlag(flag));
-      expect(result.current).toBe(false);
-    },
-  );
+  it.each(MATURE_FLAGS)("defaults %s on without a vendor answer", (flag) => {
+    expect(renderHook(() => useGetFlag(flag)).result.current).toBe(true);
+  });
 
-  it("still lets local dev force-enable the stack via the env override", () => {
-    process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED = "true";
-    const { result } = renderHook(() => useGetFlag(Flag.DREAM_PASS_ENABLED));
-    expect(result.current).toBe(true);
+  it.each(
+    Object.values(Flag).filter(
+      (flag) =>
+        !MATURE_FLAGS.some((mature) => mature === flag) &&
+        flag !== Flag.MARKETPLACE_SEARCH_TERMS &&
+        flag !== Flag.COPILOT_BOT_PLATFORMS &&
+        flag !== Flag.COPILOT_STREAM_SHADOW,
+    ),
+  )("keeps the unselected %s off without a vendor answer", (flag) => {
+    expect(renderHook(() => useGetFlag(flag)).result.current).toBe(false);
+  });
+
+  it.each(MATURE_FLAGS)("honors an explicit env opt-out for %s", (flag) => {
+    vi.stubEnv(
+      `NEXT_PUBLIC_FORCE_FLAG_${flag.replaceAll("-", "_").toUpperCase()}`,
+      "false",
+    );
+    vendor.flags[flag] = true;
+
+    expect(renderHook(() => useGetFlag(flag)).result.current).toBe(false);
+  });
+
+  it("uses the mature marketplace search terms without a vendor answer", () => {
+    expect(
+      renderHook(() => useGetFlag(Flag.MARKETPLACE_SEARCH_TERMS)).result
+        .current,
+    ).toEqual(DEFAULT_SEARCH_TERMS);
   });
 });
 
-// These two have been flipped to `true` in the defaults map twice now, and
-// both times it silently swapped the onboarding wizard for every
-// LaunchDarkly-less environment — local dev, CI, Playwright — which is how
-// auth-happy-path stopped finding the pillbox step.
-const ONBOARDING_FLAGS = [
-  Flag.ONBOARDING_BRAIN_DUMP,
-  Flag.AUTOGPT_NEW_LAYOUT,
-] as const;
+describe("configured vendor answers", () => {
+  it.each(MATURE_FLAGS)("honors a vendor opt-out for %s", (flag) => {
+    vendor.flags[flag] = false;
 
-describe("onboarding flag defaults fail closed", () => {
-  beforeEach(() => {
-    Object.keys(process.env)
-      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
-      .forEach((k) => delete process.env[k]);
+    expect(renderHook(() => useGetFlag(flag)).result.current).toBe(false);
   });
 
-  it.each(ONBOARDING_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, so the default flow renders untouched",
-    (flag) => {
-      const { result } = renderHook(() => useGetFlag(flag));
-      expect(result.current).toBe(false);
-    },
-  );
+  it("keeps the vendor's marketplace search terms", () => {
+    vendor.flags[Flag.MARKETPLACE_SEARCH_TERMS] = ["Design", "Support"];
 
-  it("still lets local dev force-enable the brain dump via the env override", () => {
-    process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP = "true";
-    const { result } = renderHook(() => useGetFlag(Flag.ONBOARDING_BRAIN_DUMP));
-    expect(result.current).toBe(true);
+    expect(
+      renderHook(() => useGetFlag(Flag.MARKETPLACE_SEARCH_TERMS)).result
+        .current,
+    ).toEqual(["Design", "Support"]);
+  });
+
+  it("ignores boolean env overrides for the search terms array", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS", "false");
+
+    expect(
+      renderHook(() => useGetFlag(Flag.MARKETPLACE_SEARCH_TERMS)).result
+        .current,
+    ).toEqual(DEFAULT_SEARCH_TERMS);
+  });
+
+  it("still lets local dev explicitly enable an experimental gate", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED", "true");
+
+    expect(
+      renderHook(() => useGetFlag(Flag.DREAM_PASS_ENABLED)).result.current,
+    ).toBe(true);
   });
 });

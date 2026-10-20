@@ -17,12 +17,14 @@ from posthog import Posthog
 from backend.util.posthog_client import revision_properties
 from backend.util.settings import Settings
 
+from .defaults import DEFAULT_ON_FLAGS
 from .definition_cache import (
     MemoryFlagDefinitionCache,
     RedisFlagDefinitionCache,
     get_flag_definition_cache,
     refresh_interval_seconds,
 )
+from .posthog_boolean import evaluate_boolean
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +63,8 @@ async def evaluate_flag(
     """``(value, evaluated)`` for one raw flag read.
 
     ``evaluated`` is False whenever *default* is standing in for an answer
-    PostHog could not give. Unlike LaunchDarkly this needs no inference: the
-    SDK returns no result exactly when the flag was not resolved, and a
-    disabled one when it conclusively matched no release condition.
+    PostHog could not give. Boolean reads distinguish a complete remote
+    response omitting an inactive flag from a failed or incomplete read.
 
     A flag carrying a payload resolves to that payload, mirroring how the
     JSON-valued LaunchDarkly flags return their variation value. Only an
@@ -75,6 +76,18 @@ async def evaluate_flag(
         return default, False
 
     try:
+        if flag_key in DEFAULT_ON_FLAGS and isinstance(default, bool) and not exposure:
+            return await asyncio.get_running_loop().run_in_executor(
+                _read_executor,
+                functools.partial(
+                    evaluate_boolean,
+                    client,
+                    flag_key,
+                    distinct_id,
+                    person_properties,
+                    default,
+                ),
+            )
         # The read does network I/O whenever the local-evaluation poller has
         # no definition for the flag, so it cannot run on the event loop.
         result = await asyncio.get_running_loop().run_in_executor(

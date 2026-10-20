@@ -23,6 +23,7 @@ from backend.util.cache import cached
 from backend.util.settings import AppEnvironment, FeatureFlagBackend, Settings
 
 from . import posthog
+from .defaults import boolean_flag_default
 
 logger = logging.getLogger(__name__)
 # Own logger so a dual-run diff week can be queried without trawling the rest.
@@ -100,17 +101,16 @@ class Flag(str, Enum):
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
     # finalize / status / download endpoints 404 when off so a stale
     # frontend can't start writing recordings, and the wizard keeps
-    # rendering the pillbox step.  Fail-closed (default False).
+    # rendering the pillbox step. Defaults on after the completed rollout.
     ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
 
     # Gates the per-user weekly community rebuild registered by
-    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
-    # so the Leiden + LLM-summarization cost doesn't ramp before
-    # retrieval-relevance benefit is measured.
+    # ``add_community_rebuild_schedule``. Defaults on; operators can disable
+    # the weekly Leiden + LLM-summarization work with this flag.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
 
     # Parks expert work for the user's approval once her credit spend in the
-    # window reaches the approval threshold (SECRT-2599). Off by default.
+    # window reaches the approval threshold (SECRT-2599). Defaults on.
     EXPERT_SPEND_APPROVAL = "expert-spend-approval"
 
     # --- Dream-system gates (P0) ---
@@ -141,12 +141,12 @@ class Flag(str, Enum):
     # dump also produces expert recommendations, the copilot greeting
     # grows a team section, and Otto's empty-roster context tells
     # it that it is the Head of AI. Effective only when both are on;
-    # fail-closed (default False).
+    # both default on after the completed rollout.
     ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
     # browse and install end-to-end: the routes 404 when off, so the dark
-    # launch is not reachable by URL with the shelf hidden. Fail-closed.
+    # launch is not reachable by URL with the shelf hidden. Defaults on.
     SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the cascading-expiry helper
@@ -898,7 +898,7 @@ def _env_flag_override(flag_key: Flag | str) -> bool | None:
 async def is_feature_enabled(
     flag_key: Flag,
     user_id: str,
-    default: bool = False,
+    default: bool | None = None,
 ) -> bool:
     """
     Check if a feature flag is enabled for a user.
@@ -906,7 +906,7 @@ async def is_feature_enabled(
     Args:
         flag_key: The Flag enum value
         user_id: The user ID to evaluate the flag for
-        default: Default value if the vendor is unavailable or evaluation fails
+        default: Fallback when evaluation fails; omitted uses the per-flag default
 
     Returns:
         True if feature is enabled, False otherwise
@@ -918,7 +918,7 @@ async def is_feature_enabled(
 async def evaluate_feature_flag(
     flag_key: Flag,
     user_id: str,
-    default: bool = False,
+    default: bool | None = None,
 ) -> tuple[bool, bool]:
     """``(enabled, authoritative)`` for one flag read.
 
@@ -934,8 +934,9 @@ async def evaluate_feature_flag(
 async def _evaluate_boolean_flag(
     flag_key: str,
     user_id: str,
-    default: bool = False,
+    default: bool | None = None,
 ) -> tuple[bool, bool]:
+    default = boolean_flag_default(flag_key, default)
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
@@ -961,18 +962,20 @@ async def _evaluate_boolean_flag(
 
 def feature_flag(
     flag_key: str,
-    default: bool = False,
+    default: bool | None = None,
 ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """
     Decorator for async feature flag protected endpoints.
 
     Args:
         flag_key: The feature flag key
-        default: Default value if flag evaluation fails
+        default: Fallback when evaluation fails; omitted uses the per-flag default
 
     Returns:
         Decorator that only works with async functions
     """
+
+    default = boolean_flag_default(flag_key, default)
 
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
@@ -1037,7 +1040,7 @@ def feature_flag(
 
 def create_feature_flag_dependency(
     flag_key: Flag,
-    default: bool = False,
+    default: bool | None = None,
 ) -> Callable[[str | None], Awaitable[None]]:
     """
     Create a FastAPI dependency that checks a feature flag.
@@ -1048,7 +1051,7 @@ def create_feature_flag_dependency(
 
     Args:
         flag_key: The Flag enum value to check
-        default: Default value if flag evaluation fails
+        default: Fallback when evaluation fails; omitted uses the per-flag default
 
     Returns:
         An async dependency function that raises HTTPException if flag is disabled
@@ -1058,6 +1061,8 @@ def create_feature_flag_dependency(
             dependencies=[Depends(create_feature_flag_dependency(Flag.SKILLS_HUB))]
         )
     """
+
+    default = boolean_flag_default(flag_key.value, default)
 
     async def check_feature_flag(
         user_id: str | None = Security(get_optional_user_id),

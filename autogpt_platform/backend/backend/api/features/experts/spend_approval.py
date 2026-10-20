@@ -84,6 +84,8 @@ async def spend_approval_required(
 
     Like the weekly gate, the spend read is a snapshot: concurrent starts can
     each pass before any of them meters, bounded by their own cost."""
+    if not settings.config.enable_credit:
+        return None
     threshold = approval_threshold()
     if threshold is None:
         return None
