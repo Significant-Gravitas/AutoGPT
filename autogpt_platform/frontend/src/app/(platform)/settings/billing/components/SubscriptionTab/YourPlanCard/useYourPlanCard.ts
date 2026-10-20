@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2GetCopilotUsageQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
   useGetSubscriptionStatus,
@@ -11,8 +14,10 @@ import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/model
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated__/models/subscriptionTierRequestBillingCycle";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import type { SubscriptionUpgradePreview } from "@/app/api/__generated__/models/subscriptionUpgradePreview";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import {
   centsToUSD,
   getSubscriptionValue,
@@ -30,6 +35,7 @@ import {
 
 import { formatCents, formatShortDate } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
+import { useTierUpgradePreview } from "./useTierUpgradePreview";
 
 // ENTERPRISE seats are provisioned by an administrator and the backend
 // rejects every self-service change from them with 403, so the card must
@@ -63,6 +69,9 @@ function getPreviousTier(current: string): SubscriptionTierRequestTier | null {
 }
 
 export function useYourPlanCard() {
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const [handledUpgrade, setHandledUpgrade] = useState(false);
   const subscription = useGetSubscriptionStatus({
     query: {
       select: (res) =>
@@ -87,7 +96,9 @@ export function useYourPlanCard() {
   // The mutation settles before the Checkout redirect starts; this keeps the
   // plan actions busy across the wait for the Ads conversion too.
   const [isChangingTier, setIsChangingTier] = useState(false);
-  const isUpdatingTier = isUpdatePending || isChangingTier;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isUpdatingTier =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
 
   const {
     tier: effectiveTier,
@@ -117,6 +128,12 @@ export function useYourPlanCard() {
   // explicit feedback that the action took effect.
   const [pendingTierDowngrade, setPendingTierDowngrade] =
     useState<SubscriptionTierRequestTier | null>(null);
+  const upgradeReview = useTierUpgradePreview(
+    pendingTierUpgrade === "MAX" &&
+      effectiveTier === "PRO" &&
+      subscription.data?.has_active_stripe_subscription === true,
+    serverCycle,
+  );
 
   // Re-sync local toggle when the server response updates (e.g. after refetch
   // post-mutation). Avoids stale "yearly" pill after a successful switch.
@@ -198,11 +215,12 @@ export function useYourPlanCard() {
   async function changeTier(
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
+    preview?: SubscriptionUpgradePreview,
   ) {
-    if (isUpdatingTier) return false;
+    if (isUpdatingTier || checkoutRedirect.isRedirecting) return false;
     setIsChangingTier(true);
     try {
-      return await requestTierChange(tier, billingCycle);
+      return await requestTierChange(tier, billingCycle, preview);
     } finally {
       setIsChangingTier(false);
     }
@@ -211,6 +229,7 @@ export function useYourPlanCard() {
   async function requestTierChange(
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
+    preview?: SubscriptionUpgradePreview,
   ) {
     const cycle = billingCycle ?? "monthly";
     const { successURL, cancelURL } = getCheckoutReturnURLs({ tier, cycle });
@@ -221,6 +240,12 @@ export function useYourPlanCard() {
           success_url: successURL,
           cancel_url: cancelURL,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+          ...(preview
+            ? {
+                preview_id: preview.preview_id,
+                proration_date: preview.proration_date,
+              }
+            : {}),
           surface: "billing",
         },
       });
@@ -239,11 +264,29 @@ export function useYourPlanCard() {
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
+        checkoutRedirect.markRedirecting();
         return;
       }
-      await subscription.refetch();
+      await Promise.all([
+        subscription.refetch(),
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetCopilotUsageQueryKey(),
+        }),
+      ]);
       return true;
     } catch (error) {
+      if (
+        preview &&
+        error instanceof ApiError &&
+        (error.status === 409 || error.status === 402)
+      ) {
+        upgradeReview.invalidate(
+          error.status === 402
+            ? "Payment wasn’t completed. Check your payment method, then review the charge again."
+            : undefined,
+        );
+        return false;
+      }
       // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for
       // this tier. Match billingCycle === "yearly" specifically — a 422 on a
       // monthly request is a different failure (e.g. tier unconfigured) and
@@ -471,6 +514,24 @@ export function useYourPlanCard() {
     ].filter((line): line is { label?: string; text: string } => line !== null);
   }
 
+  useEffect(() => {
+    if (handledUpgrade || !subscription.data) return;
+    if (
+      searchParams.get("upgrade") === "MAX" &&
+      effectiveTier === "PRO" &&
+      !pendingTier
+    ) {
+      setPendingTierUpgrade("MAX");
+      setHandledUpgrade(true);
+    }
+  }, [
+    searchParams,
+    handledUpgrade,
+    subscription.data,
+    effectiveTier,
+    pendingTier,
+  ]);
+
   function getTierUpgradeDialogBody(): string {
     if (!pendingTierUpgrade) return "";
     const targetCents =
@@ -487,6 +548,7 @@ export function useYourPlanCard() {
     return [
       `You'll be charged the prorated difference immediately for the rest of your ${cycleNoun} period.`,
       renewLine,
+      "Your current usage carries over into the higher allowance.",
     ]
       .filter(Boolean)
       .join(" ");
@@ -494,10 +556,10 @@ export function useYourPlanCard() {
 
   async function confirmTierUpgrade() {
     if (!pendingTierUpgrade) return;
+    if (upgradeReview.required && !upgradeReview.preview) return;
     const target = pendingTierUpgrade;
-    const ok = await changeTier(target, serverCycle);
-    setPendingTierUpgrade(null);
-    if (!ok) return;
+    const ok = await changeTier(target, serverCycle, upgradeReview.preview);
+    if (ok) setPendingTierUpgrade(null);
   }
 
   function cancelTierUpgrade() {
@@ -537,7 +599,26 @@ export function useYourPlanCard() {
   return {
     plan,
     isLoading: subscription.isLoading,
+    isError: subscription.isError,
+    retry: () => void subscription.refetch(),
+    offerPriceCents: nextTierKey
+      ? serverCycle === "yearly"
+        ? tierCostsYearly[nextTierKey]
+        : tierCosts[nextTierKey]
+      : undefined,
     isUpdatingTier,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
+    upgradeReview,
+    upgradeUsageMultiplier:
+      subscription.data?.tier_multipliers?.MAX &&
+      subscription.data.tier_multipliers.PRO
+        ? Math.round(
+            (subscription.data.tier_multipliers.MAX /
+              subscription.data.tier_multipliers.PRO) *
+              10,
+          ) / 10
+        : undefined,
     // ENTERPRISE has no Stripe subscription to manage; the Payment method
     // card still exposes the portal for cards and invoices.
     canManagePortal: Boolean(paymentPortal.data) && !isAdminManaged,
@@ -608,7 +689,10 @@ export function useYourPlanCard() {
       // success_url redirect — there's no immediate proration risk, so go
       // straight to changeTier without a confirm step. Only paid→paid
       // upgrades hit the always_invoice immediate-billing path.
-      if (!plan.isPaidPlan) {
+      if (
+        !plan.isPaidPlan &&
+        !subscription.data?.has_active_stripe_subscription
+      ) {
         void changeTier(plan.nextTier, selectedCycle);
         return;
       }

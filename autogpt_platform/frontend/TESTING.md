@@ -60,7 +60,7 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
-    expect(await screen.findByText("My Agents")).toBeDefined();
+    expect(await screen.findByText("All Workflows")).toBeDefined();
   });
 
   test("shows error state on API failure", async () => {
@@ -172,6 +172,14 @@ If you reset the Docker DB and logins start failing:
 - `pnpm build-storybook` — build static
 - `pnpm test-storybook` — CI runner
 - When changing components in `src/components`, update or add stories and verify in Storybook/Chromatic
+
+## Performance measurement
+
+`pnpm perf` measures re-renders, main-thread time and JS heap for a fixed scenario (copilot, builder, library) against `NEXT_PUBLIC_RENDER_COUNTER=1 pnpm dev`, and `pnpm perf:compare` prints two labelled sets side by side. It is a local tool, not part of CI. See [frontend-perf-measurement.md](../../docs/engineering/frontend-perf-measurement.md) for setup, the scenarios and how to read the output.
+
+### Performance PRs
+
+A PR that claims to make the frontend faster includes the `pnpm perf:compare --a before --b after` table for the scenario it targets, measured on the same machine. A PR that adds a scenario adds its baseline to [frontend-perf-baseline.md](../../docs/engineering/frontend-perf-baseline.md).
 
 ## TDD Workflow
 

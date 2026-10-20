@@ -101,7 +101,7 @@ interface OnboardingWizardState {
   setOtherRole(otherRole: string): void;
   togglePainPoint(painPoint: string): void;
   setOtherPainPoint(otherPainPoint: string): void;
-  setSelectedPlan(plan: string): void;
+  setSelectedPlan(plan: string | null): void;
   setSelectedBilling(billing: "monthly" | "yearly"): void;
   applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;

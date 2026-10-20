@@ -178,29 +178,6 @@ def test_a_closed_account_is_refused_and_never_provisioned(
     provisioned.assert_not_awaited()
 
 
-def test_update_user_email_route(
-    mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
-) -> None:
-    """Test update user email endpoint"""
-    mocker.patch(
-        "backend.api.features.user.routes.update_user_email",
-        return_value=None,
-    )
-
-    response = client.post("/auth/user/email", json="newemail@example.com")
-
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["email"] == "newemail@example.com"
-
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response_data, indent=2, sort_keys=True),
-        "auth_email",
-    )
-
-
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:
     accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
     return User(
@@ -524,19 +501,18 @@ def test_the_frontend_terms_version_is_recognized() -> None:
 def test_invalid_json_request() -> None:
     """Test endpoint with invalid JSON"""
     response = client.post(
-        "/auth/user/email",
+        "/auth/user/timezone",
         content="invalid json",
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
 
 
-# The login surface: seven routes authenticate, one deliberately does not.
+# The login surface: six routes authenticate, one deliberately does not.
 # Nothing is hoisted onto this router — a router-level dependency would
 # silently authenticate the email-link route.
 AUTHENTICATED = {
     ("post", "/api/auth/user"),
-    ("post", "/api/auth/user/email"),
     ("get", "/api/auth/user/timezone"),
     ("post", "/api/auth/user/timezone"),
     ("post", "/api/auth/user/consent"),

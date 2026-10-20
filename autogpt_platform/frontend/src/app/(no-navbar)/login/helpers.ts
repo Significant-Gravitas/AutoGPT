@@ -4,6 +4,9 @@ import {
 } from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 
+export const ACCOUNT_BANNED_NOTICE_COPY =
+  "This account has been banned. If you think this is a mistake, please contact support.";
+
 export const EMAIL_VERIFICATION_NOTICE_COPY: Record<
   EmailVerificationNotice,
   string

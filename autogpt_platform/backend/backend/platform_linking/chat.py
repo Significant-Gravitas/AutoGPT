@@ -25,6 +25,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -63,6 +64,21 @@ def _unavailable_denial() -> TurnDenial:
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
     )
+
+
+async def _check_ban(user_id: str) -> TurnDenial | None:
+    """Fail closed on lookup failure, as the paywall check does."""
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(
+            f"evaluate_turn_gate: ban lookup failed for ...{user_id[-8:]}",
+            exc_info=True,
+        )
+        return _unavailable_denial()
+    if not banned:
+        return None
+    return TurnDenial(reason="banned", message="This account has been banned.")
 
 
 async def _check_paywall(user_id: str) -> TurnDenial | None:
@@ -105,6 +121,7 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
             user_id=user_id,
             daily_cost_limit=daily,
             weekly_cost_limit=weekly,
+            expected_tier=_tier,
         )
     except RateLimitExceeded as exc:
         # str(exc) already reads e.g. "You've reached your daily usage limit.
@@ -131,14 +148,18 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
 
 
 async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
-    """Apply the same subscription paywall + usage rate limits as the web UI.
+    """Apply the same ban, subscription paywall and usage limits as the web UI.
 
     The bot enqueues turns directly into the executor, bypassing the
     route-level paywall dependency and the dispatcher's rate-limit check, so
     without this a NO_TIER / over-cap user would get unmetered free usage.
     Returns a :class:`TurnDenial` to surface, or None when the turn may run.
     """
-    return await _check_paywall(user_id) or await _check_usage_limits(user_id)
+    return (
+        await _check_ban(user_id)
+        or await _check_paywall(user_id)
+        or await _check_usage_limits(user_id)
+    )
 
 
 async def resolve_owner(

@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -19,9 +20,11 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -36,6 +39,7 @@ from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
@@ -130,9 +134,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # new account: the personal org this call bootstraps does.
         was_created = row_created or org_created
         if was_created:
-            track_signup_completed(
-                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
-            )
+            signup_method = await _signup_method(user.id, user_data)
+            track_signup_completed(user_id=user.id, signup_method=signup_method)
+            set_account_properties(user.id, user.email, signup_method)
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -240,6 +244,25 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_banned(user_id: str) -> bool:
+    """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
+
+    Works in any process; the cache is read before the DatabaseManager is.
+    Lookup errors propagate, and ``@cached`` stores no call that raised.
+    """
+    return await user_db().is_auth_user_banned(user_id)
+
+
+async def is_auth_user_banned(user_id: str) -> bool:
+    """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
+    and a missing auth row are not bans."""
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not user.banned:
+        return False
+    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
 
 
 class OrphanedAuthIdentity(BaseModel):
@@ -377,25 +400,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     return [(u.id, u.email) for u in users]
 
 
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
-
-
 async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:
@@ -460,6 +464,50 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
                 exc_info=True,
             )
     return credentials
+
+
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return refreshable user OAuth credentials expired at or before the cutoff.
+
+    This cross-user query is for trusted system callers such as the scheduler,
+    never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+    )
+    now = int(time.time())
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping"
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and credential.access_token_expires_at <= refresh_before
+            and (
+                credential.refresh_token_expires_at is None
+                or credential.refresh_token_expires_at > now
+            )
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
 
 
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
@@ -845,16 +893,17 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
-        # local time. Fire-and-forget so this profile update returns
-        # immediately — the helper's lazy drift-detection path (via the
-        # Redis dedup key value) is the durable backstop if this
-        # fails or the user doesn't trigger a memory write within the
-        # 7-day key TTL.
+        # local time. Every memory scope of the user (the account and each
+        # scheduled expert) is re-registered. Fire-and-forget so this
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
-            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+            from backend.copilot.dream.registry import reregister_user
 
             task = asyncio.create_task(
-                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                reregister_user(user_id),
                 name=f"tz-reregister-{user_id[:12]}",
             )
             _background_tasks.add(task)

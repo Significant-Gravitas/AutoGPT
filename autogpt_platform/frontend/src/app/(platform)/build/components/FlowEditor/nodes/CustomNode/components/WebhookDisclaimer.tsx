@@ -42,9 +42,9 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                Agent Library
+                Workflow Library
               </Link>
-              {!isNodeSaved && " (after saving the graph)"}.
+              {!isNodeSaved && " (after saving the workflow)"}.
             </Text>
           </AlertDescription>
         </Alert>

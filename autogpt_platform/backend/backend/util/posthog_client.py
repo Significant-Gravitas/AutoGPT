@@ -7,11 +7,14 @@ process is both cheaper and safer than one per module. Emitters send through
 treats a missing client as "analytics disabled" and never lets tracking
 raise into the request or execution that produced the event. An event that
 must not be linked to any person goes through :func:`capture_anonymous`.
+Every client built here also stamps ``revision`` on everything it sends (see
+:func:`revision_properties`).
 """
 
+import asyncio
 import atexit
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from functools import cache
 from threading import Lock
 from typing import Any
@@ -38,19 +41,76 @@ def get_posthog_client() -> Posthog | None:
             return _client
 
         try:
-            settings = Settings()
-            if settings.secrets.posthog_api_key:
-                _client = Posthog(
-                    settings.secrets.posthog_api_key,
-                    host=settings.secrets.posthog_host,
-                )
-            else:
+            _client = new_posthog_client()
+            if _client is None:
                 logger.debug("PostHog API key not configured, analytics disabled")
         except Exception:
             logger.warning("Failed to initialize PostHog analytics", exc_info=True)
             return None
         _initialized = True
         return _client
+
+
+def new_posthog_client(**options: Any) -> Posthog | None:
+    """A client of the caller's own, for a one-off run that needs `options`
+    the shared one doesn't have, such as ``on_error`` to learn which uploads
+    failed. None when analytics is off. The caller shuts it down."""
+    settings = Settings()
+    if not settings.secrets.posthog_api_key:
+        return None
+    super_properties = {
+        **(options.pop("super_properties", None) or {}),
+        **revision_properties(settings),
+    }
+    return Posthog(
+        settings.secrets.posthog_api_key,
+        host=settings.secrets.posthog_host,
+        super_properties=super_properties,
+        **options,
+    )
+
+
+def revision_properties(settings: Settings) -> dict[str, str]:
+    """``revision`` for a client to stamp on every event it sends: the deployed
+    build's git sha, which Sentry reports as its release. Empty when the
+    deploy sets none, so local events carry no revision rather than an empty one."""
+    revision = settings.config.sentry_release.strip()
+    return {"revision": revision} if revision else {}
+
+
+# The client drops events once its in-memory queue is full.
+FLUSH_EVERY = 500
+
+# One event to send: the distinct id it is for, and the call that queues it on
+# the client it is given, saying whether the client took it.
+Send = tuple[str, Callable[[Posthog], bool]]
+
+
+async def send_each(sends: Iterable[Send]) -> int:
+    """Queue `sends` on a client of the run's own, flushing as it goes and
+    shutting it down at the end, for a one-off run such as a backfill. Returns
+    how many distinct ids PostHog didn't take: refused when queued, or in a
+    batch whose upload still failed after the client's retries.
+
+    Raises RuntimeError when analytics is off."""
+    failed: set[str] = set()
+
+    def upload_failed(_error: Exception, batch: list[dict]) -> None:
+        failed.update(str(event.get("distinct_id")) for event in batch)
+
+    client = new_posthog_client(on_error=upload_failed)
+    if client is None:
+        raise RuntimeError("PostHog is not configured")
+    try:
+        for index, (distinct_id, send) in enumerate(sends, start=1):
+            if not send(client):
+                failed.add(distinct_id)
+            if index % FLUSH_EVERY == 0:
+                await asyncio.to_thread(client.flush)
+    finally:
+        # Flushes what is left; failed uploads reach `upload_failed` first.
+        await asyncio.to_thread(client.shutdown)
+    return len(failed)
 
 
 @cache
@@ -65,8 +125,11 @@ def capture(
     *,
     source: str = "platform",
     dedup_key: str | None = None,
-) -> None:
-    """Send one event for *distinct_id* with the base properties.
+    client: Posthog | None = None,
+) -> bool:
+    """Send one event for *distinct_id* with the base properties, on
+    ``client`` (from `new_posthog_client`) or else the shared client. True
+    when the client queued it, which is not yet delivery.
 
     No user means no event: a synthetic distinct id would create a person
     nobody can merge. The base properties are applied last, so a caller can
@@ -78,13 +141,14 @@ def capture(
     which the client otherwise randomises per call.
     """
     if not distinct_id:
-        return
+        return False
     event_name = "<unknown>"
     try:
         event_name = event.value
-        client = get_posthog_client()
         if client is None:
-            return
+            client = get_posthog_client()
+        if client is None:
+            return False
         payload: dict[str, Any] = {
             **(properties or {}),
             "environment": _environment(),
@@ -96,12 +160,15 @@ def capture(
             event_uuid = str(
                 uuid5(NAMESPACE_URL, f"{distinct_id}:{event_name}:{dedup_key}")
             )
-        client.capture(
+        # The client returns None for an event it dropped, such as on a full
+        # queue.
+        queued = client.capture(
             distinct_id=distinct_id,
             event=event_name,
             properties=payload,
             uuid=event_uuid,
         )
+        return queued is not None
     except Exception:
         logger.warning(
             "Failed to send PostHog event %s for %s",
@@ -109,6 +176,7 @@ def capture(
             distinct_id,
             exc_info=True,
         )
+        return False
 
 
 def capture_anonymous(

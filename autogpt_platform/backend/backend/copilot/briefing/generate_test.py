@@ -3,11 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation
 from backend.copilot.briefing import generate as generate_module
+from backend.copilot.briefing import narrative
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.pro_activation import UsageActivationState
 from backend.util import posthog_client
 from backend.util.feature_flag import Flag
 
@@ -24,6 +27,13 @@ def stub_narrative(monkeypatch):
     """
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr(generate_module, "compose_narrative", mock)
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def paid_user(monkeypatch):
+    mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(generate_module, "is_user_paywalled", mock)
     return mock
 
 
@@ -277,6 +287,22 @@ async def test_generate_skips_when_flag_off(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_skips_a_paywalled_user_before_reading_anything(
+    monkeypatch, paid_user
+):
+    paid_user.return_value = True
+    monkeypatch.setattr(
+        generate_module, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    db = MagicMock()
+    monkeypatch.setattr(generate_module, "user_db", lambda: db)
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "paywalled"}
+    paid_user.assert_awaited_once_with("user-1")
+    db.get_user_by_id.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_generate_reports_an_unevaluated_flag_separately(monkeypatch):
     """A flag read that FAILED yields False, same as a real "off". Only the
     latter may unregister the cron, so the two must not share a reason."""
@@ -296,6 +322,26 @@ def funnel(monkeypatch):
     mock = MagicMock()
     monkeypatch.setattr(generate_module, "emit_funnel_event", mock)
     return mock
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_a_banned_owner_before_any_work(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    monkeypatch.setattr(generate, "is_user_banned", AsyncMock(return_value=True))
+    get_user = AsyncMock()
+    monkeypatch.setattr(generate, "user_db", lambda: MagicMock(get_user_by_id=get_user))
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    # Not "flag_disabled": the cron stays registered for if the ban is lifted.
+    assert result == {"status": "skipped", "reason": "banned"}
+    get_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -428,6 +474,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "content": render_briefing_markdown(expected_content),
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
+        "title": "Morning briefing — 2026-08-07",
     }
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
 
@@ -825,7 +872,7 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
     client.create_briefing.assert_not_awaited()
     update_call = client.update_briefing_content.await_args
     assert update_call.args[:2] == ("user-1", "briefing-1")
-    assert update_call.args[2]["run_items"][0]["agent_name"] == "Agent task"
+    assert update_call.args[2]["run_items"][0]["agent_name"] == "Workflow task"
 
 
 @pytest.mark.asyncio
@@ -1032,6 +1079,46 @@ async def test_narrative_failure_still_delivers_the_template_briefing(
         "**What ran**"
         in client.append_plain_session_message.await_args.kwargs["content"]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lookup_fails", [False, True])
+async def test_unavailable_narrative_attribution_still_delivers_template(
+    monkeypatch, lookup_fails
+):
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module, "compose_narrative", narrative.compose_narrative
+    )
+    lookup = AsyncMock(
+        return_value=UsageActivationState(user_id="user-1", tier="PRO", ready=False),
+        side_effect=RuntimeError("database unavailable") if lookup_fails else None,
+    )
+    monkeypatch.setattr(
+        usage_activation,
+        "pro_activation_db",
+        lambda: MagicMock(get_usage_activation_state=lookup),
+    )
+    provider = AsyncMock()
+    monkeypatch.setattr(narrative, "structured_completion", provider)
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    stored = client.create_briefing.await_args.args[2]
+    assert stored["narrative"] is None
+    assert client.append_plain_session_message.await_args.kwargs[
+        "content"
+    ] == render_briefing_markdown(BriefingContent.model_validate(stored))
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    lookup.assert_awaited_once_with("user-1")
+    provider.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -3,19 +3,24 @@
 Deletion revokes every key and grant, but one minted while the account was
 closing, or by an admin acting as the user afterwards, would otherwise keep
 working until the account's data is erased.
+
+A key or token whose owner is banned is refused with a 403.
 """
 
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import fastapi
 import pytest
 from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from pytest_mock import MockerFixture
 
+from backend.api.external import middleware
 from backend.api.external.middleware import (
     require_access_token,
     require_api_key,
@@ -37,6 +42,55 @@ def closed_account() -> Iterator[None]:
     yield
     for user_id in (OPEN_USER, CLOSED_USER):
         forget_account_state(user_id)
+
+
+@pytest.mark.parametrize(
+    "state, status",
+    [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
+)
+@pytest.mark.parametrize(
+    "path, headers",
+    [
+        ("/auth", {"X-API-Key": "key"}),
+        ("/auth", {"Authorization": "Bearer token"}),
+        ("/api-key", {"X-API-Key": "key"}),
+        ("/access-token", {"Authorization": "Bearer token"}),
+    ],
+)
+def test_a_credential_answers_by_its_owners_ban_state(
+    mocker, auth_row, state, status, path, headers
+):
+    user_id = auth_row(state)
+    mocker.patch.object(middleware, "validate_api_key", return_value=_key(user_id))
+    mocker.patch.object(
+        middleware, "validate_access_token", return_value=(_token(user_id), None)
+    )
+
+    response = _client().get(path, headers=headers)
+
+    assert response.status_code == status
+    if status == 403:
+        assert response.json()["detail"]["code"] == "account_banned"
+    else:
+        assert response.json() == {"user_id": user_id}
+
+
+def _client() -> TestClient:
+    app = fastapi.FastAPI()
+
+    @app.get("/auth")
+    async def by_auth(auth=fastapi.Security(middleware.require_auth)):
+        return {"user_id": auth.user_id}
+
+    @app.get("/api-key")
+    async def by_api_key(auth=fastapi.Security(middleware.require_api_key)):
+        return {"user_id": auth.user_id}
+
+    @app.get("/access-token")
+    async def by_access_token(auth=fastapi.Security(middleware.require_access_token)):
+        return {"user_id": auth.user_id}
+
+    return TestClient(app)
 
 
 def _key(user_id: str) -> APIKeyInfo:

@@ -87,6 +87,15 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             workflow.index("- name: Run Playwright E2E suite"),
         )
 
+    def test_seed_dump_excludes_migration_owned_activation_policy(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        dump = workflow.split("pg_dump -U postgres", 1)[1].split(
+            "postgres > /tmp/e2e_test_data.sql", 1
+        )[0]
+        self.assertIn("--exclude-table='platform.\"PaidUsageActivationPolicy\"'", dump)
+
     def test_seed_cache_key_uses_pristine_checkout(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
@@ -124,6 +133,19 @@ class E2ESeedCacheContractTests(unittest.TestCase):
                     any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns),
                     f"seed cache key does not cover {path}",
                 )
+
+
+class E2EImageBuildContractTests(unittest.TestCase):
+    def test_backend_images_reinstall_os_packages_daily(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        build = workflow.split(
+            "- name: Set up Platform - Build backend Docker images\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        # APT_REFRESH in backend/Dockerfile: the date re-runs the package
+        # installs once a day, so E2E tests the OS packages that ship.
+        self.assertIn('--set "*.args.APT_REFRESH=$(date -u +%F)"', build)
 
 
 class E2ECoverageContractTests(unittest.TestCase):
