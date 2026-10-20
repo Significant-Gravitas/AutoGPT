@@ -20,10 +20,9 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS_PAGE: "artifacts-page",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
     HIRE_EXPERTS: "hire-experts",
   },
-  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
+  useGetFlag: () => true,
   useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
 
