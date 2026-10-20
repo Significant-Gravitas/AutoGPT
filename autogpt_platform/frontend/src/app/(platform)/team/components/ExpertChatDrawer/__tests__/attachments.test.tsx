@@ -212,13 +212,18 @@ async function attachLocalFile(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("photo.png");
 }
 
-async function pickWorkspaceFile() {
+async function pickWorkspaceFile(user: ReturnType<typeof userEvent.setup>) {
   await openAttachMenu();
-  fireEvent.click(
+  await user.click(
     await screen.findByRole("menuitem", { name: /Use File from Workspace/ }),
   );
-  fireEvent.click(await screen.findByRole("button", { name: /brief\.pdf/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Add 1 file" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Use a file from your workspace",
+  });
+  await user.click(
+    await within(dialog).findByRole("button", { name: /brief\.pdf/ }),
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Add 1 file" }));
   await screen.findByText("brief.pdf");
 }
 
@@ -330,7 +335,7 @@ describe("ExpertChatDrawer attachments", () => {
     render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
 
     const input = await enabledComposer();
-    await pickWorkspaceFile();
+    await pickWorkspaceFile(user);
     await user.type(input, "summarize this{Enter}");
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
@@ -571,9 +576,10 @@ describe("ExpertChatDrawer attachments", () => {
 
     const input = await enabledComposer();
     await user.type(input, "hello{Enter}");
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     await screen.findByRole("button", { name: /Stop/ });
 
-    await pickWorkspaceFile();
+    await pickWorkspaceFile(user);
     await user.type(input, "and this one{Enter}");
 
     const bubble = await screen.findByTestId("pending-upload-message");
