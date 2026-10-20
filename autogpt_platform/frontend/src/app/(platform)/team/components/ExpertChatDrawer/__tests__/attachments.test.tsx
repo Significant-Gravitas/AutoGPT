@@ -217,8 +217,16 @@ async function pickWorkspaceFile() {
   fireEvent.click(
     await screen.findByRole("menuitem", { name: /Use File from Workspace/ }),
   );
-  fireEvent.click(await screen.findByRole("button", { name: /brief\.pdf/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Add 1 file" }));
+  // Query inside the picker, not the whole page: after each DOM change a
+  // page-wide role query makes happy-dom recompute every element's style,
+  // which under load can outlast findBy's default 1 s.
+  const picker = screen.getByRole("dialog", {
+    name: "Use a file from your workspace",
+  });
+  fireEvent.click(
+    await within(picker).findByRole("button", { name: /brief\.pdf/ }),
+  );
+  fireEvent.click(within(picker).getByRole("button", { name: "Add 1 file" }));
   await screen.findByText("brief.pdf");
 }
 
