@@ -39,17 +39,23 @@ class CLIPrelaunch:
         """Spawn the CLI for ``options``; ``None`` if it can't be spawned
         (the attempt then spawns its own, as it would have anyway)."""
         transport = SubprocessCLITransport(prompt=_no_prompt(), options=options)
+        connected = False
         try:
             await transport.connect()
+            connected = True
         except Exception:
             logger.warning(
                 "%s Couldn't start the CLI ahead of the query",
                 log_prefix,
                 exc_info=True,
             )
-            with suppress(Exception):
-                await transport.close()
             return None
+        finally:
+            # Also when the turn is cancelled mid-spawn: nothing holds the
+            # process yet, so nothing else would stop it.
+            if not connected:
+                with suppress(Exception):
+                    await transport.close()
         return cls(options, transport)
 
     def claim(self, options: ClaudeAgentOptions) -> SubprocessCLITransport | None:

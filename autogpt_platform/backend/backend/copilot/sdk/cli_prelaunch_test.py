@@ -100,6 +100,27 @@ async def test_a_process_that_cannot_spawn_leaves_the_launch_to_spawn_its_own(
     assert _FakeTransport.spawned[0].closed
 
 
+@pytest.mark.asyncio
+async def test_a_spawn_the_turn_cancels_midway_is_stopped(mocker):
+    entered = asyncio.Event()
+
+    class _HangingTransport(_FakeTransport):
+        async def connect(self) -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+    _FakeTransport.spawned = []
+    mocker.patch.object(cli_prelaunch, "SubprocessCLITransport", _HangingTransport)
+
+    start = asyncio.create_task(CLIPrelaunch.start(ClaudeAgentOptions(), "[test]"))
+    await entered.wait()
+    start.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+
+    assert _FakeTransport.spawned[0].closed
+
+
 _REPLY = "PRELAUNCH-REPLY-5d1e"
 
 
