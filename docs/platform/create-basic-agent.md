@@ -27,6 +27,8 @@ docker stop autogpt && docker rm autogpt
 # then rerun your original docker run command with --env-file autogpt.env added
 ```
 
+**Appliance installer**: add the keys to the installer's private `autogpt.env`, then recreate the container as described in [Runtime Configuration](installer.md#runtime-configuration).
+
 **Docker Compose from source**: add the same keys to `autogpt_platform/backend/.env`, then restart the services from `autogpt_platform/`:
 ```bash
 docker compose down && docker compose up -d
