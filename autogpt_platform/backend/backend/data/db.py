@@ -27,6 +27,31 @@ def add_param(url: str, key: str, value: str) -> str:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
 
+# Supabase's transaction pooler (port 6543) needs Prisma's pgbouncer mode, which
+# turns Prisma's prepared-statement cache off: there even `SELECT 1` takes about
+# five network round trips. The session pooler (5432) gives each client
+# connection a server connection of its own, so Prisma keeps the cache and a
+# query takes about one. It also holds a server connection for every pooled
+# client connection, so size DB_CONNECTION_LIMIT for it, and leave
+# DB_STATEMENT_CACHE_SIZE unset (0 turns the cache off).
+TRANSACTION_POOLER_PORT = 6543
+SESSION_POOLER_PORT = 5432
+
+
+def session_pooler_url(url: str) -> str:
+    """*url* moved from the transaction pooler to the session pooler."""
+    p = urlparse(url)
+    qs = dict(parse_qsl(p.query))
+    qs.pop("pgbouncer", None)
+    netloc = p.netloc
+    if p.port == TRANSACTION_POOLER_PORT:
+        netloc = f"{netloc.rsplit(':', 1)[0]}:{SESSION_POOLER_PORT}"
+    return urlunparse(p._replace(netloc=netloc, query=urlencode(qs)))
+
+
+if os.getenv("DB_POOL_MODE") == "session":
+    DATABASE_URL = session_pooler_url(DATABASE_URL)
+
 CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
 if CONN_LIMIT:
     DATABASE_URL = add_param(DATABASE_URL, "connection_limit", CONN_LIMIT)
