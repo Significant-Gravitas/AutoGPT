@@ -25,10 +25,18 @@ class _FakeTransport:
     def __init__(self, prompt, options: ClaudeAgentOptions) -> None:
         self.options = options
         self.closed = False
+        self.stderr_errors: list[Exception] = []
         _FakeTransport.spawned.append(self)
 
     async def connect(self) -> None:
-        return None
+        # The SDK reads the CLI's stderr from the spawn on, so a line the CLI
+        # writes while it boots reaches the turn's callback right away; the
+        # SDK logs and drops whatever the callback raises, as this does.
+        if self.options.stderr is not None:
+            try:
+                self.options.stderr("a line the CLI writes while it boots")
+            except Exception as error:
+                self.stderr_errors.append(error)
 
     async def close(self) -> None:
         self.closed = True
@@ -85,6 +93,17 @@ async def test_the_first_launch_runs_on_the_cli_spawned_ahead_of_the_query():
     assert not spawned.closed
     assert not [e for e in events if isinstance(e, StreamError)]
     assert any(isinstance(e, StreamStart) for e in events)
+
+
+@pytest.mark.asyncio
+async def test_the_cli_can_write_to_stderr_before_the_first_launch():
+    def _client(*args, **kwargs):
+        return _turns._make_client_mock(result_message=_turns._make_result_message())
+
+    await _run_turn(_client)
+
+    [spawned] = _FakeTransport.spawned
+    assert spawned.stderr_errors == []
 
 
 @pytest.mark.asyncio

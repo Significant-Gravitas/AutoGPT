@@ -5374,6 +5374,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed_tools=allowed,
         )
 
+        # Bound before ``CLIPrelaunch`` spawns the CLI: the SDK reads its stderr
+        # from the spawn on, so ``_on_stderr`` can run before the retry loop.
+        fallback_model_activated_per_attempt = False
+
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
             nonlocal fallback_model_activated_per_attempt
