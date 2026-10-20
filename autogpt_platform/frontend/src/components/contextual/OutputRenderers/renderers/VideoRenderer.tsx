@@ -1,4 +1,5 @@
 import React from "react";
+import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -106,13 +107,9 @@ function renderVideo(
   if (youtubeID) {
     return (
       <div className="group relative aspect-video w-full">
-        <iframe
-          className="h-full w-full rounded-md border border-gray-200"
-          src={`https://www.youtube.com/embed/${youtubeID}`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen allow-popups"
-          title="YouTube video"
+        <YouTubeEmbed
+          videoId={youtubeID}
+          className="rounded-md border border-gray-200"
         />
       </div>
     );

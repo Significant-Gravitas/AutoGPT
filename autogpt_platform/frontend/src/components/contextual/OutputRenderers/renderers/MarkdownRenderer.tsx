@@ -17,6 +17,7 @@ import {
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 
 const markdownPatterns = [
   /```[\s\S]*?```/u, // Fenced code blocks (check first)
@@ -57,14 +58,14 @@ function isVideoUrl(url: string): boolean {
   return videoExtensions.some((ext) => url.toLowerCase().includes(ext));
 }
 
-function getVideoEmbedUrl(url: string): string | null {
-  const youtubeMatch = url.match(
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
+function getYouTubeVideoId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
   );
-  if (youtubeMatch) {
-    return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
-  }
+  return match ? match[1] : null;
+}
 
+function getVideoEmbedUrl(url: string): string | null {
   const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
   if (vimeoMatch) {
     return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
@@ -78,6 +79,20 @@ function getVideoEmbedUrl(url: string): string | null {
 }
 
 function renderVideoEmbed(url: string): React.ReactNode {
+  const youTubeVideoId = getYouTubeVideoId(url);
+  if (youTubeVideoId) {
+    return (
+      <div className="my-4">
+        <div className="relative aspect-video">
+          <YouTubeEmbed
+            videoId={youTubeVideoId}
+            className="absolute left-0 top-0 rounded-lg shadow-md"
+          />
+        </div>
+      </div>
+    );
+  }
+
   const embedUrl = getVideoEmbedUrl(url);
 
   if (!embedUrl) {

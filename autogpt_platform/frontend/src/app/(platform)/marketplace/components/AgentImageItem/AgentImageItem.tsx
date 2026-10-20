@@ -12,6 +12,7 @@ import { useAgentImageItem } from "./useAgentImageItem";
 import { ImageNotFound01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
+import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 
 interface AgentImageItemProps {
   image: string;
@@ -30,6 +31,7 @@ export function AgentImageItem({
 }: AgentImageItemProps) {
   const { videoRef } = useAgentImageItem({ playingVideoIndex, index });
   const isVideoFile = isValidVideoFile(image);
+  const youTubeVideoId = getYouTubeVideoId(image);
   const [imageLoaded, setImageLoaded] = useState(false);
   const { showImage, handleImageError } = useImageFallback(image);
 
@@ -41,15 +43,8 @@ export function AgentImageItem({
     <div className="relative">
       <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
-          getYouTubeVideoId(image) ? (
-            <iframe
-              width="100%"
-              height="100%"
-              src={`https://www.youtube.com/embed/${getYouTubeVideoId(image)}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              title="YouTube video player"
-            ></iframe>
+          youTubeVideoId ? (
+            <YouTubeEmbed videoId={youTubeVideoId} />
           ) : (
             <div className="relative h-full w-full overflow-hidden">
               <video
