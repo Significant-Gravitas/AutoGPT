@@ -107,12 +107,15 @@ async def test_unknown_jobs_are_not_paused(scheduler):
 
 @pytest.mark.asyncio
 async def test_a_resume_that_fails_pauses_again_what_it_resumed(scheduler):
+    """And the job it failed on, whose resume may have landed with its answer
+    lost: the chat stays listed as paused, so none of its jobs may fire."""
     scheduler.resume_schedule.side_effect = _fail_on("b", RuntimeError("down"))
 
     with pytest.raises(RuntimeError):
-        await jobs.resume_jobs(_USER, ["a", "b"])
+        await jobs.resume_jobs(_USER, ["a", "b", "c"])
 
-    scheduler.pause_schedule.assert_awaited_once_with("a", user_id=_USER)
+    paused = [call.args[0] for call in scheduler.pause_schedule.await_args_list]
+    assert paused == ["a", "b"]
 
 
 @pytest.mark.asyncio

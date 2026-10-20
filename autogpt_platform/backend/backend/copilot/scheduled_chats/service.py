@@ -81,7 +81,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     step = advance(current, run.outcome)
     if step.streak is None:
         if row is not None:
-            await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+            await _drop(row, saw_pause=current is not None and current.paused)
         return
     if step.streak == current:
         return
@@ -332,6 +332,17 @@ async def _save(
     except UniqueViolationError:
         # The paused row the delete left in place.
         return None
+
+
+async def _drop(row: ScheduledChatStreak, *, saw_pause: bool) -> bool:
+    """End the streak a run read, and say whether it did. As in ``_save``, a
+    view from before a pause never ends that pause: its jobs are paused, and
+    without the row nothing lists or resumes them. Only a run that saw the
+    pause, and found the jobs firing again, ends one."""
+    where: ScheduledChatStreakWhereInput = {"id": row.id}
+    if not saw_pause:
+        where["pausedAt"] = None
+    return bool(await ScheduledChatStreak.prisma().delete_many(where=where))
 
 
 def _streak_of(row: ScheduledChatStreak | None) -> Streak | None:
