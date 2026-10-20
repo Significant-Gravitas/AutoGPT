@@ -49,7 +49,8 @@ def session_pooler_url(url: str) -> str:
     return urlunparse(p._replace(netloc=netloc, query=urlencode(qs)))
 
 
-if os.getenv("DB_POOL_MODE") == "session":
+DB_POOL_MODE = os.getenv("DB_POOL_MODE", "")
+if DB_POOL_MODE == "session":
     DATABASE_URL = session_pooler_url(DATABASE_URL)
 
 CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
@@ -94,6 +95,15 @@ async def connect():
 
     if not prisma.is_connected():
         raise ConnectionError("Failed to connect to Prisma.")
+
+    # Said at connect, not at import: logging isn't set up yet when this module
+    # loads, and a mistyped mode would otherwise look like no speed-up at all.
+    if DB_POOL_MODE == "session":
+        logger.info("Connected through Supabase's session pooler (DB_POOL_MODE)")
+    elif DB_POOL_MODE:
+        logger.warning(
+            f"Ignored DB_POOL_MODE={DB_POOL_MODE!r}: the only mode is 'session'"
+        )
 
     # Connection acquired from a pool like Supabase somehow still possibly allows
     # the db client obtains a connection but still reject query connection afterward.

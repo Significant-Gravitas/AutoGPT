@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.data import db as db_module
-from backend.data.db import DISCONNECT_TIMEOUT, disconnect, session_pooler_url
+from backend.data.db import DISCONNECT_TIMEOUT, connect, disconnect, session_pooler_url
 
 
 # The root conftest spins a full test server for every test via an autouse
@@ -44,6 +44,36 @@ async def test_disconnect_is_a_noop_when_not_connected(monkeypatch):
     await disconnect()
 
     prisma.disconnect.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("pool_mode", "level", "says"),
+    [
+        ("session", "INFO", "session pooler"),
+        ("Session", "WARNING", "Ignored DB_POOL_MODE='Session'"),
+        ("", None, None),
+    ],
+    ids=["session mode", "a mistyped mode", "unset"],
+)
+async def test_connect_says_which_pooler_mode_it_took(
+    monkeypatch, caplog, pool_mode, level, says
+):
+    """A rollout that flips the setting can read in the logs whether it took."""
+    prisma = MagicMock()
+    prisma.is_connected.side_effect = [False, True]
+    prisma.connect = AsyncMock()
+    monkeypatch.setattr(db_module, "prisma", prisma)
+    monkeypatch.setattr(db_module, "DB_POOL_MODE", pool_mode)
+    caplog.set_level("INFO", logger=db_module.__name__)
+
+    await connect()
+
+    said = [r for r in caplog.records if r.name == db_module.__name__]
+    if says is None:
+        assert said == []
+    else:
+        assert [r.levelname for r in said] == [level]
+        assert says in said[0].getMessage()
 
 
 class TestSessionPoolerUrl:
