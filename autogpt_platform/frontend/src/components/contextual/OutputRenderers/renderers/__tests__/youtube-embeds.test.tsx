@@ -132,4 +132,19 @@ describe("YouTube links in run output", () => {
     expect(anchors[0].textContent).toBe("Channel");
     expect(container.querySelector("a a, img, video, iframe")).toBeNull();
   });
+
+  it("shows only the text of a linked YouTube video image", () => {
+    configureCookiebot();
+    installCookiebot({ marketing: false });
+
+    const container = renderMarkdown(
+      `# Demo\n\n[![Watch the demo](${WATCH_URL})](https://example.com/page)`,
+    );
+
+    const anchor = container.querySelector(
+      'a[href="https://example.com/page"]',
+    );
+    expect(anchor?.textContent).toBe("Watch the demo");
+    expect(anchor?.querySelector("a, button, iframe, video, img")).toBeNull();
+  });
 });

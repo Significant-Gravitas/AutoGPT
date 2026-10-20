@@ -94,17 +94,20 @@ function renderPlainLink(url: string, label: React.ReactNode = url) {
 // anchor of its own (anchors can't nest).
 const InsideLinkContext = React.createContext(false);
 
-interface YouTubePageLinkProps {
-  url: string;
-  label: string;
+interface MarkdownVideoImageProps {
+  src: string;
+  alt?: string;
 }
 
-// An image pointing at a YouTube page that isn't one video: shown as a link,
-// since an <img> would fetch it before consent.
-function YouTubePageLink({ url, label }: YouTubePageLinkProps) {
+// An image whose source is a video, or a YouTube page that isn't one video
+// (shown as a link, since an <img> would fetch it before consent). Inside a
+// link only its text is shown: a player or a second link can't sit in an
+// anchor.
+function MarkdownVideoImage({ src, alt }: MarkdownVideoImageProps) {
   const insideLink = React.useContext(InsideLinkContext);
-  if (insideLink) return <>{label}</>;
-  return renderPlainLink(url, label);
+  if (insideLink) return <>{alt || src}</>;
+  if (isVideoUrl(src)) return renderVideoEmbed(src);
+  return renderPlainLink(src, alt || src);
 }
 
 function renderVideoEmbed(url: string): React.ReactNode {
@@ -397,12 +400,8 @@ function renderMarkdown(
           ),
           // Image handling
           img: ({ src, alt, ...props }) => {
-            // Check if it's a video URL pattern
-            if (src && isVideoUrl(src)) {
-              return renderVideoEmbed(src);
-            }
-            if (src && isYouTubeUrl(src)) {
-              return <YouTubePageLink url={src} label={alt || src} />;
+            if (src && (isVideoUrl(src) || isYouTubeUrl(src))) {
+              return <MarkdownVideoImage src={src} alt={alt} />;
             }
 
             return (
