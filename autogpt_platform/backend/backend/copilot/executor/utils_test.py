@@ -531,8 +531,11 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_schedule_turn_hands_impersonation_to_the_turn() -> None:
-    slot = MagicMock(admitted=True)
+@pytest.mark.parametrize("user_id", ["u1", None])
+async def test_schedule_turn_hands_impersonation_to_the_turn(
+    user_id: str | None,
+) -> None:
+    slot = MagicMock(admitted=bool(user_id))
 
     @asynccontextmanager
     async def acquire(*_args, **_kwargs):
@@ -548,13 +551,13 @@ async def test_schedule_turn_hands_impersonation_to_the_turn() -> None:
         patch.object(utils, "dispatch_turn", new=dispatch),
     ):
         await utils.schedule_turn(
-            session_id="s1", user_id="u1", turn_id="t1", message="hi"
+            session_id="s1", user_id=user_id, turn_id="t1", message="hi"
         )
         assert dispatch.await_args.kwargs["impersonated"] is False
 
         await utils.schedule_turn(
             session_id="s1",
-            user_id="u1",
+            user_id=user_id,
             turn_id="t2",
             message="hi",
             impersonated=True,

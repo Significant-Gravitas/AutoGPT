@@ -17,6 +17,7 @@ import pytest
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
+from backend.copilot.turn_queue import SessionNotIdle
 
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,
@@ -116,14 +117,16 @@ def test_dispatch_retries_until_success(mock_dispatch_sleep):
     assert mock_dispatch_sleep.call_args_list == [call(1), call(2)]
 
 
+@pytest.mark.parametrize("error", [RuntimeError("rmq down"), SessionNotIdle("sess-1")])
 def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker(
     mock_dispatch_sleep,
+    error: Exception,
 ):
     with (
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("rmq down"),
+            side_effect=error,
         ) as mock_schedule,
         patch(
             "backend.copilot.executor.manager._persist_switch_failure_marker"

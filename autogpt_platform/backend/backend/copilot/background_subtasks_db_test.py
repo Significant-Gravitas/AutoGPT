@@ -423,10 +423,20 @@ async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
+@pytest.mark.parametrize("racing_dispatch", [False, True])
 async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
     world: World,
+    racing_dispatch: bool,
 ):
     task = await world.launch()
+    if racing_dispatch:
+        with pytest.raises(turn_queue.SessionNotIdle):
+            await utils.schedule_turn(
+                session_id=world.parent.session_id,
+                user_id=world.user_id,
+                turn_id=str(uuid4()),
+                message="A request that lost the idle-slot race",
+            )
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
         world.parent.session_id,

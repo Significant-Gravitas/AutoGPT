@@ -522,6 +522,8 @@ async def schedule_turn(
 
     Atomicity guarantees:
 
+    * If another turn already owns the session, :class:`SessionNotIdle`
+      is raised without changing its durable turn ID or Redis stream.
     * If the user is at the configured concurrent-turn cap,
       :class:`ConcurrentTurnLimitError` is raised before any side-effects
       (no stream registry write, no queue publish). Caller maps to HTTP 429.
@@ -544,15 +546,17 @@ async def schedule_turn(
     with 5 running + 10 queued can't slip a 16th task through this
     path; ``acquire_turn_slot`` only sees the running pool.
     """
-    if user_id:
-        from backend.copilot.turn_queue import count_inflight_turns
+    from backend.copilot.turn_queue import SessionNotIdle, count_inflight_turns
 
+    if user_id:
         inflight_cap = get_inflight_turn_limit()
         if await count_inflight_turns(user_id) >= inflight_cap:
             raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
+        if user_id and not slot.admitted:
+            raise SessionNotIdle(session_id)
         await dispatch_turn(
             slot,
             session_id=session_id,
