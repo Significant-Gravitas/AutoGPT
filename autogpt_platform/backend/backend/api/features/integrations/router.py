@@ -82,7 +82,7 @@ from backend.integrations.service_identity import (
     service_for_credential,
     service_for_provider,
 )
-from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -1214,6 +1214,12 @@ async def webhook_ingress_generic(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
+    if not supports_webhooks(provider):
+        # Worded like the unknown-webhook 404 below, so the two can't be told apart.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Webhook #{webhook_id} not found",
+        )
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
