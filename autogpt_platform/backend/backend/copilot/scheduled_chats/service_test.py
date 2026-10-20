@@ -272,6 +272,32 @@ async def test_switching_a_paused_routine_off_forgets_its_streak(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_is_switched_off_even_when_its_streak_cannot_be_cleared(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """Its jobs are deleted and its row says off by then: a 500 would say the
+    switch failed."""
+    scheduler.delete_schedule = AsyncMock()
+    mocker.patch(
+        "backend.api.features.experts.routine_jobs.get_scheduler_client",
+        return_value=scheduler,
+    )
+    mocker.patch.object(
+        routines, "forget_routine", AsyncMock(side_effect=RuntimeError("db blip"))
+    )
+    user_id, _ = await _owner()
+    try:
+        routine = await _routine(user_id)
+
+        await routines.disable_routine(user_id, None, routine.id)
+
+        row = await ExpertRoutine.prisma().find_unique(where={"id": routine.id})
+        assert row is not None and row.scheduleIds == [] and row.enabledAt is None
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_schedule_that_could_not_be_paused_does_not_say_it_was(
     server: SpinTestServer, scheduler: MagicMock
 ):
@@ -744,7 +770,9 @@ async def test_a_resume_that_fails_partway_pauses_the_rest_again(
         with pytest.raises(RuntimeError):
             await resume_scheduled_chat(user_id, routine.id)
 
-        scheduler.pause_schedule.assert_awaited_once_with("job-a", user_id=user_id)
+        # job-b too: its resume may have landed with the answer lost.
+        paused = [call.args[0] for call in scheduler.pause_schedule.await_args_list]
+        assert paused == ["job-a", "job-b"]
         assert len(await list_paused_scheduled_chats(user_id)) == 1
     finally:
         await _cleanup(user_id)
