@@ -163,11 +163,12 @@ async def _recover_followup(task: BackgroundTask, now: datetime) -> None:
             task.user_id, task.parent_session_id, task.wake_id, "Follow-up interrupted"
         )
         return
-    pending = await chat_db().get_latest_user_message_in_session(task.parent_session_id)
-    if pending is None or (pending.metadata or {}).get("turn_id") != task.wake_id:
+    envelope = await background_task_db().get_background_followup_envelope(
+        task.id, task.user_id
+    )
+    if envelope is None:
         await background_task_db().suppress_background_followup(task.id, task.user_id)
         return
-    envelope = TurnEnvelope.model_validate((pending.metadata or {}).get("envelope"))
     if envelope.deadline_at is not None and now >= envelope.deadline_at:
         if status == "queued":
             await cancel_queued_turn(

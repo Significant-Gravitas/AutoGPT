@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession
+from prisma.types import ChatMessageWhereInput
 
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
@@ -13,6 +14,7 @@ from backend.copilot.background_task import (
 )
 from backend.copilot.model import ChatSessionMetadata, _parse_json_field
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.tree import TurnEnvelope
 from backend.data import db
 from backend.util.json import SafeJson
 
@@ -252,6 +254,35 @@ async def suppress_background_followup(task_id: str, user_id: str) -> None:
     await _close(db.prisma, task_id, user_id)
 
 
+async def get_background_followup_envelope(
+    task_id: str, user_id: str
+) -> TurnEnvelope | None:
+    task = await get_background_task(task_id, user_id)
+    if task is None or task.followup_state != "queued":
+        return None
+    parent = await ChatSession.prisma().find_unique(
+        where={"id": task.parent_session_id}
+    )
+    if parent is None or not _matches(parent, task):
+        return None
+    where: ChatMessageWhereInput = {"sessionId": parent.id, "role": "user"}
+    if parent.chatStatus != "queued":
+        if (
+            _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+            != task.wake_id
+        ):
+            return None
+        where["id"] = task.wake_id
+    message = await ChatMessage.prisma().find_first(
+        where=where, order={"sequence": "desc"}
+    )
+    if message is None or message.id != task.wake_id:
+        return None
+    return TurnEnvelope.model_validate(
+        _parse_json_field(message.metadata, default={}).get("envelope")
+    )
+
+
 async def release_expired_background_turn(
     task_id: str,
     user_id: str,
@@ -268,11 +299,8 @@ async def release_expired_background_turn(
     await db.execute_raw_with_schema(
         """UPDATE {schema_prefix}"ChatSession" session SET "chatStatus"='idle'
         WHERE session.id=$1 AND "userId"=$2 AND "chatStatus"='running'
-          AND "updatedAt" < $4::timestamptz AND (
-            SELECT message.id FROM {schema_prefix}"ChatMessage" message
-            WHERE message."sessionId"=session.id AND message.role='user'
-            ORDER BY message.sequence DESC LIMIT 1
-          )=$3""",
+          AND "updatedAt" < $4::timestamptz
+          AND session.metadata->>'_active_turn_id'=$3""",
         session_id,
         user_id,
         turn_id,
@@ -408,7 +436,7 @@ def _matches(session: ChatSession | None, task: BackgroundTask) -> bool:
 async def _close(tx: Prisma, task_id: str, user_id: str) -> None:
     await db.execute_raw_with_schema(
         """UPDATE {schema_prefix}"ChatBackgroundTask" SET "followupState"='suppressed'
-        WHERE id=$1 AND "userId"=$2""",
+        WHERE id=$1 AND "userId"=$2 AND "followupState" IN ('waiting','queued')""",
         task_id,
         user_id,
         client=tx,

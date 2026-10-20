@@ -45,6 +45,8 @@ from backend.copilot.model import (
     append_and_save_message,
     create_chat_session,
 )
+from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.response_model import StreamError, StreamTextDelta
 from backend.copilot.tool_call_context import tool_call_context
@@ -863,12 +865,15 @@ async def test_busy_parent_past_delivery_window_gets_one_notice_when_idle(world:
     assert len(world.published.await_args_list) == 1
 
 
-@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize(
+    "state", ["queued", "running", "running_with_pending", "orphaned_with_pending"]
+)
 async def test_expired_followup_is_recovered_once(
     world: World,
     monkeypatch: pytest.MonkeyPatch,
-    running: bool,
+    state: str,
 ):
+    running = state != "queued"
     task = await world.launch()
     await world.finish_child(task)
     await world.finish_parent()
@@ -883,6 +888,26 @@ async def test_expired_followup_is_recovered_once(
     assert pending and pending.metadata
     envelope = TurnEnvelope.model_validate(pending.metadata["envelope"])
     assert envelope.deadline_at
+    if state.endswith("with_pending"):
+        session = await model.get_chat_session(task.parent_session_id, world.user_id)
+        assert session
+        assert await persist_pending_as_user_rows(
+            session,
+            None,
+            [PendingMessage(content="Keep the update short.")],
+            log_prefix="background-recovery-test",
+        )
+        latest = await chat_db().get_latest_user_message_in_session(
+            task.parent_session_id
+        )
+        assert latest and (latest.metadata or {}).get("turn_id") != task.wake_id
+        if state == "orphaned_with_pending":
+            await stream_registry.delete_session_meta(
+                task.parent_session_id, turn_id=task.wake_id
+            )
+        await background_delivery.reconcile_background_subtasks()
+        stored = await background_task_db.get_background_task(task.id, world.user_id)
+        assert stored and stored.followup_state == "queued"
     clock = MagicMock(wraps=datetime)
     clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
     monkeypatch.setattr(background_delivery, "datetime", clock)
@@ -900,6 +925,54 @@ async def test_expired_followup_is_recovered_once(
     assert "within its limits" in (notices[0].content or "")
     assert task.child_session_id in (notices[0].content or "")
     assert len(world.published.await_args_list) == (2 if running else 1)
+
+
+async def test_recovery_does_not_cancel_a_newer_parent_turn(world: World):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    await stream_registry.mark_session_completed(
+        task.parent_session_id, turn_id=task.wake_id
+    )
+    next_turn = await utils.schedule_chat_turn(
+        session_id=task.parent_session_id,
+        user_id=world.user_id,
+        message="Start the next task.",
+    )
+    assert next_turn
+
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "suppressed"
+    active = await stream_registry.get_session(task.parent_session_id)
+    assert active and active.turn_id == next_turn and active.status == "running"
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == "running"
+
+
+async def test_recovery_envelope_remains_owner_and_route_scoped(world: World):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    assert (
+        await background_task_db.get_background_followup_envelope(
+            task.id, world.user_id
+        )
+        == world.entry(task.parent_session_id).envelope
+    )
+    assert not await background_task_db.get_background_followup_envelope(
+        task.id, "someone-else"
+    )
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET metadata=metadata || $2::jsonb WHERE id=$1',
+        task.parent_session_id,
+        '{"llm_auth_provider":"codex"}',
+    )
+    assert not await background_task_db.get_background_followup_envelope(
+        task.id, world.user_id
+    )
 
 
 @pytest_asyncio.fixture(loop_scope="session")

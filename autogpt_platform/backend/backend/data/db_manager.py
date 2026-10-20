@@ -748,6 +748,9 @@ class DatabaseManager(AppService):
     complete_background_task = _(background_task_db.complete_background_task)
     list_background_tasks = _(background_task_db.list_background_tasks)
     enqueue_background_followup = _(background_task_db.enqueue_background_followup)
+    get_background_followup_envelope = _(
+        background_task_db.get_background_followup_envelope
+    )
     suppress_background_followup = _(background_task_db.suppress_background_followup)
     release_expired_background_turn = _(
         background_task_db.release_expired_background_turn
@@ -1266,6 +1269,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     complete_background_task = d.complete_background_task
     list_background_tasks = d.list_background_tasks
     enqueue_background_followup = d.enqueue_background_followup
+    get_background_followup_envelope = d.get_background_followup_envelope
     suppress_background_followup = d.suppress_background_followup
     release_expired_background_turn = d.release_expired_background_turn
     cancel_background_tasks = d.cancel_background_tasks
