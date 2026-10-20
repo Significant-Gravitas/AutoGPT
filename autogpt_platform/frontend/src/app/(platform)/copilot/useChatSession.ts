@@ -348,12 +348,15 @@ export function useChatSession({
     // never the right recovery.
     sendStartedRef.current = true;
     setHasSendStarted(true);
+    const transports =
+      chatTransports ??
+      (transportQuery.isError ? undefined : await loadChatTransports());
     const resolvedLLMAuth = resolveCopilotLLMAuthSelection(
-      chatTransports,
+      transports,
       copilotLlmAuth,
     );
-    const availableTransports = getAvailableLLMTransports(chatTransports);
-    if (transportQuery.isError && chatTransports === undefined) {
+    const availableTransports = getAvailableLLMTransports(transports);
+    if (transports === undefined) {
       toast({
         variant: "destructive",
         title: "Could not check AI connections",
@@ -361,7 +364,7 @@ export function useChatSession({
       });
       throw new ReportedSendError("Could not load AI connections");
     }
-    if (chatTransports !== undefined && availableTransports.length === 0) {
+    if (availableTransports.length === 0) {
       // NoAIConnectionNotice above the composer says how to fix this and
       // stays put; the toast only marks that this send went nowhere.
       toast({
@@ -373,21 +376,13 @@ export function useChatSession({
       throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
-      const connectionsAreLoading = chatTransports === undefined;
       toast({
         variant: "destructive",
-        title: connectionsAreLoading
-          ? "AI connections are still loading"
-          : "Choose an AI connection",
-        description: connectionsAreLoading
-          ? "Wait a moment and try again."
-          : "Select the connection your expert should use before starting a new task.",
+        title: "Choose an AI connection",
+        description:
+          "Select the connection your expert should use before starting a new task.",
       });
-      throw new ReportedSendError(
-        connectionsAreLoading
-          ? "AI connections are still loading"
-          : "AI connection selection required",
-      );
+      throw new ReportedSendError("AI connection selection required");
     }
     if (
       copilotLlmAuth !== null &&
@@ -440,6 +435,13 @@ export function useChatSession({
       }
       throw error;
     }
+  }
+
+  // A send typed before the connection list arrives waits for it instead of
+  // being refused; `cancelRefetch: false` joins the request already in flight.
+  async function loadChatTransports() {
+    const { data } = await transportQuery.refetch({ cancelRefetch: false });
+    return data?.status === 200 ? data.data.transports : undefined;
   }
 
   // Raw messages from the initial page — exposed for cross-page
