@@ -807,6 +807,39 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
             "Otto couldn't start this background work because its saved limits are unavailable.",
             False,
         ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": None,
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
         ({held._WAKE_KEY: True}, None, turn_queue.UNRECORDED_WAKE, False),
     ],
     ids=[
@@ -815,6 +848,9 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         "permissions-unreadable",
         "tree-refused",
         "background-limits-unreadable",
+        "background-child-envelope-invalid",
+        "background-child-envelope-null",
+        "background-followup-envelope-invalid",
         "approval-limits-unreadable",
     ],
 )
@@ -849,16 +885,16 @@ async def test_a_refused_queued_turn_closes_and_returns_any_child_node(
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is False
 
+    if released:
+        release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+    else:
+        release.assert_not_awaited()
     assert posted.await_args.args[1].content == reason
     if refusal is None:
         dispatched.assert_not_awaited()
     db.update_chat_session_status.assert_awaited_once_with(
         session_id="s1", expect_status="running", status="idle"
     )
-    if released:
-        release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
-    else:
-        release.assert_not_awaited()
 
 
 @pytest.mark.asyncio

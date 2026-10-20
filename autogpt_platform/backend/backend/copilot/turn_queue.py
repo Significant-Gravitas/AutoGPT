@@ -496,21 +496,17 @@ async def _promote_head(user_id: str) -> bool | None:
         metadata = pending.metadata or {}
         queued_envelope = _stored_envelope(metadata)
         spawned = _is_spawned(pending)
+        background = bool(metadata.get("background_task_id"))
+        if background and queued_envelope is None:
+            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND)
+            return None
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
             await _refuse_queued_turn(
                 head, UNREADABLE_SPAWN, release=_child_node(metadata)
             )
             return None
-        child = (
-            queued_envelope
-            if spawned and not metadata.get("background_task_id")
-            else None
-        )
-        background = bool(metadata.get("background_task_id"))
-        if background and queued_envelope is None:
-            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND, release=child)
-            return None
+        child = queued_envelope if spawned and not background else None
         if (
             is_answer_row(pending)
             and queued_envelope is None
