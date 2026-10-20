@@ -63,7 +63,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 async function openDeleteFlow() {
   const user = userEvent.setup();
   render(<PaywallModal />);
-  const paywall = screen.getByRole("dialog", { name: "Dialog" });
+  const paywall = screen.getByRole("dialog", { name: "Choose your plan" });
   await user.click(
     within(paywall).getByRole("button", { name: "Delete account" }),
   );
@@ -105,7 +105,7 @@ describe("PaywallModal delete account flow for a user without a plan", () => {
         screen.queryByRole("dialog", { name: "Why are you leaving?" }),
       ).toBeNull(),
     );
-    expect(screen.getByRole("dialog", { name: "Dialog" })).toBe(paywall);
+    expect(screen.getByRole("dialog", { name: "Choose your plan" })).toBe(paywall);
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.replace).not.toHaveBeenCalled();
     await waitFor(() =>

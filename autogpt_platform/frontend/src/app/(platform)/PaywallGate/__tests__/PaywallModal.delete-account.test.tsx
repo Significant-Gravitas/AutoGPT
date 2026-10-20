@@ -84,7 +84,7 @@ function setAccountDeletionFlag(enabled: boolean) {
 async function openDeleteFlow() {
   const user = userEvent.setup();
   render(<PaywallModal />);
-  const paywall = screen.getByRole("dialog", { name: "Dialog" });
+  const paywall = screen.getByRole("dialog", { name: "Choose your plan" });
   const button = within(paywall).getByRole("button", {
     name: "Delete account",
   });
@@ -147,11 +147,12 @@ describe("PaywallModal — delete account", () => {
     expect(deleteAccount.className).toBe(logOut.className);
   });
 
-  test("the paywall still opens with focus on Log out, with Delete account after it", async () => {
+  test("the paywall still opens with focus on its Close button, with Delete account after Log out", async () => {
     render(<PaywallModal />);
 
+    const close = screen.getByRole("button", { name: "Close" });
+    await waitFor(() => expect(document.activeElement).toBe(close));
     const logOut = screen.getByRole("button", { name: "Log out" });
-    await waitFor(() => expect(document.activeElement).toBe(logOut));
     expect(logOut.nextElementSibling).toBe(
       screen.getByRole("button", { name: "Delete account" }),
     );
@@ -205,7 +206,9 @@ describe("PaywallModal — delete account", () => {
         screen.queryByRole("dialog", { name: "Why are you leaving?" }),
       ).toBeNull(),
     );
-    expect(screen.getByRole("dialog", { name: "Dialog" })).toBe(paywall);
+    expect(screen.getByRole("dialog", { name: "Choose your plan" })).toBe(
+      paywall,
+    );
     await waitFor(() => expect(document.activeElement).toBe(button));
   });
 
