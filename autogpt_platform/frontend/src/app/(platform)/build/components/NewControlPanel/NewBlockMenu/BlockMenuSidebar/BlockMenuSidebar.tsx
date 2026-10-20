@@ -9,7 +9,7 @@ import { DefaultStateType } from "../types";
 export const BlockMenuSidebar = () => {
   const { data, setDefaultState, defaultState, isLoading, isError, error } =
     useBlockMenuSidebar();
-  const { setIntegration } = useBlockMenuStore();
+  const setIntegration = useBlockMenuStore((state) => state.setIntegration);
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">

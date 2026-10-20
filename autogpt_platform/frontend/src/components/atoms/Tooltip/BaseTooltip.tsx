@@ -5,7 +5,11 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "@/lib/utils";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+function TooltipProvider(
+  props: React.ComponentProps<typeof TooltipPrimitive.Provider>,
+) {
+  return <TooltipPrimitive.Provider disableHoverableContent {...props} />;
+}
 
 interface Props {
   children: React.ReactNode;
@@ -44,7 +48,13 @@ const TooltipContent = React.forwardRef<
   <TooltipPrimitive.Content
     ref={ref}
     sideOffset={sideOffset}
-    className={cn(tooltipContentClassName, className)}
+    className={cn(
+      tooltipContentClassName,
+      // Important beats Radix's inline pointer style in dialogs; an explicit
+      // override must likewise use !pointer-events-auto.
+      "!pointer-events-none [[data-radix-popper-content-wrapper]:has(>&)]:pointer-events-none",
+      className,
+    )}
     {...props}
   />
 ));

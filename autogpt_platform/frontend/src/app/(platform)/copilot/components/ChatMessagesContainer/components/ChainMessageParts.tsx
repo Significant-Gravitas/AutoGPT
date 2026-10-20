@@ -1,5 +1,6 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import type { ToolUIPart } from "ai";
+import { useMemo } from "react";
 import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
@@ -32,7 +33,12 @@ export function ChainMessageParts({
   liveCompactionCallId,
   liveCompactionStats,
 }: Props) {
-  const segments = buildChainSegments(parts, isChainableToolPart);
+  // Kept per `parts` so each ToolChain gets the same `parts` array back and
+  // its own row derivation stays memoised.
+  const segments = useMemo(
+    () => buildChainSegments(parts, isChainableToolPart),
+    [parts],
+  );
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );

@@ -1,4 +1,5 @@
 import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { FilterChip } from "../FilterChip";
 import { categories } from "./constants";
 import { FilterSheet } from "../FilterSheet/FilterSheet";
@@ -13,7 +14,17 @@ export const BlockMenuFilters = () => {
     creators,
     addCreator,
     removeCreator,
-  } = useBlockMenuStore();
+  } = useBlockMenuStore(
+    useShallow((state) => ({
+      filters: state.filters,
+      addFilter: state.addFilter,
+      removeFilter: state.removeFilter,
+      categoryCounts: state.categoryCounts,
+      creators: state.creators,
+      addCreator: state.addCreator,
+      removeCreator: state.removeCreator,
+    })),
+  );
 
   const handleFilterClick = (filter: CategoryKey) => {
     if (filters.includes(filter)) {

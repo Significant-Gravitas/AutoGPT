@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import execution_db, library_db
 from backend.data.execution import (
@@ -334,8 +335,10 @@ class AgentOutputTool(BaseTool):
         execution: GraphExecution | GraphExecutionWithNodes | None,
         available_executions: list[GraphExecutionMeta],
         session_id: str | None,
+        card_chat: str | None = None,
     ) -> AgentOutputResponse:
-        """Build the response based on execution data."""
+        """Build the response based on execution data. ``card_chat``: the chat
+        whose approval card a parked run waits on."""
         library_agent_link = f"/library/agents/{agent.id}"
 
         if not execution:
@@ -411,7 +414,8 @@ class AgentOutputTool(BaseTool):
             message = f"Execution for workflow '{agent.name}' was terminated"
         elif execution.status == ExecutionStatus.REVIEW:
             message = (
-                f"Execution for workflow '{agent.name}' is awaiting human review. "
+                f"Execution for workflow '{agent.name}' "
+                f"{awaiting_whom(card_chat, session_id)}. "
                 "The user needs to approve it before it can continue."
             )
         elif execution.status in (
@@ -527,7 +531,13 @@ class AgentOutputTool(BaseTool):
                     ],
                 ).from_outside()
 
-            return self._build_response(agent, execution, [], session_id)
+            return self._build_response(
+                agent,
+                execution,
+                [],
+                session_id,
+                await _card_chat(user_id, execution),
+            )
 
         # Resolve agent from identifiers
         agent, error = await self._resolve_agent(
@@ -584,4 +594,18 @@ class AgentOutputTool(BaseTool):
                 timeout_seconds=wait_timeout,
             )
 
-        return self._build_response(agent, execution, available_executions, session_id)
+        return self._build_response(
+            agent,
+            execution,
+            available_executions,
+            session_id,
+            await _card_chat(user_id, execution),
+        )
+
+
+async def _card_chat(
+    user_id: str, execution: GraphExecution | GraphExecutionWithNodes | None
+) -> str | None:
+    if execution is None or execution.status != ExecutionStatus.REVIEW:
+        return None
+    return await card_chat_for_run(user_id, execution.id)

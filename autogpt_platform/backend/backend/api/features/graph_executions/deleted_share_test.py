@@ -60,7 +60,10 @@ class _FakeShareDb:
     ) -> None:
         self.executions[execution_id] = {
             "id": execution_id,
+            "agentGraphId": "graph-1",
+            "agentGraphVersion": 1,
             "userId": user_id,
+            "visibility": "PRIVATE",
             "isDeleted": False,
             "isShared": True,
             "shareToken": token,
@@ -114,8 +117,11 @@ class _FakeShareDb:
     async def _find_execution(self, where: dict, include: Any = None) -> Any:
         for row in self.executions.values():
             if _matches(self._execution_view(row), where):
-                graph = SimpleNamespace(name="Shared agent", description=None)
-                return SimpleNamespace(**row, AgentGraph=graph, NodeExecutions=[])
+                # The real model, so code reading the run (e.g.
+                # GraphExecution.from_db) sees every field Prisma returns.
+                return AgentGraphExecution.model_validate(
+                    {**row, "AgentGraph": _graph(row), "NodeExecutions": []}
+                )
         return None
 
     async def _update_executions(self, where: dict, data: dict) -> int:
@@ -153,6 +159,19 @@ class _FakeShareDb:
         removed = len(rows) - len(kept)
         rows[:] = kept
         return removed
+
+
+def _graph(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["agentGraphId"],
+        "version": row["agentGraphVersion"],
+        "name": "Shared agent",
+        "description": None,
+        "userId": row["userId"],
+        "createdAt": row["createdAt"],
+        "isActive": True,
+        "visibility": "PRIVATE",
+    }
 
 
 def _matches(row: dict[str, Any] | None, where: dict[str, Any]) -> bool:

@@ -40,6 +40,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
@@ -59,10 +60,13 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot.scheduled_chats.service import record_scheduled_run
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import memory_schedule as memory_schedule_db
+from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
@@ -152,6 +156,8 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
+    record_gate_approval,
+    reopen_review,
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
@@ -163,6 +169,7 @@ from backend.data.posthog_lifecycle_sync import (
     request_posthog_lifecycle_sync,
     start_posthog_lifecycle_sweep,
 )
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -185,6 +192,7 @@ from backend.data.user import (
     get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
+    get_near_expiry_oauth_credentials,
     get_user_by_id,
     get_user_credentials,
     get_user_default_chat_route,
@@ -194,6 +202,7 @@ from backend.data.user import (
     get_user_notification_preference,
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
+    is_auth_user_banned,
     is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
@@ -212,7 +221,10 @@ from backend.data.workspace import (
     soft_delete_workspace_file,
 )
 from backend.data.workspace_folder import list_workspace_folders
-from backend.data.workspace_skill import publish_workspace_skill_file
+from backend.data.workspace_skill import (
+    publish_workspace_skill_file,
+    skill_root_has_room,
+)
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -293,6 +305,11 @@ async def _spend_org_credits(
 
 async def _get_org_credits(org_id: str) -> int:
     return await _get_org_credits_raw(org_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_org_credits = _get_org_credits
+spend_org_credits = _spend_org_credits
 
 
 class DatabaseManager(AppService):
@@ -390,16 +407,20 @@ class DatabaseManager(AppService):
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Background work skips a banned owner in Prisma-less workers too.
+    is_auth_user_banned = _(is_auth_user_banned)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
+    get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
 
@@ -420,6 +441,8 @@ class DatabaseManager(AppService):
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
+    record_gate_approval = _(record_gate_approval)
+    reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
     # ============ Library ============ #
@@ -455,6 +478,9 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    clear_brain_dump_audio_paths = _(
+        onboarding_dump_db.clear_audio_paths, name="clear_brain_dump_audio_paths"
+    )
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -504,6 +530,7 @@ class DatabaseManager(AppService):
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
     publish_workspace_skill_file = _(publish_workspace_skill_file)
+    skill_root_has_room = _(skill_root_has_room)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
@@ -579,6 +606,20 @@ class DatabaseManager(AppService):
     upsert_bot_install = _(bot_installs_db.upsert_bot_install)
     revoke_bot_install = _(bot_installs_db.revoke_bot_install)
 
+    # ============ Memory Scope Schedules ============ #
+    # Exposed so the Prisma-less scheduler (cron bodies) and copilot-executor
+    # (lazy registration on the first memory write) reach the registry via
+    # db_accessors.memory_schedule_db().
+    get_scope_schedule = _(memory_schedule_db.get_scope_schedule)
+    claim_scope_schedule = _(memory_schedule_db.claim_scope_schedule)
+    record_scope_jobs = _(memory_schedule_db.record_scope_jobs)
+    set_scope_state = _(memory_schedule_db.set_scope_state)
+    forget_scope_job = _(memory_schedule_db.forget_scope_job)
+    record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
+    list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
+    existing_user_ids = _(memory_schedule_db.existing_user_ids)
+
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
     record_guild_joined = _(bot_analytics_db.record_guild_joined)
@@ -593,6 +634,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    get_autopilot_mode = _(experts_db.get_autopilot_mode)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -648,6 +690,7 @@ class DatabaseManager(AppService):
     list_heads = _(skill_versions_data.list_heads)
     list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
     update_head_policy = _(skill_versions_data.update_head_policy)
+    pause_use_if_current = _(skill_versions_data.pause_use_if_current)
     publish_version_if_current = _(skill_versions_data.publish_version_if_current)
     commit_version_safe = _(skill_publication_data.commit_version_safe)
     complete_publication = _(skill_publication_data.complete_publication)
@@ -665,6 +708,7 @@ class DatabaseManager(AppService):
     list_versions_in_states = _(skill_versions_data.list_versions_in_states)
     invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
     latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
+    record_skill_deletion = _(skill_deletion_data.record_skill_deletion)
     add_suppression = _(skill_use_data.add_suppression)
     find_suppression = _(skill_use_data.find_suppression)
     list_suppressions = _(skill_use_data.list_suppressions)
@@ -737,6 +781,10 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
     append_plain_session_message = _(chat_db.append_plain_session_message)
+    # And to tell a scheduled chat why its run was skipped, in that chat.
+    append_session_message = _(chat_db.append_session_message)
+    # The copilot executor counts each scheduled run toward a failure streak.
+    record_scheduled_run = _(record_scheduled_run)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -886,13 +934,16 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    is_auth_user_banned = d.is_auth_user_banned
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
+    get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
 
@@ -906,6 +957,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
+    record_gate_approval = d.record_gate_approval
+    reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -944,6 +997,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
+    append_session_message = d.append_session_message
+    record_scheduled_run = d.record_scheduled_run
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings
@@ -983,6 +1038,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    clear_brain_dump_audio_paths = d.clear_brain_dump_audio_paths
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
@@ -1012,6 +1068,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
     publish_workspace_skill_file = d.publish_workspace_skill_file
+    skill_root_has_room = d.skill_root_has_room
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
@@ -1080,6 +1137,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     upsert_bot_install = d.upsert_bot_install
     revoke_bot_install = d.revoke_bot_install
 
+    # ============ Memory Scope Schedules ============ #
+    get_scope_schedule = d.get_scope_schedule
+    claim_scope_schedule = d.claim_scope_schedule
+    record_scope_jobs = d.record_scope_jobs
+    set_scope_state = d.set_scope_state
+    forget_scope_job = d.forget_scope_job
+    record_scope_run = d.record_scope_run
+    list_user_scope_schedules = d.list_user_scope_schedules
+    list_scope_schedules = d.list_scope_schedules
+    existing_user_ids = d.existing_user_ids
+
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event
     record_guild_joined = d.record_guild_joined
@@ -1092,6 +1160,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_autopilot_mode = d.get_autopilot_mode
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired
@@ -1140,6 +1209,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_heads = d.list_heads
     list_use_paused_skill_names = d.list_use_paused_skill_names
     update_head_policy = d.update_head_policy
+    pause_use_if_current = d.pause_use_if_current
     publish_version_if_current = d.publish_version_if_current
     commit_version_safe = d.commit_version_safe
     complete_publication = d.complete_publication
@@ -1155,6 +1225,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_versions_in_states = d.list_versions_in_states
     invalidate_source_versions = d.invalidate_source_versions
     latest_independent_version_id = d.latest_independent_version_id
+    record_skill_deletion = d.record_skill_deletion
     add_suppression = d.add_suppression
     find_suppression = d.find_suppression
     list_suppressions = d.list_suppressions

@@ -25,6 +25,17 @@ const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
 
 test.describe("copilot reconnect journey", () => {
+  // A resume after the turn finished finds its cursor trimmed, and the chat
+  // seeds from the checkpoint this 409 carries.
+  test.use({
+    expectedResponses: [
+      {
+        status: 409,
+        method: "GET",
+        url: /\/api\/chat\/sessions\/[^/]+\/stream\?turn=/,
+      },
+    ],
+  });
   test.beforeAll(requireScriptedModel);
 
   test("an answer cut off by a dropped connection arrives whole, once and as saved", async ({
@@ -45,12 +56,6 @@ test.describe("copilot reconnect journey", () => {
     context,
     journeyUser,
   }) => {
-    // While offline, the pending follow-ups peek in useCopilotPendingChips.ts
-    // (`void getV2GetPendingMessages(sessionId).then(...)`, no catch) rejects
-    // with "Failed to fetch" and nothing handles it, so the page reports an
-    // uncaught error. Everything the user sees is right. Remove this marker
-    // when that request handles a network failure.
-    test.fail(true, "unhandled 'Failed to fetch' from useCopilotPendingChips");
     await loseConnectionMidAnswer({
       page,
       context,
@@ -83,14 +88,22 @@ async function loseConnectionMidAnswer({
   ).toBeVisible();
 
   // The connection drops mid-answer while the model is still writing it.
+  // Online, one drop resumes silently: the chat speaks up from the second
+  // failed attempt in a row.
   const reconnected = page.waitForRequest(isChatStream("GET"));
   if (offline) await context.setOffline(true);
   await cutChatStreams(page);
-  await expect(
-    page.getByText(/Reconnecting/).first(),
-    "the chat should say it lost the connection",
-  ).toBeVisible();
-  if (offline) await context.setOffline(false);
+  if (offline) {
+    await expect(
+      page.getByText("You're offline", { exact: true }),
+      "the page should say the browser is offline",
+    ).toBeVisible();
+    await expect(
+      transcript.getByText(/Offline — waiting for the network/).first(),
+      "the chat should say it is waiting for the network",
+    ).toBeVisible();
+    await context.setOffline(false);
+  }
   await reconnected;
 
   await expect(

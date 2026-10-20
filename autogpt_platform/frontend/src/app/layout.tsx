@@ -74,6 +74,12 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen">
+        {process.env.NEXT_PUBLIC_RENDER_COUNTER === "1" ? (
+          <Script
+            src="/devtools/render-counter.js"
+            strategy="beforeInteractive"
+          />
+        ) : null}
         {/* Without a Cookiebot domain group there is no banner and every
             optional category stays denied. With one, the Consent Mode
             defaults are queued before anything else can reach the Google
