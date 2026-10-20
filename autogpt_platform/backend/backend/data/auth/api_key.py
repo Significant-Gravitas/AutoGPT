@@ -132,8 +132,8 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        # Head and tail are stored on legacy keys too. Do not truncate matches:
-        # a collision must not make an otherwise valid key unauthenticatable.
+        # All head+tail matches, including legacy keys, remain eligible so a
+        # collision cannot make an otherwise valid key unauthenticatable.
         tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
         potential_matches = await get_active_api_keys_by_head(head, tail=tail)
 

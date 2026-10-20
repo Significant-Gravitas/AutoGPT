@@ -37,6 +37,7 @@ async def stored_key(server):
 
 @pytest_asyncio.fixture
 async def client(stored_key):
+    await get_redis_async()
     app = fastapi.FastAPI()
 
     @app.get("/key")
@@ -51,9 +52,7 @@ async def client(stored_key):
     ):
         return {"id": auth.id}
 
-    token = uuid4().hex
-    ip = "2001:db8:" + ":".join(token[i : i + 4] for i in range(0, 24, 4))
-    transport = httpx.ASGITransport(app, client=(ip, 1234))
+    transport = httpx.ASGITransport(app, client=(random_client_ip(), 1234))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
@@ -62,7 +61,7 @@ async def client(stored_key):
 async def test_successful_requests_do_not_exhaust_budget(
     client, stored_key, monkeypatch, path
 ):
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 3)
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 3)
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 5)
     info, plaintext = stored_key
     for _ in range(8):
@@ -97,7 +96,7 @@ async def test_all_keys_with_same_head_and_tail_authenticate(stored_key):
 
 
 async def test_missing_peer_does_not_create_global_bucket(stored_key, monkeypatch):
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 1)
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 1)
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 1)
     request = Request({"type": "http", "headers": [], "client": None})
     for _ in range(3):
@@ -122,7 +121,7 @@ async def test_deadline_bounds_the_whole_check(monkeypatch):
 async def test_concurrent_invalid_burst_stops_real_scrypt(
     client, stored_key, monkeypatch, mocker, path
 ):
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 3)
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 3)
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 100)
     mocker.patch.object(rate_limit, "datetime").now.return_value = datetime(
         2026, 1, 1, 0, 0, 17, tzinfo=UTC
@@ -155,7 +154,7 @@ async def test_wrong_tail_and_malformed_keys_skip_scrypt(client, stored_key, moc
 async def test_concurrent_success_refunds_only_its_own_reservation(
     client, stored_key, monkeypatch, mocker, path
 ):
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 8)
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 8)
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 20)
     mocker.patch.object(rate_limit, "datetime").now.return_value = datetime(
         2026, 1, 1, tzinfo=UTC
@@ -248,7 +247,9 @@ async def test_head_rotation_cannot_escape_ip_budget_and_other_clients_work(
     assert (
         await client.get("/key", headers={"X-API-Key": stored_key[1]})
     ).status_code == 429
-    request = Request({"type": "http", "headers": [], "client": ("192.0.2.99", 1234)})
+    request = Request(
+        {"type": "http", "headers": [], "client": (random_client_ip(), 1234)}
+    )
     assert await middleware.require_api_key(request, stored_key[1]) == stored_key[0]
 
 
@@ -256,8 +257,10 @@ async def test_fixed_window_expires_and_late_refund_does_not_recreate_it(
     stored_key, monkeypatch
 ):
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_WINDOW_SECONDS", 1)
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 1)
-    request = Request({"type": "http", "headers": [], "client": ("192.0.2.98", 1234)})
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 1)
+    request = Request(
+        {"type": "http", "headers": [], "client": (random_client_ip(), 1234)}
+    )
     budget = await rate_limit.enforce_api_key_validate_rate_limit(
         request, stored_key[1]
     )
@@ -275,3 +278,8 @@ async def test_fixed_window_expires_and_late_refund_does_not_recreate_it(
     assert await redis.get(new_budget.head_key) == "1"
     await rate_limit.refund_api_key_validate_rate_limit(new_budget)
     assert await redis.get(new_budget.head_key) == "0"
+
+
+def random_client_ip() -> str:
+    token = uuid4().hex
+    return "2001:db8:" + ":".join(token[i : i + 4] for i in range(0, 24, 4))

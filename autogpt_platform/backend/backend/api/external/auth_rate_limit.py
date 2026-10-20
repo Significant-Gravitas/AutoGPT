@@ -24,7 +24,7 @@ from backend.monitoring.instrumentation import record_rate_limit_hit
 logger = logging.getLogger(__name__)
 
 AUTH_VALIDATE_WINDOW_SECONDS = 60
-AUTH_VALIDATE_MAX_REQUESTS = 60
+AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS = 60
 AUTH_VALIDATE_IP_MAX_REQUESTS = 120
 AUTH_VALIDATE_REDIS_TIMEOUT_SECONDS = 0.25
 
@@ -127,7 +127,7 @@ def key_head_from_plaintext(plaintext_key: str) -> str | None:
 async def _reserve(budget: APIKeyValidationBudget, now: datetime) -> None:
     for key, limit in (
         (budget.ip_key, AUTH_VALIDATE_IP_MAX_REQUESTS),
-        (budget.head_key, AUTH_VALIDATE_MAX_REQUESTS),
+        (budget.head_key, AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS),
     ):
         count = await _eval(_INCR_OPEN_WINDOW, key, str(AUTH_VALIDATE_WINDOW_SECONDS))
         if count > limit:
