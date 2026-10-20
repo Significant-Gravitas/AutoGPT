@@ -3,6 +3,7 @@ import {
   COPILOT_SESSIONS,
   createCopilotFixture,
   SESSION_L,
+  type SessionSpec,
 } from "./copilot-fixture";
 import { installRoutes } from "./routes";
 import { settle, type ScenarioContext } from "./scenario";
@@ -14,6 +15,7 @@ const READY_TIMEOUT_MS = 60_000;
 
 interface OpenArgs {
   ctx: ScenarioContext;
+  sessions?: SessionSpec[];
   paceMs?: number;
   sessionID?: string;
   replyFixture?: string;
@@ -26,13 +28,14 @@ interface OpenArgs {
  */
 export async function openLongSession({
   ctx,
+  sessions = COPILOT_SESSIONS,
   paceMs = LIVE_PACE_MS,
   sessionID = SESSION_L,
   replyFixture = REPLY_FIXTURE,
 }: OpenArgs) {
   const fixture = createCopilotFixture({
     userID: ctx.userID,
-    sessions: COPILOT_SESSIONS,
+    sessions,
     stream: ctx.stream,
     replyFixture,
     paceMs,

@@ -18,6 +18,7 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
 import backend.data.llm_registry
+from backend.blocks import get_blocks
 from backend.copilot import engine_switch
 from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
@@ -26,7 +27,7 @@ from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
@@ -117,6 +118,14 @@ class CoPilotExecutor(AppProcess):
 
         _load_catalog()
         start_cli_warmup()
+        # Load the block registry before taking turns. A turn's first tool call
+        # loads it otherwise, and the collections over the grown heap stall every turn.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"Loaded {block_count} blocks in {time.monotonic() - load_started:.1f}s"
+        )
+        freeze_startup_heap()
 
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property

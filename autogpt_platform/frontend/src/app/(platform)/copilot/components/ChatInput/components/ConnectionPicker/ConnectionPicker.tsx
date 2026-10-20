@@ -146,7 +146,6 @@ export function ConnectionPicker({
         type="button"
         variant="ghost"
         size={showsTier ? "icon" : "small"}
-        unmask={false}
         aria-label={
           showsTier
             ? `Model tier ${label} — change`

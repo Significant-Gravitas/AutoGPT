@@ -8,9 +8,12 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   the distinct id every other backend and browser event uses, so the
   generation lands on the same person as their product events and replays.
 - ``session_id`` becomes ``$ai_session_id``: the chat session id.
-- ``trace.trace_id`` becomes ``$ai_trace_id``: the id of the turn that made
-  the call, so every model call behind one AutoPilot reply (the main loop,
-  sub-agents, compaction, the chat title) groups into one trace.
+- ``trace.trace_id`` becomes ``$ai_trace_id``: the reply's trace, so every
+  model call behind one AutoPilot reply (the main loop, sub-agents,
+  compaction, the chat title, and the expert subtasks it spawns) groups into
+  one trace. It is the id of the turn that made the call, or for a subtask
+  the trace of the turn that spawned it (``ai_spans.trace_id_for``);
+  ``ai_spans`` sends the trace's tool spans and root from the backend.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,
   ``metadata_impersonated``, and ``metadata_revision``: the deployed build's
@@ -43,7 +46,7 @@ GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
 # executor sets it for every turn, so a value never carries over.
 _turn_impersonated: ContextVar[bool] = ContextVar("_turn_impersonated", default=False)
 
-# The running turn's id, sent as the trace id of every call it makes. The
+# The running turn's trace, sent as the trace id of every call it makes. The
 # executor sets it for every turn, so a value never carries over; a call made
 # outside a turn sends none.
 _turn_trace_id: ContextVar[str | None] = ContextVar("_turn_trace_id", default=None)
@@ -85,9 +88,9 @@ def is_turn_impersonated() -> bool:
     return _turn_impersonated.get()
 
 
-def set_turn_trace_id(turn_id: str | None) -> None:
-    """Make *turn_id* the trace of every model call the running turn makes."""
-    _turn_trace_id.set(turn_id or None)
+def set_turn_trace_id(trace_id: str | None) -> None:
+    """Make *trace_id* the trace of every model call the running turn makes."""
+    _turn_trace_id.set(trace_id or None)
 
 
 def turn_trace_id() -> str | None:

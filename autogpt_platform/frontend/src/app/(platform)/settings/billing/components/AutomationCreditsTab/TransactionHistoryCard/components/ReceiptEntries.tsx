@@ -61,12 +61,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Text variant="small" className="text-zinc-600">
             {referenceLabel(transaction)}
           </Text>
-          <Text
-            variant="small"
-            as="code"
-            unmask={false}
-            className="break-all font-mono"
-          >
+          <Text variant="small" as="code" className="break-all font-mono">
             {reference}
           </Text>
         </div>
@@ -101,7 +96,6 @@ function ChargeEntries({ transaction }: Props) {
                 <td className="py-2 pr-3 align-top">
                   <Text
                     variant="small"
-                    unmask={false}
                     title={posted.full}
                     className="text-zinc-600"
                   >
