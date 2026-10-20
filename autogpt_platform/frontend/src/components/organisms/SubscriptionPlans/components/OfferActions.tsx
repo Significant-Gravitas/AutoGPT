@@ -75,7 +75,6 @@ function PaidPlanAction({
       variant={inline ? "link" : plan.highlighted ? "primary" : "secondary"}
       size="small"
       className={inline ? "h-auto min-w-0 p-0 text-xs text-zinc-500" : "w-full"}
-      unmask={!inline}
       loading={isUpdatingTier && selectedPlan === plan.key}
       disabled={isUpdatingTier || isStartingTrial}
       onClick={handleSelect}
@@ -93,7 +92,7 @@ function PaidPlanAction({
 function TrialActionDetails(props: Props) {
   const { paidActionPrice } = getPlanPresentation(props.plan, props);
   return (
-    <Text variant="small" tone="muted" unmask={false}>
+    <Text variant="small" tone="muted">
       Card required. No subscription charge today.{" "}
       <Button
         type="button"
@@ -136,7 +135,7 @@ function AlternativeTrial({
       >
         Try {plan.name} for {offer.duration_days} days instead
       </Button>
-      <Text variant="small" tone="muted" unmask={false}>
+      <Text variant="small" tone="muted">
         Renews at {formatTrialPrice(offer)} + applicable tax.
       </Text>
     </div>
