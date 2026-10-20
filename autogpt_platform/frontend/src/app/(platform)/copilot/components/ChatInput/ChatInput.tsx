@@ -13,6 +13,7 @@ import {
   ClipboardEvent,
   KeyboardEvent,
   ReactNode,
+  memo,
   useEffect,
   useState,
 } from "react";
@@ -134,7 +135,9 @@ interface Props {
   atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
-export function ChatInput({
+// Memoised: the chat page re-renders on every streamed flush, and the
+// composer's props stay the same while the reply streams in.
+export const ChatInput = memo(function ChatInput({
   onSend,
   disabled = false,
   sendDisabled = false,
@@ -163,7 +166,8 @@ export function ChatInput({
   canAttachWhileStreaming = false,
   atReset,
 }: Props) {
-  const { isDryRun, setIsDryRun } = useCopilotUIStore();
+  const isDryRun = useCopilotUIStore((s) => s.isDryRun);
+  const setIsDryRun = useCopilotUIStore((s) => s.setIsDryRun);
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
   // Fast/Thinking control it was created for is gone. Renaming it means an
   // LaunchDarkly change, so it is left until the combined picker restructures
@@ -665,7 +669,7 @@ export function ChatInput({
       )}
     </form>
   );
-}
+});
 
 function toLocalAttachment(file: File): Attachment {
   return { kind: "local", file };

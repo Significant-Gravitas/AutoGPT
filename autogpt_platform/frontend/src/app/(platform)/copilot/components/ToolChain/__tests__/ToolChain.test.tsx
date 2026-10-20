@@ -397,7 +397,9 @@ describe("ToolChain", () => {
     expect(onSend).toHaveBeenCalledWith(
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
     );
-    expect(screen.queryByText("Answer a few questions")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByText("Answer a few questions")).toBeNull();
+    });
   });
 
   it("keeps the caret where the user is editing an answer", async () => {

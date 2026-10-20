@@ -13,14 +13,17 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
-from backend.copilot.context import is_unattended_turn
+from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
     graph_cost_credits,
     workflow_subject,
 )
+from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_graph_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_chat_outcome
 from backend.copilot.tree import charge_credits
@@ -54,7 +57,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import GATE_APPROVED, BaseTool
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -335,6 +338,9 @@ class RunAgentTool(BaseTool):
         validators defined in the Pydantic model.
         """
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        # Only a card approval lifts a run's forced pause; its steps' pauses go
+        # to the gate on their own.
+        kwargs.pop(GATE_DECIDED, None)
         params = RunAgentInput(**kwargs)
         # Session-level dry_run forces all runs to be dry. In normal sessions
         # the LLM may still request dry_run=True on individual calls.
@@ -457,6 +463,11 @@ class RunAgentTool(BaseTool):
                     graph_id=graph.id,
                     graph_version=graph.version,
                 ).from_outside()
+
+            # Before the credential and input prompts: no setup card for a
+            # run that the ceiling refuses anyway.
+            if refusal := _provider_refusal(graph, session_id):
+                return refusal
 
             # Step 2: Check credentials and inputs
             graph_credentials, prereq_error = await self._check_prerequisites(
@@ -998,6 +1009,8 @@ class RunAgentTool(BaseTool):
         under the graph's own safe-mode setting rather than pausing again.
         """
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Check rate limits (dry runs don't count against the session limit)
         if (
@@ -1230,9 +1243,11 @@ class RunAgentTool(BaseTool):
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
+                card_chat = await card_chat_for_run(user_id, execution.id)
                 return ExecutionStartedResponse(
                     message=(
-                        f"Workflow '{library_agent.name}' is awaiting human review. "
+                        f"Workflow '{library_agent.name}' "
+                        f"{awaiting_whom(card_chat, session_id)}. "
                         f"The user can approve or reject inline. After approval, "
                         f"the execution resumes automatically. Use tool:view_agent_output "
                         f"with execution_id='{execution.id}' to check the result."
@@ -1294,6 +1309,8 @@ class RunAgentTool(BaseTool):
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Validate schedule params
         schedule_name = schedule_name.strip()
@@ -1423,6 +1440,24 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         ).from_outside()
+
+
+def _provider_refusal(graph: GraphModel, session_id: str) -> ErrorResponse | None:
+    """Refuse an agent whose blocks act with a provider's credentials the run
+    may not use: the run's ceiling on connected accounts covers what it
+    launches, as it covers its own blocks (``run_block``) and its sandbox."""
+    denied = denied_graph_providers(get_current_permissions(), graph)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Workflow '{graph.name}' acts with the user's {names} account, which "
+            "this run is not permitted to use. Tell the user it is outside what "
+            "this run was allowed to do."
+        ),
+        session_id=session_id,
+    ).from_outside(graph.name)
 
 
 # One lookup for the run and for the gate: were they two, a drift between

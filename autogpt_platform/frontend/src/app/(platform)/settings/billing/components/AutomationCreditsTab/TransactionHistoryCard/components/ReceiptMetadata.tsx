@@ -83,7 +83,7 @@ function MetadataField({
       <Text variant="small" className="text-zinc-600">
         {label}
       </Text>
-      <Text variant="small" unmask={false} title={title}>
+      <Text variant="small" title={title}>
         {value}
       </Text>
     </div>

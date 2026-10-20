@@ -2,7 +2,13 @@
 // The config you add here will be used whenever the server handles a request.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { stripRequestCredentials } from "@/lib/sentry-filters";
+import {
+  stripLogUserPII,
+  stripRequestCredentials,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
+} from "@/lib/sentry-filters";
 import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
@@ -26,12 +32,18 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
-  beforeSend: stripRequestCredentials,
+  // No email or IP address reaches Sentry; the user id is enough.
+  sendDefaultPii: false,
+  beforeSend(event) {
+    return stripSpanPII(stripUserPII(stripRequestCredentials(event)));
+  },
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)
       ? null
-      : stripRequestCredentials(event);
+      : stripSpanPII(stripUserPII(stripRequestCredentials(event)));
   },
+  beforeSendSpan: stripSpanDataPII,
+  beforeSendLog: stripLogUserPII,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,

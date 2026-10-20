@@ -202,12 +202,14 @@ async def _finalize_stuck_duplicate(
             existing.state,
         )
         # The first delivery's per-edge outcomes (and dream session id)
-        # died with it, so the counts here are the clamped *attempted*
-        # ops — annotate the summary so the admin UI doesn't present
-        # them as confirmed apply results.
+        # died with it: the writes and proposals it queued are counted
+        # pending, none written, and the demotion counts are the clamped
+        # *attempted* ops — annotate the summary so the admin UI doesn't
+        # present them as confirmed apply results.
         note = (
-            "[finalized after duplicate delivery — counts reflect attempted "
-            "operations; writes landed with the original delivery] "
+            "[finalized after duplicate delivery — writes and proposals were "
+            "queued by the original delivery, counted pending; demotion counts "
+            "reflect attempted operations] "
         )
         await mark_complete(
             kind="dream_pass",
@@ -216,8 +218,7 @@ async def _finalize_stuck_duplicate(
                 user_id=user_id,
                 pass_id=pass_id,
                 execution_path="anthropic_batch",
-                consolidated_count=len(ops.writes),
-                proposal_count=len(ops.proposals),
+                pending_writes=len(ops.writes) + len(ops.proposals),
                 demotion_count=len(ops.demotions),
                 entity_invalidation_count=len(ops.entity_invalidations),
                 # Batch apply never drains in-line by design; the first
@@ -814,6 +815,7 @@ async def _finalize_complete(
             pass_id,
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
+            known_episode_uuids=input_bundle.known_episode_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -881,6 +883,9 @@ async def _finalize_complete(
                 proposal_count=_count("proposal_count"),
                 demotion_count=_count("demotion_count"),
                 entity_invalidation_count=_count("entity_invalidation_count"),
+                dropped_forgotten=_count("dropped_forgotten"),
+                pending_writes=_count("pending_writes"),
+                failed_writes=_count("failed_writes"),
                 dream_session_id=session_id,
                 ingestion_drain_status=ingestion_drain_status,
                 operations=snapshot,

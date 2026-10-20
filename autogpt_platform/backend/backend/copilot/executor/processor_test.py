@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.constants import EMPTY_FINISH_NOTICE, STREAM_INCOMPLETE_MARKER
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
@@ -28,7 +29,11 @@ from backend.copilot.executor.processor import (
     _wait_for_expert_setup,
     sync_fail_close_session,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -47,6 +52,7 @@ from backend.copilot.response_model import (
     StreamToolInputStart,
 )
 from backend.copilot.service import format_user_context_prefix
+from backend.copilot.tree import TurnEnvelope
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -239,6 +245,7 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
             seen["trace_id"] = turn_trace_id()
+            seen["span_id"] = current_span_id()
             return MagicMock()
 
         with (
@@ -286,6 +293,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {"exa": pin},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -297,6 +305,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -315,6 +324,26 @@ class TestExecuteAsyncScheduledTurnContext:
         seen = await self._seen_by_the_turn(entry)
 
         assert seen["trace_id"] == "turn-42"
+
+    @pytest.mark.asyncio
+    async def test_a_subtask_joins_the_trace_of_the_reply_it_works_for(
+        self,
+    ) -> None:
+        """Its model and tool calls group with the reply at its tree's root,
+        and its tool calls nest under the subtask's own span."""
+        entry = _make_entry().model_copy(
+            update={
+                "turn_id": "child-turn",
+                "envelope": TurnEnvelope(
+                    tree_id="root-turn", depth=1, ai_trace_id="root-turn"
+                ),
+            }
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "root-turn"
+        assert seen["span_id"] == "child-turn"
 
 
 class TestExecuteAsyncAclose:
@@ -1037,6 +1066,44 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
     assert stream_fn.call_args.kwargs["team_id"] == "entry-team"
+
+
+@pytest.mark.asyncio
+async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
+    """Every copilot turn reaches the executor, whatever queued it: schedules,
+    the AutoPilot block, approval wakes, sub-sessions and chat bots."""
+    entry = _make_entry().model_copy(
+        update={"scheduled": ScheduledTurnOrigin(schedule_id="sched-1")}
+    )
+    get_session = AsyncMock()
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.is_user_banned",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.model.get_chat_session", new=get_session),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mark_completed,
+        ),
+        patch(
+            "backend.copilot.executor.scheduled_turn_alert.sentry_sdk.capture_message"
+        ) as alert,
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry, threading.Event(), MagicMock(), _make_log()
+        )
+
+    get_session.assert_not_awaited()
+    mark_completed.assert_awaited_once_with(
+        "sess-1",
+        error_message="This account has been banned.",
+        error_code="account_banned",
+        turn_id="turn-1",
+    )
+    alert.assert_not_called()
 
 
 @pytest.mark.asyncio
