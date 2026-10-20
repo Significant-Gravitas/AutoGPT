@@ -5838,6 +5838,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # A continuation note is stored as a system row; the model gets
             # its instruction without the rendering marker.
             current_message = as_model_prompt(current_message)
+        # What memory is searched with: the user's own words (and any pending
+        # messages folded in below), never the context blocks
+        # ``inject_user_context`` puts in front of them on a first turn.
+        recall_message = current_message
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.
@@ -5948,9 +5952,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     current_message,
                     request_arrival_at=request_arrival_at,
                 )
+                recall_message = combine_pending_with_current(
+                    pending_messages,
+                    recall_message,
+                    request_arrival_at=request_arrival_at,
+                )
 
         # SECRT-2378: start the follow-up warm-context refresh HERE rather
-        # than at the injection point below — ``current_message`` is final
+        # than at the injection point below — ``recall_message`` is final
         # after the pending fold, so the graph round-trip overlaps compaction,
         # attachment prep and builder context. The join below waits at most
         # the join grace for what is left of it.
@@ -5960,7 +5969,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             is_user_message=is_user_message,
             user_id=user_id,
             expert_id=session.expert_id,
-            current_message=current_message,
+            current_message=recall_message,
         )
         # The turn's warm-context inputs, bound once for every send of its
         # query.
@@ -5971,7 +5980,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             is_user_message=is_user_message,
             user_id=user_id,
             expert_id=session.expert_id,
-            current_message=current_message,
+            current_message=recall_message,
         )
 
         forecast = _expect_pre_query_compaction(

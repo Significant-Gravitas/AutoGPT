@@ -47,7 +47,7 @@ async def test_initial_empty_recall_is_final_until_a_retry(
         refresh.assert_awaited_once()
         args, kwargs = refresh.await_args
         assert args[0] == "test-user"
-        assert args[1].endswith("\n\nhi")
+        assert args[1] == "hi"
         assert kwargs == {"expert_id": None, "force": True}
         assert "fresh retry memory" in queries[1]
     else:
