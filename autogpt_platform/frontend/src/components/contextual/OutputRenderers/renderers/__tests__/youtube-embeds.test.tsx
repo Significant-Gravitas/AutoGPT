@@ -147,4 +147,14 @@ describe("YouTube links in run output", () => {
     expect(anchor?.textContent).toBe("Watch the demo");
     expect(anchor?.querySelector("a, button, iframe, video, img")).toBeNull();
   });
+
+  it("gives a YouTube channel image written without a scheme a full link", () => {
+    const container = renderMarkdown(`# Demo\n\n![Channel](youtube.com/@foo)`);
+
+    expect(
+      container.querySelector('a[href="https://youtube.com/@foo"]')
+        ?.textContent,
+    ).toBe("Channel");
+    expect(container.querySelector("img")).toBeNull();
+  });
 });

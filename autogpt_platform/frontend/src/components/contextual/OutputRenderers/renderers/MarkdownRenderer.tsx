@@ -20,6 +20,7 @@ import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   getYouTubeVideoId,
+  getYouTubeWatchUrl,
   isYouTubeUrl,
 } from "@/components/molecules/YouTubeEmbed/helpers";
 
@@ -107,7 +108,8 @@ function MarkdownVideoImage({ src, alt }: MarkdownVideoImageProps) {
   const insideLink = React.useContext(InsideLinkContext);
   if (insideLink) return <>{alt || src}</>;
   if (isVideoUrl(src)) return renderVideoEmbed(src);
-  return renderPlainLink(src, alt || src);
+  // Written without a scheme, the link would resolve against this site.
+  return renderPlainLink(getYouTubeWatchUrl(src) ?? src, alt || src);
 }
 
 function renderVideoEmbed(url: string): React.ReactNode {
