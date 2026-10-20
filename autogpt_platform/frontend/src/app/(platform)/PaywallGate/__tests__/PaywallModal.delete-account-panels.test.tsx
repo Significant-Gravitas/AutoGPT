@@ -105,7 +105,9 @@ describe("PaywallModal delete account flow for a user without a plan", () => {
         screen.queryByRole("dialog", { name: "Why are you leaving?" }),
       ).toBeNull(),
     );
-    expect(screen.getByRole("dialog", { name: "Choose your plan" })).toBe(paywall);
+    expect(screen.getByRole("dialog", { name: "Choose your plan" })).toBe(
+      paywall,
+    );
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.replace).not.toHaveBeenCalled();
     await waitFor(() =>
