@@ -59,10 +59,18 @@ Every event must carry:
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
+| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
 Every backend event goes through `capture()` in
-`backend/util/posthog_client.py`, which applies both last, so a caller cannot
-overwrite them. The browser registers them once as PostHog super properties
+`backend/util/posthog_client.py`, which applies `environment` and `source`
+last, so a caller cannot overwrite them. `revision` is a super property of
+every backend PostHog client instead (`revision_properties()`), so the flag
+client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
+is the exception: OpenRouter builds it from the request rather than through
+our client, so it carries no `revision` until #15604 adds `trace.revision`,
+which arrives as `metadata_revision`. #15605's `$ai_trace` and `$ai_span` go
+through `capture()`, so they carry `revision` as soon as they ship. The
+browser registers all three once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
 at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
@@ -308,8 +316,8 @@ PostHog's own, not the analytics plan's.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
-| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the id of the executor turn that made the call, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment. No `$ai_trace_id` (see below) | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
 
 What joins them:
 
@@ -318,11 +326,20 @@ What joins them:
   both land on the person with their product events and replays.
 - **Chat.** `$ai_session_id` is the chat session id on both, so a chat's
   generations and its ratings group in the Sessions tab and join on it.
-  `message_id` says which reply was rated; a rating carries no
-  `$ai_trace_id`, since Broadcast assigns the generations' trace ids.
+  `message_id` says which reply was rated. A rating carries no
+  `$ai_trace_id` yet: a generation's trace id is the turn that made it, but a
+  reply row does not record which turn wrote it, so a rating joins its
+  reply's generations only through the chat.
+- **Reply.** All generations behind one reply (the main loop, sub-agents,
+  compaction and, on a chat's first reply, the title) share `$ai_trace_id`,
+  the executor turn id, so PostHog groups them into one trace. An expert
+  subtask runs as a turn of its own and gets its own trace.
 - **Environment.** OpenRouter forwards our `trace` keys as `metadata_<key>`,
   so a generation's environment is `metadata_environment`, not the
   `environment` base property; `$ai_metric` has both base properties as usual.
+  Likewise the build is `metadata_revision` on a generation; `$ai_metric`
+  sets no build property of its own and carries only the base properties our
+  PostHog client adds to every event.
 - **Impersonation.** A turn or rating an admin made while impersonating the
   user (`X-Act-As-User-Id`) is still sent, as the user, with
   `metadata_impersonated` / `impersonated` true, so it can be filtered out.

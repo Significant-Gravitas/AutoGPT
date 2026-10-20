@@ -1,10 +1,11 @@
 from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, HTTPException, Query, Security, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
 import backend.api.features.library._get_many as get_many
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
@@ -164,6 +165,7 @@ async def get_library_agent_by_store_listing_version_id(
 
 @router.post(
     "",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
 )
@@ -228,7 +230,11 @@ async def delete_library_agent(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
+@router.post(
+    "/{library_agent_id}/fork",
+    summary="Fork Library Agent",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
