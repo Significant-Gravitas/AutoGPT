@@ -147,6 +147,20 @@ describe("ScheduledChatNoticeCard", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("says so when how often it runs can't be read", async () => {
+    server.use(
+      http.get("*/api/schedules/followups/:scheduleKey/cadence", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    await openRunLessOften();
+
+    expect(
+      await screen.findByText(/Couldn't load how often it runs/),
+    ).toBeDefined();
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
   it("asks for a paused chat to be resumed first", async () => {
     server.use(
       getGetScheduledChatCadenceMockHandler(CADENCE),
