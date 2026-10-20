@@ -369,9 +369,20 @@ async def _raise_paused(
             session_id=run.session_id,
         ),
     )
-    if not await ScheduledChatStreak.prisma().count(
-        where={"id": row.id, "NOT": [{"pausedAt": None}]}
-    ):
+    try:
+        still_paused = await ScheduledChatStreak.prisma().count(
+            where={"id": row.id, "NOT": [{"pausedAt": None}]}
+        )
+    except Exception:
+        # Only a guard, and the pause most likely stands: keep the alert, and
+        # let the chat still be told.
+        logger.warning(
+            "Could not check scheduled chat %s is still paused",
+            run.schedule_key,
+            exc_info=True,
+        )
+        return
+    if not still_paused:
         await resolve_alert(run.user_id, run.schedule_key)
 
 

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from prisma.actions import ScheduledChatStreakActions
 from prisma.enums import AlertCause, AlertConditionStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import (
@@ -605,6 +606,30 @@ async def test_a_chat_resumed_as_its_pause_raises_the_alert_is_left_without_one(
 
         alert = await _alert(user_id)
         assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_is_told_even_when_its_alert_cannot_be_checked(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The check after the alert is only a guard: failing, it must not keep
+    the card from the chat, which has no next run to try again on."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(2):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        failing = AsyncMock(side_effect=RuntimeError("db blip"))
+        with patch.object(ScheduledChatStreakActions, "count", failing):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        failing.assert_awaited_once()
+
+        headlines = [n.metadata["headline"] for n in await _notes(session_id)]
+        assert headlines[-1].startswith("Paused: ")
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.PENDING
     finally:
         await _cleanup(user_id)
 
