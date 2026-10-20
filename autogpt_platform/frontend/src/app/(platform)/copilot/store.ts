@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -769,8 +769,5 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmAuth: null,
       isDryRun: false,
     });
-    if (isClient) {
-      document.title = ORIGINAL_TITLE;
-    }
   },
 }));
