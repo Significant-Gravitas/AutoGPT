@@ -122,17 +122,34 @@ export function stripUserPII<T extends Event>(event: T): T {
 
 // The SDK copies the scope's user id, email and username into every log's and
 // span's attributes, web vital spans name the user by email in a bare `user`,
-// and the HTTP instrumentation records the visitor's address on server spans.
-// An IP address can arrive as `client.address`, `http.client_ip`,
-// `net.peer.ip`, `net.host.ip`, `net.sock.peer.addr`, `network.peer.address`,
-// `user.ip_address` or a bare `ip`.
-const IP_ATTRIBUTE =
-  /(^|\.)(ip|ip_address|client_ip|client\.address|sock\.peer\.addr|network\.peer\.address)$/i;
+// and server spans carry the visitor's address both as attributes of their own
+// (`http.client_ip`, `net.peer.ip`, `client.address`, `network.peer.address`)
+// and in every request header (`http.request.header.x_forwarded_for`,
+// `…x-real-ip`, `…x_vercel_ip_city`). Names are matched with dots and dashes
+// read as underscores, so one fragment covers every spelling.
+const IP_ATTRIBUTE_FRAGMENTS = [
+  "forwarded",
+  "proxied_for",
+  "real_ip",
+  "connecting_ip",
+  "client_ip",
+  "vercel_ip",
+  "peer_ip",
+  "peer_addr",
+  "client_address",
+  "ip_address",
+];
+
+function isIPAttribute(name: string) {
+  const key = name.toLowerCase().replace(/[.-]/g, "_");
+  if (key === "ip" || key.endsWith("_ip")) return true;
+  return IP_ATTRIBUTE_FRAGMENTS.some((fragment) => key.includes(fragment));
+}
 
 function isPrivateAttribute(name: string) {
   if (name === "user") return true;
   if (name.startsWith("user.")) return name !== "user.id";
-  return IP_ATTRIBUTE.test(name);
+  return isIPAttribute(name);
 }
 
 function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
