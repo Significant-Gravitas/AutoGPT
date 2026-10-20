@@ -1708,7 +1708,10 @@ def execute_nightly_batch_sync(
 
 
 def _submit_nightly_batch(
-    user_id: str, expert_id: str | None = None
+    user_id: str,
+    expert_id: str | None = None,
+    *,
+    trigger: Literal["cron", "admin"] = "cron",
 ) -> "NightlyBatchResult | None":
     """Flag-gated nightly batch-family fan-out of one scope, outcome logged.
 
@@ -1729,7 +1732,8 @@ def _submit_nightly_batch(
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
     Returns ``None`` only when the runtime flag gate short-circuits
-    before the submitter runs.
+    before the submitter runs. ``trigger`` is what the dream pass's
+    record says started it: the cron, or the admin wrapper.
     """
     from backend.copilot.dream.nightly_batch import (
         NightlyBatchResult,
@@ -1746,7 +1750,7 @@ def _submit_nightly_batch(
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id, expert_id=expert_id),
+        run_nightly_batch_submit(user_id, expert_id=expert_id, trigger=trigger),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
     log_nightly_outcome(scope, result)
@@ -1861,7 +1865,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
     try:
         # The admin trigger bypasses the registry gate of the cron body:
         # it runs the account's pass whatever state its scope row is in.
-        result = _submit_nightly_batch(user_id)
+        result = _submit_nightly_batch(user_id, trigger="admin")
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1968,7 +1972,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id, status_id=job_id),
+            execute_dream_pass(user_id, status_id=job_id, trigger="admin"),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:

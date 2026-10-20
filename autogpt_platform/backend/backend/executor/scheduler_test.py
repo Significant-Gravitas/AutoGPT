@@ -1216,12 +1216,13 @@ def _run_nightly_wrapper(result):
         patch(
             "backend.executor.scheduler._submit_nightly_batch",
             return_value=result,
-        ),
+        ) as submit_mock,
         patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
         patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
         patch("backend.copilot.dream.job_status.update_status_phase") as phase_mock,
     ):
         execute_nightly_batch_with_status("abc", "job-1")
+    submit_mock.assert_called_once_with("abc", trigger="admin")
     return complete_mock, errored_mock, phase_mock
 
 
