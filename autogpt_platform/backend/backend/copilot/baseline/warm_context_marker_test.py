@@ -37,7 +37,6 @@ async def test_baseline_follow_up_marks_only_the_injected_block() -> None:
         "download_transcript": None,
         "build_expert_identity_suffix": "",
         "drain_pending_safe": [],
-        "resolve_answered": [],
         "_resolve_baseline_model": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
@@ -55,6 +54,12 @@ async def test_baseline_follow_up_marks_only_the_injected_block() -> None:
         "enqueue_conversation_turn": None,
     }
     with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "backend.copilot.gate.held.answered",
+                new=AsyncMock(return_value=[]),
+            )
+        )
         for name, value in values.items():
             stack.enter_context(
                 patch(
