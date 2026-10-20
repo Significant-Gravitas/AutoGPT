@@ -282,6 +282,26 @@ class TestARun:
         assert fake_dream_db.rows["s2"]["status"] is DreamPassStatus.EXPIRED
         assert "Dream pass reaper: 2 listed; expired=1, failed=1" in caplog.text
 
+    async def test_a_cut_into_the_release_keeps_the_rows_outcome(
+        self, mocker, fake_dream_db
+    ):
+        """The row's cutoff can land while the reaper gives the scope back.
+        Its outcome was noted before that release, so it stands, and the
+        row's cleanup is recorded as finished instead of being redone."""
+        mocker.patch.object(reaper_mod, "ROW_ATTEMPT_SECONDS", 0.1)
+        _seed(fake_dream_db, "s1", route=DreamPassRoute.SYNC)
+
+        async def slow_release(scope, hold) -> None:
+            await asyncio.sleep(0.3)
+
+        mocker.patch.object(reaper_mod, "release_dream_lock", slow_release)
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"expired": 1}
+        assert fake_dream_db.rows["s1"]["status"] is DreamPassStatus.EXPIRED
+        assert fake_dream_db.rows["s1"]["cleanup_pending_at"] is None
+
     async def test_never_outlasts_its_budget(
         self, mocker, fake_dream_db, fake_dream_redis, provider_cancel
     ):

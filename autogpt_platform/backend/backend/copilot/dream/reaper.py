@@ -342,7 +342,7 @@ async def _reap_rows(
                 f"Dream pass reaper: pass {row.id} cut short by its share of the "
                 "budget; listed again next run"
             )
-            done[row.id] = "out_of_budget"
+            done.setdefault(row.id, "out_of_budget")
 
 
 async def _attempt(
@@ -357,7 +357,7 @@ async def _attempt(
             f"Dream pass reaper: pass {row.id} cut short after "
             f"{ROW_ATTEMPT_SECONDS:g} s; listed again next run"
         )
-        done[row.id] = "out_of_budget"
+        done.setdefault(row.id, "out_of_budget")
 
 
 def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> ReaperRun:
