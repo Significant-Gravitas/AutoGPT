@@ -9,6 +9,7 @@ import logging
 from uuid import uuid4
 
 import sentry_sdk
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
@@ -94,6 +95,15 @@ CONVERSATION_TOO_LONG = FailureCategory(
     reason="this conversation got too long",
     advice="Start a new conversation to continue.",
 )
+LIMITS_UNCHECKED = FailureCategory(
+    key="limits_unchecked",
+    reason="your usage limits couldn't be checked",
+    advice=AGAIN_SOON,
+)
+# Nothing the user can retry or change, so no advice.
+ACCOUNT_BANNED = FailureCategory(
+    key="account_banned", reason="this account has been banned", advice=""
+)
 
 # Stream error codes, from the copilot's StreamError.code: the SDK/baseline
 # codes plus ProviderFailureKind values. An unlisted code is INTERNAL.
@@ -111,6 +121,9 @@ _BY_CODE: dict[str, FailureCategory] = {
     "idle_timeout": TOO_LONG,
     "circuit_breaker_empty_tool_calls": TOO_LARGE,
     "empty_completion": EMPTY_REPLY,
+    # The executor's own refusals before a turn runs.
+    "rate_limit_unavailable": LIMITS_UNCHECKED,
+    ACCOUNT_BANNED_DETAIL["code"]: ACCOUNT_BANNED,
 }
 
 # BotStreamError.error_kind values raised by the bot itself.
@@ -139,8 +152,9 @@ def new_reference() -> str:
 
 
 def failure_reply(category: FailureCategory, reference: str) -> str:
+    advice = f"{category.advice} " if category.advice else ""
     return (
-        f"AutoGPT couldn't finish that: {category.reason}. {category.advice} "
+        f"AutoGPT couldn't finish that: {category.reason}. {advice}"
         f"(ref {reference})"
     )
 

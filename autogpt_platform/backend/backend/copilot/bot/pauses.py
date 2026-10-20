@@ -13,15 +13,14 @@ KEEP_GOING = 'Reply "keep going"'
 
 
 def pause_note(pause: TurnPause) -> str:
-    if pause.reason in ("daily", "weekly"):
+    # A budget pause with no reset time has no plan behind it to refill.
+    if pause.reason in ("daily", "weekly") and pause.resets_at is not None:
         return f"{pause.summary} {KEEP_GOING} after it resets{_at(pause.resets_at)}."
-    if pause.reason == "trial":
+    if pause.reason in ("daily", "weekly", "trial"):
         return f"{pause.summary} {KEEP_GOING} once your plan has allowance again."
     return f"{pause.summary} {KEEP_GOING} to pick it up."
 
 
-def _at(resets_at: datetime | None) -> str:
-    if resets_at is None:
-        return ""
+def _at(resets_at: datetime) -> str:
     utc = resets_at.astimezone(UTC)
     return f" at {utc:%H:%M} UTC on {utc:%b} {utc.day}"
