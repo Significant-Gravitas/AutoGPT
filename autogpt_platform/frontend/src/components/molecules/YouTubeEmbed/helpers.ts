@@ -42,6 +42,17 @@ function parseYouTubeUrl(url: string): URL | null {
   return parsed && isYouTubeHost(parsed.hostname) ? parsed : null;
 }
 
+/** An image served by YouTube, such as a video thumbnail. */
+export function isYouTubeImageUrl(url: string): boolean {
+  const host = parseHttpUrl(url)?.hostname.toLowerCase();
+  if (!host) return false;
+  return (
+    host === "img.youtube.com" ||
+    host === "ytimg.com" ||
+    host.endsWith(".ytimg.com")
+  );
+}
+
 /** Any link to YouTube, whether or not it names a single video. */
 export function isYouTubeUrl(url: string): boolean {
   return parseYouTubeUrl(url) !== null;

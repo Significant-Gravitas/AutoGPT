@@ -81,4 +81,26 @@ describe("AgentImages YouTube thumbnails", () => {
       "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
     );
   });
+
+  test.each([
+    "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+    "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+  ])("waits for consent before a listing image hosted at %s", (image) => {
+    configureCookiebot();
+    installCookiebot({ marketing: false });
+    const { container } = render(
+      <AgentImages images={["https://cdn.test/one.png", image]} />,
+    );
+
+    expect(screen.queryByAltText("Thumbnail 2")).toBeNull();
+    expect(screen.getByText("Image from YouTube")).toBeDefined();
+    const requested = Array.from(container.querySelectorAll("img"))
+      .map((node) => node.getAttribute("src") ?? "")
+      .filter((src) => src.includes("youtube") || src.includes("ytimg"));
+    expect(requested).toEqual([]);
+
+    act(() => answerCookiebot({ marketing: true }));
+
+    expect(screen.getByAltText("Thumbnail 2").getAttribute("src")).toBe(image);
+  });
 });

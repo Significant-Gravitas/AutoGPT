@@ -18,8 +18,8 @@ function renderMarkdown(markdown: string) {
   ).container;
 }
 
-function renderVideo(url: string) {
-  return render(<>{videoRenderer.render(url)}</>).container;
+function renderVideo(url: string, metadata?: { type: "video" }) {
+  return render(<>{videoRenderer.render(url, metadata)}</>).container;
 }
 
 afterEach(() => {
@@ -83,5 +83,37 @@ describe("YouTube links in run output", () => {
 
     expect(container.querySelector("img")?.getAttribute("src")).toBe(thumbnail);
     expect(screen.queryByRole("link", { name: "Watch on YouTube" })).toBeNull();
+  });
+
+  it("keeps a YouTube channel link in markdown as a plain link", () => {
+    configureCookiebot();
+    installCookiebot({ marketing: true });
+    const channel = "https://www.youtube.com/@somechannel";
+
+    const container = renderMarkdown(
+      `# Demo\n\nSee [the channel](${channel}) and ![Channel](${channel})`,
+    );
+
+    const links = screen.getAllByRole("link", { name: /channel/i });
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      channel,
+      channel,
+    ]);
+    expect(container.querySelector("img, video, iframe")).toBeNull();
+    expect(
+      screen.queryByText("This video can only be watched on YouTube."),
+    ).toBeNull();
+  });
+
+  it("links a YouTube channel given as video output instead of playing it", () => {
+    configureCookiebot();
+    installCookiebot({ marketing: true });
+    const channel = "https://www.youtube.com/@somechannel";
+
+    expect(videoRenderer.canRender(channel)).toBe(false);
+    const container = renderVideo(channel, { type: "video" });
+
+    expect(container.querySelector("video, iframe, img")).toBeNull();
+    expect(screen.getByRole("link", { name: channel })).toBeDefined();
   });
 });

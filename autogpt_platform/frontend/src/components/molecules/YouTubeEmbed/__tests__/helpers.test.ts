@@ -3,6 +3,7 @@ import {
   getYouTubeEmbedUrl,
   getYouTubeVideoId,
   getYouTubeWatchUrl,
+  isYouTubeImageUrl,
   isYouTubeUrl,
 } from "../helpers";
 
@@ -105,5 +106,25 @@ describe("start time", () => {
     expect(getYouTubeWatchUrl(url)).toBe(
       `https://www.youtube.com/watch?v=${ID}`,
     );
+  });
+});
+
+describe("isYouTubeImageUrl", () => {
+  it("recognises YouTube image hosts", () => {
+    expect(isYouTubeImageUrl(`https://img.youtube.com/vi/${ID}/0.jpg`)).toBe(
+      true,
+    );
+    expect(isYouTubeImageUrl(`https://i.ytimg.com/vi/${ID}/0.jpg`)).toBe(true);
+    expect(isYouTubeImageUrl(`https://i3.ytimg.com/vi/${ID}/0.jpg`)).toBe(true);
+  });
+
+  it("ignores YouTube pages and other hosts", () => {
+    expect(isYouTubeImageUrl(`https://www.youtube.com/watch?v=${ID}`)).toBe(
+      false,
+    );
+    expect(isYouTubeImageUrl("https://ytimg.com.example.com/a.jpg")).toBe(
+      false,
+    );
+    expect(isYouTubeImageUrl("https://cdn.test/one.png")).toBe(false);
   });
 });

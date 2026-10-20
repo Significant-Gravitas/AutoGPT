@@ -18,7 +18,10 @@ import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
-import { isYouTubeUrl } from "@/components/molecules/YouTubeEmbed/helpers";
+import {
+  getYouTubeVideoId,
+  isYouTubeUrl,
+} from "@/components/molecules/YouTubeEmbed/helpers";
 
 const markdownPatterns = [
   /```[\s\S]*?```/u, // Fenced code blocks (check first)
@@ -42,8 +45,10 @@ const markdownPatterns = [
 const videoExtensions = [".mp4", ".webm", ".ogg", ".mov", ".avi"];
 
 function isVideoUrl(url: string): boolean {
+  // A YouTube link is a video only when it names one; a channel or playlist
+  // stays a link.
   if (isYouTubeUrl(url)) {
-    return true;
+    return getYouTubeVideoId(url) !== null;
   }
   try {
     const parsed = new URL(url);
@@ -72,8 +77,21 @@ function getVideoEmbedUrl(url: string): string | null {
   return null;
 }
 
+function renderPlainLink(url: string, label: React.ReactNode = url) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline"
+    >
+      {label}
+    </a>
+  );
+}
+
 function renderVideoEmbed(url: string): React.ReactNode {
-  if (isYouTubeUrl(url)) {
+  if (getYouTubeVideoId(url)) {
     return (
       <div className="my-4">
         <div className="relative aspect-video">
@@ -89,16 +107,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
   const embedUrl = getVideoEmbedUrl(url);
 
   if (!embedUrl) {
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 underline"
-      >
-        {url}
-      </a>
-    );
+    return renderPlainLink(url);
   }
 
   if (videoExtensions.some((ext) => embedUrl.toLowerCase().includes(ext))) {
@@ -372,6 +381,11 @@ function renderMarkdown(
             // Check if it's a video URL pattern
             if (src && isVideoUrl(src)) {
               return renderVideoEmbed(src);
+            }
+            // Any other YouTube page stays a link: an <img> would fetch it
+            // before consent.
+            if (src && isYouTubeUrl(src)) {
+              return renderPlainLink(src, alt || src);
             }
 
             return (

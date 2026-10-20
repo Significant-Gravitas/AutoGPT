@@ -2,6 +2,7 @@ import React from "react";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   getYouTubeVideoId,
+  getYouTubeWatchUrl,
   isYouTubeUrl,
 } from "@/components/molecules/YouTubeEmbed/helpers";
 import {
@@ -103,9 +104,7 @@ function renderVideo(
 ): React.ReactNode {
   const videoUrl = String(value);
 
-  // YouTube links go through the consent notice rather than a <video>
-  // that would fetch them.
-  if (isYouTubeUrl(videoUrl)) {
+  if (isYouTubeVideoURL(videoUrl)) {
     return (
       <div className="group relative aspect-video w-full">
         <YouTubeEmbed
@@ -113,6 +112,21 @@ function renderVideo(
           className="rounded-md border border-gray-200"
         />
       </div>
+    );
+  }
+
+  // Video metadata can bring any other YouTube page here. It stays a link,
+  // like in markdown: a <video> would fetch it before consent.
+  if (isYouTubeUrl(videoUrl)) {
+    return (
+      <a
+        href={getYouTubeWatchUrl(videoUrl) ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline"
+      >
+        {videoUrl}
+      </a>
     );
   }
 
