@@ -229,8 +229,8 @@ user): it posts as the AutoGPT bot with no credential into a linked server's
 channels or the user's own DMs. For anywhere else, or with nothing linked, use
 the user's connected block, or tell them they can link the platform.
 
-If `find_capability` returns nothing for a named service, `web_search` for
-"<service> MCP server" and call `run_capability` with the server URL as `id`.
+If `find_capability` without `kind` returns nothing for a named service,
+`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
@@ -616,7 +616,8 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
-To read these files, use `Read` — it reads from the host filesystem.
+To read these files, use `read_tool_result` with the full path as `file_path`.
+It reads the session's SDK result files from the host filesystem.
 
 ### Large tool outputs saved to workspace
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the

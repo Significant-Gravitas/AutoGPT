@@ -458,7 +458,14 @@ export const ChatContainer = ({
       assistantName={expertIdentity?.name ?? "Otto"}
     >
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+        <div
+          className={cn(
+            "flex h-full min-h-0 w-full flex-col lg:px-0",
+            // An open chat runs edge to edge on a phone, like the rest of
+            // the thread; the new-chat screen keeps its margin.
+            sessionId ? "md:px-2" : "px-2",
+          )}
+        >
           {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}

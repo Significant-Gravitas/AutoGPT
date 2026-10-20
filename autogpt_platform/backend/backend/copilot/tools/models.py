@@ -6,6 +6,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
@@ -996,6 +997,8 @@ class CapabilityListResponse(ToolResponseBase):
     count: int
     # Generic primitives offered when the query named a service.
     fallback: list[dict[str, Any]] = Field(default_factory=list)
+    # Connected or better-covering entries a ``kind`` filter hid.
+    other_kinds: list[dict[str, Any]] = Field(default_factory=list)
     service: str | None = None
 
 
@@ -1404,31 +1407,6 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
     candidates: list[dict[str, str]] = Field(default_factory=list)
-
-
-class MemoryForgetFailureCode(str, Enum):
-    """Stable, machine-switchable reason a forget delete failed.
-
-    The frontend/model can branch on this code (retry vs. give up) without
-    parsing the free-text ``reason``. New codes may be added over time, so
-    consumers must tolerate unknown values.
-    """
-
-    NO_MATCH = "no_match"
-    QUERY_ERROR = "query_error"
-
-
-class MemoryForgetFailure(BaseModel):
-    """One edge that could not be deleted, with an actionable reason.
-
-    Surfaced so the assistant (and user) can tell *why* a delete failed —
-    e.g. the edge was not found vs. the query itself errored — instead of a
-    bare "N failed" count that gives the model nothing to act on.
-    """
-
-    uuid: str
-    code: MemoryForgetFailureCode
-    reason: str
 
 
 class MemoryForgetConfirmResponse(ToolResponseBase):
