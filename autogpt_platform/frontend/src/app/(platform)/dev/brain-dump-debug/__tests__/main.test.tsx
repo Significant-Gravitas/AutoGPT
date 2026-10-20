@@ -125,30 +125,11 @@ describe("brain dump debug page — gating", () => {
     expect(statusCalls).toBe(0);
   });
 
-  it("404s when the onboarding-brain-dump flag is off", () => {
+  it("opens the debug tools outside production without a rollout flag", async () => {
     flagStatus.enabled = false;
-
     renderPage();
-
-    expect(notFoundMock).toHaveBeenCalled();
-    expect(screen.queryByText("Brain dump debug")).toBeNull();
-    expect(statusCalls).toBe(0);
-  });
-
-  it("waits with skeletons instead of 404ing while the flag is unresolved", async () => {
-    // Short-circuiting to notFound() before LaunchDarkly answers would 404
-    // users who actually have the flag on.
-    flagStatus.ready = false;
-    flagStatus.enabled = false;
-
-    const { container } = render(<BrainDumpDebugPage />);
-
+    expect(await screen.findByText("Brain dump debug")).toBeDefined();
     expect(notFoundMock).not.toHaveBeenCalled();
-    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(3);
-    expect(screen.queryByText("Brain dump debug")).toBeNull();
-    // The status query stays disabled until the page is known to be
-    // available, so nothing is polled while the flag is in flight.
-    expect(statusCalls).toBe(0);
   });
 
   it("renders every panel once the flag resolves on outside production", async () => {

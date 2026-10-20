@@ -1,5 +1,31 @@
 import { Page, expect } from "@playwright/test";
 
+export async function dismissTabIntros(page: Page) {
+  await page.addLocatorHandler(
+    page.getByTestId("tab-intro-overlay"),
+    async (intro) => {
+      const [button] = await intro
+        .getByRole("button", { name: "Got it", exact: true })
+        .elementHandles();
+      if (!button) return;
+      try {
+        // A click can intercept its own handler after the outer wait expires.
+        await button.press("Enter");
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !/Element is not attached to the DOM|Execution context was destroyed/.test(
+            error.message,
+          )
+        )
+          throw error;
+      } finally {
+        await button.dispose();
+      }
+    },
+  );
+}
+
 function resolveAppUrl(page: Page, destination: string) {
   const baseURL =
     page.url().startsWith("http://") || page.url().startsWith("https://")
@@ -82,31 +108,40 @@ export async function completeOnboardingWizard(
   page: Page,
   options?: {
     role?: string;
-    painPoints?: string[];
     plan?: "pro" | "max";
   },
 ) {
   const role = options?.role ?? "Engineering";
-  const painPoints = options?.painPoints ?? ["Research", "Reports & data"];
   const plan = options?.plan ?? "pro";
 
   await advanceToRoleStep(page, plan);
   await page.getByText(role, { exact: false }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(page.getByText("What's eating your time?")).toBeVisible({
+  const skipBrainDump = page.getByRole("button", {
+    name: "Skip for now",
+    exact: true,
+  });
+  await expect(skipBrainDump).toBeVisible({
     timeout: 5000,
   });
-  for (const point of painPoints) {
-    await page.getByText(point, { exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await skipBrainDump.click();
+  await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
 
+  const skipHiring = page.getByRole("button", {
+    name: "I'll add members later",
+    exact: true,
+  });
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
   });
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
+  await expect(skipHiring).toBeVisible({
+    timeout: 10000,
+  });
+  await skipHiring.click();
+  await expect(skipHiring).toBeHidden();
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -117,5 +152,5 @@ export async function completeOnboardingWizard(
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });
-  return { role, painPoints, plan };
+  return { role, plan };
 }

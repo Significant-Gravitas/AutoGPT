@@ -30,7 +30,6 @@ beforeEach(() => {
 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
-const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -49,20 +48,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts"
-        ? hireExpertsFlag.enabled
-        : actual.useGetFlag(flag as never),
-  };
-});
 
 const mariaTemplate: Expert = {
   id: "template-maria",
@@ -94,7 +79,6 @@ const hiredMaria: Expert = {
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
-    hireExpertsFlag.enabled = true;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -126,7 +110,7 @@ describe("Marketplace ExpertsSection", () => {
 
   test("shows the expert cards to signed-out visitors without account links", async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
-    hireExpertsFlag.enabled = false;
+
     let rosterRequested = false;
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
@@ -145,12 +129,13 @@ describe("Marketplace ExpertsSection", () => {
     );
     expect(screen.queryByText("Create an Expert")).toBeNull();
     expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Hire" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Hire" }).getAttribute("href"),
+    ).toBe("/signup?next=%2Fmarketplace%2Fexperts%2Ftemplate-maria");
     expect(rosterRequested).toBe(false);
   });
 
-  test("stays hidden and fetches nothing for signed-in users outside the beta", async () => {
-    hireExpertsFlag.enabled = false;
+  test("shows experts to signed-in users without a rollout flag", async () => {
     let templatesRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {
@@ -162,10 +147,12 @@ describe("Marketplace ExpertsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    expect(screen.queryByText(/create your own expert/)).toBeNull();
-    expect(templatesRequested).toBe(false);
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Create an Expert" }),
+    ).toBeDefined();
+    expect(await screen.findByRole("link", { name: /Maria/ })).toBeDefined();
+    expect(templatesRequested).toBe(true);
   });
 
   test("keeps the raise-your-own door open when no templates exist", async () => {

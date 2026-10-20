@@ -149,7 +149,7 @@ describe("server status panel", () => {
 
     const status = panel("Server status");
     expect(
-      await status.findByText(/the endpoint 404s when ONBOARDING_BRAIN_DUMP/),
+      await status.findByText(/check that you are signed in and the backend/),
     ).toBeDefined();
   });
 

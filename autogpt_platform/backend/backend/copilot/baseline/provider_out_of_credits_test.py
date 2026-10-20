@@ -6,6 +6,7 @@ plain sentence, the turn is retryable, and nothing offers to "switch
 connection" as if it were their own limit.
 """
 
+import asyncio
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -55,12 +56,18 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     )
     for name, value in {
         "drain_pending_safe": [],
+        "resolve_answered": [],
+        "drain_pending_messages": [],
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "download_transcript": None,
+        "build_skills_update_notice": "",
+        "inject_user_context": "hello",
+        "active_mode": None,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))
@@ -77,6 +84,7 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
 
 async def _run_turn() -> tuple[list[object], ChatSession]:
     session = ChatSession.new("user-1", dry_run=False)
+    session.title = "Existing task"
     session.messages.append(ChatMessage(role="user", content="hello"))
     events = [
         event
@@ -94,7 +102,8 @@ async def _run_turn() -> tuple[list[object], ChatSession]:
 async def test_platform_402_shows_the_platform_message(
     baseline_io: list[ChatSession],
 ) -> None:
-    events, session = await _run_turn()
+    async with asyncio.timeout(10):
+        events, session = await _run_turn()
 
     [error] = [e for e in events if isinstance(e, StreamError)]
     assert error.code == "provider_unavailable"

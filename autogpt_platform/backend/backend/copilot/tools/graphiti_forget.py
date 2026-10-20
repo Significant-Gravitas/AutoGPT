@@ -21,7 +21,6 @@ from typing import Any, Literal
 
 from graphiti_core.edges import EntityEdge
 
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.memory_model import (
     ForgetResult,
     MemoryForgetFailure,
@@ -121,12 +120,6 @@ class MemoryForgetSearchTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
-                session_id=session.session_id,
-            )
-
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 
@@ -241,12 +234,6 @@ class MemoryForgetConfirmTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
-                session_id=session.session_id,
-            )
-
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 

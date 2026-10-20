@@ -54,7 +54,6 @@ from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
@@ -177,7 +176,6 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
     PROVIDER_UNAVAILABLE_MESSAGE,
@@ -1981,18 +1979,11 @@ async def stream_chat_completion_baseline(
     message_id = str(uuid.uuid4())
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
-    graphiti_enabled = await is_enabled_for_user(user_id)
+    graphiti_enabled = bool(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
-    # The whole expert-team surface rides the hire-experts flag, failing
-    # closed for anonymous turns.  Resolved here rather than at the
-    # tool-filtering site below so the delegation rules can be gated on the
-    # same boolean — a flag-off turn must not be told to call tools its
-    # ``execute_tool`` gate will refuse.
-    experts_enabled = bool(user_id) and await is_feature_enabled(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    )
+    experts_enabled = bool(user_id)
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     oversight_supplement = get_expert_oversight_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
@@ -2979,7 +2970,7 @@ async def stream_chat_completion_baseline(
             _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Skill learning: record this turn as a learning source ---
-        # Independent of Graphiti; flag-gated and never raises.
+        # Independent of Graphiti; honors the user's learning preferences.
         if user_id and message and is_user_message:
             _capture_task = asyncio.create_task(
                 capture_chat_turn(

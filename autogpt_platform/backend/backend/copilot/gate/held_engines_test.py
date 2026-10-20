@@ -7,6 +7,7 @@ proves the turn's execution context — the chat whose ceiling an approval
 raises included — is set before it runs.
 """
 
+import asyncio
 import contextlib
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -59,7 +60,8 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
         folded.append(list(pending))
         raise _StopAtFold
 
-    patches, _, _ = _make_patches(hire_experts_enabled=False)
+    patches, mcp_server = _make_patches()
+    mcp_server.side_effect = None
     session = _make_session()
     envelope = root_envelope("turn-2", session_id=session.session_id)
     with contextlib.ExitStack() as stack:
@@ -80,16 +82,23 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
                 new=persist,
             )
         )
+        stack.enter_context(
+            patch(
+                "backend.copilot.sdk.service.build_session_context",
+                new=AsyncMock(return_value=""),
+            )
+        )
         with contextlib.suppress(_StopAtFold):
-            async for _ in stream_chat_completion_sdk(
-                session_id=session.session_id,
-                message="hello",
-                is_user_message=True,
-                user_id="test-user",
-                session=session,
-                envelope=envelope,
-            ):
-                pass
+            async with asyncio.timeout(10):
+                async for _ in stream_chat_completion_sdk(
+                    session_id=session.session_id,
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                    envelope=envelope,
+                ):
+                    pass
         set_execution_context(None, None)
 
     context.assert_called()
@@ -144,8 +153,17 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
             f"{svc}._build_system_prompt",
             new=AsyncMock(return_value=("system prompt", None)),
         ),
-        patch(f"{svc}.is_enabled_for_user", new=AsyncMock(return_value=False)),
-        patch(f"{svc}.is_feature_enabled", new=AsyncMock(return_value=False)),
+        patch(f"{svc}._fetch_graphiti_context", new=AsyncMock(return_value="")),
+        patch.multiple(
+            svc,
+            enqueue_conversation_turn=AsyncMock(),
+            capture_chat_turn=AsyncMock(),
+            persist_and_record_usage=AsyncMock(),
+            upsert_chat_session=AsyncMock(),
+            upload_transcript=AsyncMock(),
+            active_mode=AsyncMock(return_value=None),
+            build_turn_budget_block=AsyncMock(return_value=""),
+        ),
         patch(
             f"{svc}.build_builder_system_prompt_suffix",
             new=AsyncMock(return_value=""),
@@ -157,17 +175,18 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         patch(f"{svc}.tool_call_loop", new=model_loop),
     ):
         try:
-            async for _ in stream_chat_completion_baseline(
-                session_id=session.session_id,
-                message=None,
-                is_user_message=False,
-                user_id="user-1",
-                session=session,
-                envelope=root_envelope("turn-2", session_id=session.session_id),
-            ):
-                pass
-        except Exception:
-            pass  # what the turn does after the model's first call is not under test
+            async with asyncio.timeout(10):
+                async for _ in stream_chat_completion_baseline(
+                    session_id=session.session_id,
+                    message=None,
+                    is_user_message=False,
+                    user_id="user-1",
+                    session=session,
+                    envelope=root_envelope("turn-2", session_id=session.session_id),
+                ):
+                    pass
+        except _StopAtFold:
+            pass
         finally:
             set_execution_context(None, None)
 

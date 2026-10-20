@@ -33,7 +33,6 @@ import logging
 from backend.data.db_accessors import user_db
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.data.redis_client import get_redis_async
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -180,8 +179,6 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
     try:
         if not user_id:
             return
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return
 
         # Marker next: one Redis GET is the rest of the cost of the common
         # case. Resolving the timezone is a DB read, and this runs on
@@ -197,9 +194,7 @@ async def ensure_morning_briefing_scheduled(user_id: str) -> None:
             # resolves the real timezone.
             return
 
-        # Lazy client handle, mirroring dream/scheduling.py: a flag-off
-        # user never even constructs the scheduler client, and the lazy
-        # import avoids a circular import during process bootstrap.
+        # The lazy import avoids a circular import during process bootstrap.
         from backend.util.clients import get_scheduler_client
 
         await get_scheduler_client().add_morning_briefing_schedule(

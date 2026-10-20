@@ -37,20 +37,8 @@ describe("onboardingStepKey", () => {
     ).toBe("preparing");
   });
 
-  it("names the intro steps when the layout has them", () => {
-    const steps = buildStepLayout({ hasIntro: true, hasPaywall: true });
-    expect(onboardingStepKey(steps, 1)).toBe("team");
-    expect(onboardingStepKey(steps, 2)).toBe("autopilot");
-    expect(onboardingStepKey(steps, 3)).toBe("role");
-    expect(onboardingStepKey(steps, 4)).toBe("pain_points");
-    expect(onboardingStepKey(steps, 5)).toBeNull();
-    expect(onboardingStepKey(steps, 6)).toBe("preparing");
-  });
-
   it("names the hire step when the layout has it", () => {
     const steps = buildStepLayout({
-      hasIntro: true,
-      hasHire: true,
       hasPaywall: true,
     });
     expect(onboardingStepKey(steps, 5)).toBe("hire");
@@ -62,7 +50,7 @@ describe("onboardingStepKey", () => {
   // double-count the top of the funnel.
   it("returns null for the subscription step", () => {
     expect(
-      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription!),
     ).toBeNull();
   });
 });
@@ -145,21 +133,18 @@ describe("trackOnboardingStep", () => {
   });
 });
 
-it.each([false, true])(
-  "tracks the optional connection step once, with intro=%s",
-  (hasIntro) => {
-    sessionStorage.clear();
-    sendDatafastEvent.mockReset();
-    const steps = buildStepLayout({ hasIntro, hasConnect: true });
-    const key = onboardingStepKey(steps, steps.connect!);
-    expect(key).toBe("connect");
-    if (key) {
-      trackOnboardingStep(key);
-      trackOnboardingStep(key);
-    }
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith(
-      "onboarding_connect",
-      {},
-    );
-  },
-);
+it("tracks the optional connection step once", () => {
+  sessionStorage.clear();
+  sendDatafastEvent.mockReset();
+  const steps = buildStepLayout({ hasConnect: true });
+  const key = onboardingStepKey(steps, steps.connect!);
+  expect(key).toBe("connect");
+  if (key) {
+    trackOnboardingStep(key);
+    trackOnboardingStep(key);
+  }
+  expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith(
+    "onboarding_connect",
+    {},
+  );
+});

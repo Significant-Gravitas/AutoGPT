@@ -30,7 +30,6 @@ from backend.api.features.memory.models import (
     MemoryFactListResponse,
     MemoryScopeOverview,
 )
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
@@ -64,15 +63,10 @@ def _is_missing_graph_error(exc: BaseException) -> bool:
 async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
     """Resolve the caller-owned memory scope for the request.
 
-    Memory must be enabled for the caller, and an expert scope must name an
-    active expert the caller owns — archived experts 404 here, matching the
+    An expert scope must name an active expert the caller owns — archived
+    experts 404 here, matching the
     settings page's active-experts-only dropdown.
     """
-    if not await is_enabled_for_user(user_id):
-        raise HTTPException(
-            status_code=403, detail="Memory is not enabled for your account"
-        )
-
     if expert_id is None:
         try:
             return MemoryScope.for_user(user_id)

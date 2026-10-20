@@ -23,7 +23,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
     NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
-    NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY=true \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -238,9 +237,6 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     && rm -f /app/autogpt_platform/backend/config.json \
     && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json
 
-# FORCE_FLAG_GRAPHITI_MEMORY keeps memory on; the frontend stage's
-# NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY must match it, or users can't open
-# /settings/memory to see or erase what was remembered.
 ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
     ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
     OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl \
@@ -259,7 +255,6 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PRISMA_QUERY_ENGINE_BINARY=/opt/prisma-python/query-engine \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
 # These build arguments change on every build, so they are declared only after
