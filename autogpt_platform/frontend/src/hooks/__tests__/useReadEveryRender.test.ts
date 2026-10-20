@@ -30,3 +30,16 @@ test("does not render on its own when the outside value changes", () => {
   expect(renders).toBe(rendersAfterMount);
   expect(result.current).toBe("idle");
 });
+
+test("returns a fresh object on every render without looping", () => {
+  const outside = { status: "idle" };
+  const { result, rerender } = renderHook(() =>
+    useReadEveryRender(() => ({ status: outside.status })),
+  );
+  expect(result.current).toEqual({ status: "idle" });
+
+  outside.status = "pending";
+  rerender();
+
+  expect(result.current).toEqual({ status: "pending" });
+});
