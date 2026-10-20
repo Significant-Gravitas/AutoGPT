@@ -16,9 +16,11 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_image import (
     IMAGE_EXTENSIONS,
+    IMAGE_MIME_TYPES,
     IMAGE_READ_DESCRIPTION,
     MAX_IMAGE_BYTES,
     prepare_image,
@@ -566,14 +568,11 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from persistent workspace. Specify file_id or path. "
-            "Small text files return inline; large/binary files return metadata+URL. "
+            "Read workspace file_id or path. Small text is inline; other files return metadata+URL. "
             + IMAGE_READ_DESCRIPTION
-            + "Use save_to_path to copy to working dir for processing. "
-            "Use offset/length for paginated reads. "
-            "Paths resolve in the current session; use /sessions/<id>/... or "
-            "file_id to reach elsewhere. An expert chat reads its own "
-            "conversations, ones it delegated, and the user's files."
+            + "save_to_path copies for processing; offset/length paginate text. "
+            "Paths are session-relative; use /sessions/<id>/... or file_id elsewhere. "
+            "Expert chats can read their own/delegated conversations and the user's files."
         )
 
     @property
@@ -685,6 +684,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            # A saved Google block output, read back, is still Google data.
+            google_data = file_info.metadata.get(GOOGLE_DATA_METADATA_KEY) is True
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -695,7 +697,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 save_to_path = result
 
             is_image = (
-                file_info.mime_type.startswith("image/")
+                file_info.mime_type in IMAGE_MIME_TYPES
                 or os.path.splitext(file_info.name)[1].lower() in IMAGE_EXTENSIONS
             )
             if is_image and (char_offset > 0 or char_length is not None):
@@ -715,7 +717,11 @@ class ReadWorkspaceFileTool(BaseTool):
                         else await manager.read_file_by_id(target_file_id)
                     )
                 except ValueError as exc:
-                    return ErrorResponse(message=str(exc), session_id=session_id)
+                    return ErrorResponse(
+                        message=str(exc)
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    )
                 return WorkspaceFileMetadataResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -754,7 +760,7 @@ class ReadWorkspaceFileTool(BaseTool):
                         f"from {file_info.name}"
                     ),
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
@@ -777,7 +783,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             # Metadata + download URL for large/binary files
             preview: str | None = None
@@ -805,6 +811,10 @@ class ReadWorkspaceFileTool(BaseTool):
                 or file_info.mime_type.startswith("video/")
             ):
                 msg += ". This file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images."
+            elif file_info.mime_type.startswith("image/") and not is_image:
+                msg += (
+                    ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."
+                )
             return WorkspaceFileMetadataResponse(
                 file_id=file_info.id,
                 name=file_info.name,
@@ -815,7 +825,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 preview=preview,
                 message=msg,
                 session_id=session_id,
-            )
+            ).with_google_data(google_data)
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
         except WorkspaceAccessDeniedError as e:

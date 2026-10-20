@@ -33,6 +33,7 @@ def workspace(monkeypatch, png_bytes):
         path="/page.png",
         mime_type="image/png",
         size_bytes=len(png_bytes),
+        metadata={},
     )
     manager = SimpleNamespace(
         get_file_info=AsyncMock(return_value=info),
@@ -253,3 +254,29 @@ async def test_workspace_image_mime_is_detected_from_bytes(workspace):
     )
     assert result.image is not None
     assert result.image.mime_type == "image/png"
+
+
+async def test_svg_keeps_its_download_handle_and_conversion_guidance(workspace):
+    workspace.get_file_info.return_value.mime_type = "image/svg+xml"
+    workspace.get_file_info.return_value.name = "chart.svg"
+    session = ChatSession.new("image-test-user", dry_run=False)
+    result = await workspace_files.ReadWorkspaceFileTool()._execute(
+        session.user_id, session, file_id="image-file"
+    )
+    assert result.image is None
+    assert result.download_url == "workspace://image-file"
+    assert "convert" in result.message.lower()
+    workspace.read_file_by_id.assert_not_awaited()
+
+
+async def test_invalid_saved_image_acknowledges_local_copy(workspace, monkeypatch):
+    workspace.read_file_by_id.return_value = b"invalid"
+    monkeypatch.setattr(
+        workspace_files, "save_to_workdir", AsyncMock(return_value="page.png")
+    )
+    session = ChatSession.new("image-test-user", dry_run=False)
+    result = await workspace_files.ReadWorkspaceFileTool()._execute(
+        session.user_id, session, file_id="image-file", save_to_path="page.png"
+    )
+    assert result.image is None
+    assert "saved to page.png" in result.message

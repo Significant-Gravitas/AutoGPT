@@ -83,6 +83,8 @@ test("opening a folder puts it in the URL", async () => {
   await userEvent.click(await screen.findByTestId("library-folder"));
 
   await waitFor(() =>
-    expect(onUrlUpdate.mock.calls.at(-1)?.[0].queryString).toBe("?folder=f-q3"),
+    expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get("folder")).toBe(
+      "f-q3",
+    ),
   );
 });

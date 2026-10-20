@@ -7,7 +7,7 @@ import warnings
 from typing import Any, Literal, Self
 
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 from backend.util.truncate import truncate
 
@@ -16,9 +16,7 @@ MAX_IMAGE_DIMENSION = 2000
 IMAGE_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 IMAGE_READ_DESCRIPTION = (
-    "PNG, JPEG, GIF and WebP images up to 3 MiB and 2000 pixels per side "
-    "are returned as image blocks you can see (first frame only). "
-    "Render PDF pages or extract video frames to images, then read those files. "
+    "Images: PNG/JPEG/GIF/WebP, up to 3 MiB and 2000px/side; first frame only. "
 )
 
 
@@ -49,6 +47,8 @@ class ToolImage(BaseModel):
 
 
 class ImageCarrier(BaseModel):
+    """In-process pixels; held and pending payloads serialize them explicitly."""
+
     _image: ToolImage | None = PrivateAttr(default=None)
 
     @property
@@ -75,7 +75,11 @@ def prepare_image(raw: bytes) -> ToolImage:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(raw)) as image:
-                mime = Image.MIME.get(image.format or "", "")
+                mime = (
+                    "image/jpeg"
+                    if image.format == "MPO"
+                    else Image.MIME.get(image.format or "", "")
+                )
                 if mime not in IMAGE_MIME_TYPES:
                     raise ValueError(
                         "Image not shown: convert it to PNG, JPEG, GIF or WebP, then read it again."
@@ -102,11 +106,16 @@ def prepare_image(raw: bytes) -> ToolImage:
     )
 
 
-def parse_held_image(output: str) -> HeldImage | None:
+def parse_held_image(output: str | dict[str, Any]) -> HeldImage | None:
     try:
-        data = json.loads(output)
-    except ValueError:
+        return _parse_held_image(
+            json.loads(output) if isinstance(output, str) else output
+        )
+    except (ValueError, ValidationError):
         return None
+
+
+def _parse_held_image(data: object) -> HeldImage | None:
     if not isinstance(data, dict):
         return None
     if data.get("type") == "held_tool_image":

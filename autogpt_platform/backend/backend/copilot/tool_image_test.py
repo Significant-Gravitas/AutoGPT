@@ -1,11 +1,13 @@
 import base64
 import io
+import json
 
 import pytest
 from PIL import Image
 
 from backend.copilot.tool_image import (
     MAX_IMAGE_BYTES,
+    parse_held_image,
     prepare_image,
     truncate_mcp_result,
 )
@@ -63,3 +65,26 @@ def test_text_cap_does_not_truncate_image_bytes():
     )
     assert len(result["content"][0]["text"]) < 1000
     assert result["content"][1] == image.mcp()
+
+
+@pytest.mark.parametrize(
+    "mime,data", [("image/svg+xml", "svg"), ("", ""), ("image/png", None)]
+)
+def test_unrecognized_held_image_does_not_crash_release(mime, data):
+    output = json.dumps(
+        {"content": [{"type": "image", "mimeType": mime, "data": data}]}
+    )
+    assert parse_held_image(output) is None
+
+
+def test_mpo_jpeg_is_returned_as_jpeg():
+    output = io.BytesIO()
+    Image.new("RGB", (20, 20), "blue").save(
+        output,
+        format="MPO",
+        save_all=True,
+        append_images=[Image.new("RGB", (20, 20), "red")],
+    )
+    image = prepare_image(output.getvalue())
+    assert image.mime_type == "image/jpeg"
+    assert base64.b64decode(image.data_base64) == output.getvalue()

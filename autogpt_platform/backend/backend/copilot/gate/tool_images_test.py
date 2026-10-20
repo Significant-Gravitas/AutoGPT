@@ -6,9 +6,10 @@ import pytest
 from PIL import Image
 from prisma.enums import ReviewStatus
 
-from backend.copilot import pending_message_helpers, pending_messages
+from backend.copilot import pending_message_helpers
 from backend.copilot.gate import held
 from backend.copilot.gate.content import ContentVerdict
+from backend.copilot.gate.reads import trusted_read
 from backend.copilot.gate.reads_test import _Fetch, _session, rows
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -20,11 +21,17 @@ from backend.copilot.sdk.tool_adapter import (
     create_tool_handler,
     set_execution_context,
 )
-from backend.copilot.tool_image import ToolImage, prepare_image
+from backend.copilot.tool_image import HeldImage, ToolImage, prepare_image
 from backend.copilot.tools.models import ToolResponseBase
 from backend.copilot.transcript_builder import TranscriptBuilder
 
-rows = rows
+__all__ = ["rows"]
+
+
+def test_wrapped_workspace_image_retains_installed_skill_trust(image):
+    text = '{"type":"workspace_file_metadata","path":"/skills/example/chart.png"}'
+    wrapped = HeldImage(text=text, image=image).model_dump_json()
+    assert trusted_read("read_workspace_file", {"file_id": "f"}, wrapped)
 
 
 class _ImageRead(_Fetch):
@@ -148,27 +155,6 @@ async def test_expired_image_is_not_released_on_identical_read(rows, image):
     assert not result.success
     assert result.image is None
     assert tool.runs == 1
-
-
-async def test_text_only_hook_defers_pixels_until_a_multimodal_turn(monkeypatch, image):
-    image_message = PendingMessage(content="Approved image", model_image=image)
-    text_message = PendingMessage(content="Also check the totals")
-    monkeypatch.setattr(
-        pending_messages,
-        "drain_pending_messages",
-        AsyncMock(return_value=[image_message, text_message]),
-    )
-    requeue = AsyncMock()
-    stash = AsyncMock()
-    monkeypatch.setattr(pending_messages, "push_pending_message", requeue)
-    monkeypatch.setattr(pending_messages, "stash_pending_for_persist", stash)
-    result = await pending_messages.drain_and_format_for_injection(
-        "session", log_prefix="test"
-    )
-    assert text_message.content in result
-    assert image_message.content not in result
-    requeue.assert_awaited_once_with("session", image_message)
-    stash.assert_awaited_once_with("session", [text_message])
 
 
 @pytest.mark.parametrize("persisted", [True, False])

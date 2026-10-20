@@ -38,6 +38,7 @@ from backend.copilot.gate.mcp_seam import (
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -865,6 +866,9 @@ def _make_truncating_wrapper(
 
         result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
+        remember_cut_google_output(
+            _text_from_mcp_result(result), _text_from_mcp_result(truncated)
+        )
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:
             truncated = await screen_non_registry_read(

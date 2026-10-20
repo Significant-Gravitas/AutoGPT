@@ -1,5 +1,6 @@
 import json
 import re
+import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -14,6 +15,8 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
+from prisma.enums import BriefingFrequency, SubscriptionTier
+from prisma.errors import DataError, RecordNotFoundError
 from prisma.models import User as PrismaUser
 from pytest_snapshot.plugin import Snapshot
 
@@ -22,6 +25,7 @@ from backend.api.rest_api import app as real_app
 from backend.data.model import User
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
+    generate_preference_link,
     get_or_create_user,
     get_user_by_email,
     get_user_by_id,
@@ -523,3 +527,98 @@ def test_auth_surface_has_no_other_operations():
 @pytest.mark.parametrize("method,path", sorted(AUTHENTICATED | UNAUTHENTICATED))
 def test_auth_operation_keeps_its_tags(method: str, path: str):
     assert real_app.openapi()["paths"][path][method]["tags"] == ["v1", "auth"]
+
+
+class TestEmailPreferenceLinkForAMissingUser:
+    """The footer link names its user, so a deleted user's link must be refused
+    like a forged one: no 500, and no user id in the answer."""
+
+    @pytest.fixture
+    def user_id(self) -> str:
+        return str(uuid.uuid4())
+
+    @pytest.fixture
+    def lookup(self, mocker: pytest_mock.MockFixture, user_id: str) -> AsyncMock:
+        return mocker.patch.object(
+            UserActions,
+            "find_unique_or_raise",
+            AsyncMock(return_value=_preference_row(user_id)),
+        )
+
+    @pytest.fixture
+    def update(self, mocker: pytest_mock.MockFixture, user_id: str) -> AsyncMock:
+        return mocker.patch.object(
+            UserActions, "update", AsyncMock(return_value=_preference_row(user_id))
+        )
+
+    def test_a_valid_link_applies_its_choice(
+        self, lookup: AsyncMock, update: AsyncMock, user_id: str
+    ):
+        response = _apply_footer_choice(user_id, "off")
+
+        assert response.status_code == 200
+        assert update.await_args.kwargs["data"]["briefingFrequency"] == (
+            BriefingFrequency.OFF
+        )
+
+    def test_a_deleted_users_link_is_refused_like_a_forged_one(
+        self, lookup: AsyncMock, update: AsyncMock, user_id: str
+    ):
+        lookup.side_effect = RecordNotFoundError({}, message="no User row")
+
+        response = _apply_footer_choice(user_id, "off")
+
+        assert (response.status_code, response.json()) == (
+            400,
+            {"detail": "Invalid or expired link"},
+        )
+        update.assert_not_awaited()
+
+    def test_a_user_deleted_before_the_update_is_refused_like_a_forged_one(
+        self, lookup: AsyncMock, update: AsyncMock, user_id: str
+    ):
+        update.return_value = None
+
+        response = _apply_footer_choice(user_id, "off")
+
+        assert (response.status_code, response.json()) == (
+            400,
+            {"detail": "Invalid or expired link"},
+        )
+
+    def test_a_database_failure_stays_a_server_error(
+        self, lookup: AsyncMock, update: AsyncMock, user_id: str
+    ):
+        lookup.side_effect = DataError({"user_facing_error": {"message": "reset"}})
+
+        response = _apply_footer_choice(user_id, "off")
+
+        assert response.status_code == 500
+
+
+def _apply_footer_choice(user_id: str, choice: str) -> httpx.Response:
+    link = generate_preference_link(user_id, choice)
+    token = urllib.parse.parse_qs(urllib.parse.urlparse(link).query)["t"][0]
+    return fastapi.testclient.TestClient(real_app, raise_server_exceptions=False).post(
+        "/api/auth/user/preferences/from-email",
+        params={"choice": choice, "token": token},
+    )
+
+
+def _preference_row(user_id: str) -> PrismaUser:
+    now = datetime.now(timezone.utc)
+    return PrismaUser(
+        id=user_id,
+        email="user@example.com",
+        emailVerified=True,
+        createdAt=now,
+        updatedAt=now,
+        metadata="{}",
+        integrations="",
+        maxEmailsPerDay=3,
+        briefingFrequency=BriefingFrequency.DAILY,
+        alertsEnabled=True,
+        notifyOnStoreVerdict=True,
+        timezone="UTC",
+        subscriptionTier=SubscriptionTier.NO_TIER,
+    )

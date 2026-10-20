@@ -20,6 +20,11 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.google_data_redaction import (
+    is_google_call,
+    is_google_output,
+    remember_google_output,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
@@ -341,6 +346,7 @@ async def _deliver(
             user_id, session, call, get_tool(call.tool_name), card
         )
     shown = _card_copy(card)
+    google_data = is_google_call(call.args) or is_google_output(output)
     image_result = parse_held_image(output) if outcome == "approved" else None
     if image_result is not None:
         output = image_result.text
@@ -350,6 +356,7 @@ async def _deliver(
             cap(output),
             outcome,
             shown,
+            google_data,
             image=image_result.image if image_result else None,
         )
     except Exception:
@@ -361,6 +368,7 @@ async def _deliver(
             output[: _MAX_RESULT_CHARS // 2],
             outcome,
             shown,
+            google_data,
             image=image_result.image if image_result else None,
         )
 
@@ -394,15 +402,21 @@ def _result_row(
     output: str,
     outcome: Outcome,
     shown: dict[str, Any] | None = None,
+    google_data: bool = False,
     image: ToolImage | None = None,
 ) -> PendingMessage:
+    content = (
+        f'<held_call_result tool="{call.tool_name}" '
+        f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'
+        f"{output}\n</held_call_result>"
+    )
+    # A user row, not a tool result, so the traces cannot tie it to a Google
+    # call, and its cut may no longer parse: remember it as delivered.
+    if google_data:
+        remember_google_output(content)
     return HeldResult(
         model_image=image,
-        content=(
-            f'<held_call_result tool="{call.tool_name}" '
-            f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'
-            f"{output}\n</held_call_result>"
-        ),
+        content=content,
         metadata={
             _RESULT_KEY: {
                 "review_id": call.review_id,

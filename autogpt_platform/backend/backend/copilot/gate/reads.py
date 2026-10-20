@@ -306,7 +306,9 @@ def _opened_path(output: str) -> str | None:
     argument can be relative, or resolve under the session."""
     try:
         data = json.loads(output)
-    except ValueError:
+        if isinstance(data, dict) and data.get("type") == "held_tool_image":
+            data = json.loads(data.get("text", ""))
+    except (ValueError, TypeError):
         return None
     if not isinstance(data, dict) or data.get("type") not in _WORKSPACE_READS:
         return None
@@ -316,14 +318,16 @@ def _opened_path(output: str) -> str | None:
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     """The text and images a model can read out of a registry tool's output."""
-    held_image = parse_held_image(output)
-    if held_image is not None:
-        return held_image.text, (Image(**held_image.image.model_dump()),)
     try:
         data = json.loads(output)
     except ValueError:
         return output, ()
-    if not isinstance(data, dict) or not isinstance(data.get("content_base64"), str):
+    if not isinstance(data, dict):
+        return output, ()
+    held_image = parse_held_image(data)
+    if held_image is not None:
+        return held_image.text, (Image(**held_image.image.model_dump()),)
+    if not isinstance(data.get("content_base64"), str):
         return output, ()
     mime = str(data.get("mime_type", ""))
     encoded = data["content_base64"]

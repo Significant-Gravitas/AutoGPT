@@ -35,6 +35,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
+    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -371,19 +372,34 @@ async def push_pending_message_if_session_running(
     return new_length
 
 
-async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
+async def drain_pending_messages(
+    session_id: str, *, text_only: bool = False
+) -> list[PendingMessage]:
     """Atomically pop all pending messages for *session_id*.
 
-    Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
-    count so the read+delete is a single Redis round trip.  If the list
-    is empty or missing, returns ``[]``.
+    Returns them in enqueue order (oldest first). Text-only consumers
+    stop before the first image, atomically removing just the inspected
+    prefix if it has not changed. Other consumers drain with ``LPOP``.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # LPOP with count drains everything in one round-trip; the push side
-    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
-    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
+    if text_only:
+        items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
+        prefix: list[str] = []
+        for item in items:
+            payload = _decode_redis_item(item)
+            try:
+                message = PendingMessage.model_validate_json(payload)
+            except ValidationError:
+                prefix.append(payload)
+                continue
+            if message.model_image is not None:
+                break
+            prefix.append(payload)
+        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
+    else:
+        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
@@ -608,7 +624,7 @@ async def drain_and_format_for_injection(
     if not session_id:
         return ""
     try:
-        pending = await drain_pending_messages(session_id)
+        pending = await drain_pending_messages(session_id, text_only=True)
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed (session=%s); skipping injection",
@@ -617,12 +633,6 @@ async def drain_and_format_for_injection(
             exc_info=True,
         )
         return ""
-    if not pending:
-        return ""
-    for message in pending:
-        if message.model_image is not None:
-            await push_pending_message(session_id, message)
-    pending = [message for message in pending if message.model_image is None]
     if not pending:
         return ""
     logger.info(
