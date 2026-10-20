@@ -26,6 +26,7 @@ from backend.executor.scheduler import (
     _execute_graph,
     _memory_scope_may_fire,
     _normalize_cron_day_of_week,
+    execute_dream_pass_with_status,
     execute_skill_learning_sync,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -1216,12 +1217,13 @@ def _run_nightly_wrapper(result):
         patch(
             "backend.executor.scheduler._submit_nightly_batch",
             return_value=result,
-        ),
+        ) as submit_mock,
         patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
         patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
         patch("backend.copilot.dream.job_status.update_status_phase") as phase_mock,
     ):
         execute_nightly_batch_with_status("abc", "job-1")
+    submit_mock.assert_called_once_with("abc", trigger="admin")
     return complete_mock, errored_mock, phase_mock
 
 
@@ -1353,6 +1355,81 @@ class TestExecuteNightlyBatchWithStatus:
             kind="nightly", job_id="job-1", result=result
         )
         errored_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# The admin dream trigger's ``force``, from the scheduled job to the pass
+# ---------------------------------------------------------------------------
+
+
+class TestAdminDreamPassForce:
+    """``force`` rides the one-shot job's kwargs to the pass, whose guard then
+    expires a fresh open pass instead of skipping behind it."""
+
+    @pytest.mark.parametrize("force", [True, False])
+    def test_the_one_shot_job_carries_force(self, force: bool) -> None:
+        s = _stub_scheduler()
+        scheduler = MagicMock()
+        s.scheduler = scheduler
+
+        s.schedule_immediate_dream_pass(user_id="abc", job_id="job-1", force=force)
+
+        kwargs = scheduler.add_job.call_args.kwargs
+        assert kwargs["kwargs"] == {"user_id": "abc", "job_id": "job-1", "force": force}
+        assert kwargs["id"] == "adhoc_dream_job-1"
+
+    def test_a_job_persisted_before_force_existed_runs_unforced(self) -> None:
+        execute = self._run_wrapper(kwargs={})
+
+        execute.assert_called_once_with(
+            "abc", status_id="job-1", trigger="admin", force=False
+        )
+
+    def test_force_reaches_the_pass(self) -> None:
+        execute = self._run_wrapper(kwargs={"force": True})
+
+        execute.assert_called_once_with(
+            "abc", status_id="job-1", trigger="admin", force=True
+        )
+
+    def _run_wrapper(self, kwargs: dict) -> MagicMock:
+        """Run the wrapper with the pass and the status writers mocked;
+        ``run_async`` hands back a clean result for the pass only."""
+        execute, _ = _run_dream_wrapper(_dream_result(), **kwargs)
+        return execute
+
+
+class TestExecuteDreamPassWithStatus:
+    def test_a_failed_pass_keeps_its_result_on_the_job(self) -> None:
+        """A pass stopped by a cancel returns its failure with the usage of
+        the phases it was billed for; the errored job keeps that result."""
+        failed = _dream_result(error="cancelled: testing")
+
+        _, errored = _run_dream_wrapper(failed)
+
+        errored.assert_called_once_with(
+            kind="dream_pass", job_id="job-1", error="cancelled: testing", result=failed
+        )
+
+
+def _run_dream_wrapper(result, **kwargs) -> tuple[MagicMock, MagicMock]:
+    """Run the dream pass wrapper with the pass returning *result* and the
+    status writers mocked; the pass mock and ``mark_errored``."""
+    sentinel = object()
+    execute = MagicMock(return_value=sentinel)
+
+    def fake_run_async(coro, timeout=None):
+        return result if coro is sentinel else None
+
+    with (
+        patch("backend.executor.scheduler.run_async", side_effect=fake_run_async),
+        patch("backend.copilot.dream.orchestrator.execute_dream_pass", new=execute),
+        patch("backend.copilot.dream.job_status.mark_complete"),
+        patch("backend.copilot.dream.job_status.mark_errored") as errored,
+        patch("backend.copilot.dream.job_status.update_status_phase"),
+    ):
+        execute_dream_pass_with_status("abc", "job-1", **kwargs)
+    return execute, errored
 
 
 # ---------------------------------------------------------------------------

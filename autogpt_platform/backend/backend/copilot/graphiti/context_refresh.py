@@ -26,9 +26,13 @@ long it had run), which is the data the grace is tuned from; one that fails
 or passes ``context_refresh_timeout`` returns ``None``; either way the turn
 goes ahead without a block. The engines decide which turns are follow-ups
 and where the block goes: ``sdk/service.py``
-(``_start_follow_up_warm_context``, ``_append_follow_up_warm_context``,
+(``_start_follow_up_warm_context``, ``_append_warm_context``,
 ``_resend_with_fresh_warm_context``) and ``baseline/service.py``
-(``_refresh_follow_up_warm_context``).
+(``_refresh_follow_up_warm_context``). A block, the first turn's included,
+goes into its turn's model input only, marked (``context_marker.py``), and
+is never stored, so a later turn reads memory only through its own refresh:
+a turn the substance gate skips ("ok, do it") recalls nothing, and a fact
+forgotten after an earlier turn is not in any later one.
 """
 
 import asyncio

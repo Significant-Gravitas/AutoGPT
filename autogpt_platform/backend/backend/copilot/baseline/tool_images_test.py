@@ -152,8 +152,15 @@ async def test_requeued_approved_image_survives_turn_start_budget(
 
 
 @pytest.mark.parametrize("pending_image", [False, True])
+@pytest.mark.parametrize(
+    "warm_context,has_memory",
+    [
+        ("<temporal_context>Relevant facts</temporal_context>", True),
+        ("Unmarked memory must not reach the model", False),
+    ],
+)
 async def test_context_and_attachments_survive_a_pending_image(
-    monkeypatch, baseline_io, pending_image
+    monkeypatch, baseline_io, pending_image, warm_context, has_memory
 ):
     output = io.BytesIO()
     Image.new("RGB", (20, 20), "red").save(output, format="PNG")
@@ -167,12 +174,12 @@ async def test_context_and_attachments_survive_a_pending_image(
     )
     hints = {
         "build_turn_budget_block": "Live budget: 10.\n",
-        "_fetch_graphiti_context": "<temporal_context>Relevant facts</temporal_context>",
         "build_builder_context_turn_prefix": "<builder_context>Live workflow</builder_context>",
         "build_skills_update_notice": "<skills_update>New skill</skills_update>",
     }
     for name, value in {
         **hints,
+        "_fetch_graphiti_context": warm_context,
         "drain_pending_safe": [pending],
         "persist_pending_as_user_rows": True,
         "is_enabled_for_user": True,
@@ -211,7 +218,14 @@ async def test_context_and_attachments_survive_a_pending_image(
     parts = provider.await_args.kwargs["messages"][-1]["content"]
     assert isinstance(parts, list)
     text = "".join(part["text"] for part in parts if part["type"] == "text")
-    for hint in [*hints.values(), seen, "Attached page", "Shared context"]:
+    expected_memory = [warm_context] if has_memory else []
+    for hint in [
+        *hints.values(),
+        *expected_memory,
+        seen,
+        "Attached page",
+        "Shared context",
+    ]:
         assert (
             hint.replace(
                 "<temporal_context>", f"<temporal_context {INJECTED_MEMORY_MARKER}>"
@@ -219,7 +233,11 @@ async def test_context_and_attachments_survive_a_pending_image(
             in text
         )
         assert hint not in session.model_dump_json()
-    assert text.count(INJECTED_MEMORY_MARKER) == 1
+    assert text.count(INJECTED_MEMORY_MARKER) == int(has_memory)
+    if not has_memory:
+        assert warm_context not in text
+        assert "None" not in text
+    assert warm_context not in session.model_dump_json()
     assert INJECTED_MEMORY_MARKER not in session.model_dump_json()
     assert text.index(seen) < text.index(hints["build_skills_update_notice"])
     assert text.index(hints["build_builder_context_turn_prefix"]) < text.index(
