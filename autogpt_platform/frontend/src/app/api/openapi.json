@@ -21866,12 +21866,18 @@
             "type": "array",
             "title": "Source Episode Uuids",
             "description": "UUIDs of the :Episodic nodes the fact was consolidated from."
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids",
+            "description": "UUIDs of the active facts (:RELATES_TO edges) the fact was consolidated from."
           }
         },
         "type": "object",
         "required": ["content", "confidence"],
         "title": "ConsolidatedFact",
-        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. Provenance always points back to the source episodes\nso apply.py can record where the consolidation came from."
+        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. It cites the episodes and active facts it was drawn from,\nso apply can record where the consolidation came from and a forget of one\nof them reaches it (``dream/citations.py``); one citing nothing the pass\nread is dropped unwritten."
       },
       "ConsolidationOutput": {
         "properties": {
@@ -23520,7 +23526,7 @@
         },
         "type": "object",
         "title": "DreamOperations",
-        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — proposals cannot cross scopes.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
+        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — a write or proposal citing a fact of\n    another scope (a fact's scope, else ``real:global``) is dropped\n    whole, as is one citing nothing the pass read\n    (``dream/citations.py``); episode citations are not scoped. A\n    source in the same scope that the write does not truly rest on is\n    not caught.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
       },
       "DreamOperationsSnapshot": {
         "properties": {
@@ -23588,6 +23594,21 @@
             "title": "Failed Writes",
             "default": 0
           },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
+            "default": 0
+          },
           "protected_demotions": {
             "type": "integer",
             "title": "Protected Demotions",
@@ -23639,7 +23660,7 @@
         },
         "type": "object",
         "title": "DreamPassCancelRequest",
-        "description": "Why an admin cancels a dream pass, kept as the pass's error."
+        "description": "Why an admin cancels a dream pass, for the log; the pass records\n``cancelled: by_admin``."
       },
       "DreamPassListResponse": {
         "properties": {
@@ -23766,6 +23787,18 @@
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
+          },
+          "erased_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erased At"
+          },
+          "read_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Read Uuids"
           },
           "created_at": {
             "type": "string",
@@ -23909,6 +23942,21 @@
           "failed_writes": {
             "type": "integer",
             "title": "Failed Writes",
+            "default": 0
+          },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
             "default": 0
           },
           "protected_demotions": {
@@ -26024,11 +26072,18 @@
       "ForgetFactResponse": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
-          "forgotten": { "type": "boolean", "title": "Forgotten" }
+          "forgotten": { "type": "boolean", "title": "Forgotten" },
+          "derived_forgotten": {
+            "type": "integer",
+            "title": "Derived Forgotten",
+            "default": 0
+          },
+          "resumed": { "type": "boolean", "title": "Resumed", "default": false }
         },
         "type": "object",
         "required": ["uuid", "forgotten"],
-        "title": "ForgetFactResponse"
+        "title": "ForgetFactResponse",
+        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
       },
       "FrontendFlag": {
         "type": "string",
@@ -29299,6 +29354,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Deleted Uuids"
+          },
+          "derived_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Derived Uuids"
+          },
+          "resumed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Resumed Uuids"
           },
           "failed_uuids": {
             "items": { "type": "string" },

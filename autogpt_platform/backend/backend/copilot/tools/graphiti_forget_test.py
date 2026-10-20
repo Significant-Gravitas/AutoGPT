@@ -23,6 +23,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
+    SOFT_FORGET_NOTE,
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
@@ -52,9 +53,12 @@ def lock_redis(mocker) -> FakeRedis:
 
 def _mock_driver(*results) -> AsyncMock:
     """A FalkorDB driver whose queries return ``results`` in order, for
-    driving the real ``retract`` from the confirm tool."""
+    driving the real ``retract`` from the confirm tool, after the read of
+    pending dream records every forget makes first (none here)."""
     driver = AsyncMock()
-    driver.execute_query.side_effect = [(r, [], None) for r in results]
+    driver.execute_query.side_effect = [
+        r if isinstance(r, Exception) else (r, [], None) for r in ([], *results)
+    ]
     return driver
 
 
@@ -305,6 +309,26 @@ class TestForgetConfirmModes:
         assert response.message == "1 memory edge(s) permanently deleted."
 
     @pytest.mark.asyncio
+    async def test_the_facts_derived_from_it_are_reported(self) -> None:
+        """The user hears of the dream's facts the forget retracted too."""
+        result = ForgetResult(deleted=["e1"], derived=["d1", "d2", "d3"])
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["e1"]
+            )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.derived_uuids == ["d1", "d2", "d3"]
+        assert response.message == (
+            "1 memory edge(s) retracted from memory; "
+            "3 fact(s) derived from them retracted too. " + SOFT_FORGET_NOTE
+        )
+
+    @pytest.mark.asyncio
     async def test_unavailable_graph_is_an_error_response(self) -> None:
         session = ChatSession.new("user-abc", dry_run=False)
         with (
@@ -331,7 +355,7 @@ class TestForgetFailuresAreActionable:
         """End to end: a soft delete that matches nothing must return the
         per-UUID reason in both the structured `failures` field and the
         human-readable message — not a bare "0 invalidated, 1 failed"."""
-        driver = _mock_driver([])  # the edge lookup finds nothing
+        driver = _mock_driver([], [])  # the lookup finds nothing, nothing names it
         session = ChatSession.new("user-abc", dry_run=False)
         with (
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),
@@ -360,10 +384,16 @@ class TestForgetFailuresAreActionable:
         success count and the per-UUID failure detail."""
         driver = _mock_driver(
             [{"uuid": "kept"}],  # lookup: only "kept" exists
+            [],  # nothing names "gone" as a purged root
             [{"uuid": "kept"}],  # retract "kept"
             [],  # scrub its sentence
             [],  # find the entities to scrub (none)
             [],  # redact its episodes
+            [],  # the cascade: no earlier try,
+            [],  # no episode citing it,
+            [],  # nothing derived from it
+            [],
+            [{"count": 0}],  # no dream write still in flight cites it
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
@@ -389,14 +419,13 @@ class TestForgetFailuresAreActionable:
     async def test_confirm_tool_reports_a_failed_clean_up(self) -> None:
         """Retracted, but the episode redaction failed: the model is told the
         fact is forgotten and that the clean-up did not finish."""
-        driver = AsyncMock()
-        driver.execute_query.side_effect = [
-            ([{"uuid": "u1"}], [], None),  # lookup
-            ([{"uuid": "u1"}], [], None),  # retract
-            ([], [], None),  # scrub its sentence
-            ([], [], None),  # find the entities to scrub (none)
+        driver = _mock_driver(
+            [{"uuid": "u1"}],  # lookup
+            [{"uuid": "u1"}],  # retract
+            [],  # scrub its sentence
+            [],  # find the entities to scrub (none)
             RuntimeError("down"),  # redact its episodes
-        ]
+        )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
             patch(f"{_MODULE}.is_enabled_for_user", _enabled),
@@ -425,8 +454,48 @@ class TestBuildConfirmMessage:
     threshold and lose all detail)."""
 
     def test_no_failures_returns_summary_only(self) -> None:
-        message = _build_confirm_message(3, "retracted from memory", [])
-        assert message == "3 memory edge(s) retracted from memory."
+        message = _build_confirm_message(3, True, [])
+        assert message == "3 memory edge(s) permanently deleted."
+
+    def test_the_facts_derived_from_them_are_counted(self) -> None:
+        message = _build_confirm_message(1, True, [], 3)
+        assert message == (
+            "1 memory edge(s) permanently deleted; "
+            "3 fact(s) derived from them retracted too."
+        )
+
+    def test_edges_already_erased_are_told_apart(self) -> None:
+        message = _build_confirm_message(0, False, [], 2, 1)
+        assert message == (
+            "0 memory edge(s) retracted from memory; "
+            "2 fact(s) derived from them retracted too. "
+            "1 memory edge(s) had already been erased; what was derived from "
+            "them was retracted and erased."
+        )
+
+    def test_a_soft_forget_says_it_is_not_a_permanent_deletion(self) -> None:
+        """A model told a user who had asked for a permanent delete that a soft
+        forget was permanent. A soft forget's message says it was not, what it
+        did instead and how to delete permanently; a hard forget's says none
+        of that, and neither does a soft forget that retracted nothing."""
+        soft = _build_confirm_message(1, False, [], 2)
+        assert soft == (
+            "1 memory edge(s) retracted from memory; 2 fact(s) derived from "
+            "them retracted too. This is not a permanent deletion: they are "
+            "hidden from recall, from the memory context chats start with and "
+            "from dreams, and their text is kept for audit. To delete them "
+            "permanently, call tool:memory_forget_confirm with the same UUIDs "
+            "and hard_delete=true."
+        )
+
+        hard = _build_confirm_message(1, True, [], 2)
+        assert hard == (
+            "1 memory edge(s) permanently deleted; "
+            "2 fact(s) derived from them retracted too."
+        )
+
+        nothing = _build_confirm_message(0, False, [])
+        assert nothing == "0 memory edge(s) retracted from memory."
 
     def test_caps_inlined_detail_and_notes_remainder(self) -> None:
         overflow = _MAX_FAILURE_DETAIL + 4
@@ -439,7 +508,7 @@ class TestBuildConfirmMessage:
             for i in range(overflow)
         ]
 
-        message = _build_confirm_message(0, "retracted from memory", failures)
+        message = _build_confirm_message(0, False, failures)
 
         # Full count is reported, but only the first N reasons are inlined.
         assert f"{overflow} failed" in message

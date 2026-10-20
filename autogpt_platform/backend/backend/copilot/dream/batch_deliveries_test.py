@@ -93,14 +93,17 @@ class TestShouldDispatch:
         assert input_bundle_key("p1") not in fake_dream_redis.store
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None
-        assert (status.state, status.error) == ("errored", "cancelled: testing")
+        assert (status.state, status.error) == ("errored", "cancelled: by_admin")
         # The job keeps what the landed phase used, which the closed row
         # refused.
         assert status.result is not None
         phases = status.result["usage"]["phases"]
         assert [phase["phase"] for phase in phases] == ["consolidate"]
         row = fake_dream_db.rows["p1"]
-        assert (row["status"], row["error"]) == (DreamPassStatus.CANCELLED, "testing")
+        assert (row["status"], row["error"]) == (
+            DreamPassStatus.CANCELLED,
+            "cancelled: by_admin",
+        )
         assert row.get("usage") is None
         # Every step finished, so the drop cleared the mark the cancel set.
         assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
@@ -280,7 +283,7 @@ class TestADeadEnd:
         row = fake_dream_db.rows["p1"]
         assert (row["status"], row["error"]) == (
             DreamPassStatus.ERRORED,
-            "unknown batch phase 'daydream'",
+            "batch: unknown_phase",
         )
         assert _charged(charges) == ["consolidate"]
         assert state_key("p1") not in fake_dream_redis.hashes

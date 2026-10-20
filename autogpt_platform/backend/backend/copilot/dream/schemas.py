@@ -61,8 +61,10 @@ class IngestionDrainStatus(str, Enum):
 class ConsolidatedFact(BaseModel):
     """A cluster of related facts merged into a single canonical statement.
 
-    Phase 1 output. Provenance always points back to the source episodes
-    so apply.py can record where the consolidation came from.
+    Phase 1 output. It cites the episodes and active facts it was drawn from,
+    so apply can record where the consolidation came from and a forget of one
+    of them reaches it (``dream/citations.py``); one citing nothing the pass
+    read is dropped unwritten.
     """
 
     content: str = Field(description="Canonical statement of the consolidated fact.")
@@ -78,6 +80,13 @@ class ConsolidatedFact(BaseModel):
     source_episode_uuids: list[str] = Field(
         default_factory=list,
         description="UUIDs of the :Episodic nodes the fact was consolidated from.",
+    )
+    source_fact_uuids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "UUIDs of the active facts (:RELATES_TO edges) the fact was "
+            "consolidated from."
+        ),
     )
 
 
@@ -194,7 +203,12 @@ class DreamOperations(BaseModel):
     apply.py:
       * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion
         mitigation per spec §3 / TODO P0.3b).
-      * Scope match enforced — proposals cannot cross scopes.
+      * Scope match enforced — a write or proposal citing a fact of
+        another scope (a fact's scope, else ``real:global``) is dropped
+        whole, as is one citing nothing the pass read
+        (``dream/citations.py``); episode citations are not scoped. A
+        source in the same scope that the write does not truly rest on is
+        not caught.
       * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op.
     """
 
@@ -368,8 +382,22 @@ class DreamPassResult(BaseModel):
     # lock, or being written. Every one on the batch path, which does not
     # wait for them.
     pending_writes: int = 0
-    # The ones whose write raised: dropped, logged, not retried.
+    # Of those writes and proposals, the ones the worker did not make: their
+    # citation marker could not be written (the write fails closed) or the
+    # graph write raised; only those failed before the pass was reported.
     failed_writes: int = 0
+    # Of those made, the ones whose derivation record failed after the write:
+    # their citation marker stays in the graph until it is reconciled, before
+    # the next forget there or by the dream reaper
+    # (``graphiti/recall_reconcile.py``); same reporting window.
+    provenance_pending: int = 0
+    # Writes and proposals dropped before they were queued because they cited
+    # nothing the pass read, or a fact of another scope than their own
+    # (``dream/citations.py``); not counted in ``consolidated_count`` or
+    # ``proposal_count``.
+    uncited_writes_dropped: int = 0
+    # Their citations of a fact of another scope; each write is counted above.
+    cross_scope_citations_dropped: int = 0
     # Distinct facts the recall guard kept live through the pass
     # (``recall_guard.py``): an acknowledged write spared them, and the
     # pass's final read, after every acknowledged write, found them live. A
