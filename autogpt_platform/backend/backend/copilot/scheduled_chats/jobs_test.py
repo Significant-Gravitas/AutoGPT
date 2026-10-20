@@ -73,6 +73,39 @@ async def test_a_pause_that_fails_resumes_only_what_it_paused(scheduler):
 
 
 @pytest.mark.asyncio
+async def test_a_pause_whose_answer_was_lost_is_put_back_too(scheduler):
+    """The scheduler paused "b" and the answer never came back. Left out of
+    the put-back, it would stay paused with no streak saying so, and nothing
+    would ever resume it."""
+    scheduler.get_execution_schedules.return_value = [
+        MagicMock(id="a"),
+        MagicMock(id="b"),
+    ]
+    scheduler.pause_schedule.side_effect = _fail_on("b", TimeoutError("no answer"))
+
+    assert await jobs.pause_jobs(_USER, ["a", "b"]) is None
+    resumed = [c.args[0] for c in scheduler.resume_schedule.await_args_list]
+    assert resumed == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_a_lost_answer_for_a_job_its_owner_paused_leaves_it_paused(scheduler):
+    scheduler.get_execution_schedules.return_value = [MagicMock(id="a")]
+    scheduler.pause_schedule.side_effect = _fail_on("b", TimeoutError("no answer"))
+
+    assert await jobs.pause_jobs(_USER, ["a", "b"]) is None
+    scheduler.resume_schedule.assert_awaited_once_with("a", user_id=_USER)
+
+
+@pytest.mark.asyncio
+async def test_unknown_jobs_are_not_paused(scheduler):
+    scheduler.get_execution_schedules.side_effect = RuntimeError("scheduler down")
+
+    assert await jobs.pause_jobs(_USER, ["a"]) is None
+    scheduler.pause_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_resume_that_fails_pauses_again_what_it_resumed(scheduler):
     scheduler.resume_schedule.side_effect = _fail_on("b", RuntimeError("down"))
 
