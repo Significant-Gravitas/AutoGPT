@@ -2,6 +2,9 @@ import base64
 import io
 import json
 import random
+import threading
+import warnings
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from PIL import Image
@@ -157,3 +160,55 @@ def test_decompression_bomb_warning_and_error_are_rejected(monkeypatch, pixel_li
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", pixel_limit)
     with pytest.raises(ValueError, match="cannot be decoded"):
         prepare_image(output.getvalue())
+
+
+def test_concurrent_reads_preserve_warning_filters(monkeypatch):
+    first_output, second_output = io.BytesIO(), io.BytesIO()
+    Image.new("RGB", (20, 20), "blue").save(first_output, format="PNG")
+    Image.new("RGB", (20, 20), "red").save(second_output, format="PNG")
+    first_raw, second_raw = first_output.getvalue(), second_output.getvalue()
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    first_finished = threading.Event()
+    original_open = Image.open
+
+    def interleaved_open(file, *args, **kwargs):
+        if file.getvalue() == first_raw:
+            first_entered.set()
+            assert second_entered.wait(timeout=10)
+        else:
+            second_entered.set()
+            assert first_finished.wait(timeout=10)
+        return original_open(file, *args, **kwargs)
+
+    def prepare_first():
+        try:
+            return prepare_image(first_raw)
+        finally:
+            first_finished.set()
+
+    monkeypatch.setattr(Image, "open", interleaved_open)
+    with warnings.catch_warnings():
+        original_filters = warnings.filters
+        original_values = list(original_filters)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(prepare_first)
+            assert first_entered.wait(timeout=10)
+            second = pool.submit(prepare_image, second_raw)
+            assert base64.b64decode(first.result(timeout=10).data_base64) == first_raw
+            assert base64.b64decode(second.result(timeout=10).data_base64) == second_raw
+        assert warnings.filters is original_filters
+        assert warnings.filters == original_values
+
+
+@pytest.mark.parametrize("warning_action", ["ignore", "error"])
+def test_pixel_limit_is_enforced_before_decoding(monkeypatch, mocker, warning_action):
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16)).save(output, format="PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 170)
+    decode = mocker.patch("PIL.ImageFile.ImageFile.load")
+    with warnings.catch_warnings():
+        warnings.simplefilter(warning_action, Image.DecompressionBombWarning)
+        with pytest.raises(ValueError, match="cannot be decoded"):
+            prepare_image(output.getvalue())
+    decode.assert_not_called()

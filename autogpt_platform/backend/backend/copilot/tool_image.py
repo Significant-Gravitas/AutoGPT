@@ -3,7 +3,6 @@
 import base64
 import io
 import json
-import warnings
 from typing import Any, Literal, Protocol, Self, cast
 
 from PIL import Image, JpegImagePlugin, UnidentifiedImageError
@@ -81,30 +80,33 @@ def prepare_image(raw: bytes) -> ToolImage:
     if len(raw) > MAX_IMAGE_BYTES:
         raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(raw)) as image:
-                mime = (
-                    "image/jpeg"
-                    if image.format == "MPO"
-                    else Image.MIME.get(image.format or "", "")
+        with Image.open(io.BytesIO(raw)) as image:
+            mime = (
+                "image/jpeg"
+                if image.format == "MPO"
+                else Image.MIME.get(image.format or "", "")
+            )
+            if mime not in IMAGE_MIME_TYPES:
+                raise ValueError(
+                    "Image not shown: convert it to PNG, JPEG, GIF or WebP, then read it again."
                 )
-                if mime not in IMAGE_MIME_TYPES:
-                    raise ValueError(
-                        "Image not shown: convert it to PNG, JPEG, GIF or WebP, then read it again."
-                    )
-                if max(image.size) > MAX_IMAGE_DIMENSION:
-                    raise ValueError(
-                        "Image not shown: exceeds 2000 pixels per side. Resize or crop it and read it again."
-                    )
-                image.verify()
-            with Image.open(io.BytesIO(raw)) as image:
-                image.load()
-                if (
-                    image.format in {"MPO", "GIF", "WEBP", "PNG"}
-                    and cast(_AnimatedImage, image).is_animated
-                ):
-                    raw, mime = _encode_first_frame(image)
+            if max(image.size) > MAX_IMAGE_DIMENSION:
+                raise ValueError(
+                    "Image not shown: exceeds 2000 pixels per side. Resize or crop it and read it again."
+                )
+            pixel_limit = Image.MAX_IMAGE_PIXELS
+            if pixel_limit is not None and image.width * image.height > pixel_limit:
+                raise Image.DecompressionBombError(
+                    "Image exceeds the configured pixel limit"
+                )
+            image.verify()
+        with Image.open(io.BytesIO(raw)) as image:
+            image.load()
+            if (
+                image.format in {"MPO", "GIF", "WEBP", "PNG"}
+                and cast(_AnimatedImage, image).is_animated
+            ):
+                raw, mime = _encode_first_frame(image)
     except (
         UnidentifiedImageError,
         OSError,
