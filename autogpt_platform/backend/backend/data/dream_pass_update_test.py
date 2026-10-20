@@ -229,7 +229,9 @@ async def test_timestamps_land_as_the_same_instant(owner):
     row = await _row(pass_id)
     assert row.lease_expires_at == datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
     assert row.window_start == _NOW
-    assert row.updated_at >= before.updated_at
+    # The insert stamps updatedAt with the client's clock and the update
+    # with the database's, which can trail it by a few milliseconds.
+    assert row.updated_at >= before.updated_at - timedelta(seconds=1)
 
 
 async def test_deleting_an_expert_finds_its_passes_by_index():

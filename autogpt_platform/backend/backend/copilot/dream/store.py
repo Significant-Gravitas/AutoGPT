@@ -2,10 +2,13 @@
 
 Both routes write here, through ``db_accessors.dream_db()``: the Prisma module
 where it is connected, the DatabaseManager RPC in the scheduler and the batch
-executor. The sync orchestrator records the start, the gathered window, each
-phase's output, the operations it is about to apply and how the pass ended.
-The batch path records the submit, each phase that lands, each next batch, the
-apply and the end, with what the landed phases used. What each step writes is
+executor. The sync orchestrator records the start with its lease, the
+gathered window, each phase's output, each renewal of the lease, the
+operations it is about to apply and how the pass ended. The batch path
+records the submit, each phase that lands and the lease it renewed, each next
+batch, the apply and the end, with what the landed phases used; its end
+marks the row for the cleanup after it, which clears the mark once done
+(``cleanup.py``). What each step writes is
 ``pass_record.py``; how a write lands on the row (forward only, JSON merged in
 the database) is ``backend/data/dream_pass_update.py``.
 
@@ -21,10 +24,12 @@ admin job status keep their keys, TTLs, scripts and formats. What changed is
 timing: the pass now waits on these bounded writes before it locks, inside the
 lock, before it chains a batch or applies, and before it cleans up.
 
-``read_dream_pass`` is the read side, for the admin API and the eval driver.
-The guard, the stop checks and the cancel read and write here too, under the
+``read_dream_pass`` is the read side, for the admin API and the eval driver;
+``read_cost_context`` reads the usage attribution every charge of a pass's
+phases goes by (``batch_costs.py``). The guard, the stop checks and the cancel read and write here too, under the
 same deadline, but a failure reaches them: each decides for itself whether to
-go on (``guard.py``, ``cancel.py``).
+go on (``guard.py``, ``cancel.py``). So do the reaper and the retention job,
+which read and delete across users (``reaper.py``, ``retention.py``).
 """
 
 import asyncio
@@ -33,9 +38,10 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext, get_trial_cost_context
 from backend.data.db_accessors import dream_db
 from backend.data.dream_pass_models import DreamPassRecord, DreamPassUpdate
 
@@ -43,16 +49,20 @@ from .fetch import DreamInput
 from .pass_record import (
     DreamTrigger,
     applying,
+    cleanup_finished,
+    expired,
     failed,
     gathered,
     handed_to_batch,
+    lease,
     new_pass,
     next_batch,
     outcome,
     phase_output,
     submitted,
+    taken_back,
 )
-from .routing import ExecutionPath
+from .pass_run import DreamPassRun
 from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
 
 logger = logging.getLogger(__name__)
@@ -65,24 +75,54 @@ RECORD_WRITE_TIMEOUT_SECONDS = 10.0
 
 
 async def start_pass(
-    pass_id: str,
-    scope: MemoryScope,
-    *,
-    route: ExecutionPath,
-    trigger: DreamTrigger,
-    started_at: datetime,
+    run: DreamPassRun, scope: MemoryScope, *, trigger: DreamTrigger
 ) -> None:
-    """Insert the pass's row: running, gathering its input."""
+    """Insert the run's row: running, gathering its input, holding the lease
+    of the lock it is about to take, and the usage attribution the pass runs
+    under (#15208, captured as it started, ``orchestrator``'s
+    ``attributed_usage``), which every charge of its phases then goes by."""
     try:
         draft = new_pass(
-            pass_id, scope, route=route, trigger=trigger, started_at=started_at
+            run.pass_id,
+            scope,
+            route=run.execution_path,
+            trigger=trigger,
+            started_at=run.started_at,
+            lease_token=run.lease_token,
+            cost_context=get_trial_cost_context(scope.owner_user_id),
         )
         await _bounded(dream_db().create_dream_pass(draft))
     except Exception:
         logger.warning(
-            f"Dream pass {pass_id}: could not insert its record; the pass goes on",
+            f"Dream pass {run.pass_id}: could not insert its record; the pass goes on",
             exc_info=True,
         )
+
+
+async def read_cost_context(pass_id: str) -> TrialCostContext | None:
+    """The usage attribution pass *pass_id* started under, off its row: the
+    one every charge of its phases goes by. ``None`` when there is no row, or
+    the row carries none (written before it was kept, or its capture failed),
+    one that does not parse, or another user's: such a pass is never charged.
+    Raises when the row cannot be read in time; the charge is then left for
+    the next attempt."""
+    row = await read_pass(pass_id)
+    if row is None or row.cost_context is None:
+        return None
+    try:
+        context = TrialCostContext.model_validate(row.cost_context)
+    except ValidationError:
+        logger.error(f"Dream pass {pass_id}: its usage attribution does not parse")
+        return None
+    if context.user_id != row.user_id:
+        logger.error(f"Dream pass {pass_id}: its usage attribution is another user's")
+        return None
+    return context
+
+
+async def record_lease(pass_id: str, lease_token: str, ttl_seconds: int) -> bool | None:
+    """The pass renewed its lock for *ttl_seconds* (see ``_write``)."""
+    return await _write(pass_id, "the lease", lambda: lease(lease_token, ttl_seconds))
 
 
 async def record_gathered(pass_id: str, input_bundle: DreamInput) -> None:
@@ -121,6 +161,21 @@ async def record_submitted(
     )
 
 
+async def record_taken_back(
+    pass_id: str, error: str, *, provider_batch_id: str, lease_token: str
+) -> bool | None:
+    """The pass took its just-submitted batch back without the provider
+    confirming the stop: the row closes with the batch on it, marked for the
+    reaper's cleanup (see ``_write``)."""
+    return await _write(
+        pass_id,
+        "the batch taken back",
+        lambda: taken_back(
+            error, provider_batch_id=provider_batch_id, lease_token=lease_token
+        ),
+    )
+
+
 async def record_next_batch(
     pass_id: str, phase: DreamPhase, provider_batch_id: str
 ) -> None:
@@ -141,19 +196,28 @@ async def record_batch_complete(
     result: DreamPassResult, usage: DreamPassUsage | None
 ) -> None:
     """A batch pass applied: *result* holds what apply reported, *usage* what
-    its phases used."""
-    await _write(result.pass_id, "the outcome", lambda: outcome(result, usage))
+    its phases used; the row marked for the cleanup after it."""
+    await _write(
+        result.pass_id, "the outcome", lambda: outcome(result, usage, marked=True)
+    )
 
 
 async def record_batch_failed(
     pass_id: str, error: str, usage: DreamPassUsage | None
 ) -> None:
-    """A batch pass failed; *usage* is what its landed phases used."""
+    """A batch pass failed; *usage* is what its landed phases used. The row
+    is marked for the cleanup after it."""
     await _write(
         pass_id,
         "the failure",
-        lambda: failed(error, usage, datetime.now(timezone.utc)),
+        lambda: failed(error, usage, datetime.now(timezone.utc), marked=True),
     )
+
+
+async def record_expired(pass_id: str, error: str) -> None:
+    """A delivery of the pass closes its row EXPIRED with *error*: one that
+    found its apply claimed by an earlier delivery that never finished."""
+    await _write(pass_id, "the expiry", lambda: expired(error, not_updated_since=None))
 
 
 async def read_dream_pass(pass_id: str, *, user_id: str) -> DreamPassRecord | None:
@@ -163,10 +227,13 @@ async def read_dream_pass(pass_id: str, *, user_id: str) -> DreamPassRecord | No
     return await _bounded(dream_db().get_dream_pass_for_user(pass_id, user_id))
 
 
-async def read_pass(pass_id: str) -> DreamPassRecord | None:
+async def read_pass(
+    pass_id: str, *, timeout: float | None = None
+) -> DreamPassRecord | None:
     """The pass's row, or ``None`` when it was never inserted. Raises when
-    the read fails or runs out of time."""
-    return await _bounded(dream_db().get_dream_pass(pass_id))
+    the read fails or runs out of *timeout* (the write deadline by
+    default)."""
+    return await _bounded(dream_db().get_dream_pass(pass_id), timeout=timeout)
 
 
 async def read_open_passes(
@@ -179,11 +246,84 @@ async def read_open_passes(
     )
 
 
+async def read_expired_passes(
+    expired_before: datetime,
+    *,
+    limit: int,
+    after: tuple[datetime, str] | None = None,
+) -> list[DreamPassRecord]:
+    """Open passes, of every user, whose lease lapsed before
+    *expired_before*, in lapse order (the lapse, then the id): the first
+    ones, or those after *after*, a lapse and an id. Raises when the read
+    fails or runs out of time."""
+    if after is None:
+        listing = dream_db().list_expired_dream_passes(expired_before, limit=limit)
+    else:
+        listing = dream_db().list_expired_dream_passes(
+            expired_before, limit=limit, after_lapse=after[0], after_id=after[1]
+        )
+    return await _bounded(listing)
+
+
+async def read_pending_cleanups(
+    *,
+    due_before: datetime,
+    limit: int,
+    marked_through: datetime | None = None,
+    after: tuple[datetime, str] | None = None,
+) -> list[DreamPassRecord]:
+    """Closed passes, of every user, marked for a cleanup that has not
+    finished and is due: marked, or their lease lapsed, before *due_before*;
+    in mark order (the mark, then the id), only those marked by
+    *marked_through* and after *after*, a mark and an id, when given.
+    Raises when the read fails or runs out of time."""
+    if marked_through is None and after is None:
+        listing = dream_db().list_dream_pass_cleanups(due_before, limit=limit)
+    else:
+        listing = dream_db().list_dream_pass_cleanups(
+            due_before,
+            limit=limit,
+            marked_through=marked_through,
+            after_mark=after[0] if after else None,
+            after_id=after[1] if after else None,
+        )
+    return await _bounded(listing)
+
+
+async def read_user_passes(
+    user_id: str, *, open_only: bool, limit: int
+) -> list[DreamPassRecord]:
+    """*user_id*'s passes, every scope, newest first; only the open ones when
+    *open_only*. Raises when the read fails or runs out of time."""
+    return await _bounded(
+        dream_db().list_dream_passes(user_id, limit=limit, open_only=open_only)
+    )
+
+
+async def delete_old_passes(
+    created_before: datetime, *, limit: int, timeout: float
+) -> int:
+    """Delete at most *limit* closed passes created before *created_before*
+    and say how many went; under *timeout*, a delete being slower than a
+    record write. Raises when it fails or runs out of time."""
+    return await _bounded(
+        dream_db().delete_old_dream_passes(created_before, limit=limit),
+        timeout=timeout,
+    )
+
+
 async def write_stop(pass_id: str, update: DreamPassUpdate) -> bool:
     """Write a stop from outside the pass (a cancel, an expiry) and say
     whether it landed, which its caller acts on, unlike a pass's own writes.
     Raises when the write fails or runs out of time."""
     return await _bounded(dream_db().update_dream_pass(pass_id, update))
+
+
+async def record_cleanup_finished(pass_id: str) -> bool:
+    """The cleanup after the closed pass has finished; whether the row took
+    it. Raises when the write fails or runs out of time, and the cleanup,
+    idempotent, is resumed by the reaper's next run."""
+    return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_finished()))
 
 
 async def _write(
@@ -208,7 +348,8 @@ async def _write(
     return written
 
 
-async def _bounded(call: Awaitable[_T]) -> _T:
-    """*call*, or ``TimeoutError`` once it has taken the write deadline; the
-    abandoned call is cancelled, not left running."""
-    return await asyncio.wait_for(call, timeout=RECORD_WRITE_TIMEOUT_SECONDS)
+async def _bounded(call: Awaitable[_T], timeout: float | None = None) -> _T:
+    """*call*, or ``TimeoutError`` once it has taken *timeout* (the write
+    deadline by default); the abandoned call is cancelled, not left running."""
+    async with asyncio.timeout(timeout or RECORD_WRITE_TIMEOUT_SECONDS):
+        return await call

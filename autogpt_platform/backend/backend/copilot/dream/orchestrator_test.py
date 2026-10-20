@@ -590,16 +590,20 @@ def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
     )
     non_drain_headroom = orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
     drain = INGESTION_DRAIN_TIMEOUT_SECONDS
+    store_io = orchestrator_mod.DREAM_STORE_IO_SECONDS
 
     # Whole pass (including the drain) must fit the scheduler abandonment
-    # boundary with real margin.
+    # boundary with real margin. The store round trips only reach their
+    # total when every one runs to its deadline; past the boundary the
+    # scheduler stops waiting, and the pass, not cancelled, finishes.
     worst_case = llm + drain + non_drain_headroom
     assert worst_case < SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
     # The lock only has to cover everything UP TO the drain, because the
-    # drain runs under a freshly renewed lock. Require 10% slack so the lock
-    # never expires mid-write.
-    assert llm + non_drain_headroom <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+    # drain runs under a freshly renewed lock: every store round trip at its
+    # deadline included. Require 10% slack so the lock never expires
+    # mid-write.
+    assert llm + non_drain_headroom + store_io <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
 
     # The renewal must comfortably outlast the drain cap it protects.
     assert LOCK_DRAIN_RENEWAL_SECONDS > drain
@@ -676,6 +680,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         known_fact_uuids=None,
         known_episode_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -745,6 +750,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         known_fact_uuids=None,
         known_episode_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -859,6 +865,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         known_fact_uuids=None,
         known_episode_uuids=None,
         lock_handle=None,
+        lease=None,
     ):
         captured["ops"] = ops
         return {
@@ -2084,9 +2091,10 @@ class TestNearDuplicateWriteDedup:
 @pytest.mark.asyncio
 async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     """If the dream lock cannot be extended to the batch window, the
-    just-submitted batch must never be applied: the pending entry is
-    removed (poller never dispatches callbacks), the input bundle is
-    dropped, the lock is NOT disowned, and the pass reports failure."""
+    just-submitted batch must never be applied: it is taken back (stopped at
+    the provider, then its pending entry removed so the poller never
+    dispatches callbacks, and the bundle dropped), the lock is NOT disowned,
+    and the pass reports failure."""
     submission = mocker.MagicMock(provider_batch_id="batch-xyz")
     mocker.patch(
         "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
@@ -2099,11 +2107,15 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         "backend.copilot.dream.batch_handoff.submit_phase",
         AsyncMock(return_value=submission),
     )
+    cancel = mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     remove_pending = mocker.patch(
         "backend.copilot.dream.batch_handoff.remove_pending", AsyncMock()
     )
-    delete_bundle = mocker.patch(
-        "backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock()
+    cleanup = mocker.patch(
+        "backend.copilot.dream.batch_handoff.best_effort_cleanup", AsyncMock()
     )
     handle = mocker.MagicMock()
     handle.extend = AsyncMock(return_value=False)
@@ -2122,8 +2134,9 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         lock_handle=handle,
     )
 
+    cancel.assert_awaited_once_with("batch-xyz")
     remove_pending.assert_awaited_once_with("batch-xyz")
-    delete_bundle.assert_awaited_once_with(run.pass_id)
+    cleanup.assert_awaited_once_with(run.pass_id)
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
 
@@ -2144,7 +2157,10 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is None and result.skipped is False
-    assert fake_dream_db.writes[0] == (
+    pass_id, draft = fake_dream_db.writes[0]
+    assert isinstance(draft, DreamPassDraft) and draft.lease_token
+    assert result.started_at is not None
+    assert (pass_id, draft) == (
         result.pass_id,
         DreamPassDraft(
             id=result.pass_id,
@@ -2153,6 +2169,12 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
             route=DreamPassRoute.SYNC,
             trigger=DreamPassTrigger.CRON,
             started_at=result.started_at,
+            lease_token=draft.lease_token,
+            lease_expires_at=result.started_at
+            + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+            # The attribution the pass started under: the suite's ready,
+            # untrialed usage state.
+            cost_context={"user_id": "u", "trial_id": None, "generation": None},
         ),
     )
     assert fake_dream_db.statuses(result.pass_id) == [
@@ -2183,7 +2205,9 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
     assert row["usage"] == result.usage
     assert row["completed_at"] == result.completed_at
     # The sync route keeps no input bundle: nothing resumes it from the row.
-    assert "input_bundle" not in row
+    # And a closed row holds no lease.
+    assert row.get("input_bundle") is None
+    assert (row["lease_token"], row["lease_expires_at"]) == (None, None)
 
 
 @pytest.mark.asyncio
@@ -2377,8 +2401,11 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
     mocker, fake_dream_db
 ):
     _batch_route(mocker, lock_extends=False)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     mocker.patch("backend.copilot.dream.batch_handoff.remove_pending", AsyncMock())
-    mocker.patch("backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock())
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
     )
@@ -2391,8 +2418,8 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
         DreamPassStatus.ERRORED,
     ]
     assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]
-    # The revoked batch still runs and bills at the provider, unread: what
-    # the pass used is unknown, not zero.
+    # The batch taken back may have run, and billed, at the provider before
+    # its cancel: what the pass used is unknown, not zero.
     assert result.usage is None
     assert "usage" not in fake_dream_db.rows[result.pass_id]
 
@@ -2705,6 +2732,8 @@ async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
         AsyncMock(return_value=fake_dream_redis),
     )
     _batch_route(mocker, lock_extends=True)
+    # The lock the handle stands for, which the callback renews.
+    fake_dream_redis.store[MemoryScope.for_user("u").redis_key("dream_lock")] = "tok"
     mocker.patch(
         "backend.copilot.dream.batch_handoff.persist_input_bundle",
         persist_input_bundle,
@@ -2760,11 +2789,11 @@ async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
 
     assert result.error is None and result.dream_session_id == "s"
     apply_mock.assert_awaited_once()
-    # The insert, the guard's read of the scope's open passes, six updates
-    # and the four stop checks (three phases, apply), each abandoned at the
-    # deadline; neither the guard nor a check held the pass on a store that
-    # did not answer.
-    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (12, 12)
+    # The insert, the guard's read of the scope's open passes, six updates,
+    # the four stop checks and the four lease renewals (three phases, apply),
+    # each abandoned at the deadline; neither the guard nor a check nor a
+    # renewal held the pass on a store that did not answer.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (16, 16)
 
 
 @pytest.mark.asyncio

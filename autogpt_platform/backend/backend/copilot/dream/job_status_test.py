@@ -227,6 +227,45 @@ class TestMarkErrored:
         assert status.result is not None
         assert DreamPassResult.model_validate(status.result) == failure
 
+    @pytest.mark.asyncio
+    async def test_a_failure_replayed_without_usage_keeps_the_first_usage(
+        self, fake_redis
+    ):
+        """A second failure of the same job, from a delivery that found the
+        pass's state already cleaned up, knows no usage: the usage the first
+        recorded stays, the rest of its result is the new one's."""
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u")
+        usage = DreamPassUsage(total_input_tokens=10, total_output_tokens=20)
+        first = DreamPassResult(user_id="u", pass_id="p1", error="stop", usage=usage)
+        replay = DreamPassResult(user_id="u", pass_id="p1", error="stop again")
+
+        await mark_errored(kind="dream_pass", job_id="j1", error="stop", result=first)
+        await mark_errored(
+            kind="dream_pass", job_id="j1", error="stop again", result=replay
+        )
+
+        status = await read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and status.result is not None
+        kept = DreamPassResult.model_validate(status.result)
+        assert (status.error, kept.error, kept.usage) == (
+            "stop again",
+            "stop again",
+            usage,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_failure_that_knows_usage_replaces_the_old(self, fake_redis):
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u")
+        old = DreamPassUsage(total_input_tokens=10)
+        new = DreamPassUsage(total_input_tokens=30)
+        for usage in (old, new):
+            result = DreamPassResult(user_id="u", pass_id="p1", usage=usage)
+            await mark_errored(kind="dream_pass", job_id="j1", error="e", result=result)
+
+        status = await read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and status.result is not None
+        assert DreamPassResult.model_validate(status.result).usage == new
+
 
 class TestReadStatus:
     @pytest.mark.asyncio
