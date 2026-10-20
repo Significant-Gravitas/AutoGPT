@@ -43,6 +43,10 @@ describe("YouTubeEmbed", () => {
       `https://www.youtube-nocookie.com/embed/${VIDEO_ID}`,
     );
     expect(player?.getAttribute("title")).toBe("Demo video");
+    expect(player?.hasAttribute("allowfullscreen")).toBe(true);
+    expect(player?.getAttribute("sandbox")).toBe(
+      "allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox",
+    );
     expect(screen.queryByText(NOTICE, { exact: false })).toBeNull();
   });
 
