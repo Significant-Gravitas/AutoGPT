@@ -43,14 +43,7 @@ end
 return 0
 """
 _SAFE_HEAD = re.compile(r"[A-Za-z0-9_-]+")
-_REDIS_FAILURES = (
-    RedisError,
-    RedisClusterException,
-    ConnectionError,
-    OSError,
-    TimeoutError,
-    ValueError,
-)
+_REDIS_FAILURES = (RedisError, RedisClusterException, TimeoutError)
 
 
 class APIKeyValidationBudget(BaseModel):
@@ -150,5 +143,8 @@ async def _refund(budget: APIKeyValidationBudget) -> None:
 
 
 async def _eval(script: str, key: str, *args: str) -> int:
-    redis = await get_redis_async()
-    return await cast(Awaitable[int], redis.eval(script, 1, key, *args))
+    try:
+        redis = await get_redis_async()
+        return await cast(Awaitable[int], redis.eval(script, 1, key, *args))
+    except (OSError, ValueError) as error:
+        raise RedisError("Rate-limit Redis operation failed") from error

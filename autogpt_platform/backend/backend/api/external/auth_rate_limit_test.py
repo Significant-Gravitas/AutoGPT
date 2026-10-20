@@ -67,14 +67,41 @@ async def test_uvicorn_trust_boundary(peer, forwarded, expected):
 @pytest.mark.parametrize(
     "error", [RedisConnectionError, RedisClusterException, OSError, ValueError]
 )
-async def test_redis_failure_does_not_block_authentication(mocker, error):
-    mocker.patch.object(rate_limit, "get_redis_async", side_effect=error("unavailable"))
+@pytest.mark.parametrize("phase", ["connect", "eval"])
+async def test_redis_failure_does_not_block_authentication(mocker, error, phase):
+    if phase == "connect":
+        mocker.patch.object(
+            rate_limit, "get_redis_async", side_effect=error("unavailable")
+        )
+    else:
+        redis = mocker.Mock()
+        redis.eval = AsyncMock(side_effect=error("unavailable"))
+        mocker.patch.object(rate_limit, "get_redis_async", return_value=redis)
     assert (
         await rate_limit.enforce_api_key_validate_rate_limit(
             request(), "agpt_abcmiddle"
         )
         is None
     )
+
+
+@pytest.mark.parametrize("error", [OSError, ValueError])
+@pytest.mark.parametrize("entry", [middleware.require_api_key, middleware.require_auth])
+async def test_limiter_logic_failure_does_not_reach_key_validation(
+    mocker, error, entry
+):
+    redis = mocker.Mock()
+    redis.eval = AsyncMock(return_value=rate_limit.AUTH_VALIDATE_IP_MAX_REQUESTS + 1)
+    mocker.patch.object(rate_limit, "get_redis_async", return_value=redis)
+    mocker.patch.object(
+        rate_limit, "record_rate_limit_hit", side_effect=error("metric failure")
+    )
+    validate = mocker.patch.object(middleware, "validate_api_key", return_value=None)
+
+    with pytest.raises(error, match="metric failure"):
+        await entry(request(), api_key="agpt_abcmiddle")
+
+    validate.assert_not_awaited()
 
 
 @pytest.mark.parametrize("refund", [False, True])
