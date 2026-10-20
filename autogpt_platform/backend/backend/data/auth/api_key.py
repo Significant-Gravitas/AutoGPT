@@ -10,7 +10,7 @@ from prisma.types import APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
-from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.exceptions import ConflictError, NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
 
@@ -183,13 +183,31 @@ async def revoke_api_key(
     if organization_id and api_key.organizationId != organization_id:
         raise NotAuthorizedError("You do not have permission to revoke this API key.")
 
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where={"id": key_id},
+    if APIKeyStatus(api_key.status) == APIKeyStatus.REVOKED:
+        # Revoking is idempotent: keep the original revokedAt timestamp.
+        return APIKeyInfo.from_db(api_key)
+
+    updated = await PrismaAPIKey.prisma().update_many(
+        where={"id": key_id, "status": {"not_in": [APIKeyStatus.REVOKED]}},
         data={
             "status": APIKeyStatus.REVOKED,
             "revokedAt": datetime.now(timezone.utc),
         },
     )
+    if updated.count == 0:
+        # Another caller revoked it first; report the stored terminal state.
+        current = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
+        if not current:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to revoke.")
+        current_status = APIKeyStatus(current.status)
+        if current_status != APIKeyStatus.REVOKED:
+            raise ConflictError(
+                f"API key #{key_id} could not be revoked "
+                f"(status {current_status.value})."
+            )
+        return APIKeyInfo.from_db(current)
+
+    updated_api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
     if not updated_api_key:
         raise NotFoundError(f"API key #{key_id} vanished while trying to revoke.")
 
@@ -256,9 +274,29 @@ async def suspend_api_key(
     if organization_id and api_key.organizationId != organization_id:
         raise NotAuthorizedError("You do not have permission to suspend this API key.")
 
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where=selector, data={"status": APIKeyStatus.SUSPENDED}
+    # Only an ACTIVE key may be suspended. The status predicate lives in the
+    # UPDATE so a concurrent revoke cannot be overwritten after the checks above.
+    updated = await PrismaAPIKey.prisma().update_many(
+        where={"id": key_id, "status": APIKeyStatus.ACTIVE},
+        data={"status": APIKeyStatus.SUSPENDED},
     )
+    if updated.count == 0:
+        current = await PrismaAPIKey.prisma().find_unique(where=selector)
+        if not current:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to suspend.")
+        status = APIKeyStatus(current.status)
+        if status == APIKeyStatus.REVOKED:
+            raise ConflictError(
+                f"API key #{key_id} is revoked and cannot be suspended."
+            )
+        if status == APIKeyStatus.SUSPENDED:
+            # Repeated suspend is a no-op; the row already holds this state.
+            return APIKeyInfo.from_db(current)
+        raise ConflictError(
+            f"API key #{key_id} is {status.value} and cannot be suspended."
+        )
+
+    updated_api_key = await PrismaAPIKey.prisma().find_unique(where=selector)
     if not updated_api_key:
         raise NotFoundError(f"API key #{key_id} vanished while trying to suspend.")
 
@@ -304,10 +342,25 @@ async def update_api_key_permissions(
     if organization_id and api_key.organizationId != organization_id:
         raise NotAuthorizedError("You do not have permission to update this API key.")
 
-    updated_api_key = await PrismaAPIKey.prisma().update(
-        where={"id": key_id},
+    if APIKeyStatus(api_key.status) == APIKeyStatus.REVOKED:
+        raise ConflictError(
+            f"API key #{key_id} is revoked and its permissions cannot be changed."
+        )
+
+    # REVOKED is terminal; SUSPENDED keys keep their previous edit semantics.
+    updated = await PrismaAPIKey.prisma().update_many(
+        where={"id": key_id, "status": {"not_in": [APIKeyStatus.REVOKED]}},
         data={"permissions": permissions},
     )
+    if updated.count == 0:
+        current = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
+        if not current:
+            raise NotFoundError(f"API key #{key_id} vanished while trying to update.")
+        raise ConflictError(
+            f"API key #{key_id} is revoked and its permissions cannot be changed."
+        )
+
+    updated_api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
     if not updated_api_key:
         raise NotFoundError(f"API key #{key_id} vanished while trying to update.")
 
