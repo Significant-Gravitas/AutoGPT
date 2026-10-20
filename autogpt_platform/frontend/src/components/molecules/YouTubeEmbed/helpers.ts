@@ -79,21 +79,32 @@ export function getYouTubeStartSeconds(url: string): number | null {
 }
 
 // Privacy-enhanced mode: YouTube sets no cookies until the viewer presses play.
-export function getYouTubeEmbedUrl(url: string): string | null {
+export function getYouTubeLinks(url: string) {
   const videoId = getYouTubeVideoId(url);
-  if (!videoId) return null;
+  if (!videoId) {
+    return {
+      videoId,
+      embedUrl: null,
+      watchUrl: parseYouTubeUrl(url)?.toString() ?? null,
+    };
+  }
   const start = getYouTubeStartSeconds(url);
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`;
-  return start ? `${embedUrl}?start=${start}` : embedUrl;
+  const id = encodeURIComponent(videoId);
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${id}`;
+  const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+  return {
+    videoId,
+    embedUrl: start ? `${embedUrl}?start=${start}` : embedUrl,
+    watchUrl: start ? `${watchUrl}&t=${start}s` : watchUrl,
+  };
 }
 
-/** Where "Watch on YouTube" goes: the video's page, or the link as given. */
+export function getYouTubeEmbedUrl(url: string): string | null {
+  return getYouTubeLinks(url).embedUrl;
+}
+
 export function getYouTubeWatchUrl(url: string): string | null {
-  const videoId = getYouTubeVideoId(url);
-  if (!videoId) return parseYouTubeUrl(url)?.toString() ?? null;
-  const start = getYouTubeStartSeconds(url);
-  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-  return start ? `${watchUrl}&t=${start}s` : watchUrl;
+  return getYouTubeLinks(url).watchUrl;
 }
 
 export function getNoticeText({

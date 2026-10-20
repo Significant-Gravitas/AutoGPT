@@ -103,8 +103,8 @@ function renderVideo(
 ): React.ReactNode {
   const videoUrl = String(value);
 
-  // Any YouTube link, even one naming no single video, goes through the
-  // consent notice rather than a <video> that would fetch it.
+  // YouTube links go through the consent notice rather than a <video>
+  // that would fetch them.
   if (isYouTubeUrl(videoUrl)) {
     return (
       <div className="group relative aspect-video w-full">

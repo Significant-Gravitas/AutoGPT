@@ -9,11 +9,7 @@ import {
   useConsent,
   useConsentManagerStatus,
 } from "@/services/consent/useConsent";
-import {
-  getYouTubeEmbedUrl,
-  getYouTubeVideoId,
-  getYouTubeWatchUrl,
-} from "./helpers";
+import { getYouTubeLinks } from "./helpers";
 
 export function useYouTubeEmbed(url: string) {
   const consent = useConsent();
@@ -23,7 +19,7 @@ export function useYouTubeEmbed(url: string) {
   // video only, so switching to another asks again.
   const [loadedVideoId, setLoadedVideoId] = useState<string | null>(null);
 
-  const videoId = getYouTubeVideoId(url);
+  const { videoId, embedUrl, watchUrl } = getYouTubeLinks(url);
   // With a banner configured, consent only ever comes from it, even while
   // its script loads or after a blocker stopped it.
   const hasConsentBanner = isConsentManagerConfigured();
@@ -36,8 +32,8 @@ export function useYouTubeEmbed(url: string) {
 
   return {
     videoId,
-    embedUrl: getYouTubeEmbedUrl(url),
-    watchUrl: getYouTubeWatchUrl(url),
+    embedUrl,
+    watchUrl,
     showPlayer: consent.advertising || loadedOnRequest,
     canLoadOnce: !hasConsentBanner && videoId !== null,
     // The banner can be opened from the notice (a blocker may have stopped it).
