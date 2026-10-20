@@ -67,9 +67,9 @@ last, so a caller cannot overwrite them. `revision` is a super property of
 every backend PostHog client instead (`revision_properties()`), so the flag
 client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
 is the exception: OpenRouter builds it from the request rather than through
-our client, so it carries no `revision` until #15604 adds `trace.revision`,
-which arrives as `metadata_revision`. #15605's `$ai_trace` and `$ai_span` go
-through `capture()`, so they carry `revision` as soon as they ship. The
+our client, so it carries no `revision`; the build arrives as
+`metadata_revision` from `trace.revision` instead. AutoPilot's `$ai_trace` and
+`$ai_span` go through `capture()`, so they carry `revision`. The
 browser registers all three once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
 at logout; a Vercel preview reports `environment: preview`, while the dev
