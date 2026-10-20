@@ -146,6 +146,8 @@ def test_the_week_the_clocks_change_reads_like_any_other(now):
         (["0 9 * * mon"], "Every Monday at 09:00"),
         (["30 8 * * *", "0 13 * * *"], "Twice a day"),
         (["0 9 * * 1-5"], "5 times a week"),
+        # Every minute for 21 hours a day: more runs than are counted.
+        (["* 0-20 * * *"], "At least 1000 times a week"),
         (["0 9 1 * *"], None),
     ],
 )

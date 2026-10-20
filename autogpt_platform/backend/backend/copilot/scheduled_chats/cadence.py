@@ -42,6 +42,8 @@ _DAY_NAMES = (
 # gets a once-a-day time at the start of a working day.
 _FEW_TIMES = 4
 _MORNING_HOUR = 9
+# Where a day's times start: a 06:00 run comes before a 00:30 one.
+_DAY_STARTS = (6, 0)
 _HOURLY = 7 * 24
 
 
@@ -87,7 +89,10 @@ def less_often(crons: list[str], timezone: str, now: datetime) -> list[Cadence]:
 def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     """How often the schedule runs, in words: "Every minute", "Every day at
     08:30", "Twice a day". None for one that runs less than twice a week and
-    not on a weekly beat, such as a monthly one."""
+    not on a weekly beat, such as a monthly one.
+
+    Each cron is read for at most ``_COUNT_CAP`` runs: a beat found within
+    them stands for the week, and a count that reaches the cap says so."""
     if len(crons) == 1:
         # Over a week and a day, so a weekend shows and weekdays do not pass
         # for daily; a weekly beat needs weeks to show.
@@ -102,6 +107,8 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     runs = len(_fires(crons, timezone, now))
     if runs < 2:
         return None
+    if runs >= _COUNT_CAP:
+        return f"At least {_COUNT_CAP} times a week"
     if runs % 7 == 0:
         per_day = runs // 7
         if per_day <= 2:
@@ -154,8 +161,8 @@ def _fires(
 def _anchor_time(fires: list[datetime]) -> tuple[int, int]:
     times = sorted({(fire.hour, fire.minute) for fire in fires})
     if len(times) <= _FEW_TIMES:
-        # Its first time from the morning on: a 06:00 run before a 00:30 one.
-        daytime = [time for time in times if time >= (6, 0)]
+        # Its first time from the morning on.
+        daytime = [time for time in times if time >= _DAY_STARTS]
         return (daytime or times)[0]
     # A routine that runs at most hourly keeps its minute, which was picked to
     # spread the load; one that runs more often has no minute of its own. The

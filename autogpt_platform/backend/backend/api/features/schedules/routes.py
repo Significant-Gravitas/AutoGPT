@@ -241,6 +241,7 @@ async def get_scheduled_chat_cadence(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/schedules/followups/{schedule_key}/cadence",
     summary="Run a scheduled chat less often",
     operation_id="setScheduledChatCadence",
