@@ -1,5 +1,5 @@
 import { fonts } from "@/components/styles/fonts";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import React from "react";
 
 import "./globals.css";
@@ -57,6 +57,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Android shrinks the page for the on-screen keyboard instead of sliding
+  // it over the bottom, so the chat composer stays in view above it.
+  interactiveWidget: "resizes-content",
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -73,7 +81,10 @@ export default async function RootLayout({
       className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen">
+      {/* Mobile Safari's 100vh is the height with its toolbar hidden, so a
+          min-h-screen page always scrolls a little; dvh is what is visible.
+          min-h-screen stays as the fallback for browsers without dvh. */}
+      <body className="min-h-dvh min-h-screen">
         {process.env.NEXT_PUBLIC_RENDER_COUNTER === "1" ? (
           <Script
             src="/devtools/render-counter.js"
@@ -121,7 +132,7 @@ export default async function RootLayout({
                   process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
               }}
             />
-            <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+            <div className="flex min-h-dvh min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
               {isCloud && <TallyPopupSimple />}
               <VercelAnalyticsWrapper />

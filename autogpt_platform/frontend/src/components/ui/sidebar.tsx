@@ -241,7 +241,9 @@ const Sidebar = React.forwardRef<
             data-sidebar="sidebar"
             data-mobile="true"
             tabIndex={-1}
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [&>button]:hidden"
+            // A quicker slide on the iOS sheet curve than the default sheet's
+            // half-second ease-in-out, which reads as lag on a phone.
+            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -254,6 +256,12 @@ const Sidebar = React.forwardRef<
             onOpenAutoFocus={(event) => {
               event.preventDefault();
               (event.currentTarget as HTMLElement).focus();
+            }}
+            // Picking a page or a chat closes the sheet, so it lands in view
+            // instead of behind the overlay.
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("a[href]"))
+                setOpenMobile(false);
             }}
           >
             <SheetHeader className="sr-only">

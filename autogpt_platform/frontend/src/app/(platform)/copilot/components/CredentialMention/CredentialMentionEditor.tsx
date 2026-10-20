@@ -10,6 +10,7 @@ import {
 import { PromptInputTextarea } from "@/components/ai-elements/prompt-input";
 import { parseCredentialMentions } from "./helpers";
 import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { MentionInput } from "../ChatInput/useChatMentions";
 import { CredentialMentionBadge } from "./CredentialMentionBadge";
@@ -116,7 +117,10 @@ export function CredentialMentionEditor({
     onKeyDown(event);
     if (event.defaultPrevented || !isKey(event, "Enter")) return;
     event.preventDefault();
-    if (event.shiftKey) document.execCommand("insertText", false, "\n");
+    // Like the plain textarea: on a phone Enter adds a line and the send
+    // button sends.
+    if (event.shiftKey || isTouchDevice())
+      document.execCommand("insertText", false, "\n");
     else event.currentTarget.closest("form")?.requestSubmit();
   }
 

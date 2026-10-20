@@ -156,6 +156,11 @@ interface Props {
 // manual "Load older messages" button always remains clickable.
 const MAX_AUTO_FILL_ROUNDS = 3;
 
+// Message actions wait for a hover on desktop; a touch screen has no hover,
+// so there they always show.
+const REVEAL_ON_HOVER_CLASS =
+  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100";
+
 /**
  * Triggers `onLoadMore` when scrolled near the top, preserves the
  * user's scroll position after older messages are prepended, and
@@ -495,7 +500,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -731,14 +736,19 @@ export function ChatMessagesContainer({
                     );
                   })()}
                 {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <MessageActions
+                    className={cn(
+                      "mt-1 items-center justify-end gap-2",
+                      REVEAL_ON_HOVER_CLASS,
+                    )}
+                  >
                     {(() => {
                       const createdAt = turnStats?.get(message.id)?.createdAt;
                       if (!createdAt) return null;
                       const date = new Date(createdAt);
                       if (Number.isNaN(date.getTime())) return null;
                       return (
-                        <span className="text-[11px] tabular-nums text-neutral-500">
+                        <span className="text-[11px] tabular-nums text-neutral-500 [@media(hover:none)]:hidden">
                           {date.toLocaleString(undefined, {
                             dateStyle: "medium",
                             timeStyle: "short",
@@ -764,18 +774,14 @@ export function ChatMessagesContainer({
                   <AssistantMessageActions
                     message={message}
                     sessionID={sessionID ?? null}
-                    className={cn(
-                      !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-                    )}
+                    className={cn(!isLastAssistant && REVEAL_ON_HOVER_CLASS)}
                   />
                 )}
                 {readOnly && showActions && (
                   <MessageActions
                     className={cn(
                       "mt-1 items-center justify-start gap-2",
-                      !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                      !isLastAssistant && REVEAL_ON_HOVER_CLASS,
                     )}
                   >
                     <CopyButton
