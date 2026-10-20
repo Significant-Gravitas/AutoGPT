@@ -17,7 +17,7 @@ import shutil
 import sys
 import time
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
@@ -4978,6 +4978,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     _otel_ctx: Any = None
     # The CLI spawned ahead of the query — stopped in finally if no launch used it.
     _cli_prelaunch: CLIPrelaunch | None = None
+    # The first turn's memory recall, awaited where the user message is built.
+    warm_ctx_task: asyncio.Task[tuple[bool, str]] | None = None
     # Parent Langfuse span for the turn — created so that the
     # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
     # attach to even though it fires after the SDK-emitted spans end.
@@ -5120,14 +5122,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
         e2b_task = asyncio.create_task(_setup_e2b())
+        # Warm context goes into the first user message, not the CLI's
+        # options: only graphiti's flag is awaited here, and the recalled
+        # memories where that message is built, so the CLI boots while they
+        # are fetched (``CLIPrelaunch`` below).
+        graphiti_flag = asyncio.create_task(is_enabled_for_user(user_id))
+        warm_ctx_task = asyncio.create_task(
+            _fetch_graphiti_context(user_id, session, message, enabled=graphiti_flag)
+        )
         try:
             (
                 (base_system_prompt, understanding),
-                (graphiti_enabled, warm_ctx),
+                graphiti_enabled,
                 _restore,
             ) = await asyncio.gather(
                 _build_system_prompt(user_id if not has_history else None),
-                _fetch_graphiti_context(user_id, session, message),
+                graphiti_flag,
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
@@ -5647,6 +5657,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
                 )
+            _, warm_ctx = await warm_ctx_task
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -6418,6 +6429,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         if _cli_prelaunch is not None:
             await _cli_prelaunch.close()
+        if warm_ctx_task is not None:
+            # Unused when the turn ended first; awaited either way so a
+            # failure it ended with is not left unretrieved.
+            warm_ctx_task.cancel()
+            with contextlib.suppress(BaseException):
+                await warm_ctx_task
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -6916,6 +6933,8 @@ async def _fetch_graphiti_context(
     user_id: str | None,
     session: ChatSession,
     message: str | None,
+    *,
+    enabled: Awaitable[bool] | None = None,
 ) -> tuple[bool, str]:
     """Check Graphiti flag and fetch warm context in one shot.
 
@@ -6924,10 +6943,10 @@ async def _fetch_graphiti_context(
     system prompt) so the system prompt stays identical across users and
     sessions, enabling cross-session Anthropic prompt-cache hits.  Skips
     the fetch on follow-up turns (history > 1 message) and when the user
-    is anonymous.
+    is anonymous. ``enabled`` is the flag read already under way, so a
+    caller can have the flag before the warm context.
     """
-    enabled = await is_enabled_for_user(user_id)
-    if not enabled:
+    if not await (enabled if enabled is not None else is_enabled_for_user(user_id)):
         return False, ""
     if not (user_id and len(session.messages) <= 1):
         return True, ""

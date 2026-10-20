@@ -8,6 +8,7 @@ the per-turn ``mode`` argument.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -187,6 +188,29 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
     fetch_mock.assert_not_awaited()
     enqueue_mock.assert_not_awaited()
     assert session.messages == []
+
+
+@pytest.mark.parametrize("flag", [True, False])
+@pytest.mark.asyncio
+async def test_fetch_graphiti_context_takes_the_flag_read_already_under_way(flag):
+    """The turn reads the flag once, beside its other setup, and hands that
+    read in, so it has the flag before the warm context."""
+    session = _make_session("user-1")
+    fetch_mock = AsyncMock(return_value="ctx")
+    flag_read = asyncio.get_running_loop().create_future()
+    flag_read.set_result(flag)
+    with (
+        patch(
+            "backend.copilot.sdk.service.is_enabled_for_user",
+            new=AsyncMock(side_effect=AssertionError("flag read twice")),
+        ),
+        patch("backend.copilot.sdk.service.fetch_warm_context", new=fetch_mock),
+    ):
+        enabled, ctx = await _fetch_graphiti_context(
+            "user-1", session, "first prompt", enabled=flag_read
+        )
+    assert (enabled, ctx) == ((True, "ctx") if flag else (False, ""))
+    assert fetch_mock.await_count == (1 if flag else 0)
 
 
 @pytest.mark.asyncio
