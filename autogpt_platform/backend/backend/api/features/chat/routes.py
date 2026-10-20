@@ -8,7 +8,15 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Request, Response, Security
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+)
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -484,6 +492,9 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    # The approval mode the chat starts on. Leave unset to start on the
+    # expert's default (or the platform default); send only a deliberate pick.
+    autopilot_mode: AutopilotMode | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -882,6 +893,7 @@ async def create_session(
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
+    autopilot_mode = request.autopilot_mode if request else None
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -929,6 +941,7 @@ async def create_session(
             builder_graph_id,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            autopilot_mode=autopilot_mode,
         )
     elif expert_kickoff and expert_id is not None:
         session = await get_or_create_expert_kickoff_session(
@@ -939,6 +952,7 @@ async def create_session(
             team_id=ctx.team_id,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            autopilot_mode=autopilot_mode,
         )
     else:
         try:
@@ -950,6 +964,7 @@ async def create_session(
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
                 expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
             )
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e
@@ -992,7 +1007,7 @@ async def get_session_computer(
 
 @router.post(
     "/sessions/{session_id}/desktop",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
         502: {"description": "The desktop could not be started"},
@@ -1073,17 +1088,15 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
-    # Best-effort cleanup of the E2B sandbox (if any).
+    # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
     e2b_cfg = ChatConfig()
     if e2b_cfg.e2b_active:
         assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
-        try:
-            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
-        except Exception:
-            logger.warning(
-                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
-            )
+        spawn_background_task(
+            kill_sandbox(session_id, e2b_cfg.e2b_api_key),
+            name=f"e2b-session-kill-{session_id[:12]}",
+        )
 
     return Response(status_code=204)
 
@@ -1861,7 +1874,7 @@ async def stream_chat_post(
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
-    # graphiti/ingest.py's ensure_dream_system_scheduled registration.
+    # graphiti/ingest.py's ensure_scope_scheduled registration.
     from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
 
     # Spawned through the shared helper: the loop only holds a weak
@@ -2327,7 +2340,9 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_writable_session(session_id, user_id)
-    if session.metadata.llm_auth_provider == "codex":
+    if session.metadata.llm_auth_provider == "platform":
+        await enforce_payment_paywall(user_id)
+    elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     client_message_id = (
         scoped_client_message_id(user_id, session_id, request.message_id)
@@ -2628,49 +2643,6 @@ async def get_ttl_config() -> dict:
     return {
         "stream_ttl_seconds": config.stream_ttl,
         "stream_ttl_ms": config.stream_ttl * 1000,
-    }
-
-
-# ========== Health Check ==========
-
-
-@router.get("/health", status_code=200)
-async def health_check() -> dict:
-    """
-    Health check endpoint for the chat service.
-
-    Performs a full cycle test of session creation and retrieval. Should always return healthy
-    if the service and data layer are operational.
-
-    Returns:
-        dict: A status dictionary indicating health, service name, and API version.
-
-    """
-    from backend.data.user import get_or_create_user
-
-    # Ensure health check user exists (required for FK constraint)
-    health_check_user_id = "health-check-user"
-    await get_or_create_user(
-        {
-            "sub": health_check_user_id,
-            "email": "health-check@system.local",
-            "user_metadata": {"name": "Health Check User"},
-        }
-    )
-
-    # Create and retrieve session to verify full data layer
-    session = await create_chat_session(health_check_user_id, dry_run=False)
-    fetched = await get_chat_session_metadata(session.session_id, health_check_user_id)
-    if fetched is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Chat read path unhealthy: session not found after create",
-        )
-
-    return {
-        "status": "healthy",
-        "service": "chat",
-        "version": "0.1.0",
     }
 
 

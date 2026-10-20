@@ -21,6 +21,8 @@ from backend.copilot.tools.skills import (
     SkillLimitError,
     SkillNotFoundError,
     SkillPackage,
+    SkillVersionConflictError,
+    SkillWriteLockError,
     parse_skill_markdown,
     render_skill_markdown,
 )
@@ -168,6 +170,27 @@ def test_delete_copilot_skill_returns_404_when_missing(
 
     response = client.delete("/skills/missing")
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SkillWriteLockError("held; try again"),
+        SkillVersionConflictError("v1", "v2"),
+    ],
+)
+def test_delete_copilot_skill_returns_409_when_it_could_not_be_ordered(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """Nothing was deleted, so the UI can offer a retry."""
+
+    mocker.patch(
+        "backend.api.features.skills.routes.delete_user_skill",
+        AsyncMock(side_effect=error),
+    )
+
+    response = client.delete("/skills/busy")
+    assert response.status_code == 409
 
 
 def test_read_copilot_skill_returns_user_body(

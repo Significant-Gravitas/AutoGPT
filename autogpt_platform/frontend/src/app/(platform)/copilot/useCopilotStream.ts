@@ -26,6 +26,7 @@ import {
 import {
   deduplicateMessages,
   extractSendMessageText,
+  extractSendMessageAttachments,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -537,6 +538,7 @@ export function useCopilotStream({
 
     const suppressReason = getSendSuppressionReason({
       text,
+      attachments: extractSendMessageAttachments(args[0]),
       isReconnectScheduled: reconnectScheduledRef.current,
       lastSubmittedText: coord?.lastSubmittedMessageText ?? null,
       messages: chatRuntime?.chat.messages ?? rawMessages,
@@ -575,7 +577,12 @@ export function useCopilotStream({
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
-  const messages = deduplicateMessages(rawMessages);
+  // Memoised so `messages` keeps its identity across renders that did not
+  // change the chat, instead of being a new array every render.
+  const messages = useMemo(
+    () => deduplicateMessages(rawMessages),
+    [rawMessages],
+  );
 
   useEffect(() => {
     if (!sessionId) return;

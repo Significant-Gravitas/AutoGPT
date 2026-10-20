@@ -1,4 +1,4 @@
-"""Backend selection: launchdarkly (default), posthog, and the dual diff run."""
+"""Backend selection: posthog (default), launchdarkly, and the dual diff run."""
 
 import asyncio
 import json
@@ -65,6 +65,8 @@ _FORCE_PREFIXES = (
 
 @pytest.fixture
 def ld_client(mocker):
+    """LaunchDarkly serving from a ready client; a dual test switches after."""
+    use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
     client = mocker.Mock(spec=LDClient)
     mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     client.is_initialized.return_value = True
@@ -106,18 +108,62 @@ def stub_posthog(mocker, *, value, payload=None):
     return client
 
 
-class TestDefaultBackendIsUnchanged:
-    """Phase 1 is a no-op until the setting is flipped."""
+class TestTheDefaultBackend:
+    def test_the_default_is_posthog(self):
+        # The field's default, since a developer's .env may set the variable.
+        default = Config.model_fields["feature_flag_backend"].default
+        assert default is FeatureFlagBackend.POSTHOG
 
-    def test_the_default_is_launchdarkly(self):
-        assert (
-            ff.settings.config.feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
-        )
+
+class TestPostHogWithoutAKey:
+    """The default backend as a self-hosted install and CI run it."""
+
+    @pytest.fixture(autouse=True)
+    def no_key(self, mocker, monkeypatch: pytest.MonkeyPatch):
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ph.settings.secrets, "posthog_api_key", "")
+        mocker.patch.object(ff.settings.secrets, "posthog_secret_key", "")
+        monkeypatch.setattr(ph, "_client", None)
+        monkeypatch.setattr(ph, "_init_attempted", False)
+        monkeypatch.setattr(ph, "_shut_down", False)
 
     @pytest.mark.asyncio
-    async def test_the_default_never_touches_posthog(
-        self, mocker, ld_client, user_context
+    @pytest.mark.parametrize("attributes", [None, {"country": "US"}])
+    async def test_a_read_serves_its_default_without_a_user_lookup(
+        self, mocker, attributes
     ):
+        user_id = str(uuid.uuid4())
+        lookup = mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create(user_id), True),
+        )
+
+        value = await ff.get_feature_flag_value(
+            Flag.HIRE_EXPERTS.value, user_id, True, attributes=attributes
+        )
+
+        assert value is True
+        lookup.assert_not_called()
+
+    def test_startup_warns_once_and_logs_no_error(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            ff.initialize_feature_flags()
+
+        assert [(r.levelno, r.getMessage()) for r in caplog.records] == [
+            (
+                logging.WARNING,
+                "PostHog API key not configured; flag reads will not resolve",
+            )
+        ]
+
+
+class TestLaunchDarklyBackendLeavesPostHogAlone:
+    @pytest.fixture(autouse=True)
+    def launchdarkly(self, mocker):
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
+
+    @pytest.mark.asyncio
+    async def test_a_read_never_touches_posthog(self, mocker, ld_client, user_context):
         posthog = mocker.patch.object(ph, "evaluate_flag")
         ld_client.variation_detail.return_value = served(True)
 
@@ -126,9 +172,7 @@ class TestDefaultBackendIsUnchanged:
         posthog.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_the_default_reads_launchdarkly_for_raw_values(
-        self, ld_client, user_context
-    ):
+    async def test_a_raw_value_is_read_from_launchdarkly(self, ld_client, user_context):
         ld_client.variation_detail.return_value = served({"daily": 5})
 
         assert await ff.get_feature_flag_value("copilot-cost-limits", "system") == {
@@ -157,15 +201,16 @@ class TestAnUnknownBackendValue:
     """Settings is built at import of every module that reads a flag, so a
     rejected value is a boot crash rather than a misconfigured flag read."""
 
-    def test_a_typo_falls_back_to_launchdarkly(self, monkeypatch):
-        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "posthogg")
-        assert Config().feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
+    def test_a_typo_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "launch-darkly")
+        assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
     def test_the_value_is_case_insensitive(self, monkeypatch):
         monkeypatch.setenv("FEATURE_FLAG_BACKEND", "PostHog")
         assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestPostHogBackend:
     @pytest.mark.asyncio
     async def test_an_enabled_flag_is_authoritative(self, mocker, user_context):
@@ -377,8 +422,7 @@ class TestPostHogBackend:
     async def test_a_dev_only_rollout_evaluates_in_process(
         self, mocker, user_context, app_env, expected
     ):
-        """Dev reads prod's definitions; a release condition on ``environment``
-        is how a flag goes out to dev alone."""
+        """A release condition on ``environment`` decides in process, per app env."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         mocker.patch.object(ff.settings.config, "app_env", app_env)
         posthog_client = _posthog_rolled_out_to_dev_only()
@@ -664,6 +708,7 @@ class TestLaunchDarklyAnswers:
     ):
         """A switched-off flag still answers with its off variation; a flag
         LaunchDarkly does not have answers nothing, whatever the default."""
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
         td = TestData.data_source()
         configure(td)
         ld = _launchdarkly_with(td)
@@ -1045,6 +1090,7 @@ class TestSentryFlagContext:
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestTheCountryRuleInEveryBackend:
     """The trial's country targeting, through each vendor's real evaluator."""
 

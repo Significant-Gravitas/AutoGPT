@@ -17,6 +17,8 @@ interface Args {
   canSendEmpty?: boolean;
   inputId?: string;
   draftKey?: string;
+  /** Names what failed in the toast, e.g. a scheduled send. */
+  failureTitle?: string | ((error: unknown) => string);
 }
 
 export function useChatInput({
@@ -28,6 +30,7 @@ export function useChatInput({
   canSendEmpty = false,
   inputId = "chat-input",
   draftKey,
+  failureTitle = "Couldn't send message",
 }: Args) {
   const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
@@ -36,8 +39,11 @@ export function useChatInput({
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
   const isEnqueueingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
-    useCopilotUIStore();
+  const initialPrompt = useCopilotUIStore((s) => s.initialPrompt);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const recoveredDraft = useCopilotUIStore((s) => s.recoveredDraft);
+  const clearRecoveredDraft = useCopilotUIStore((s) => s.clearRecoveredDraft);
+  const notifyMessageSent = useCopilotUIStore((s) => s.notifyMessageSent);
 
   useEffect(
     function consumeInitialPrompt() {
@@ -55,6 +61,15 @@ export function useChatInput({
       textarea?.focus();
     },
     [initialPrompt, setInitialPrompt, inputId, setValue],
+  );
+
+  useEffect(
+    function consumeRecoveredDraft() {
+      if (!recoveredDraft) return;
+      setValue((current) => restoreFailedDraft(current, recoveredDraft));
+      clearRecoveredDraft();
+    },
+    [recoveredDraft, clearRecoveredDraft, setValue],
   );
 
   useEffect(
@@ -91,7 +106,10 @@ export function useChatInput({
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
       toastSendFailure({
-        title: "Couldn't send message",
+        title:
+          typeof failureTitle === "function"
+            ? failureTitle(error)
+            : failureTitle,
         error,
         recovery: "your message is back in the composer",
       });

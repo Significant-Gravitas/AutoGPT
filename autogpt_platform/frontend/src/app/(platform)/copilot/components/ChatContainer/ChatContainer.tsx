@@ -9,7 +9,8 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
@@ -21,6 +22,11 @@ import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { BudgetLowHint } from "../UsageLimits/BudgetLowHint";
+import { ScheduledSendChip } from "../SendAtReset/ScheduledSendChip";
+import { SESSION_COMPOSER_ID, sessionDraftKey } from "../SendAtReset/helpers";
+import { useComposerBudget } from "./useComposerBudget";
+import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
@@ -62,6 +68,12 @@ export interface ChatContainerProps {
   usageFailure?: import("../../providerFailure").ProviderFailure | null;
   onDismissUsage?: () => void;
   usageRefresh?: UsageNoticeContext["refresh"];
+  /** The account's AutoPilot budget: drives Send at reset and the
+   *  running-low hint. */
+  usage?: UsageSnapshot | null;
+  /** The connection the chat runs on, or for a new chat the one it will
+   *  start on. Only a platform chat waits for the AutoPilot budget. */
+  chatAuthProvider?: string | null;
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
@@ -171,6 +183,8 @@ export const ChatContainer = ({
   usageFailure,
   onDismissUsage,
   usageRefresh,
+  usage = null,
+  chatAuthProvider = null,
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
@@ -198,12 +212,9 @@ export const ChatContainer = ({
   // state from the backend).
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
-  const isUsageExhausted = useIsUsageLimitReached(sessionId);
+  const isUsageExhausted = useIsUsageLimitReached(chatAuthProvider);
   const isLimitReached = isUsageExhausted || isUsageRefused;
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
-  useEffect(() => {
-    if (!isLimitReached) setIsUsageTooltipOpen(false);
-  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable || !!isResolvingExpertIdentity || !!isKickoffStarting;
   // A fired (archived) expert's threads stay as read-only history — the
@@ -227,15 +238,46 @@ export const ChatContainer = ({
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isTurnLocked ? NO_OP_SEND : onSend;
+  const composer = useComposerBudget({
+    sessionId,
+    authProvider: chatAuthProvider,
+    budget: usage?.budget,
+    isLimitReached,
+    isOtherwiseLocked: isTurnLocked,
+    onSend,
+    onCreateSession,
+    inputId: SESSION_COMPOSER_ID,
+  });
+  // While a turn still runs, the limit keeps follow-ups from queueing.
+  const atReset = isStreaming ? undefined : composer.atReset;
+  // Send at reset takes the paused tooltip's place. Radix reports no close
+  // for a tooltip held shut, so an open recorded then would show it, unhovered,
+  // once a turn starts: record none, and forget one Send at reset cut short.
+  const canShowUsageTooltip = Boolean(isLimitReached && !atReset);
+  useEffect(() => {
+    if (!canShowUsageTooltip) setIsUsageTooltipOpen(false);
+  }, [canShowUsageTooltip]);
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
-  const modeSelector = isAutoModeEnabled ? (
-    <AutopilotModeSelector
-      sessionId={sessionId}
-      persistedMode={sessionAutopilotMode}
-    />
-  ) : undefined;
+  // A thread keeps the mode stored on it; a new expert chat starts on the
+  // expert's own default until its first send creates the session.
+  const initialMode = sessionId
+    ? sessionAutopilotMode
+    : (expertIdentity?.autopilotMode ?? null);
+  // ChatInput is memoised, and this container renders on every streamed
+  // flush: each element and callback it gets keeps its identity until its
+  // own inputs change, so a flush leaves the composer alone.
+  const modeSelector = useMemo(
+    () =>
+      isAutoModeEnabled ? (
+        <AutopilotModeSelector
+          sessionId={sessionId}
+          persistedMode={initialMode}
+        />
+      ) : undefined,
+    [isAutoModeEnabled, sessionId, initialMode],
+  );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -247,6 +289,55 @@ export const ChatContainer = ({
     silenceTimeoutMs,
     onSend: guardedOnSend,
   });
+  const toggleVoice = useStableCallback(voice.toggle);
+  const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);
+  const downloadVoiceUtterance = useStableCallback(
+    voice.downloadFailedUtterance,
+  );
+  const isVoiceModeDisabled =
+    isInputDisabled || isSendLocked || voice.isStarting;
+  const voiceMode = useMemo(
+    () =>
+      isVoiceModeEnabled
+        ? { onStart: toggleVoice, disabled: isVoiceModeDisabled }
+        : undefined,
+    [isVoiceModeEnabled, toggleVoice, isVoiceModeDisabled],
+  );
+  const voiceBar = useMemo(
+    () =>
+      voice.isActive ? (
+        <VoiceModeBar
+          state={voice.state}
+          statusLabel={voice.statusLabel}
+          failure={voice.failure}
+          onRetry={retryVoiceUtterance}
+          onDownload={downloadVoiceUtterance}
+          leaveButton={
+            <VoiceModeButton
+              isActive
+              speaking={voice.state === "speaking"}
+              onClick={toggleVoice}
+            />
+          }
+        />
+      ) : undefined,
+    [
+      voice.isActive,
+      voice.state,
+      voice.statusLabel,
+      voice.failure,
+      retryVoiceUtterance,
+      downloadVoiceUtterance,
+      toggleVoice,
+    ],
+  );
+  const handleStop = useStableCallback(onStop);
+  const handleEnqueue = useStableCallback((message: string) =>
+    onEnqueue?.(message),
+  );
+  const handleDroppedFilesConsumed = useStableCallback(() =>
+    onDroppedFilesConsumed?.(),
+  );
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
@@ -306,8 +397,9 @@ export const ChatContainer = ({
   }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
+  // Stable, and reads `messages` when clicked rather than when created.
   const isRetryingRef = useRef(false);
-  const handleRetry = useCallback(async () => {
+  const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
     try {
@@ -356,7 +448,7 @@ export const ChatContainer = ({
     } finally {
       isRetryingRef.current = false;
     }
-  }, [guardedOnSend, messages]);
+  });
 
   return (
     <CopilotChatActionsProvider
@@ -431,7 +523,7 @@ export const ChatContainer = ({
               ) : (
                 <ChatComposerFrame
                   className={cn(hasComposerTab && "max-lg:pt-0")}
-                  paused={isLimitReached}
+                  paused={isLimitReached && !atReset}
                   noticeRef={usageCardRef}
                   notice={
                     isLimitReached ? (
@@ -449,69 +541,56 @@ export const ChatContainer = ({
                   {isTaskBarEnabled && (
                     <div className="relative z-10">
                       <TaskProgressBar
-                        todos={getLatestTaskList(messages) ?? []}
+                        todos={getLatestTaskList(messages)}
                         isStreaming={isStreaming}
                       />
                     </div>
                   )}
+                  {composer.scheduled.pending && (
+                    <ScheduledSendChip
+                      job={composer.scheduled.pending}
+                      onEdit={() => void composer.scheduled.edit()}
+                      onCancel={() => void composer.scheduled.cancel()}
+                      isBusy={composer.scheduled.isBusy}
+                    />
+                  )}
                   <Tooltip
-                    open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                    open={canShowUsageTooltip && isUsageTooltipOpen}
                     onOpenChange={(open) =>
-                      setIsUsageTooltipOpen(open && isLimitReached)
+                      setIsUsageTooltipOpen(open && canShowUsageTooltip)
                     }
                   >
                     <TooltipTrigger asChild>
                       <div>
                         <ChatInput
-                          inputId="chat-input-session"
-                          draftKey={`session:${sessionId}`}
+                          inputId={SESSION_COMPOSER_ID}
+                          draftKey={sessionDraftKey(sessionId)}
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
-                          sendDisabled={isLimitReached}
+                          sendDisabled={isLimitReached && !atReset}
+                          atReset={atReset}
                           isStreaming={isStreaming}
                           isTurnStarting={status === "submitted"}
                           isUploadingFiles={isUploadingFiles}
-                          onStop={onStop}
-                          onEnqueue={onEnqueue}
-                          placeholder="What else can I help with?"
+                          onStop={handleStop}
+                          onEnqueue={onEnqueue ? handleEnqueue : undefined}
+                          placeholder={
+                            (atReset && composer.placeholder) ||
+                            "What else can I help with?"
+                          }
                           droppedFiles={droppedFiles}
-                          onDroppedFilesConsumed={onDroppedFilesConsumed}
+                          onDroppedFilesConsumed={
+                            onDroppedFilesConsumed
+                              ? handleDroppedFilesConsumed
+                              : undefined
+                          }
                           hasSession={!!sessionId}
                           sessionId={sessionId}
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
-                          voiceToggle={
-                            isVoiceModeEnabled ? (
-                              <VoiceModeButton
-                                isActive={voice.isActive}
-                                disabled={
-                                  isInputDisabled ||
-                                  isSendLocked ||
-                                  voice.isStarting
-                                }
-                                onClick={voice.toggle}
-                              />
-                            ) : undefined
-                          }
-                          voiceBar={
-                            voice.isActive ? (
-                              <VoiceModeBar
-                                state={voice.state}
-                                statusLabel={voice.statusLabel}
-                                failure={voice.failure}
-                                onRetry={voice.retryFailedUtterance}
-                                onDownload={voice.downloadFailedUtterance}
-                                leaveButton={
-                                  <VoiceModeButton
-                                    isActive
-                                    speaking={voice.state === "speaking"}
-                                    onClick={voice.toggle}
-                                  />
-                                }
-                              />
-                            ) : undefined
-                          }
+                          voiceMode={voiceMode}
+                          voiceBar={voiceBar}
                         />
                       </div>
                     </TooltipTrigger>
@@ -520,6 +599,9 @@ export const ChatContainer = ({
                       editing it.
                     </TooltipContent>
                   </Tooltip>
+                  {composer.showLowHint && usage && (
+                    <BudgetLowHint usage={usage} />
+                  )}
                 </ChatComposerFrame>
               )}
             </div>
@@ -529,21 +611,32 @@ export const ChatContainer = ({
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
               modeSelector={modeSelector}
-              voiceToggle={
-                isVoiceModeEnabled ? (
-                  <VoiceModeButton
-                    isActive={false}
-                    disabled={
-                      isInputDisabled || isSendLocked || isCreatingSession
+              voiceMode={
+                isVoiceModeEnabled
+                  ? {
+                      onStart: handleStartVoiceInNewChat,
+                      disabled:
+                        isInputDisabled || isSendLocked || isCreatingSession,
                     }
-                    onClick={handleStartVoiceInNewChat}
-                  />
-                ) : undefined
+                  : undefined
               }
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
-              isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
+              isInteractionLocked={
+                (isSendLocked && !composer.atReset) || !!isAdoptingExpertSession
+              }
+              atReset={composer.atReset}
+              usageNotice={
+                isLimitReached ? (
+                  <UsageLimitReachedCard refresh={usageRefresh} />
+                ) : undefined
+              }
+              lowHint={
+                composer.showLowHint && usage ? (
+                  <BudgetLowHint usage={usage} />
+                ) : undefined
+              }
               isKickoffStarting={isKickoffStarting}
               expertName={expertIdentity?.name}
               expertId={expertIdentity?.id ?? null}

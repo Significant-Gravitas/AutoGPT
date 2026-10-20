@@ -22,9 +22,9 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import ChatSession
+from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
-from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
@@ -1767,6 +1767,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ):
         return ChatSession.new(
             user_id,
@@ -1774,6 +1775,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
 
     return mocker.patch(
@@ -2840,6 +2842,22 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     assert "turn_in_flight" in data
 
 
+def test_queue_pending_message_on_the_platform_route_needs_a_plan(
+    mocker: pytest_mock.MockerFixture, paywalled_user
+) -> None:
+    session = _mock_stream_queue_internals(mocker)
+    session.metadata.llm_auth_provider = "platform"
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post("/sessions/sess-1/messages/pending", json={"message": "more"})
+    push.assert_not_awaited()
+
+
 def test_queue_pending_message_same_message_id_is_buffered_once(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -3566,9 +3584,63 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
         return_value=False,
     )
 
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
     response = client.delete("/sessions/sess-missing")
 
     assert response.status_code == 404
+    spawn.assert_not_called()
+
+
+def test_delete_session_without_e2b_spawns_no_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """With E2B inactive the delete starts no sandbox-kill task."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=False, e2b_api_key=None),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_not_called()
+    spawn.assert_not_called()
+
+
+def test_delete_session_kills_sandbox_in_background(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The E2B sandbox kill is handed to a background task, not awaited inline."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=True, e2b_api_key="test-e2b-key"),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_called_once_with("sess-1", "test-e2b-key")
+    kill.assert_not_awaited()
+    spawn.assert_called_once()
+    assert spawn.call_args.kwargs["name"] == "e2b-session-kill-sess-1"
+    spawn.call_args.args[0].close()
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
@@ -4551,11 +4623,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -4633,66 +4707,6 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
-
-
-def test_health_check_returns_503_when_metadata_read_returns_none(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Round-trips create-then-read; if the read path returns None despite
-    # a successful create, the health endpoint must surface the failure.
-    from backend.copilot.model import ChatSession
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 503
-    assert "unhealthy" in response.json()["detail"].lower()
-
-
-def test_health_check_returns_healthy_on_round_trip_success(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Happy path: create + read both succeed → 200 with healthy body.
-    from backend.copilot.model import ChatSession, ChatSessionInfo
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    fake_session = ChatSession.new("health-check-user", dry_run=False)
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        return_value=fake_session,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=ChatSessionInfo(
-            **{**fake_session.model_dump(exclude={"messages"})}
-        ),
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "healthy"
-    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
@@ -5142,3 +5156,89 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+def test_create_session_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_without_a_pick_leaves_the_mode_to_the_server(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] is None
+
+
+def test_create_session_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_expert_kickoff_receives_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000002"
+    _mock_get_expert(mocker, _make_expert(expert_id))
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": expert_id,
+            "expert_kickoff": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"

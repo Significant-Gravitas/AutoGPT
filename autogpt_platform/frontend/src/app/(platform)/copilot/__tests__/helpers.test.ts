@@ -1,11 +1,20 @@
 import type { UIMessage } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
   deduplicateMessages,
   extractSendMessageText,
   getCopilotAuthHeaders,
+  extractSendMessageAttachments,
   getSendSuppressionReason,
   hasVisibleAssistantContent,
   parseSessionIDs,
@@ -337,6 +346,48 @@ describe("getSendSuppressionReason", () => {
     ).toBe("duplicate");
   });
 
+  it("lets the same caption through when it carries other attachments", () => {
+    const messages = [
+      makeMsg("user", "summarize this"),
+      makeMsg("assistant", "ok"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [{ type: "file", mediaType: "image/png", url: "/f/new" }],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
+        messages,
+      }),
+    ).toBeNull();
+  });
+
+  it("still drops a resend of the same caption with the same attachments", () => {
+    const file = { type: "file" as const, mediaType: "image/png", url: "/f/1" };
+    const messages: UIMessage[] = [
+      {
+        id: "msg-with-file",
+        role: "user",
+        parts: [file, { type: "text", text: "summarize this" }],
+      },
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "summarize this",
+        attachments: extractSendMessageAttachments({
+          text: "summarize this",
+          files: [file],
+        }),
+        isReconnectScheduled: false,
+        lastSubmittedText: "summarize this",
+        messages,
+      }),
+    ).toBe("duplicate");
+  });
+
   it("returns null when text matches last submitted but differs from last user message", () => {
     const messages = [
       makeMsg("user", "different"),
@@ -577,6 +628,95 @@ describe("deduplicateMessages", () => {
     // user + step-start + step-end kept; the second step-start dedupes against a1.
     expect(result).toHaveLength(3);
     expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
+  });
+
+  it("returns the input array itself when nothing is a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "question 1"),
+      makeMsgWithId("a1", "assistant", "answer 1"),
+      makeMsgWithId("u2", "user", "question 2"),
+      makeMsgWithId("a2", "assistant", "answer 2"),
+    ];
+    expect(deduplicateMessages(msgs)).toBe(msgs);
+    expect(deduplicateMessages([])).toEqual([]);
+  });
+
+  it("returns a new array when it removes a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "hello"),
+      makeMsgWithId("a1", "assistant", "hi there"),
+      makeMsgWithId("a2", "assistant", "hi there"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).not.toBe(msgs);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
+
+  describe("fingerprint cache", () => {
+    let stringify: MockInstance<typeof JSON.stringify>;
+    beforeEach(() => {
+      stringify = vi.spyOn(JSON, "stringify");
+    });
+    afterEach(() => {
+      stringify.mockRestore();
+    });
+
+    it("fingerprints an unchanged assistant message once, and the newest one on every call", () => {
+      const older = makeMsgWithId("a1", "assistant", "answer 1");
+      const msgs = [
+        makeMsgWithId("u1", "user", "question 1"),
+        older,
+        makeMsgWithId("u2", "user", "question 2"),
+        makeMsgWithId("a2", "assistant", "answer 2"),
+      ];
+
+      deduplicateMessages(msgs);
+      expect(stringify).toHaveBeenCalledTimes(2);
+
+      stringify.mockClear();
+      const streamed = {
+        ...msgs[3],
+        parts: [{ type: "text" as const, text: "answer 2, longer" }],
+      };
+      deduplicateMessages([...msgs.slice(0, 3), streamed]);
+      expect(stringify).toHaveBeenCalledTimes(1);
+      expect(stringify.mock.calls[0][0]).toEqual(["answer 2, longer"]);
+    });
+
+    it("fingerprints a message again once it gets new parts", () => {
+      const msgs: UIMessage[] = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        makeMsgWithId("a2", "assistant", "other"),
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      msgs[2] = { ...msgs[2], parts: [{ type: "text", text: "same" }] };
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
+
+    it("fingerprints a message again when parts are added to it in place", () => {
+      const growing: UIMessage = { id: "a2", role: "assistant", parts: [] };
+      const msgs = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        growing,
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      growing.parts.push({ type: "text", text: "same" });
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
   });
 });
 

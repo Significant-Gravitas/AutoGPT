@@ -1,3 +1,4 @@
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
@@ -10,6 +11,7 @@ from backend.data.auth.oauth import (
     OAuthAccessTokenInfo,
     validate_access_token,
 )
+from backend.data.user import is_user_banned
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
@@ -29,6 +31,7 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> API
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
+    await _refuse_banned_owner(api_key_obj)
     return api_key_obj
 
 
@@ -47,6 +50,7 @@ async def require_access_token(
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
+    await _refuse_banned_owner(token_info)
     return token_info
 
 
@@ -68,6 +72,7 @@ async def require_auth(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await _refuse_banned_owner(api_key_info)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -77,15 +82,23 @@ async def require_auth(
     if bearer is not None:
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
-            return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await _refuse_banned_owner(token_info)
+        return token_info
 
     # No credentials provided
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Missing authentication. Provide API key or access token.",
     )
+
+
+async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
+    if await is_user_banned(auth.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
+        )
 
 
 def require_permission(*permissions: APIKeyPermission):

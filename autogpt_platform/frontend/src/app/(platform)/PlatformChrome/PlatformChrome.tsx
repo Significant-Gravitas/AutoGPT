@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -21,25 +22,22 @@ import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
+import { InsetHeaderSidebarTrigger } from "./components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
-// Mobile header buttons float over the content, so they get a pill surface to
-// stay readable against whatever scrolls underneath.
-const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
-
-export function PlatformChrome({ children }: Props) {
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
     showTourSidebar,
     overlayInsetHeader,
-    isChatSession,
     hasInsetHeaderTitle,
     isSettingsRoute,
     isAdminRoute,
@@ -70,12 +68,16 @@ export function PlatformChrome({ children }: Props) {
   }
 
   if (showNewLayout) {
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
     return (
       <SidebarProvider
-        defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
-        <BuilderSidebarAutoClose />
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
@@ -92,13 +94,7 @@ export function PlatformChrome({ children }: Props) {
             )}
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              {/* An open chat carries both buttons in its thread chip
-                  (ThreadHeader), so they float here everywhere else. */}
-              {!isChatSession && (
-                <div className="pointer-events-auto md:hidden">
-                  <SidebarTrigger className={mobileTriggerClassName} />
-                </div>
-              )}
+              <InsetHeaderSidebarTrigger />
               <InsetHeaderTitle />
               <InsetHeaderActions />
             </div>

@@ -622,3 +622,51 @@ async def test_post_follows_redirect_to_trailing_slash_without_looping():
     assert response.status == 401
     assert response.json() == {"error": "unauthorized"}
     assert seen == ["/mcp", "/mcp/"]
+
+
+@pytest.mark.asyncio
+async def test_untrusted_request_connects_only_to_the_pinned_address(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The SSRF check's IPs are the ones the request connects to.
+
+    ``validate_url_host`` resolves and vets the host once; the request must then
+    go to those addresses and never resolve the name again, or DNS rebinding gets
+    past the check. That rests on aiohttp's ``TCPConnector`` asking our
+    ``HostResolver`` for the host, so this drives the real connector: ``.invalid``
+    never resolves, and the request can only reach the local server through the pin.
+    """
+    from backend.util import request as request_module
+    from backend.util.request import Requests
+
+    vetted: list[str] = []
+
+    async def resolve_and_check_blocked(hostname: str) -> list[str]:
+        vetted.append(hostname)
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(
+        request_module, "resolve_and_check_blocked", resolve_and_check_blocked
+    )
+
+    seen: list[str | None] = []
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.headers.get("Host"))
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_get("/pinned", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests().get(f"http://pinned.invalid:{port}/pinned")
+    finally:
+        await runner.cleanup()
+
+    assert response.json() == {"ok": True}
+    assert vetted == ["pinned.invalid"]
+    assert seen == ["pinned.invalid"]

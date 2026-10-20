@@ -298,6 +298,14 @@ async def _process_source(
         expected_epoch=source.epoch,
     )
     if claim is None:
+        previous = await reviews.get_review_for_revision(
+            user_id, source.source_id, source.revision, POLICY_VERSION
+        )
+        if previous is not None and previous.held_by_another_run(result.run_id):
+            # Every exit below writes this revision's row, which would cut
+            # off that run's paid review mid-call; it settles the row itself.
+            result.reviewed += 1
+            return "deferred"
         current = await adapter.revalidate(
             source_id=source.source_id,
             revision=source.revision,
@@ -313,9 +321,6 @@ async def _process_source(
             return await settle_ineligible(
                 user_id, source, result, current.state, problem
             )
-        previous = await reviews.get_review_for_revision(
-            user_id, source.source_id, source.revision, POLICY_VERSION
-        )
         if previous is not None and previous.model_attempts >= MAX_MODEL_ATTEMPTS:
             return await settle(
                 user_id,
