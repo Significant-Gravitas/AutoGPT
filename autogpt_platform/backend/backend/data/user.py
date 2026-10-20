@@ -679,6 +679,8 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
         return _preference_from_user(user)
+    except RecordNotFoundError as e:
+        raise NotFoundError(f"User not found with ID: {user_id}") from e
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification preference for user {user_id}: {e}"
