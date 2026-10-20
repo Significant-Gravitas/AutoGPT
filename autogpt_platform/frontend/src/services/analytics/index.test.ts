@@ -95,6 +95,16 @@ describe("sendDatafastEvent", () => {
     ]);
   });
 
+  it("reports whether the event was sent, queued or dropped", () => {
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(true);
+
+    window.datafast = vi.fn();
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(true);
+
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(false);
+  });
+
   it("does not queue pre-consent events", () => {
     vi.mocked(hasConsentFor).mockReturnValue(false);
 

@@ -99,6 +99,18 @@ describe("Tour DataFast tracking", () => {
     expect(datafast).not.toHaveBeenCalled();
   });
 
+  test("fires tour_start on a later visit when consent was not known on the first", async () => {
+    installCookiebot();
+    const first = render(<TourChatPage />);
+    first.unmount();
+    expect(eventsNamed("tour_start")).toHaveLength(0);
+
+    installCookiebot({ statistics: true });
+    render(<TourChatPage />);
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
+  });
+
   test("fires tour_start once per session and tour_scenario_start per scenario run", async () => {
     render(<TourChatPage />);
 

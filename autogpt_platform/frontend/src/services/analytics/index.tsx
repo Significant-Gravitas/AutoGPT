@@ -119,19 +119,24 @@ const MAX_QUEUED_DATAFAST_EVENTS = 100;
 const datafastQueue: DatafastEvent[] = [];
 let datafastQueueOverflowWarned = false;
 
-function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
+// Returns whether the event was sent or queued, so a once-per-session guard
+// can stay unset when the event was dropped.
+function sendDatafastEvent(
+  name: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  if (typeof window === "undefined") return false;
   // Checked on every event, not only before the script loads: the script
   // stays on window after consent is taken back. Pre-consent events must not
   // queue either — they would be replayed once consent is granted.
-  if (!hasConsentFor("analytics")) return;
+  if (!hasConsentFor("analytics")) return false;
   if (window.datafast) {
     // Self-heal if the Script's onLoad never fired (e.g. consent toggle
     // remounted it after the script had already loaded): replay the backlog
     // first so queued events keep their order ahead of this one.
     flushDatafastQueue();
     window.datafast(name, metadata);
-    return;
+    return true;
   }
   // The script loads afterInteractive, so mount-time events (tour_start,
   // tour_scenario_start) fire before window.datafast exists. Queue them and
@@ -143,9 +148,10 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
         `DataFast queue full (${MAX_QUEUED_DATAFAST_EVENTS} events); dropping new events until the script loads`,
       );
     }
-    return;
+    return false;
   }
   datafastQueue.push([name, metadata]);
+  return true;
 }
 
 export function flushDatafastQueue() {
