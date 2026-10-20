@@ -16,6 +16,11 @@ from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
+from backend.copilot.background_execution import (
+    background_timeout,
+    claim_background_execution,
+    finish_background_execution,
+)
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
@@ -598,7 +603,10 @@ class CoPilotProcessor:
             log: Structured logger
         """
         with turn_transaction(entry) as turn:
-            await self._run_turn(entry, cancel, cluster_lock, log, turn)
+            if not await claim_background_execution(entry):
+                return
+            async with asyncio.timeout(background_timeout(entry)):
+                await self._run_turn(entry, cancel, cluster_lock, log, turn)
 
     async def _run_turn(
         self,
@@ -675,6 +683,10 @@ class CoPilotProcessor:
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause)
+                    if (entry.message_metadata or {}).get("background_task_id"):
+                        error_msg = (
+                            "Background work could not start within its usage limits."
+                        )
                     return
                 if credit_turn is not None:
                     log.info(
@@ -935,6 +947,10 @@ class CoPilotProcessor:
                 turn.set_outcome(error_msg, stream_registry.CANCELLED_MESSAGE)
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
+                try:
+                    await finish_background_execution(entry, error_msg)
+                except Exception as finish_err:
+                    log.error(f"Failed to save background completion: {finish_err}")
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,

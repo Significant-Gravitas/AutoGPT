@@ -67,6 +67,7 @@ class Flag(str, Enum):
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
+    COPILOT_BACKGROUND_SUBTASKS = "copilot-background-subtasks"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # AutoPilot auto mode: the permission gate in ``copilot/gate``.
     # A ROLLOUT control, not a safety control — off means today's

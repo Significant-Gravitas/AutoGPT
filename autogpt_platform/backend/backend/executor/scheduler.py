@@ -49,6 +49,7 @@ from backend.copilot.at_reset import (
     load_at_reset_chat,
 )
 from backend.copilot.at_reset_lock import at_reset_job_lock
+from backend.copilot.background_delivery import reconcile_background_subtasks
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
@@ -241,6 +242,10 @@ def reconcile_schedule_index():
         logger.warning("Schedule index reconcile skipped: scheduler not running")
         return
     _scheduler_instance._reconcile_schedule_index()
+
+
+def deliver_background_subtasks() -> None:
+    run_async(reconcile_background_subtasks(), timeout=25)
 
 
 @func_retry
@@ -2937,6 +2942,17 @@ class Scheduler(AppService):
                 hours=24,
                 replace_existing=True,
                 max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            self.scheduler.add_job(
+                deliver_background_subtasks,
+                id="deliver_background_subtasks",
+                trigger="interval",
+                seconds=5,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

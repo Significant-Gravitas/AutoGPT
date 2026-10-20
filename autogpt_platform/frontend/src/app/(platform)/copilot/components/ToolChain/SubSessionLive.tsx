@@ -28,6 +28,7 @@ import { getCatalogLabel } from "./toolCatalog";
 interface Props {
   subSessionId: string;
   active: boolean;
+  background?: boolean;
 }
 
 const POLL_MS = 3000;
@@ -50,10 +51,15 @@ interface LiveStep {
  *  ``running`` forever, so liveness comes from the polled session itself —
  *  once it goes idle, polling stops and the last state stays up as the
  *  delegate's final answer. */
-export function SubSessionLive({ subSessionId, active }: Props) {
+export function SubSessionLive({
+  subSessionId,
+  active,
+  background = false,
+}: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
+    background,
   );
   if (!active) return null;
 
@@ -85,15 +91,22 @@ export function SubSessionLive({ subSessionId, active }: Props) {
  *  nothing at all: a failed fetch, and the poll cap expiring while the run
  *  is still live. Both stop the polling, so both have to be visible —
  *  otherwise a dead card is indistinguishable from a working one. */
-function useLiveSubSession(subSessionId: string, active: boolean) {
+function useLiveSubSession(
+  subSessionId: string,
+  active: boolean,
+  background = false,
+) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
       if (!active) return;
-      const timer = setTimeout(() => setIsCapped(true), POLL_CAP_MS);
+      const timer = setTimeout(
+        () => setIsCapped(true),
+        background ? 11 * 60_000 : POLL_CAP_MS,
+      );
       return () => clearTimeout(timer);
     },
-    [active],
+    [active, background],
   );
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
@@ -374,11 +387,13 @@ function useDelegatedSessionId(expertId: string | null) {
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
+  background = false,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId ?? "",
     stale && !!subSessionId,
+    background,
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
@@ -386,6 +401,17 @@ export function useSubSessionEffectiveStatus(
   // dead poll has to show up in the pill or it reads as fact.
   if (isError || isPaused) return "unknown";
   if (!session) return status;
+  if (background) {
+    for (const raw of session.messages) {
+      const metadata = asObject(asObject(raw)?.metadata);
+      if (typeof metadata?.background_task_outcome === "string") {
+        return metadata.background_task_outcome === "timed_out"
+          ? "timed out"
+          : metadata.background_task_outcome;
+      }
+    }
+    if (isSessionLive(session)) return session.chat_status ?? status;
+  }
   return isSessionLive(session) ? status : "completed";
 }
 

@@ -7,6 +7,7 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { backgroundNotice } from "./backgroundSubtasks";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -440,10 +441,11 @@ export function convertChatSessionMessagesToUiMessages(
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
     // UIMessage as the text that follows.
+    const notice = backgroundNotice(msg.metadata);
     const uiRole: "user" | "assistant" =
-      msg.role === "reasoning" ? "assistant" : msg.role;
+      msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(msg, {
+    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
       toolOutputsByCallId,
       fileUrlBuilder,
       unanswered: options?.isComplete ? "completed" : "input-available",
@@ -472,6 +474,7 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !notice &&
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&

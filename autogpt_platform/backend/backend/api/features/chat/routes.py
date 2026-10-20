@@ -31,6 +31,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
+from backend.copilot.background_delivery import cancel_background_subtasks
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -1689,6 +1690,8 @@ async def cancel_session_task(
     # block the cancel itself, so we swallow and log.
     await _clear_pending_best_effort(session_id)
 
+    await cancel_background_subtasks(user_id, session_id)
+
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.
     if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
@@ -1711,6 +1714,7 @@ async def cancel_session_task(
             return CancelSessionResponse(cancelled=True, reason="orphan_released")
         return CancelSessionResponse(cancelled=True, reason="no_active_session")
 
+    await cancel_background_subtasks(user_id, session_id, active_session.turn_id)
     await enqueue_cancel_task(session_id)
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 

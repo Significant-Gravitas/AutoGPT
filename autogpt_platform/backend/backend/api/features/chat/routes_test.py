@@ -77,6 +77,8 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
 
+    mocker.patch.object(chat_routes, "cancel_background_subtasks", new=AsyncMock())
+
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(

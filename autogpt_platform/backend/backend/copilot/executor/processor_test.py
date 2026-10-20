@@ -74,6 +74,10 @@ def allowance_admits_every_turn(mocker):
         "backend.copilot.executor.processor.refusal_for",
         AsyncMock(return_value=None),
     )
+    mocker.patch(
+        "backend.copilot.background_execution.background_task_db",
+        return_value=MagicMock(cancel_background_tasks=AsyncMock(return_value=[])),
+    )
 
 
 class TestResolveUseSdk:

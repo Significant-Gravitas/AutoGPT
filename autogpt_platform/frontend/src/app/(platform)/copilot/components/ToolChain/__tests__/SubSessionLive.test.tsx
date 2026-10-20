@@ -2,6 +2,7 @@ import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoi
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubSessionCard } from "../AgentCards";
@@ -68,6 +69,47 @@ function subSession(
 
 describe("SubSessionLive", () => {
   afterEach(cleanup);
+
+  it("labels a background subtask and stops it through the existing endpoint", async () => {
+    let stopped = false;
+    server.use(
+      http.get(SESSION_ROUTE, () =>
+        HttpResponse.json({
+          id: "sub-1",
+          chat_status: stopped ? "idle" : "running",
+          active_stream: null,
+          messages: [
+            {
+              role: "user",
+              content: "Work",
+              metadata: stopped ? { background_task_outcome: "cancelled" } : {},
+            },
+          ],
+        }),
+      ),
+      http.post(`${SESSION_ROUTE}/cancel`, () => {
+        stopped = true;
+        return HttpResponse.json({ cancelled: true, reason: "cancelled" });
+      }),
+    );
+    render(
+      <SubSessionCard
+        output={{
+          status: "running",
+          sub_session_id: "sub-1",
+          background_task_id: "task",
+        }}
+      />,
+    );
+    expect(screen.getByText("Background subtask")).toBeDefined();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop background subtask" }),
+    );
+    expect(await screen.findByText(/cancelled/i)).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Stop background subtask" }),
+    ).toBeNull();
+  });
 
   it.each([
     ["run_agent", "Daily briefing", "Running workflow", "Daily briefing"],
