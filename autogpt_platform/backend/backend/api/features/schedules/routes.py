@@ -20,7 +20,7 @@ from backend.api.features.schedules.model import (
     SetScheduledChatCadenceRequest,
 )
 from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.copilot.scheduled_chats import cadence_service
+from backend.copilot.scheduled_chats import cadence_service, forget
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -311,7 +311,7 @@ async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
     answered: a 500 would say the delete failed. A streak left behind keeps
     the chat listed as paused, and deleting it from there again clears it."""
     try:
-        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+        await forget.forget_scheduled_chat(user_id, schedule_id)
     except Exception:
         logger.warning(
             "Could not clear the failure streak of deleted schedule %s",
