@@ -81,3 +81,38 @@ describe("MarkdownRenderer math", () => {
     );
   });
 });
+
+describe("MarkdownRenderer images", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("embeds an image whose URL is a video file as a video player", () => {
+    const container = renderMarkdown("![Clip](https://example.com/clip.mp4)");
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("video source")?.getAttribute("src")).toBe(
+      "https://example.com/clip.mp4",
+    );
+  });
+
+  it("embeds an image whose URL is a YouTube link as an iframe", () => {
+    const container = renderMarkdown(
+      "![Talk](https://www.youtube.com/watch?v=abc123)",
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+      "https://www.youtube.com/embed/abc123",
+    );
+  });
+
+  it("renders any other image as an image", () => {
+    const container = renderMarkdown("![Cat](https://example.com/cat.png)");
+
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src")).toBe("https://example.com/cat.png");
+    expect(image?.getAttribute("alt")).toBe("Cat");
+    expect(container.querySelector("video, iframe")).toBeNull();
+  });
+});

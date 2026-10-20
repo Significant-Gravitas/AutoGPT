@@ -41,7 +41,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.settings import Config, get_service_name
 
@@ -55,6 +55,10 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 api_comm_max_wait = config.pyro_client_max_wait
+# A client retires an idle pooled connection long before the server closes it: a
+# call written into a connection as the server closes it fails with httpx.ReadError.
+rpc_server_keepalive_seconds = 60
+rpc_client_keepalive_expiry_seconds = rpc_server_keepalive_seconds / 2
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -421,6 +425,7 @@ class AppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
+                timeout_keep_alive=rpc_server_keepalive_seconds,
                 log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
             )
@@ -525,7 +530,7 @@ class AppService(BaseAppService, ABC):
     def build_fastapi_app(self) -> FastAPI:
         """The service's HTTP app: one POST route per exposed method, the
         health checks and metrics, and nothing else."""
-        app = FastAPI(lifespan=self.lifespan)
+        app = FastAPI(lifespan=self._serving_lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
@@ -560,6 +565,13 @@ class AppService(BaseAppService, ABC):
         )
         self._register_exception_handlers(app)
         return app
+
+    @asynccontextmanager
+    async def _serving_lifespan(self, app: FastAPI):
+        async with self.lifespan(app):
+            # After every subclass's startup, so its long-lived state is frozen too.
+            freeze_startup_heap()
+            yield
 
 
 # --------------------------------------------------
@@ -705,7 +717,7 @@ def get_service_client(
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
                 event_hooks={"request": [_send_trace_headers]},
             )
@@ -717,7 +729,7 @@ def get_service_client(
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
                 event_hooks={"request": [_send_trace_headers_async]},
             )

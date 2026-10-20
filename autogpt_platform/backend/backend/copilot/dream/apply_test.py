@@ -10,6 +10,7 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -43,6 +44,11 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
     )
 
 
+async def _worker_wrote_them(completion: IngestionCompletion, _: float) -> bool:
+    completion.written = completion.registered
+    return True
+
+
 @pytest.fixture(autouse=True)
 def _stub_boundaries(mocker):
     """Wire up the apply.py side-effects with AsyncMocks once per test."""
@@ -51,8 +57,11 @@ def _stub_boundaries(mocker):
     # on the pass's IngestionCompletion — but no worker runs in tests, so an
     # unstubbed drain would block the full INGESTION_DRAIN_TIMEOUT_SECONDS
     # (300s) per test and time out the CI job. Default the drain to an
-    # instant success; drain-behavior tests re-patch this explicitly.
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    # instant success, every episode written, as the worker would report it;
+    # drain-behavior tests re-patch this explicitly.
+    mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(side_effect=_worker_wrote_them)
+    )
     # The driver factory + close — apply.py opens a FalkorDB driver for
     # demotions and entity invalidations. Patch where it's used.
     driver = mocker.MagicMock()
@@ -605,10 +614,19 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
     """When the pass's episodes don't drain inside the cap, the pass must
     still succeed (partial visibility beats a failed pass): counts are
     returned, ingestion_drain_status=timed_out flags the overflow, and a
-    WARNING records the revert to fire-and-forget behavior."""
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=False))
+    WARNING records the revert to fire-and-forget behavior. What the worker
+    has not written yet is reported pending, never consolidated."""
+
+    async def wrote_one_of_two(completion: IngestionCompletion, _: float) -> bool:
+        completion.written = 1
+        return False
+
+    mocker.patch.object(apply_mod, "wait_for_ingestion", wrote_one_of_two)
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[
+            ConsolidatedFact(content="A likes B", confidence=0.8),
+            ConsolidatedFact(content="B likes C", confidence=0.8),
+        ],
         summary_for_user="ok",
     )
     with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
@@ -618,11 +636,46 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
     assert stats["consolidated_count"] == 1
+    assert (stats["pending_writes"], stats["failed_writes"]) == (1, 0)
     assert any(
         "did not drain" in record.getMessage()
         for record in caplog.records
         if record.levelno == logging.WARNING
     )
+
+
+@pytest.mark.asyncio
+async def test_counts_only_what_the_worker_wrote_of_each_kind(mocker):
+    """Writes and proposals are tracked apart, and each counted only once
+    graphiti saved it: of two writes one failed, and the proposal was still
+    queued when the drain ran out, so one write is consolidated, one failed
+    and one pending, and no proposal counted."""
+
+    async def worker(completion: IngestionCompletion, _: float) -> bool:
+        if completion.registered == 2:
+            completion.written, completion.failed = 1, 1
+            return True
+        return False
+
+    mocker.patch.object(apply_mod, "wait_for_ingestion", worker)
+    ops = DreamOperations(
+        writes=[
+            ConsolidatedFact(content="A likes B", confidence=0.8),
+            ConsolidatedFact(content="B likes C", confidence=0.8),
+        ],
+        proposals=[
+            ProposedFinding(content="A may like C", confidence=0.5, rationale="r")
+        ],
+        summary_for_user="ok",
+    )
+
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops
+    )
+
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
+    assert (stats["consolidated_count"], stats["proposal_count"]) == (1, 0)
+    assert (stats["failed_writes"], stats["pending_writes"]) == (1, 1)
 
 
 @pytest.mark.asyncio
@@ -648,7 +701,8 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
 
     drain.assert_not_awaited()
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.skipped
-    assert stats["consolidated_count"] == 1
+    # Not waited for, so not known written: counted pending, not consolidated.
+    assert (stats["consolidated_count"], stats["pending_writes"]) == (0, 1)
     assert any("drain skipped" in record.getMessage() for record in caplog.records)
 
 
@@ -715,6 +769,43 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
             pass_id="p-lost",
             ops=ops,
             lock_handle=lock_handle,
+        )
+
+    drain.assert_not_awaited()
+    demote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
+    """The renewal before the drain is bounded like every other lock round
+    trip, and fails closed: a renewal that does not answer in time is not
+    taken for one that landed."""
+    mocker.patch.object(apply_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 0.05)
+    drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
+    demote = mocker.patch.object(
+        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
+    )
+
+    async def never_answers(_ttl_seconds: int) -> bool:
+        await asyncio.Event().wait()
+        return True
+
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = never_answers
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+
+    with pytest.raises(DreamLockLostError):
+        await asyncio.wait_for(
+            apply_mod.apply_operations(
+                scope=MemoryScope.for_user("u-slow"),
+                pass_id="p-slow",
+                ops=ops,
+                lock_handle=lock_handle,
+            ),
+            5,
         )
 
     drain.assert_not_awaited()
