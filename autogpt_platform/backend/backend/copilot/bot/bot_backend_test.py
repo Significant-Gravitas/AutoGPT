@@ -644,7 +644,6 @@ class TestPausedTurn:
             'Reply "keep going" once your plan has allowance again.'
         )
 
-
     @pytest.mark.asyncio
     async def test_a_turn_refused_at_start_says_when_it_can_go_on(
         self, api: BotBackend
@@ -670,9 +669,7 @@ class TestPausedTurn:
         )
 
     @pytest.mark.asyncio
-    async def test_a_budget_that_never_resets_points_at_the_plan(
-        self, api: BotBackend
-    ):
+    async def test_a_budget_that_never_resets_points_at_the_plan(self, api: BotBackend):
         # No plan behind the account: nothing refills, so no reset to wait for.
         reply = await self._reply(
             api,
