@@ -244,6 +244,11 @@ def _build_graphiti(
         )
         cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)
 
+    from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
+
+    _perf_legs.wrap_async_method(embedder, "create", "embed")
+    _perf_legs.wrap_async_method(cross_encoder, "rank", "rerank")
+    _perf_legs.wrap_async_method(graph_driver, "execute_query", "falkor")
     return Graphiti(
         llm_client=ForgetAwareLLMClient(llm_client),
         embedder=embedder,
