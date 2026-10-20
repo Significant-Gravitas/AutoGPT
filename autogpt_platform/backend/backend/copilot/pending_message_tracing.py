@@ -22,9 +22,16 @@ def record_injected_messages(
         client = get_client()
         if client.get_current_trace_id() is None:
             return
-        for index, (message, content) in enumerate(
-            zip(messages, injected_contents), start=1
-        ):
+    except Exception:
+        logger.debug(
+            "Failed to initialize injected user message tracing", exc_info=True
+        )
+        return
+
+    for index, (message, content) in enumerate(
+        zip(messages, injected_contents), start=1
+    ):
+        try:
             client.create_event(
                 name="copilot-user-follow-up",
                 input=[{"role": "user", "content": content}],
@@ -44,5 +51,5 @@ def record_injected_messages(
                     ),
                 },
             )
-    except Exception:
-        logger.debug("Failed to trace injected user messages", exc_info=True)
+        except Exception:
+            logger.debug("Failed to trace injected user message", exc_info=True)

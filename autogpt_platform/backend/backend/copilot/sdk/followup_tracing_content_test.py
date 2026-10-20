@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import DEFAULT, AsyncMock, patch
 
 import pytest
 from langfuse import Langfuse
@@ -82,7 +82,12 @@ async def test_trace_does_not_claim_budget_excluded_messages_were_injected(
     delivered = result["hookSpecificOutput"]["additionalContext"]
     included = 0 if all_excluded else 2
     assert f"[{len(pending) - included} more message(s) truncated]" in delivered
-    events = [span for span in exported if span.name == "copilot-user-follow-up"]
+    events = sorted(
+        (span for span in exported if span.name == "copilot-user-follow-up"),
+        key=lambda span: int(
+            tracing._attributes(span)["langfuse.observation.metadata.batch_index"]
+        ),
+    )
     assert len(events) == included
     for index, event in enumerate(events, start=1):
         attrs = tracing._attributes(event)
@@ -94,3 +99,40 @@ async def test_trace_does_not_claim_budget_excluded_messages_were_injected(
         assert attrs["langfuse.observation.metadata.batch_index"] == str(index)
         assert attrs["langfuse.observation.metadata.excluded_message_count"] == "2"
     assert len(pending_redis.rpush.call_args.args[1:]) == len(pending)
+
+
+async def test_failed_event_does_not_hide_later_delivered_messages(
+    trace_export: tuple[Langfuse, list[Span]], pending_redis: AsyncMock
+) -> None:
+    client, exported = trace_export
+    pending = [PendingMessage(content=f"Follow-up {index}") for index in range(3)]
+    pending_redis.lpop.return_value = [message.model_dump_json() for message in pending]
+    with (
+        client.start_as_current_span(name="copilot-sdk-turn"),
+        patch.object(
+            client,
+            "create_event",
+            wraps=client.create_event,
+            side_effect=[DEFAULT, RuntimeError("one payload rejected"), DEFAULT],
+        ),
+    ):
+        result = await tracing._post_tool_use()
+    client.flush()
+    delivered = result["hookSpecificOutput"]["additionalContext"]
+    assert all(message.content in delivered for message in pending)
+    assert [
+        PendingMessage.model_validate_json(raw)
+        for raw in pending_redis.rpush.call_args.args[1:]
+    ] == pending
+    events = {
+        tracing._attributes(span)["langfuse.observation.metadata.message_id"]: span
+        for span in exported
+        if span.name == "copilot-user-follow-up"
+    }
+    assert set(events) == {pending[0].id, pending[2].id}
+    for index in (0, 2):
+        attrs = tracing._attributes(events[pending[index].id])
+        assert attrs["langfuse.observation.metadata.batch_index"] == str(index + 1)
+        assert json.loads(attrs["langfuse.observation.input"]) == [
+            {"role": "user", "content": pending[index].content}
+        ]

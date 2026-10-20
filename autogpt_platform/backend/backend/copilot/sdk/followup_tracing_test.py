@@ -151,7 +151,12 @@ async def test_consumed_followups_are_exported_as_ordered_user_messages(
     continuation = next(
         span for span in exported if span.name == "assistant-continuation"
     )
-    events = [span for span in exported if span.name == "copilot-user-follow-up"]
+    events = sorted(
+        (span for span in exported if span.name == "copilot-user-follow-up"),
+        key=lambda span: int(
+            _attributes(span)["langfuse.observation.metadata.batch_index"]
+        ),
+    )
     assert len(events) == 2, "the hook consumed two messages but their trace has none"
     for index, (event, message) in enumerate(zip(events, pending), start=1):
         attrs = _attributes(event)
