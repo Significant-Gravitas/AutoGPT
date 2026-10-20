@@ -56,6 +56,7 @@ settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+_INVALID_UNSUBSCRIBE_TOKEN = "Invalid unsubscribe token"
 
 
 class UserCreationResult(BaseModel):
@@ -703,12 +704,14 @@ async def update_user_notification_preference(
 
         user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
         if not user:
-            raise ValueError(f"User not found with ID: {user_id}")
+            raise NotFoundError(f"User not found with ID: {user_id}")
 
         # Invalidate cache for this user since notification preferences are
         # part of user data
         get_user_by_id.cache_delete(user_id)
         return _preference_from_user(user)
+    except NotFoundError:
+        raise
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
@@ -801,20 +804,27 @@ def generate_unsubscribe_link(user_id: str) -> str:
 
 async def unsubscribe_user_by_token(token: str) -> None:
     """Unsubscribe a user from all notifications using the token"""
-    user = await get_user_by_id(_verify_unsubscribe_token(token))
-    # One-click unsubscribe turns everything off, including store
-    # verdicts — this is the trapdoor, and the volume knob in the Briefing
-    # footer is what most people should be using instead.
-    await update_user_notification_preference(
-        user.id,
-        NotificationPreferenceDTO(
-            email=user.email,
-            briefing_frequency=BriefingFrequency.OFF,
-            alerts_enabled=False,
-            store_verdicts_enabled=False,
-            daily_limit=0,
-        ),
-    )
+    user_id = _verify_unsubscribe_token(token)
+    # A deleted user's token gets a forged token's answer, which names no user.
+    email = await get_user_email_by_id(user_id)
+    if email is None:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
+    try:
+        # One-click unsubscribe turns everything off, including store
+        # verdicts — this is the trapdoor, and the volume knob in the Briefing
+        # footer is what most people should be using instead.
+        await update_user_notification_preference(
+            user_id,
+            NotificationPreferenceDTO(
+                email=email,
+                briefing_frequency=BriefingFrequency.OFF,
+                alerts_enabled=False,
+                store_verdicts_enabled=False,
+                daily_limit=0,
+            ),
+        )
+    except NotFoundError as e:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
 
 
 def _verify_unsubscribe_token(token: str) -> str:
@@ -824,7 +834,7 @@ def _verify_unsubscribe_token(token: str) -> str:
         decoded = base64.urlsafe_b64decode(token).decode("utf-8")
         user_id, received_signature_hex = decoded.split(":", 1)
     except ValueError as e:
-        raise ValueError("Invalid unsubscribe token") from e
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
 
     secret_key = settings.secrets.unsubscribe_secret_key
     expected_signature_hex = hmac.new(
@@ -835,7 +845,7 @@ def _verify_unsubscribe_token(token: str) -> str:
         expected_signature_hex.encode("utf-8"),
         received_signature_hex.encode("utf-8"),
     ):
-        raise ValueError("Invalid unsubscribe token")
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
     return user_id
 
 
