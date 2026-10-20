@@ -1936,31 +1936,36 @@ def test_idle_credentials_job_is_registered_daily(monkeypatch):
     assert call.kwargs["jobstore"] == "execution"
 
 
-def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+@pytest.mark.parametrize(
+    "job_function",
+    [refresh_near_expiry_credentials, scheduler_module.deliver_background_subtasks],
+)
+def test_sweep_job_stays_active_until_the_coroutine_finishes(monkeypatch, job_function):
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     started, release, completed = (threading.Event() for _ in range(3))
     run_async = scheduler_module.run_async
 
-    async def refresh():
+    async def sweep():
         started.set()
         await asyncio.to_thread(release.wait)
         completed.set()
 
     def short_timeout(coro, timeout=0.01):
-        return run_async(coro, timeout=timeout)
+        return run_async(coro, timeout=None if timeout is None else 0.01)
 
     monkeypatch.setattr(scheduler_module, "_event_loop", loop)
     monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(scheduler_module, "reconcile_background_subtasks", sweep)
     monkeypatch.setattr(
         scheduler_module,
         "IntegrationCredentialsManager",
-        lambda: MagicMock(refresh_idle_credentials=refresh),
+        lambda: MagicMock(refresh_idle_credentials=sweep),
     )
     thread.start()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            job = pool.submit(refresh_near_expiry_credentials)
+            job = pool.submit(job_function)
             try:
                 assert started.wait(timeout=2)
                 assert not completed.wait(timeout=0.1)

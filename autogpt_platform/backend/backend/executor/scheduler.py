@@ -255,7 +255,8 @@ def reconcile_schedule_index():
 
 
 def deliver_background_subtasks() -> None:
-    run_async(reconcile_background_subtasks(), timeout=25)
+    """Keep max_instances guarding the sweep until reconciliation finishes."""
+    run_async(reconcile_background_subtasks(), timeout=None)
 
 
 @func_retry
