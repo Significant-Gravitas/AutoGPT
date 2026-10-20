@@ -294,7 +294,13 @@ class TestBuildGraphitiReranker:
                 base_url="https://openrouter.ai/api/v1",
             ),
         )
-        for name in ("GRAPHITI_LLM_BASE_URL", "GRAPHITI_EMBEDDER_BASE_URL"):
+        # The OpenAI SDK falls back to OPENAI_BASE_URL when given no base URL,
+        # as the embedder's client does too.
+        for name in (
+            "GRAPHITI_LLM_BASE_URL",
+            "GRAPHITI_EMBEDDER_BASE_URL",
+            "OPENAI_BASE_URL",
+        ):
             monkeypatch.delenv(name, raising=False)
         monkeypatch.setenv("CHAT_API_KEY", "autopilot-router-key")
         monkeypatch.setenv("CHAT_OPENAI_API_KEY", "autopilot-openai-key")

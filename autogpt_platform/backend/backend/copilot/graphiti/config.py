@@ -283,7 +283,9 @@ class GraphitiConfig(BaseSettings):
         have a long tail (on a preview in October 2026, 5-10% took over 2 s,
         against 0.6% sent to OpenAI). So an OpenAI model goes to OpenAI
         directly, with the embedder's key, whenever the embedder does too
-        and graphiti's LLM endpoint is the OpenRouter default. Otherwise
+        and graphiti's LLM endpoint is the OpenRouter default (``base_url=None``:
+        the OpenAI SDK's default, which honours ``OPENAI_BASE_URL`` exactly as
+        the embedder's client does). Otherwise
         (local transport, a custom ``llm_base_url`` or ``embedder_base_url``,
         no OpenAI key, another vendor's model) it goes where extraction
         goes, as before.
