@@ -272,9 +272,20 @@ async def test_a_sdk_turn_that_ends_early_keeps_the_results_of_calls_it_ran(stop
 
 
 @pytest.mark.asyncio
-async def test_a_baseline_turn_closed_at_a_cards_status_keeps_what_ran_and_its_box():
-    """Closed before the try whose finally ends the turn: the result already
-    run is saved, and the counted turn is ended on the box."""
+@pytest.mark.parametrize(
+    "stop, saved",
+    [
+        # The second card is not claimed yet, so it stays held.
+        ("closed at the next card's status", [_RESULT.content]),
+        # The fold already handed both rows to the session.
+        ("cancelled during the fold", []),
+    ],
+)
+async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
+    stop, saved
+):
+    """Stopped before the try whose finally ends the turn: the results already
+    run are saved once, and the counted turn is ended on the box."""
     session = ChatSession.new("user-1", dry_run=False)
     session.title = "already titled"
     sandbox = MagicMock()
@@ -286,12 +297,16 @@ async def test_a_baseline_turn_closed_at_a_cards_status_keeps_what_ran_and_its_b
         deliver(_SECOND)
 
     async def model_loop(**_kwargs):
-        raise AssertionError("the turn was closed before the model")
+        raise AssertionError("the turn was stopped before the model")
         yield
 
+    fold = AsyncMock(
+        side_effect=asyncio.CancelledError if stop.startswith("cancelled") else None,
+        return_value=True,
+    )
     svc = "backend.copilot.baseline.service"
     with (
-        _baseline_patches(resolve, AsyncMock(return_value=True), model_loop),
+        _baseline_patches(resolve, fold, model_loop),
         patch.object(
             type(baseline_service.config),
             "active_e2b_api_key",
@@ -315,14 +330,19 @@ async def test_a_baseline_turn_closed_at_a_cards_status_keeps_what_ran_and_its_b
             session=session,
             envelope=root_envelope("turn-2", session_id=session.session_id),
         )
-        async for chunk in turn:
-            if chunk is _RUNNING_SECOND:
-                await turn.aclose()
-                break
+        try:
+            async for chunk in turn:
+                if chunk is _RUNNING_SECOND and stop.startswith("closed"):
+                    await turn.aclose()
+                    break
+        except asyncio.CancelledError:
+            assert stop.startswith("cancelled")
         await asyncio.sleep(0)
         set_execution_context(None, None)
 
-    assert _saved_results(session) == [_RESULT.content]
+    assert _saved_results(session) == saved
+    if stop.startswith("cancelled"):
+        assert fold.await_args.args[2] == [_RESULT, _SECOND]
     pause.assert_awaited_once_with(sandbox, session.session_id, expert_id=None)
 
 

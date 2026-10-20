@@ -2391,22 +2391,27 @@ async def stream_chat_completion_baseline(
 
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
-    held_results: list[PendingMessage] = []
+    unsaved_held: list[PendingMessage] = []
     try:
         async for held_status in resolve_answered(
-            user_id, session, held_results.append
+            user_id, session, unsaved_held.append
         ):
             yield held_status
+        held_results = [*unsaved_held]
+        # The helper appends the rows before its first await, so from here the
+        # session carries them.
+        unsaved_held.clear()
+        folded = bool(held_results) and await persist_pending_as_user_rows(
+            session, transcript_builder, held_results, log_prefix="[Baseline]"
+        )
     except BaseException:
-        # Closed at a status, before the finally below: save what already ran,
-        # its approval spent, and end the counted turn on the box.
-        await persist_unfolded_rows(session, held_results, log_prefix="[Baseline]")
+        # Stopped before the finally below: save what already ran, its approval
+        # spent, and end the counted turn on the box.
+        await persist_unfolded_rows(session, unsaved_held, log_prefix="[Baseline]")
         if e2b_sandbox is not None:
             _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
         raise
-    if held_results and await persist_pending_as_user_rows(
-        session, transcript_builder, held_results, log_prefix="[Baseline]"
-    ):
+    if folded:
         opening_entries.append(drained_rows_entry(held_results))
         openai_messages.extend(
             format_pending_as_user_message(pm) for pm in held_results
