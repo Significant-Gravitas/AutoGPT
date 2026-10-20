@@ -1,6 +1,8 @@
 // Pure helpers for the brain dump. Timings and copy live here so the hook
 // stays about behaviour and the component stays about pixels.
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+
 // A depth meter, not a limit: the ring fills toward 3:00 and then holds.
 // Nothing stops at 3:00 — the longer someone talks, the better the dump.
 
@@ -112,7 +114,14 @@ export function isInsufficientDump(errorCode: unknown) {
 
 // The error code a failed finalize reports when the request never
 // answered at all (offline, aborted), so there is no status to stand in.
-export const FINALIZE_REQUEST_ERROR = "request_error";
+const FINALIZE_REQUEST_ERROR = "request_error";
+
+// The API client throws on an HTTP error (429, 503, ...) rather than
+// resolving it, so a thrown finalize still carries the status the server
+// answered with. Only a request that got no answer is a request error.
+export function finalizeErrorCode(error: unknown) {
+  return error instanceof ApiError ? error.status : FINALIZE_REQUEST_ERROR;
+}
 
 // Counts words exactly as the backend's quality gate does (`quality.py`):
 // whitespace-separated tokens holding at least one letter or digit, so a

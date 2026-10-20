@@ -10,7 +10,7 @@ import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
   dumpSize,
-  FINALIZE_REQUEST_ERROR,
+  finalizeErrorCode,
   isInsufficientDump,
   SILENCE_NUDGE_SECONDS,
 } from "./helpers";
@@ -223,8 +223,8 @@ export function useBrainDumpStep() {
         setScreen(rejected ? "insufficient" : "failed");
         return;
       }
-    } catch {
-      trackFinalizeFailure(attempt, FINALIZE_REQUEST_ERROR, startedAt);
+    } catch (error) {
+      trackFinalizeFailure(attempt, finalizeErrorCode(error), startedAt);
       setScreen("failed");
       return;
     }
@@ -237,9 +237,9 @@ export function useBrainDumpStep() {
   }
 
   // Every way a finalize can fail, in either mode, is this one event: the
-  // pipeline's own code, the HTTP status of a non-200, or
-  // FINALIZE_REQUEST_ERROR when the request never answered. `attempt`
-  // says which mode and how big the dump was, never what it said.
+  // pipeline's own code, the HTTP status the server answered with, or
+  // `request_error` when the request never answered. `attempt` says which
+  // mode and how big the dump was, never what it said.
   function trackFinalizeFailure(
     attempt: Record<string, unknown>,
     errorCode: unknown,
@@ -336,8 +336,8 @@ export function useBrainDumpStep() {
         setScreen(rejected ? "insufficient" : "failed");
         return;
       }
-    } catch {
-      trackFinalizeFailure(attempt, FINALIZE_REQUEST_ERROR, startedAt);
+    } catch (error) {
+      trackFinalizeFailure(attempt, finalizeErrorCode(error), startedAt);
       setScreen("failed");
       return;
     }

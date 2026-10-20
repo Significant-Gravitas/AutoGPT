@@ -187,7 +187,7 @@ differently.
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
-| `transcription_failed` | browser | live | `input_mode`, `error_code`, `finalize_latency_ms`, and `duration_secs` (voice) or `chars` and `words` (typed) | A finalize fails or the quality gate rejects the dump, spoken or typed; the name predates typed dumps. `error_code` is the gate's `no_usable_speech` or `insufficient_content`, the pipeline's own code, the HTTP status of a non-200, or `request_error` when the request never answered. Older events are all voice and carry no `input_mode`: filter with `coalesce(properties.input_mode, 'voice')`. |
+| `transcription_failed` | browser | live | `input_mode`, `error_code`, `finalize_latency_ms`, and `duration_secs` (voice) or `chars` and `words` (typed) | A finalize fails or the quality gate rejects the dump, spoken or typed; the name predates typed dumps. `error_code` is the gate's `no_usable_speech` or `insufficient_content`, the pipeline's own code, the HTTP status of an error response (`429`, `503`, ...), or `request_error` when the request never answered. Older events are all voice and carry no `input_mode`: filter with `coalesce(properties.input_mode, 'voice')`. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
 | `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
 | `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |

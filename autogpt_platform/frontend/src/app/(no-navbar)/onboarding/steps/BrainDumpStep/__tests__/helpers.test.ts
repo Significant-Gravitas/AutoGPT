@@ -1,8 +1,10 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   countWords,
   dumpSize,
   encouragementAt,
+  finalizeErrorCode,
   formatElapsed,
   isInsufficientDump,
   isPermissionDenied,
@@ -149,6 +151,21 @@ describe("countWords", () => {
   it("is zero for empty or blank text", () => {
     expect(countWords("")).toBe(0);
     expect(countWords("   \n ")).toBe(0);
+  });
+});
+
+describe("finalizeErrorCode", () => {
+  it("keeps the status of a server that answered with an error", () => {
+    expect(finalizeErrorCode(new ApiError("Too many requests", 429, {}))).toBe(
+      429,
+    );
+  });
+
+  it("calls anything without an answer a request error", () => {
+    expect(finalizeErrorCode(new TypeError("Failed to fetch"))).toBe(
+      "request_error",
+    );
+    expect(finalizeErrorCode(undefined)).toBe("request_error");
   });
 });
 

@@ -595,6 +595,28 @@ describe("onboarding brain dump — typed answer analytics", () => {
     });
   });
 
+  // Through the real API client, which throws on an HTTP error instead of
+  // resolving it: the event must keep the status the server answered with.
+  it("keeps the server's status when it refuses a typed answer", async () => {
+    server.use(
+      http.post("/api/proxy/api/onboarding/brain-dump/finalize", () =>
+        HttpResponse.json({ detail: "Too many requests" }, { status: 429 }),
+      ),
+    );
+
+    await openComposerAndType("Payroll for twelve people");
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "typed",
+      error_code: 429,
+      chars: 25,
+      words: 4,
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
   it("says where a skip came from and how much was typed, never what", async () => {
     finalizeReturns({ status: "completed" });
 

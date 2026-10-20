@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecordingPart } from "../recordingStore";
@@ -532,6 +533,26 @@ describe("useBrainDumpStep — finishing a take", () => {
     });
   });
 
+  it("reports the server's status when finalize answers with an HTTP error", async () => {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockRejectedValue(
+      new ApiError("Service unavailable", 503, {}),
+    );
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("failed");
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      input_mode: "voice",
+      error_code: 503,
+      duration_secs: 0,
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
   it("fails rather than throwing when finalize rejects", async () => {
     recorderState.recordingId = "rec-1";
     finalizeBrainDump.mockRejectedValue(new Error("offline"));
@@ -916,8 +937,12 @@ describe("useBrainDumpStep — typing", () => {
     expect(events()).toContain("transcription_failed");
   });
 
-  it("reports the HTTP status as the error code for a typed dump", async () => {
-    finalizeBrainDump.mockResolvedValue({ status: 502, data: {} });
+  // The API client throws on an HTTP error rather than resolving it, so
+  // the server's status has to be read off the error, not the response.
+  it("reports the server's status when it turns a typed dump away", async () => {
+    finalizeBrainDump.mockRejectedValue(
+      new ApiError("Too many requests", 429, {}),
+    );
     const { result } = await renderStep();
 
     act(() => {
@@ -930,7 +955,7 @@ describe("useBrainDumpStep — typing", () => {
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       input_mode: "typed",
-      error_code: 502,
+      error_code: 429,
       chars: 5,
       words: 1,
       finalize_latency_ms: expect.any(Number),
