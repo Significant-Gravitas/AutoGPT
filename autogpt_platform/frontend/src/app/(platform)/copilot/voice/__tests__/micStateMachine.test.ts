@@ -74,6 +74,31 @@ describe("voiceReduce", () => {
     );
   });
 
+  it("puts a retry back into transcribing from an idle mic", () => {
+    expect(
+      run(["ENABLE", "SPEECH_START", "SPEECH_END", "TRANSCRIPT_DROPPED"]),
+    ).toBe("listening");
+    expect(
+      run([
+        "ENABLE",
+        "SPEECH_START",
+        "SPEECH_END",
+        "TRANSCRIPT_DROPPED",
+        "RETRY",
+      ]),
+    ).toBe("transcribing");
+  });
+
+  it("refuses a retry that would race the user's next utterance", () => {
+    // Mid-speech, mid-reply or off: the retry has to lose, or two turns
+    // arrive for one reply.
+    expect(run(["ENABLE", "SPEECH_START", "RETRY"])).toBe("hearing");
+    expect(
+      run(["ENABLE", "SPEECH_START", "SPEECH_END", "TRANSCRIPT_SENT", "RETRY"]),
+    ).toBe("thinking");
+    expect(run(["RETRY"])).toBe("off");
+  });
+
   it("cannot skip states out of order", () => {
     expect(run(["ENABLE", "SPEECH_END"])).toBe("listening");
     expect(run(["ENABLE", "TRANSCRIPT_SENT"])).toBe("listening");

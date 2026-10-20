@@ -12,16 +12,18 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/utils";
 import {
   activeItemParamFor,
   AGENT_LIBRARY_SECTION_PADDING_X,
 } from "../../../helpers";
 import { ScheduleListItem } from "./components/ScheduleListItem";
-import { TaskListItem } from "./components/TaskListItem";
+import { TaskListRow } from "./components/TaskListRow";
 import { TemplateListItem } from "./components/TemplateListItem";
 import { TriggerAgentListItem } from "./components/TriggerAgentListItem";
 import { TriggerListItem } from "./components/TriggerListItem";
+import { uniqueRunsByID } from "./helpers";
 import { useSidebarRunsList } from "./useSidebarRunsList";
 
 interface Props {
@@ -40,6 +42,7 @@ interface Props {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 }
 
@@ -52,6 +55,9 @@ export function SidebarRunsList({
   onTabChange,
   onCountsChange,
 }: Props) {
+  // Stable, so the memoised run rows and the auto-select effects in
+  // useSidebarRunsList do not re-run on every parent render.
+  const selectRun = useStableCallback(onSelectRun);
   const {
     runs,
     schedules,
@@ -64,18 +70,19 @@ export function SidebarRunsList({
     triggersCount,
     error,
     loading,
+    retryFailedQueries,
     fetchMoreRuns,
     hasMoreRuns,
     isFetchingMoreRuns,
     tabValue,
   } = useSidebarRunsList({
     agent,
-    onSelectRun,
+    onSelectRun: selectRun,
     onCountsChange,
   });
 
   if (error) {
-    return <ErrorCard responseError={error} />;
+    return <ErrorCard responseError={error} onRetry={retryFailedQueries} />;
   }
 
   if (loading) {
@@ -155,22 +162,20 @@ export function SidebarRunsList({
           )}
         >
           <InfiniteList
-            items={runs}
+            items={uniqueRunsByID(runs)}
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
             className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
+            getKey={(run) => run.id}
             renderItem={(run) => (
-              <div className="w-[15rem] lg:w-full">
-                <TaskListItem
-                  run={run}
-                  title={agent.name}
-                  agent={agent}
-                  selected={selectedRunId === run.id}
-                  onClick={() => onSelectRun && onSelectRun(run.id, "runs")}
-                />
-              </div>
+              <TaskListRow
+                run={run}
+                agent={agent}
+                selected={selectedRunId === run.id}
+                onSelectRun={selectRun}
+              />
             )}
           />
         </TabsLineContent>
@@ -198,7 +203,7 @@ export function SidebarRunsList({
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
                 <Text variant="large" className="text-zinc-700">
-                  No scheduled agents
+                  No scheduled workflows
                 </Text>
               </div>
             )}
@@ -240,7 +245,7 @@ export function SidebarRunsList({
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Text variant="body-medium" className="px-1 !text-zinc-500">
-                    Trigger Agents
+                    Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
                     {triggerAgents.map((triggerAgent) => (
@@ -273,7 +278,7 @@ export function SidebarRunsList({
                     No triggers set up
                   </Text>
                   <Text variant="body" className="!text-zinc-500">
-                    Ask AutoPilot to set up a trigger for this agent (e.g.
+                    Ask an expert to set up a trigger for this workflow (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>

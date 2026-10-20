@@ -37,6 +37,8 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -1208,8 +1210,82 @@ class TestBaselineCostExtraction:
         create_mock.assert_awaited_once()
         await_args = create_mock.await_args
         assert await_args is not None
-        assert await_args.kwargs["extra_body"] == {"usage": {"include": True}}
+        assert await_args.kwargs["extra_body"]["usage"] == {"include": True}
         assert await_args.kwargs["stream_options"] == {"include_usage": True}
+
+    @pytest.mark.asyncio
+    async def test_openrouter_request_attributes_the_turn_for_broadcast(self):
+        """OpenRouter Broadcast puts the generation on the user's PostHog
+        person and the chat's ``$ai_session_id`` from these fields."""
+        state = _BaselineStreamState(
+            model="gpt-4o-mini", user_id="user-1", session_id="sess-1"
+        )
+        create_mock = AsyncMock(return_value=_make_stream_mock())
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = create_mock
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
+        ):
+            set_turn_impersonated(True)
+            set_turn_trace_id("turn-1")
+            try:
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+            finally:
+                set_turn_impersonated(False)
+                set_turn_trace_id(None)
+
+        assert create_mock.await_args is not None
+        extra_body = create_mock.await_args.kwargs["extra_body"]
+        assert extra_body["user"] == "user-1"
+        assert extra_body["session_id"] == "sess-1"
+        assert extra_body["trace"] == {
+            "generation_name": "copilot-baseline",
+            "environment": attribution_settings.config.app_env.value,
+            "impersonated": True,
+            "trace_id": "turn-1",
+        }
+
+    @pytest.mark.asyncio
+    async def test_direct_anthropic_request_carries_no_broadcast_fields(self):
+        """Anthropic's OpenAI-compat endpoint 400s on unknown body fields,
+        and Broadcast never sees a call that skips OpenRouter."""
+        state = _BaselineStreamState(
+            model="claude-sonnet-4-6", user_id="user-1", session_id="sess-1"
+        )
+        create_mock = AsyncMock(return_value=_make_stream_mock())
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = create_mock
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", False),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert create_mock.await_args is not None
+        extra_body = create_mock.await_args.kwargs["extra_body"] or {}
+        assert not {"user", "session_id", "trace"} & extra_body.keys()
 
 
 class TestMidLoopPendingFlushOrdering:
@@ -3075,12 +3151,12 @@ class TestBaselineExpertsFlagGuard:
 
 
 class TestBaselineToolExecutorForwardsDisabledGroups:
-    """``_baseline_tool_executor`` must forward its ``disabled_groups`` to
+    """``_baseline_tool_executor`` must forward both of its gates to
     ``execute_tool`` — that's the only thing making the schema-hiding filter
     an actual enforcement boundary for the baseline engine."""
 
-    @pytest.mark.asyncio
-    async def test_disabled_groups_reach_execute_tool(self) -> None:
+    @staticmethod
+    async def _forwarded_kwargs(**gates: object) -> dict:
         session = ChatSession.new("user-1", dry_run=False)
         state = _BaselineStreamState()
         tool_call = LLMToolCall(id="call-1", name="hire_expert", arguments="{}")
@@ -3102,7 +3178,53 @@ class TestBaselineToolExecutorForwardsDisabledGroups:
                 state=state,
                 user_id="user-1",
                 session=session,
-                disabled_groups=["expert_admin"],
+                **gates,  # pyright: ignore[reportArgumentType]
             )
 
-        assert execute_mock.await_args.kwargs["disabled_groups"] == ["expert_admin"]
+        return execute_mock.await_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_disabled_groups_reach_execute_tool(self) -> None:
+        kwargs = await self._forwarded_kwargs(
+            disabled_groups=["expert_admin"], disabled_tools=frozenset()
+        )
+
+        assert kwargs["disabled_groups"] == ["expert_admin"]
+
+    @pytest.mark.asyncio
+    async def test_disabled_tools_reach_execute_tool(self) -> None:
+        """The kickoff gate travels the same path as the capability gate."""
+        kwargs = await self._forwarded_kwargs(
+            disabled_groups=[], disabled_tools=frozenset({"run_agent"})
+        )
+
+        assert kwargs["disabled_tools"] == frozenset({"run_agent"})
+
+
+class TestStampPostHogTrace:
+    def test_every_save_of_the_turns_rows_stamps_its_posthog_trace_first(self):
+        """A rating of the reply names its PostHog trace from this stamp
+        (``ai_spans.stamp_turn_trace_id``): the mid-turn flush, the error
+        marker and the end-of-turn save each stamp before they persist."""
+        import inspect
+
+        from backend.copilot.baseline.service import stream_chat_completion_baseline
+
+        src = inspect.getsource(stream_chat_completion_baseline)
+        pairs = [
+            (
+                "stamp_turn_trace_id(current_session.messages, turn_start)",
+                "current_session = await persist_session_safe(",
+            ),
+            (
+                "stamp_turn_trace_id(_failed_session.messages, turn_start)",
+                "await upsert_chat_session(_failed_session)",
+            ),
+            (
+                "stamp_turn_trace_id(session.messages, turn_start)",
+                "            await upsert_chat_session(session)\n",
+            ),
+        ]
+        for stamp, save in pairs:
+            stamped_at = src.index(stamp)
+            assert stamped_at < src.index(save, stamped_at)

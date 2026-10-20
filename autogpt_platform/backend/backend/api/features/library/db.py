@@ -7,6 +7,7 @@ import fastapi
 import prisma.errors
 import prisma.models
 import prisma.types
+from starlette.datastructures import Headers
 
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -29,12 +30,14 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
+from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
 
 from . import model as library_model
@@ -542,7 +545,11 @@ async def add_generated_agent_image(
             image = await store_image_gen.generate_agent_image(graph)
 
             # Create UploadFile with the correct filename and content_type
-            image_file = fastapi.UploadFile(file=image, filename=filename)
+            image_file = fastapi.UploadFile(
+                file=image,
+                filename=filename,
+                headers=Headers({"content-type": "image/jpeg"}),
+            )
 
             image_url = await store_media.upload_media(
                 user_id=user_id, file=image_file, use_file_name=True
@@ -794,6 +801,8 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -831,6 +840,8 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -855,7 +866,7 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
-        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # This path is only reached from the CoPilot/Otto agent-update
         # flow, which has no user-facing channel for skipped-preset warnings,
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
@@ -1211,13 +1222,25 @@ async def is_store_listing_version_available_for_install(
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
+    *,
+    track_listing_added: bool = True,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
+
+    ``track_listing_added`` sends ``listing_added_to_library`` on a first-time
+    add. Pass ``False`` when the system installs the agent on the user's
+    behalf (an expert's preloads or workflows), which is not the user adding
+    a listing.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+    return await _add_store_agent_to_library(
+        store_listing_version_id,
+        user_id,
+        tx=None,
+        track_listing_added=track_listing_added,
+    )
 
 
 async def add_store_agent_to_library_in_transaction(
@@ -1225,8 +1248,14 @@ async def add_store_agent_to_library_in_transaction(
     user_id: str,
     tx: prisma.Prisma,
 ) -> library_model.LibraryAgent:
-    """Add a marketplace agent using the caller's transaction."""
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+    """Add a marketplace agent using the caller's transaction.
+
+    Sends no ``listing_added_to_library``: the caller may still roll back, and
+    the upsert cannot tell a first-time add from a restore.
+    """
+    return await _add_store_agent_to_library(
+        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+    )
 
 
 async def _add_store_agent_to_library(
@@ -1234,6 +1263,7 @@ async def _add_store_agent_to_library(
     user_id: str,
     *,
     tx: prisma.Prisma | None,
+    track_listing_added: bool,
 ) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
@@ -1252,9 +1282,17 @@ async def _add_store_agent_to_library(
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
-    return await add_graph_to_library(
+    library_agent = await add_graph_to_library(
         graph_model, user_id, store_listing_version, tx=tx
     )
+    if track_listing_added:
+        track_listing_added_to_library(
+            user_id=user_id,
+            store_listing_version_id=store_listing_version.id,
+            graph_id=graph_model.id,
+            library_agent_id=library_agent.id,
+        )
+    return library_agent
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1953,7 +1991,7 @@ async def list_presets(
         graph_id: Agent Graph ID to filter by.
         expert_id: Expert ID to match when expert filtering is enabled.
         filter_by_expert: Whether to filter by the exact expert scope. This allows
-            ``None`` to select AutoPilot presets instead of disabling the filter.
+            ``None`` to select Otto presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.

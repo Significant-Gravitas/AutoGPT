@@ -7,6 +7,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot import ai_spans
+from backend.copilot.gate import ALLOW
+from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    REDACTED,
+    redact_google_data,
+)
+from backend.copilot.llm_attribution import set_turn_trace_id
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -20,6 +32,7 @@ from backend.copilot.tools.base import (
 from backend.copilot.tools.models import (
     BlockDetails,
     BlockDetailsResponse,
+    BlockOutputResponse,
     ErrorResponse,
     ResponseType,
     ToolResponseBase,
@@ -96,6 +109,7 @@ class TestPersistAndSummarize:
         call_kwargs = mock_manager.write_file.call_args
         assert call_kwargs.kwargs["content"] == raw.encode("utf-8")
         assert call_kwargs.kwargs["path"] == "tool-outputs/tc-123.json"
+        assert call_kwargs.kwargs["metadata"] == {"purpose": "tool-output"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_workspace_error(self):
@@ -226,7 +240,7 @@ class TestSummarizeBinaryFields:
 
 
 # ---------------------------------------------------------------------------
-# AUTOPILOT_CONTEXT_TRIMMING digest
+# Large-output digest (always on)
 # ---------------------------------------------------------------------------
 
 
@@ -307,18 +321,13 @@ def _workspace_patches(manager):
 
 
 async def _execute_with_flag(tool, flag_on: bool, manager=None):
+    """The digest used to sit behind a feature flag; it is now always on, so
+    ``flag_on`` is kept only so the call sites read as before."""
+    assert flag_on
     session = MagicMock()
     session.session_id = "s-1"
     db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
-    with (
-        db_patch,
-        mgr_patch,
-        patch(
-            "backend.copilot.tools.base.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=flag_on,
-        ),
-    ):
+    with db_patch, mgr_patch:
         return await tool.execute("user-1", session, "tc-digest")
 
 
@@ -327,15 +336,6 @@ class TestDigestThreshold:
         """Between 80K and 95K the legacy preview makes the context bigger;
         deriving the budget from the trigger makes that unrepresentable."""
         assert _DIGEST_PREVIEW_CHARS < _DIGEST_THRESHOLD
-
-    @pytest.mark.asyncio
-    async def test_flag_off_leaves_a_mid_sized_output_byte_identical(self):
-        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3)
-        result = await _execute_with_flag(tool, flag_on=False)
-        expected = (await tool._execute("user-1", MagicMock())).model_dump_json(
-            exclude_none=True
-        )
-        assert result.output == expected
 
     @pytest.mark.asyncio
     async def test_flag_on_digests_a_mid_sized_output(self):
@@ -433,18 +433,6 @@ class TestDigestThreshold:
         assert window, result.output
         start, length = int(window[1]), int(window[2])
         assert json.loads(written[start : start + length]) == ["field_0"]
-
-    @pytest.mark.asyncio
-    async def test_a_small_output_never_consults_the_flag(self):
-        tool = _SchemaOutputTool(output_size=200)
-        with patch(
-            "backend.copilot.tools.base.is_feature_enabled",
-            new_callable=AsyncMock,
-        ) as flag:
-            session = MagicMock()
-            session.session_id = "s-1"
-            await tool.execute("user-1", session, "tc-small")
-        flag.assert_not_awaited()
 
 
 def _outline_of(data, budget: int) -> tuple[str, str]:
@@ -600,3 +588,381 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestGateEnforcement:
+    """`BaseTool.execute` must consult the auto-mode gate, and must consult it
+    AFTER the envelope check.
+
+    Both are early-return refusals added at the same line by different PRs, so
+    a merge can drop either without a single test going red.
+    """
+
+    @staticmethod
+    def _spy_tool():
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "bash_exec"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a gated tool")
+
+        return _Spy()
+
+    @pytest.mark.asyncio
+    async def test_a_gated_call_is_refused_and_never_executed(self):
+        from backend.copilot.gate import Decision
+
+        tool = self._spy_tool()
+        with (
+            patch(
+                "backend.copilot.gate.check_action",
+                new=AsyncMock(
+                    return_value=Decision(
+                        allowed=False, reason="needs your approval", review_id="r1"
+                    )
+                ),
+            ),
+        ):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        assert tool.ran is False, "the gated tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_the_envelope_refusal_precedes_the_gate(self):
+        """A call the envelope refuses can never run, so spending a user's
+        approval on it is wrong."""
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        tool = self._spy_tool()
+        check = AsyncMock()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            with patch("backend.copilot.gate.check_action", new=check):
+                result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False
+        check.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_crashing_gate_refuses_rather_than_runs(self):
+        """A gate that crashes must not become a gate that passes."""
+        tool = self._spy_tool()
+        crash = AsyncMock(side_effect=RuntimeError("gate down"))
+        with patch("backend.copilot.gate.check_action", new=crash):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-3")
+
+        assert result.success is False
+        assert tool.ran is False
+
+    @pytest.mark.asyncio
+    async def test_flag_off_writes_nothing(self):
+        """Flag-off must be today's behaviour: no rule read, no review row,
+        for a call every mode would otherwise stop."""
+        calls: list[str] = []
+        tool = self._recording_tool("post_to_chat_platform", calls)
+        redis = AsyncMock()
+        reviews = MagicMock()
+        with (
+            patch(
+                "backend.copilot.gate.is_feature_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+            patch("backend.copilot.gate.chat_rules.get_redis_async", new=redis),
+            patch("backend.copilot.gate.review.review_db", new=reviews),
+        ):
+            await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
+
+        assert calls == ["run"]
+        redis.assert_not_awaited()
+        reviews.assert_not_called()
+
+    @staticmethod
+    def _recording_tool(tool_name: str, calls: list[str]):
+        class _Recorder(BaseTool):
+            @property
+            def name(self) -> str:
+                return tool_name
+
+            @property
+            def description(self) -> str:
+                return "recorder"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                calls.append("run")
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        return _Recorder()
+
+
+class TestPostHogToolSpans:
+    """Every platform tool call, on either engine, is a PostHog ``$ai_span``
+    in the reply's trace, and none carries the tool's input or output."""
+
+    @staticmethod
+    def _tool(response: ToolResponseBase | None = None, error: bool = False):
+        class _Tool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "gmail_read"
+
+            @property
+            def description(self) -> str:
+                return "reads mail"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                if error:
+                    raise RuntimeError("could not read the inbox")
+                assert response is not None
+                return response
+
+        return _Tool()
+
+    @pytest.fixture
+    def capture(self, mocker):
+        set_turn_trace_id("turn-1")
+        ai_spans.set_turn_span("turn-1")
+        yield mocker.patch.object(ai_spans.posthog_client, "capture")
+        set_turn_trace_id(None)
+        ai_spans.set_turn_span(None)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
+        email_subject = "Subject: quarterly numbers"
+        tool = self._tool(
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=email_subject)
+        )
+
+        await tool.execute(
+            "u1", MagicMock(session_id="s1"), "call-1", query=email_subject
+        )
+
+        capture.assert_called_once()
+        _, event, properties = capture.call_args.args
+        assert event == "$ai_span"
+        assert properties["$ai_span_name"] == "gmail_read"
+        assert properties["$ai_trace_id"] == "turn-1"
+        assert properties["$ai_parent_id"] == "turn-1"
+        assert properties["$ai_session_id"] == "s1"
+        assert properties["$ai_is_error"] is False
+        assert email_subject not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
+        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "$ai_error" not in properties
+        assert "no such label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):
+        """An approval card is the user's decision to make, not the tool
+        failing, so it must not count against the tool."""
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+        session = MagicMock(session_id="s1")
+        refusal = tool._refusal("call-1", session, "Needs your approval")
+        with patch.object(tool, "_gate", new=AsyncMock(return_value=(refusal, False))):
+            result = await tool.execute("u1", session, "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_a_sign_in_did_not_fail(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch.object(
+            type(tool), "requires_auth", new_callable=lambda: property(lambda _: True)
+        ):
+            result = await tool.execute(None, MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
+        self, capture
+    ):
+        tool = self._tool(error=True)
+
+        result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "RuntimeError"
+        assert "inbox" not in repr(properties)
+
+
+# ---------------------------------------------------------------------------
+# The gate's traces of a Google call
+# ---------------------------------------------------------------------------
+
+
+class TestGateTracesOfGoogleCalls:
+    """The supervisor and the content judge quote a call's arguments and
+    result in prompts of their own, so for a Google call whatever they trace
+    is redacted whole."""
+
+    @staticmethod
+    def _block_tool(provider: str | None):
+        class _Block(BaseTool):
+            @property
+            def name(self) -> str:
+                return "run_capability"
+
+            @property
+            def description(self) -> str:
+                return "Runs a block"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return BlockOutputResponse(
+                    message="ran",
+                    block_id="b",
+                    block_name="b",
+                    outputs={"result": ["the email"]},
+                    provider=provider,
+                )
+
+        return _Block()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "names_google_block, provider, action_redacted, read_redacted",
+        [
+            (True, None, True, True),
+            (False, "google", False, True),
+            (False, None, False, False),
+        ],
+        ids=["names a Google block", "returns Google data", "neither"],
+    )
+    async def test_redacted_while_the_gate_runs(
+        self, names_google_block, provider, action_redacted, read_redacted
+    ):
+        block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
+        traced: dict[str, object] = {}
+
+        async def action(*args, **kwargs):
+            traced["action"] = redact_google_data({"text": "the email"})
+            return ALLOW
+
+        async def read(*args, **kwargs):
+            traced["read"] = redact_google_data({"text": "the email"})
+
+        with (
+            patch("backend.copilot.gate.check_action", side_effect=action),
+            patch(
+                "backend.copilot.gate.reads.release_held_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.gate.reads.screen_read", side_effect=read),
+            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+        ):
+            await self._block_tool(provider).execute(
+                "u1", MagicMock(session_id="s1"), "call-1", id=block.id
+            )
+
+        def expected(redacted: bool) -> dict[str, str]:
+            return {"text": REDACTED if redacted else "the email"}
+
+        assert traced == {
+            "action": expected(action_redacted),
+            "read": expected(read_redacted),
+        }
+        assert redact_google_data({"text": "the email"}) == expected(False)
+
+    @pytest.mark.asyncio
+    async def test_the_late_cut_of_a_google_output_is_redacted(self):
+        """The SDK's late path cuts the output again before the model reads it."""
+        seen: list[str] = []
+
+        def cut(text: str, success: bool) -> str:
+            seen.append(text[: len(text) // 2])
+            return seen[-1]
+
+        token = model_view.set(cut)
+        try:
+            with (
+                patch(
+                    "backend.copilot.gate.check_action",
+                    new=AsyncMock(return_value=ALLOW),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.release_held_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.screen_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            ):
+                await self._block_tool("google").execute(
+                    "u1", MagicMock(session_id="s1"), "call-1"
+                )
+        finally:
+            model_view.reset(token)
+
+        assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}
+
+
+class TestPersistedGoogleOutputIsFlagged:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("google", [True, False])
+    async def test_the_saved_file_says_whether_it_holds_google_data(self, google):
+        workspace = MagicMock(id="ws-1")
+        db = AsyncMock()
+        db.get_or_create_workspace = AsyncMock(return_value=workspace)
+        manager = AsyncMock()
+        with (
+            patch("backend.copilot.tools.base.workspace_db", return_value=db),
+            patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+        ):
+            await _persist_and_summarize(
+                "A" * 200_000, "u1", "s1", "call-1", google_data=google
+            )
+
+        metadata = manager.write_file.await_args.kwargs["metadata"]
+        assert metadata.get(GOOGLE_DATA_METADATA_KEY, False) is google

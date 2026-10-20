@@ -6,8 +6,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from backend.copilot.model import ChatSession, ChatSessionInfo
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.model import ChatSession
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
 from backend.copilot.tools.helpers import session_entered_building_mode
@@ -17,35 +17,6 @@ logger = logging.getLogger(__name__)
 
 BUILDER_CONTEXT_TAG = "builder_context"
 BUILDER_SESSION_TAG = "builder_session"
-
-
-# Tools hidden from builder-bound sessions: ``create_agent`` /
-# ``customize_agent`` would mint a new graph (panel is bound to one),
-# and ``get_agent_building_guide`` duplicates bytes already in the
-# system-prompt suffix. Everything else (find_block, find_agent, …)
-# stays available so the LLM can look up ids instead of hallucinating.
-BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
-    "create_agent",
-    "customize_agent",
-    "get_agent_building_guide",
-)
-
-
-def resolve_session_permissions(
-    session: ChatSessionInfo | None,
-) -> CopilotPermissions | None:
-    """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
-    return ``None`` (unrestricted) otherwise.
-
-    Reads ``metadata.builder_graph_id`` only — works on either the bare
-    ``ChatSessionInfo`` (no messages) or the full ``ChatSession``.
-    """
-    if session is None or not session.metadata.builder_graph_id:
-        return None
-    return CopilotPermissions(
-        tools=list(BUILDER_BLOCKED_TOOLS),
-        tools_exclude=True,
-    )
 
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
@@ -92,12 +63,12 @@ def _format_blocked_tool_list(tools: tuple[str, ...]) -> str:
 
 _BUILDER_TOOL_GUIDANCE = (
     "This builder panel is bound to the graph shown in <builder_context>. "
-    "Use `edit_agent` against that graph id for every modification, "
+    "Use `tool:edit_agent` against that graph id for every modification, "
     "including populating an empty graph (version=1, no nodes) — "
     "`edit_agent` accepts the same node/link payload that `create_agent` "
     "would, so there is no reason to reach for `create_agent` here. "
-    "Typical sequence for a new request: call `find_block` to discover "
-    "the block ids and input schemas you need, then call `edit_agent` "
+    'Typical sequence for a new request: call `find_capability(context="graph")` to discover '
+    "the block ids and input schemas you need, then run `tool:edit_agent` "
     "once with the full set of nodes and links. "
     "Never ask the user to approve or allow a tool — there is no "
     "permission prompt UI in the builder chat, so any 'click Allow' "
@@ -178,7 +149,9 @@ def _format_links(
     return f"<links>\n{body}\n</links>"
 
 
-async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
+async def build_builder_system_prompt_suffix(
+    session: ChatSession, *, force: bool = False
+) -> str:
     """Return the cacheable system-prompt suffix for a building session.
 
     Two cases include the full agent-building guide in the system prompt so
@@ -193,11 +166,15 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
       is needed and the suffix stays byte-identical across the rest of the
       session (one prompt-cache re-write when the mode first activates).
 
+    *force* skips that history check for the caller that already knows the
+    answer — the SDK building-mode restart, which runs only because the enter
+    tool set the flag in *this* turn, before its row is in ``messages``.
+
     Holds only static content so the bytes are identical across turns AND
     across sessions — live graph id/name/version ride on the per-turn prefix.
     """
     is_builder = bool(session.metadata.builder_graph_id)
-    if not is_builder and not session_entered_building_mode(session):
+    if not force and not is_builder and not session_entered_building_mode(session):
         return ""
 
     try:

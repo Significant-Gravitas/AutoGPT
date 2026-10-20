@@ -3,13 +3,16 @@
 import base64
 import os
 import shutil
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.workdir import validate_ephemeral_path
 from backend.copilot.tools.workspace_files import (
     _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
@@ -22,8 +25,8 @@ from backend.copilot.tools.workspace_files import (
     WriteWorkspaceFileTool,
     _read_local_tool_result,
     _resolve_write_content,
-    _validate_ephemeral_path,
 )
+from backend.data.workspace import WorkspaceFile
 
 # Re-export so pytest discovers the session-scoped fixture
 setup_test_data = setup_test_data
@@ -39,14 +42,14 @@ def ephemeral_dir(tmp_path, monkeypatch):
     session_dir.mkdir()
 
     monkeypatch.setattr(
-        "backend.copilot.tools.workspace_files.make_session_path",
+        "backend.copilot.tools.workdir.make_session_path",
         lambda session_id: str(session_dir),
     )
     return session_dir
 
 
 # ---------------------------------------------------------------------------
-# _validate_ephemeral_path
+# validate_ephemeral_path
 # ---------------------------------------------------------------------------
 
 
@@ -54,7 +57,7 @@ class TestValidateEphemeralPath:
     def test_valid_path(self, ephemeral_dir):
         target = ephemeral_dir / "file.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -62,7 +65,7 @@ class TestValidateEphemeralPath:
 
     def test_path_traversal_rejected(self, ephemeral_dir):
         evil_path = str(ephemeral_dir / ".." / "etc" / "passwd")
-        result = _validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
+        result = validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
         # Should return ErrorResponse
         from backend.copilot.tools.models import ErrorResponse
 
@@ -73,7 +76,7 @@ class TestValidateEphemeralPath:
         other_dir.mkdir()
         target = other_dir / "steal.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -86,7 +89,7 @@ class TestValidateEphemeralPath:
         outside_file.write_text("secret")
         symlink = ephemeral_dir / "link.txt"
         symlink.symlink_to(outside_file)
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(symlink), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -98,7 +101,7 @@ class TestValidateEphemeralPath:
         nested.mkdir(parents=True)
         target = nested / "data.csv"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -596,6 +599,9 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
         mime_type = "text/plain"
         size_bytes = len(fake_content)
 
+        def __init__(self) -> None:
+            self.metadata: dict = {}
+
     mock_resolve = AsyncMock(return_value=(fake_file_id, _FakeFileInfo()))
 
     mock_manager = AsyncMock()
@@ -859,9 +865,10 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
 
 
 class TestSkillsRegistryACL:
-    """Writes and deletes targeting ``/skills/`` must go through the
-    skills registry (``store_skill`` / ``delete_skill``) which enforces
-    frontmatter validation, the per-user cap, and content sanitisation.
+    """Writes and deletes targeting either skills folder — Otto's
+    ``/skills/`` or an expert's ``/experts/<id>/skills/`` — must go through
+    the skills registry (``store_skill`` / ``delete_skill``) which enforces
+    frontmatter validation, the per-expert cap, and content sanitisation.
     A direct workspace write would bypass all of that."""
 
     @pytest.mark.asyncio
@@ -873,6 +880,10 @@ class TestSkillsRegistryACL:
             "  /Skills/foo/SKILL.md  ",  # case + whitespace tolerance
             "skills",
             "/skills/",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "experts/expert-a/skills/foo/scripts/run.py",
+            "  /Experts/expert-a/Skills/foo/SKILL.md  ",
+            "/experts/expert-a/skills",
         ],
     )
     async def test_write_workspace_file_rejects_skills_path(self, path):
@@ -909,13 +920,92 @@ class TestSkillsRegistryACL:
         assert "skills registry" in result.message
 
     @pytest.mark.asyncio
-    async def test_delete_workspace_file_rejects_skills_path(self):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/references/notes.md",
+        ],
+    )
+    async def test_delete_workspace_file_rejects_skills_path(self, path):
         tool = DeleteWorkspaceFileTool()
         session = make_session("user-acl-test")
         result = await tool._execute(
             user_id="user-acl-test",
             session=session,
-            path="/skills/foo/SKILL.md",
+            path=path,
         )
         assert isinstance(result, ErrorResponse)
         assert "skills registry" in result.message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/experts/expert-a/notes.md",
+            "/experts",
+            "/expertskills/foo/SKILL.md",
+            "/documents/skills-notes.md",
+        ],
+    )
+    async def test_paths_outside_either_registry_are_not_blocked(self, path):
+        """The guard must not swallow an ordinary path that merely starts the
+        same way — an expert folder that is not its skills folder, or a
+        lookalike name."""
+        from backend.copilot.tools.workspace_files import _path_under_skills_registry
+
+        assert _path_under_skills_registry(path) is False
+
+
+class TestReadingASpilledGoogleOutput:
+    """A Google block's output too large for the model is saved to
+    ``tool-outputs/``; reading it back is Google data too."""
+
+    @staticmethod
+    async def _read(metadata: dict, **kwargs):
+        content = b'{"type": "block_output", "outputs": {"result": ["the email"]}}'
+        info = WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name="call-1.json",
+            path="/tool-outputs/call-1.json",
+            storage_path="s",
+            mime_type="application/json",
+            size_bytes=len(content) if kwargs.pop("small", True) else 10**6,
+            metadata=metadata,
+        )
+        manager = AsyncMock()
+        manager.read_file_by_id = AsyncMock(return_value=content)
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                AsyncMock(return_value=(info.id, info)),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                AsyncMock(return_value=manager),
+            ),
+        ):
+            return await ReadWorkspaceFileTool()._execute(
+                user_id="user-1",
+                session=MagicMock(session_id="s1"),
+                path="tool-outputs/call-1.json",
+                **kwargs,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "read",
+        [{}, {"offset": 5, "length": 20}, {"small": False}],
+        ids=["whole", "a window", "a preview"],
+    )
+    async def test_flagged_as_google_data(self, read):
+        google = {"purpose": "tool-output", GOOGLE_DATA_METADATA_KEY: True}
+
+        assert (await self._read(google, **read)).holds_google_data
+        assert not (
+            await self._read({"purpose": "tool-output"}, **read)
+        ).holds_google_data

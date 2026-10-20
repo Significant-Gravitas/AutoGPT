@@ -24,7 +24,7 @@ interface Props {
   options: RecipientOption[];
   onSelect: (id: string | null) => void;
   /** True while the expert list is still loading behind a `?expertId=` deep
-   * link — showing the Autopilot fallback there would name the wrong
+   * link — showing the Otto fallback there would name the wrong
    * recipient. */
   isLoading?: boolean;
 }
@@ -86,7 +86,7 @@ export function RecipientChip({
   );
 }
 
-// The same face the expert wears in the thread: Autopilot's own avatar for
+// The same face the expert wears in the thread: Otto's own avatar for
 // the null recipient, the generated one for experts without an upload.
 function RecipientAvatar({ option }: { option: RecipientOption }) {
   return (

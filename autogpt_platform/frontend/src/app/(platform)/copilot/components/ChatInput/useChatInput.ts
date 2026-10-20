@@ -1,28 +1,49 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
   onSend: (message: string) => void;
+  /** Queues text behind the live turn. While `isStreaming`, a submit goes
+   *  here instead of `onSend`. */
+  onEnqueue?: (message: string) => void | Promise<void>;
+  isStreaming?: boolean;
+  /** Attachments can't be queued (the pending endpoint takes text only), so
+   *  a submit with any attached stays on the `onSend` path. */
+  hasAttachments?: boolean;
   disabled?: boolean;
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  draftKey?: string;
+  /** Names what failed in the toast, e.g. a scheduled send. */
+  failureTitle?: string | ((error: unknown) => string);
 }
 
 export function useChatInput({
   onSend,
+  onEnqueue,
+  isStreaming = false,
+  hasAttachments = false,
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  draftKey,
+  failureTitle = "Couldn't send message",
 }: Args) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
+  const [isEnqueueing, setIsEnqueueing] = useState(false);
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
-    useCopilotUIStore();
+  const isEnqueueingRef = useRef(false);
+  const initialPrompt = useCopilotUIStore((s) => s.initialPrompt);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const recoveredDraft = useCopilotUIStore((s) => s.recoveredDraft);
+  const clearRecoveredDraft = useCopilotUIStore((s) => s.clearRecoveredDraft);
+  const notifyMessageSent = useCopilotUIStore((s) => s.notifyMessageSent);
 
   useEffect(
     function consumeInitialPrompt() {
@@ -39,7 +60,16 @@ export function useChatInput({
       ) as HTMLTextAreaElement | null;
       textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt, inputId],
+    [initialPrompt, setInitialPrompt, inputId, setValue],
+  );
+
+  useEffect(
+    function consumeRecoveredDraft() {
+      if (!recoveredDraft) return;
+      setValue((current) => restoreFailedDraft(current, recoveredDraft));
+      clearRecoveredDraft();
+    },
+    [recoveredDraft, clearRecoveredDraft, setValue],
   );
 
   useEffect(
@@ -75,10 +105,13 @@ export function useChatInput({
       notifyMessageSent();
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
-      toast({
-        title: "Couldn't send message",
-        description: describeSendFailure(error),
-        variant: "destructive",
+      toastSendFailure({
+        title:
+          typeof failureTitle === "function"
+            ? failureTitle(error)
+            : failureTitle,
+        error,
+        recovery: "your message is back in the composer",
       });
     } finally {
       isSubmittingRef.current = false;
@@ -86,11 +119,43 @@ export function useChatInput({
     }
   }
 
+  // Deliberately not behind `isSubmittingRef`: in an existing chat `onSend`
+  // settles only when the whole answer has streamed, so that guard is what
+  // kept Enter from doing anything while Otto answered. A follow-up typed
+  // mid-turn is queued, never sent, so it has a guard of its own.
+  async function handleEnqueue(message = value) {
+    const trimmedMessage = message.trim();
+    if (!onEnqueue || disabled || !trimmedMessage) return;
+    if (isEnqueueingRef.current) return;
+
+    isEnqueueingRef.current = true;
+    setIsEnqueueing(true);
+    setValue("");
+    try {
+      await onEnqueue(trimmedMessage);
+    } catch (error) {
+      setValue((current) => restoreFailedDraft(current, message));
+      toastSendFailure({
+        title: "Couldn't send message",
+        error,
+        recovery: "your message is back in the composer",
+      });
+    } finally {
+      isEnqueueingRef.current = false;
+      setIsEnqueueing(false);
+    }
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const message = formData.get("message");
-    void handleSend(typeof message === "string" ? message : value);
+    const field = formData.get("message");
+    const message = typeof field === "string" ? field : value;
+    if (isStreaming && onEnqueue && !hasAttachments) {
+      void handleEnqueue(message);
+      return;
+    }
+    void handleSend(message);
   }
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -101,9 +166,11 @@ export function useChatInput({
     value,
     setValue,
     handleSend,
+    handleEnqueue,
     handleSubmit,
     handleChange,
     isSending,
+    isEnqueueing,
   };
 }
 
@@ -114,11 +181,4 @@ export function useChatInput({
 function restoreFailedDraft(current: string, failed: string) {
   if (!current.trim() || current === failed) return failed;
   return `${failed}\n\n${current}`;
-}
-
-function describeSendFailure(error: unknown) {
-  const reason = error instanceof Error ? error.message.trim() : "";
-  return reason
-    ? `${reason} — your message is back in the composer.`
-    : "Your message is back in the composer. Try again.";
 }

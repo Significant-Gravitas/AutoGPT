@@ -1,8 +1,12 @@
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
-import { useGetV2ListStoreAgents } from "@/app/api/__generated__/endpoints/store/store";
+import {
+  useGetV2ListMarketplaceSkills,
+  useGetV2ListStoreAgents,
+} from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 import {
   combineSearchHits,
@@ -16,14 +20,15 @@ export function useKitSearch(scope: KitSearchScope) {
   const debouncedQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
   const trimmed = debouncedQuery.trim();
   const hasQuery = trimmed.length > 0;
-  const searchStore = scope === "marketplace" || hasQuery;
-  const searchLibrary = scope === "marketplace";
+  const isWorkflowScope = scope === "marketplace";
+  const hub = useFlagStatus(Flag.SKILLS_HUB);
+  const searchHubSkills = !isWorkflowScope && hub.ready && hub.enabled;
 
   const storeQuery = useGetV2ListStoreAgents(
     { search_query: trimmed, page_size: MAX_SEARCH_RESULTS },
     {
       query: {
-        enabled: searchStore,
+        enabled: isWorkflowScope,
         select: (response) => okData(response)?.agents ?? [],
       },
     },
@@ -32,14 +37,23 @@ export function useKitSearch(scope: KitSearchScope) {
     { search_term: trimmed, page_size: MAX_SEARCH_RESULTS, is_hidden: false },
     {
       query: {
-        enabled: searchLibrary,
+        enabled: isWorkflowScope,
         select: (response) => okData(response)?.agents ?? [],
       },
     },
   );
-  const skillsQuery = useListCopilotSkills({
+  const hubQuery = useGetV2ListMarketplaceSkills(
+    { search_query: trimmed, page_size: MAX_SEARCH_RESULTS },
+    {
+      query: {
+        enabled: searchHubSkills,
+        select: (response) => okData(response)?.skills ?? [],
+      },
+    },
+  );
+  const skillsQuery = useListCopilotSkills(undefined, {
     query: {
-      enabled: scope === "skills",
+      enabled: !isWorkflowScope,
       select: (response) => okData(response) ?? [],
     },
   });
@@ -53,11 +67,13 @@ export function useKitSearch(scope: KitSearchScope) {
       storeAgents: storeQuery.data ?? [],
       libraryAgents: libraryQuery.data ?? [],
       skills: skillsQuery.data ?? [],
+      marketplaceSkills: hubQuery.data ?? [],
       scope,
     }),
     isSearching:
-      (scope === "skills" && skillsQuery.isLoading) ||
-      (searchStore && storeQuery.isFetching) ||
-      (searchLibrary && libraryQuery.isFetching),
+      (!isWorkflowScope && skillsQuery.isLoading) ||
+      (searchHubSkills && hubQuery.isFetching) ||
+      (isWorkflowScope && storeQuery.isFetching) ||
+      (isWorkflowScope && libraryQuery.isFetching),
   };
 }

@@ -6,8 +6,7 @@ import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
-import { useReactFlow } from "@xyflow/react";
-import { useNodeStore } from "../../../stores/nodeStore";
+import { useAddBlockToBuilder } from "./hooks/useAddBlockToBuilder";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { blockDragPreviewStyle } from "./style";
 
@@ -35,30 +34,18 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
   const setBlockMenuOpen = useControlPanelStore(
     (state) => state.setBlockMenuOpen,
   );
-  const { setViewport } = useReactFlow();
-  const { addBlock } = useNodeStore();
+  const { addBlockWithPlacement } = useAddBlockToBuilder();
 
-  const handleClick = () => {
-    const customNode = addBlock(blockData);
-    setTimeout(() => {
-      setViewport(
-        {
-          x: -customNode.position.x * 0.8 + window.innerWidth / 2,
-          y: -customNode.position.y * 0.8 + (window.innerHeight - 400) / 2,
-          zoom: 0.8,
-        },
-        { duration: 500 },
-      );
-    }, 50);
-  };
+  function handleClick() {
+    addBlockWithPlacement(blockData);
+  }
 
-  const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+  function handleDragStart(e: React.DragEvent<HTMLButtonElement>) {
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("application/reactflow", JSON.stringify(blockData));
 
     setBlockMenuOpen(false);
 
-    // preview when user drags it
     const dragPreview = document.createElement("div");
     dragPreview.style.cssText = blockDragPreviewStyle;
     dragPreview.textContent = beautifyString(title || "").replace(
@@ -70,7 +57,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
     e.dataTransfer.setDragImage(dragPreview, 0, 0);
 
     setTimeout(() => document.body.removeChild(dragPreview), 0);
-  };
+  }
 
   return (
     <Button

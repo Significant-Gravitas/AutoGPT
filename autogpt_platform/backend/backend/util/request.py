@@ -177,7 +177,9 @@ async def _resolve_host(hostname: str) -> list[str]:
     except socket.gaierror:
         raise ValueError(f"Unable to resolve IP address for hostname {hostname}")
 
-    ip_list = [info[4][0] for info in infos]
+    # AF_INET/AF_INET6 sockaddrs start with the address string; anything else is not
+    # an IP we could validate or connect to.
+    ip_list = [addr for info in infos if isinstance(addr := info[4][0], str)]
     ipv4 = [ip for ip in ip_list if ":" not in ip]
     ipv6 = [ip for ip in ip_list if ":" in ip]
     ip_addresses = ipv4 + ipv6
@@ -290,7 +292,7 @@ async def resolve_and_check_blocked(hostname: str) -> list[str]:
 
 def parse_url(url: str) -> URL:
     """Canonicalizes and parses a URL string."""
-    url = url.strip("/ ").replace("\\", "/")
+    url = url.lstrip("/ ").rstrip(" ").replace("\\", "/")
 
     # Ensure scheme is present for proper parsing.
     # Avoid regex to sidestep CodeQL py/polynomial-redos on user-controlled

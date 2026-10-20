@@ -1,6 +1,7 @@
 import { useListExpertIdentities } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
+import type { AutopilotMode } from "./autopilotModeStore";
 
 /**
  * Why a thread is read-only. `fired` is the only reason we can state as fact;
@@ -15,8 +16,11 @@ export interface ExpertIdentity {
   avatarUrl: string | null;
   color?: string | null;
   role: string | null;
+  jobTitle?: string | null;
   isArchived: boolean;
   readOnlyReason: ExpertReadOnlyReason | null;
+  /** The approval mode a new chat with this expert starts on. */
+  autopilotMode?: AutopilotMode | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -32,7 +36,7 @@ const FALLBACK_ARCHIVED_NAME = "This expert";
  *
  * Fail closed: once the roster query has SETTLED (success or error), a
  * session pointing at an expert we can't resolve is treated as archived
- * (read-only history, generic name) — never a writable plain Autopilot
+ * (read-only history, generic name) — never a writable plain Otto
  * thread. A cached identity can still supply its name after a failed
  * refetch, but is marked unavailable and read-only. Passing the settled
  * flag rather than the success flag is load-bearing: a failed roster fetch
@@ -97,8 +101,10 @@ export function useExpertMap() {
       avatarUrl: expert.avatar_url ?? null,
       color: expert.color ?? null,
       role: expert.role,
+      jobTitle: expert.job_title ?? null,
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,
+      autopilotMode: expert.autopilot_mode ?? null,
     }));
     const activeExperts = identities.filter((expert) => !expert.isArchived);
     return {

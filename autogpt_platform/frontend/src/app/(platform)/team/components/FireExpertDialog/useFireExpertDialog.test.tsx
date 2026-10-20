@@ -13,7 +13,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFireExpertDialog } from "./useFireExpertDialog";
 
 type Props = {
@@ -59,6 +64,10 @@ describe("useFireExpertDialog invalidation", () => {
     const client = makeClient();
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
     const onFired = vi.fn();
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    const datafast = vi.fn();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
 
     const { result } = renderHook(
       () =>
@@ -87,6 +96,9 @@ describe("useFireExpertDialog invalidation", () => {
       containsKey(calls, getGetV1ListExecutionSchedulesForAUserQueryKey()),
     ).toBe(true);
     expect(containsKey(calls, ["/api/library/agents"])).toBe(true);
+    expect(datafast).toHaveBeenCalledWith("expert_fired", {
+      expert_id: "expert-maria",
+    });
   });
 
   it("does not fire before the preview has resolved", async () => {
@@ -172,4 +184,9 @@ describe("useFireExpertDialog invalidation", () => {
     act(() => result.current.handleFire());
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(1));
   });
+});
+
+afterEach(() => {
+  removeCookiebot();
+  vi.unstubAllEnvs();
 });

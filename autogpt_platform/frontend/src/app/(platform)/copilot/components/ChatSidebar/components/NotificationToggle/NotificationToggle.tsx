@@ -18,12 +18,14 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationToggle() {
-  const {
-    isNotificationsEnabled,
-    setNotificationsEnabled,
-    isSoundEnabled,
-    toggleSound,
-  } = useCopilotUIStore();
+  const isNotificationsEnabled = useCopilotUIStore(
+    (s) => s.isNotificationsEnabled,
+  );
+  const setNotificationsEnabled = useCopilotUIStore(
+    (s) => s.setNotificationsEnabled,
+  );
+  const isSoundEnabled = useCopilotUIStore((s) => s.isSoundEnabled);
+  const toggleSound = useCopilotUIStore((s) => s.toggleSound);
 
   async function handleToggleNotifications() {
     if (isNotificationsEnabled) {
@@ -64,7 +66,7 @@ export function NotificationToggle() {
           )}
         </Button>
       </PopoverTrigger>
-      {/* z-[80]: must layer above the AutoPilot mobile drawer
+      {/* z-[80]: must layer above the Otto mobile drawer
           (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
       <PopoverContent align="start" className="z-[80] w-56 p-3">

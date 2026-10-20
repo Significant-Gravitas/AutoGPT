@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -84,6 +85,8 @@ class GithubCommentBlock(Block):
                     "https://github.com/owner/repo/issues/1#issuecomment-1337",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -175,6 +178,7 @@ class GithubUpdateCommentBlock(Block):
                     "https://github.com/owner/repo/issues/1#issuecomment-123456789",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -304,6 +308,7 @@ class GithubListCommentsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -404,6 +409,8 @@ class GithubMakeIssueBlock(Block):
                     "https://github.com/owner/repo/issues/1",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -474,6 +481,7 @@ class GithubReadIssueBlock(Block):
                     "username",
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -624,6 +632,7 @@ class GithubListIssuesBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -713,6 +722,7 @@ class GithubAddLabelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Label added successfully")],
             test_mock={"add_label": lambda *args, **kwargs: "Label added successfully"},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -775,6 +785,7 @@ class GithubRemoveLabelBlock(Block):
             test_mock={
                 "remove_label": lambda *args, **kwargs: "Label removed successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -838,6 +849,7 @@ class GithubAssignIssueBlock(Block):
             test_mock={
                 "assign_issue": lambda *args, **kwargs: "Issue assigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -904,6 +916,7 @@ class GithubUnassignIssueBlock(Block):
             test_mock={
                 "unassign_issue": lambda *args, **kwargs: "Issue unassigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

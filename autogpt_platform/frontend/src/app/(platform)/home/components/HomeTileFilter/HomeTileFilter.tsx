@@ -35,7 +35,6 @@ export function HomeTileFilter({
           className="gap-1 px-2.5 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
           leadingIcon={FilterHorizontalIcon}
           aria-label={`${ariaLabelPrefix}: ${activeLabel}`}
-          unmask={false}
         >
           {activeLabel}
         </Button>

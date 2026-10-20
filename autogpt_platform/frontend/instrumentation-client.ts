@@ -2,30 +2,65 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { consent } from "@/services/consent/cookies";
+import { isLoggedRequestFailure } from "@/app/api/mutators/request-failure-log";
+import {
+  CLIENT_IGNORE_ERRORS,
+  isFromBot,
+  isInjectedIframeProbe,
+  isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
+} from "@/lib/sentry-filters";
+import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
+import { setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const shouldEnable = environment.isSentryEnabled();
-
-// Check for monitoring consent (includes session replay)
-const hasMonitoringConsent = consent.hasConsentFor("monitoring");
+const dsn = environment.getSentryDSN();
 
 Sentry.init({
-  dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
+  dsn,
 
-  environment: environment.getEnvironmentStr(),
+  environment: environment.getSentryEnvironment(),
 
-  enabled: shouldEnable,
+  enabled: Boolean(dsn),
+
+  // The tunnel is same-origin, so fetch would attach our cookies to every envelope.
+  tunnel: getSentryTunnelURL(dsn),
+  transportOptions: { fetchOptions: { credentials: "omit" } },
 
   // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
   // serializing DOM snapshots with cross-origin stylesheets
   // (e.g., from browser extensions or CDN-loaded CSS)
-  ignoreErrors: [
-    /Not allowed to access cross-origin stylesheet/,
-    // Sentry SDK internal issue on some mobile browsers
-    /Error invoking postEvent: Method not found/,
-  ],
+  ignoreErrors: CLIENT_IGNORE_ERRORS,
+
+  // Errors are reported without consent (legitimate interest), so they carry
+  // the user id only: no email, and Sentry is told not to infer the IP address.
+  sendDefaultPii: false,
+
+  // Next's handled RSC fetch fallback reaches us only through console capture
+  // and falls back to a full navigation, so it is noise (BUILDER-3QB).
+  // Crawlers render our pages too; what breaks for them is not a user's bug.
+  // A failed API request the request logger reports, titled by its route,
+  // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
+  // Some browsers inject a script that logs every cross-origin iframe it may
+  // not read (BUILDER-943).
+  beforeSend(event) {
+    stripSpanPII(stripUserPII(event));
+    if (isFromBot(navigator.userAgent)) return null;
+    if (isLoggedRequestFailure(event)) return null;
+    if (isInjectedIframeProbe(event)) return null;
+    return isNextRSCNavigationFallback(event) ? null : event;
+  },
+  beforeSendTransaction(event) {
+    return isFromBot(navigator.userAgent)
+      ? null
+      : stripSpanPII(stripUserPII(event));
+  },
+  beforeSendSpan: stripSpanDataPII,
+  beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
   integrations: [
@@ -33,12 +68,14 @@ Sentry.init({
     Sentry.extraErrorDataIntegration(),
     Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
-    Sentry.launchDarklyIntegration(),
-    Sentry.replayIntegration({
-      unmask: [".sentry-unmask, [data-sentry-unmask]"],
-    }),
-    Sentry.replayCanvasIntegration(),
-    Sentry.reportingObserverIntegration(),
+    Sentry.featureFlagsIntegration(),
+    // GDPR: session replay only once the visitor consents to monitoring
+    ...setupSessionReplay(),
+    // Deprecation reports are browser platform notices about the web platform
+    // itself (e.g. Chrome's "Attribution Reporting is deprecated"), not bugs in
+    // our code, and they bury real issues. Crash and intervention reports still
+    // come through.
+    Sentry.reportingObserverIntegration({ types: ["crash", "intervention"] }),
     // Sentry.feedbackIntegration({
     //   // Additional SDK configuration goes in here, for example:
     //   colorScheme: "system",
@@ -59,22 +96,21 @@ Sentry.init({
   // Define how likely Replay events are sampled.
   // This sets the sample rate to be 10%. You may want this to be 100% while
   // in development and sample at a lower rate in production
-  // GDPR: Only enable if user has consented to monitoring
-  replaysSessionSampleRate: hasMonitoringConsent ? 0.1 : 0,
+  // Inert until setupSessionReplay installs the replay integration.
+  replaysSessionSampleRate: 0.1,
 
   // Define how likely Replay events are sampled when an error occurs.
-  // GDPR: Only enable if user has consented to monitoring
-  replaysOnErrorSampleRate: hasMonitoringConsent ? 1.0 : 0,
+  replaysOnErrorSampleRate: 1.0,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
-  // Set profilesSampleRate to 1.0 to profile every transaction.
-  // Since profilesSampleRate is relative to tracesSampleRate,
-  // the final profiling rate can be computed as tracesSampleRate * profilesSampleRate
-  // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
-  // result in 25% of transactions being profiled (0.5*0.5=0.25)
-  profilesSampleRate: 1.0,
+  // Profiling samples the main thread every 10 ms for as long as a transaction
+  // lasts (up to 30 s a page load), so profiling every transaction slowed every
+  // session down. It is relative to tracesSampleRate, so with every transaction
+  // traced, 1 in 10 is profiled. Traces stay at 100%: the backend's
+  // traces_sampler follows the browser's decision for the requests it receives.
+  profilesSampleRate: 0.1,
   enableLogs: true,
 });
 

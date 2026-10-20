@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -22,6 +23,10 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 const PRIVATE_SERVER_URL = "https://private.example.com/mcp";
@@ -65,7 +70,9 @@ async function connectPrivateServer() {
       }),
     );
   vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-    apiResponse(400, { detail: "OAuth not supported" }),
+    apiResponse(400, {
+      detail: { code: "no_oauth", message: "OAuth not supported" },
+    }),
   );
   vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
     apiResponse(200, CREDENTIAL),
@@ -86,6 +93,89 @@ async function connectPrivateServer() {
 describe("MCPToolDialog credential binding", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("ignores an old initiation after closing and reopening the same dialog", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    type LoginResponse = Awaited<
+      ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+    >;
+    let firstResolve!: (response: LoginResponse) => void;
+    let secondResolve!: (response: LoginResponse) => void;
+    const first = new Promise<LoginResponse>((resolve) => {
+      firstResolve = resolve;
+    });
+    const second = new Promise<LoginResponse>((resolve) => {
+      secondResolve = resolve;
+    });
+    const firstWindow = { closed: false, close: vi.fn() };
+    const secondWindow = { closed: false, close: vi.fn() };
+    vi.mocked(preOpenOAuthPopup)
+      .mockReturnValueOnce(firstWindow as unknown as Window)
+      .mockReturnValueOnce(secondWindow as unknown as Window);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const props = { onClose: vi.fn(), onConfirm: vi.fn() };
+    const view = render(<MCPToolDialog open {...props} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+    await waitFor(() =>
+      expect(postV2InitiateOauthLoginForAnMcpServer).toHaveBeenCalledTimes(1),
+    );
+
+    view.rerender(<MCPToolDialog open={false} {...props} />);
+    expect(firstWindow.close).toHaveBeenCalledOnce();
+    view.rerender(<MCPToolDialog open {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in & Connect" }));
+    await waitFor(() =>
+      expect(postV2InitiateOauthLoginForAnMcpServer).toHaveBeenCalledTimes(2),
+    );
+    await act(async () => {
+      firstResolve(
+        apiResponse(400, {
+          detail: { code: "no_oauth", message: "Old attempt" },
+        }),
+      );
+    });
+    expect(secondWindow.close).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("API token")).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Waiting for sign-in...",
+      }).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      secondResolve(
+        apiResponse(200, {
+          login_url: "https://login.example.com/new",
+          state_token: "new",
+        }),
+      );
+    });
+    await waitFor(() => expect(openOAuthPopup).toHaveBeenCalledOnce());
+    expect(openOAuthPopup).toHaveBeenCalledWith(
+      "https://login.example.com/new",
+      expect.objectContaining({ preOpenedWindow: secondWindow }),
+    );
   });
 
   it("surfaces a rejected authorization response instead of offering a token", async () => {
@@ -130,6 +220,93 @@ describe("MCPToolDialog credential binding", () => {
     expect(await screen.findByText(/issuer does not match/i)).toBeDefined();
     expect(screen.queryByLabelText("API token")).toBeNull();
     expect(screen.queryByText(/does not support OAuth/)).toBeNull();
+  });
+
+  // #14532: the sign-in window has to be opened before the initiate request is
+  // awaited — after an await iOS Safari blocks window.open() outright. Both
+  // cells drive the auto-start path (discovery answers 401), which is the only
+  // one this file's harness reaches; the button path shares the same code.
+  it("opens the sign-in window before the initiate await and hands it over", async () => {
+    const callOrder: string[] = [];
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+      async () => {
+        callOrder.push("initiate");
+        return apiResponse(200, {
+          login_url: "https://auth.example.com/authorize",
+          state_token: "st",
+        });
+      },
+    );
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+    // The ordering IS the fix — asserting only that it was called would pass
+    // on a version that called it after the await, which is the bug.
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://auth.example.com/authorize",
+      expect.objectContaining({ preOpenedWindow: fakeWindow }),
+    );
+    expect(fakeWindow.close).not.toHaveBeenCalled();
+  });
+
+  it("closes the sign-in window when the server has no OAuth", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    // openOAuthPopup never runs on this path, so nothing else can reach the
+    // about:blank window it left behind.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
+    expect(await screen.findByLabelText("API token")).toBeDefined();
   });
 
   it("attaches a manually stored credential to a tool from the same server", async () => {
@@ -219,7 +396,9 @@ describe("MCPToolDialog credential binding", () => {
         }),
       );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
       apiResponse(200, CREDENTIAL),
@@ -259,7 +438,9 @@ describe("MCPToolDialog credential binding", () => {
       apiResponse(401, { detail: "Authentication required" }),
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     const providers = {
@@ -308,7 +489,9 @@ describe("MCPToolDialog credential binding", () => {
         apiResponse(401, { detail: "Invalid API credential" }),
       );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);
@@ -335,7 +518,9 @@ describe("MCPToolDialog credential binding", () => {
       apiResponse(401, { detail: "Authentication required" }),
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);

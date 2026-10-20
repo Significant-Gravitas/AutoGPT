@@ -1,32 +1,45 @@
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
+import {
+  AUTOPILOT_AVATAR_URL,
+  AUTOPILOT_NAME,
+  AUTOPILOT_TRANSPARENT_AVATAR_URL,
+} from "./helpers";
 
 interface Props {
   size?: number;
+  transparent?: boolean;
   className?: string;
+  backgroundColor?: string;
 }
 
-/** AutoPilot's mark. The built-in helper has no avatar image of its own, so
- *  the embossed AutoGPT logo stands in for one wherever it is named. */
-export function AutopilotAvatar({ size = 24, className }: Props) {
-  // Sized inline rather than by Tailwind class: callers pass an arbitrary
-  // pixel size (18, 20, 24 and 36 are live) and the logo tracks it by ratio.
-  const logoSize = Math.round(size * 0.58);
+export function AutopilotAvatar({
+  size = 24,
+  transparent = false,
+  className,
+  backgroundColor,
+}: Props) {
+  if (transparent) {
+    return (
+      <Image
+        src={AUTOPILOT_TRANSPARENT_AVATAR_URL}
+        alt={`${AUTOPILOT_NAME}, your personal Head of AI`}
+        width={size}
+        height={size}
+        sizes={`${size}px`}
+        className={cn("shrink-0 object-contain", className)}
+      />
+    );
+  }
 
   return (
-    <span
-      style={{ width: size, height: size }}
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-white to-zinc-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_-2px_4px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-inset ring-zinc-200/70",
-        className,
-      )}
-    >
-      <AutoGPTLogo
-        hideText
-        viewBox="47 -1 42 42"
-        className="h-auto"
-        style={{ width: logoSize }}
-      />
-    </span>
+    <ExpertAvatar
+      name={AUTOPILOT_NAME}
+      avatarUrl={AUTOPILOT_AVATAR_URL}
+      size={size}
+      backgroundColor={backgroundColor}
+      className={className}
+    />
   );
 }

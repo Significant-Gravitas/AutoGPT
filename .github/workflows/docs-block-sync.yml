@@ -47,6 +47,10 @@ on:
       - "autogpt_platform/backend/backend/util/file.py"
       - "autogpt_platform/backend/backend/util/sandbox_files.py"
       - "autogpt_platform/backend/backend/api/features/store/db.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check-docs-sync:
@@ -107,4 +111,4 @@ jobs:
           poetry run python scripts/generate_block_docs.py
           echo ""
           echo "Changes detected:"
-          git diff ../../docs/integrations/ || true
+          git diff ../../docs/integrations/

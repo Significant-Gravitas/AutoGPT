@@ -1,10 +1,10 @@
-"""The briefing's opening line, written in AutoPilot's voice.
+"""The briefing's opening line, written in Otto's voice.
 
 The briefing body is deterministic template text (``render.py``). This module
 adds a 2-3 sentence lede on top — what the team did, what it found, what needs
-you — so the briefing reads as being *from* AutoPilot rather than about it.
+you — so the briefing reads as being *from* Otto rather than about it.
 
-AutoPilot authors it whatever the team looks like: it reports the hired
+Otto authors it whatever the team looks like: it reports the hired
 experts' work and credits them for it, and never speaks as one of them.
 
 Two invariants make this safe to bolt onto a delivery path:
@@ -39,6 +39,7 @@ from backend.copilot.dream.llm import (
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
+from backend.copilot.trial_cost_context import attributed_usage
 
 from .models import BriefingContent, BriefingRunItem
 
@@ -87,6 +88,7 @@ class NarrativeResponse(BaseModel):
     narrative: str
 
 
+@attributed_usage
 async def compose_narrative(user_id: str, content: BriefingContent) -> str | None:
     """Write the briefing's opening paragraph, or ``None`` to fall back.
 

@@ -6,7 +6,7 @@ interface Props {
 }
 
 /** One labelled paragraph on a Basics tab, shared by the expert and
- *  Autopilot pages so their headings stay the same size. */
+ *  Otto pages so their headings stay the same size. */
 export function ProfileEntry({ label, value }: Props) {
   return (
     <div>

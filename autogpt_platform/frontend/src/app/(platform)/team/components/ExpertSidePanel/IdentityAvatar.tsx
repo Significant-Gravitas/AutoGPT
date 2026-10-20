@@ -1,14 +1,5 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  AUTOPILOT_AVATAR,
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 
 export interface PanelIdentity {
@@ -25,37 +16,15 @@ interface Props {
 }
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
-  if (identity.isAutopilot) {
-    return (
-      <BotAvatar
-        config={AUTOPILOT_AVATAR}
-        size={imageSize}
-        showBadge={false}
-        title={identity.name}
-        className={className}
-      />
-    );
-  }
-  if (!isUploadedAvatar(identity.avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig(identity)}
-        size={imageSize}
-        showBadge={false}
-        title={identity.name}
-        className={className}
-      />
-    );
-  }
+  const avatarClassName = cn("rounded-full border border-[#e3e3e3]", className);
+  if (identity.isAutopilot)
+    return <AutopilotAvatar size={imageSize} className={avatarClassName} />;
   return (
-    <Avatar className={cn("shrink-0", className)}>
-      <AvatarImage
-        src={identity.avatarUrl ?? undefined}
-        alt={identity.name}
-        width={imageSize}
-        height={imageSize}
-      />
-      <AvatarFallback>{identity.name}</AvatarFallback>
-    </Avatar>
+    <ExpertAvatar
+      name={identity.name}
+      avatarUrl={identity.avatarUrl}
+      size={imageSize}
+      className={avatarClassName}
+    />
   );
 }

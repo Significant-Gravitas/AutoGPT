@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useQueryState } from "nuqs";
 import { AgentsTabIntro } from "./components/AgentsTabIntro/AgentsTabIntro";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
@@ -8,7 +9,6 @@ import { useLibraryListPage } from "./components/useLibraryListPage";
 import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
 import type { LibraryTab, AgentStatusFilter } from "./types";
 import { useLibraryFleetSummary } from "./hooks/useLibraryFleetSummary";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import { FavouriteIcon, Menu01Icon } from "@hugeicons/core-free-icons";
 
@@ -20,10 +20,10 @@ const LIBRARY_TABS: LibraryTab[] = [
 export default function LibraryPage() {
   const { searchTerm, setSearchTerm, librarySort, setLibrarySort } =
     useLibraryListPage();
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  // In the URL, so a link can open a folder (the approval card links one).
+  const [selectedFolderId, setSelectedFolderId] = useQueryState("folder");
   const [activeTab, setActiveTab] = useState(LIBRARY_TABS[0].id);
   const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("all");
-  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const { agents } = useLibraryAgents();
   const fleetSummary = useLibraryFleetSummary(agents);
 
@@ -58,8 +58,8 @@ export default function LibraryPage() {
           onTabChange={handleTabChange}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          fleetSummary={isAgentBriefingEnabled ? fleetSummary : undefined}
-          briefingAgents={isAgentBriefingEnabled ? agents : undefined}
+          fleetSummary={fleetSummary}
+          briefingAgents={agents}
         />
       </main>
       <AgentsTabIntro />

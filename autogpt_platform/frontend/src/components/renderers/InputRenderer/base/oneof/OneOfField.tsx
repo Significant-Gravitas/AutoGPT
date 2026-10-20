@@ -1,4 +1,8 @@
 import {
+  getFieldDomId,
+  useFieldAccessibilityContext,
+} from "../../field-accessibility";
+import {
   descriptionId,
   FieldProps,
   getTemplate,
@@ -77,6 +81,7 @@ function DiscriminatedUnionField({
   }
 
   const [selectedIndex, setSelectedIndex] = useState(getInitialIndex);
+  const accessibility = useFieldAccessibilityContext(field_id);
 
   // Generate handleId for sub-fields (same convention as AnyOfField)
   const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
@@ -186,7 +191,12 @@ function DiscriminatedUnionField({
 
   const selector = (
     <Widget
-      id={field_id}
+      id={`${field_id}-variant`}
+      aria-describedby={
+        [accessibility?.descriptionId, accessibility?.errorId]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       name={`${name}__oneof_select`}
       schema={{ type: "number", default: 0 }}
       onChange={handleVariantChange}
@@ -201,7 +211,7 @@ function DiscriminatedUnionField({
       autocomplete={props.autocomplete}
       className={cn("-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-xs font-medium")}
       autofocus={props.autofocus}
-      label=""
+      label={schema.title ? `${schema.title} — variant` : "Variant selector"}
       hideLabel={true}
       readonly={props.readonly}
     />
@@ -217,7 +227,11 @@ function DiscriminatedUnionField({
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Text variant="body" className="line-clamp-1">
+        <Text
+          id={getFieldDomId(`${field_id}__title`, registry.formContext)}
+          variant="body"
+          className="line-clamp-1"
+        >
           {schema.title || name}
         </Text>
         <Text variant="small" className="mr-1 text-red-500">

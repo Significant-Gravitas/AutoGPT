@@ -58,7 +58,7 @@ describe("VoiceTrace", () => {
 describe("VoiceTrace colour", () => {
   it("keeps each column in the colour of the stage that recorded it", () => {
     // Switching from speaking to listening used to repaint the whole strip
-    // green, so AutoPilot's words looked like the user's.
+    // green, so Otto's words looked like the user's.
     vi.useFakeTimers();
     takeMicLevel.mockImplementation(() => 0.02);
     const { container, rerender } = render(

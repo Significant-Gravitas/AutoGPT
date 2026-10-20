@@ -6,27 +6,26 @@
 // `failure_class` matches the tag the backend puts on its own credential
 // failures, so one class number covers both halves of a path.
 
+import {
+  CredentialConnectionFailureEvent,
+  type EventName,
+} from "@/services/analytics/posthog-events";
 import posthog from "posthog-js";
 
-type CredentialConnectionFailure =
-  // The provider is absent from the loaded provider map, so the card's row
-  // for it never renders at all.
-  | "credential_card_never_rendered"
-  // Popup and the new-tab fallback were both blocked: there is no way in.
-  | "credential_oauth_popup_blocked"
-  | "credential_oauth_flow_timed_out"
-  // Connected, stored, and then refused by the card because the provider
-  // granted less than the block asked for.
-  | "credential_scope_shortfall_blocked_selection"
-  // A sign-in completed on this card and the credential never reached it.
-  | "credential_proceed_stuck_after_connect";
+type CredentialConnectionFailure = EventName<
+  typeof CredentialConnectionFailureEvent
+>;
 
 const FAILURE_CLASS: Record<CredentialConnectionFailure, string> = {
-  credential_card_never_rendered: "class_03_provider_unknown_to_frontend",
-  credential_oauth_popup_blocked: "class_05_browser_channel_broken",
-  credential_oauth_flow_timed_out: "class_05_browser_channel_broken",
-  credential_scope_shortfall_blocked_selection: "class_08_scopes_too_narrow",
-  credential_proceed_stuck_after_connect:
+  [CredentialConnectionFailureEvent.CREDENTIAL_CARD_NEVER_RENDERED]:
+    "class_03_provider_unknown_to_frontend",
+  [CredentialConnectionFailureEvent.CREDENTIAL_OAUTH_POPUP_BLOCKED]:
+    "class_05_browser_channel_broken",
+  [CredentialConnectionFailureEvent.CREDENTIAL_OAUTH_FLOW_TIMED_OUT]:
+    "class_05_browser_channel_broken",
+  [CredentialConnectionFailureEvent.CREDENTIAL_SCOPE_SHORTFALL_BLOCKED_SELECTION]:
+    "class_08_scopes_too_narrow",
+  [CredentialConnectionFailureEvent.CREDENTIAL_PROCEED_STUCK_AFTER_CONNECT]:
     "class_11_credential_not_wired_to_card",
 };
 

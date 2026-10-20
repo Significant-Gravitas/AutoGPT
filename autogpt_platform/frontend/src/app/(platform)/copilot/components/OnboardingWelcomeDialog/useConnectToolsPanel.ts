@@ -68,7 +68,9 @@ export function useConnectToolsPanel() {
     },
   });
 
-  const allProviders = toConnectableProviders(providersQuery.data ?? []);
+  const allProviders = toConnectableProviders(
+    (providersQuery.data ?? []).filter((provider) => !provider.mcp_server),
+  );
   const providers = filterConnectableProviders(allProviders, debouncedQuery);
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((provider) => provider.id === selectedId) ?? null)

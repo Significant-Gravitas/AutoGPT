@@ -54,7 +54,7 @@ export async function advanceToRoleStep(
     name: "Your own team of AI experts.",
   });
   const autopilot = page.getByRole("heading", {
-    name: "Meet AutoPilot, your Head of AI.",
+    name: "Meet Otto, your Head of AI.",
   });
 
   for (let step = 0; step < 4; step++) {
@@ -113,7 +113,7 @@ export async function completeOnboardingWizard(
   }
 
   await expect(preparing).toBeVisible({ timeout: 10000 });
-  await page.waitForURL(/\/copilot/, { timeout: 30000 });
+  await page.waitForURL(/\/home/, { timeout: 30000 });
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });

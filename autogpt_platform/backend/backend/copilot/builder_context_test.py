@@ -15,13 +15,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.builder_context import (
-    BUILDER_BLOCKED_TOOLS,
     BUILDER_CONTEXT_TAG,
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 
 
 def _session(
@@ -122,9 +122,9 @@ async def test_system_prompt_suffix_steers_to_edit_agent():
     # The "no permission prompt UI" framing is what stops the model from
     # asking the user to "click Allow" when a tool is unavailable.
     assert "no permission prompt UI" in suffix
-    # Concrete sequence (find_block → edit_agent) gives the model a
+    # Concrete sequence (find_capability → edit_agent) gives the model a
     # template to follow instead of reaching for the blocked tools.
-    assert "find_block" in suffix
+    assert "find_capability" in suffix
 
 
 @pytest.mark.asyncio
@@ -384,6 +384,36 @@ async def test_system_prompt_suffix_for_building_session():
     assert "# Guide body" in result
     assert "<builder_session>" not in result
     assert "do not call" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_force_bypasses_the_history_read():
+    """``force`` serves the caller that already knows the answer — the SDK
+    building-mode restart, which runs in the same turn as the enter call and
+    so cannot find it in persisted history yet."""
+    session = _session(None)
+    assert session.messages == []
+
+    assert await build_builder_system_prompt_suffix(session) == ""
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        forced = await build_builder_system_prompt_suffix(session, force=True)
+
+    assert "<building_guide>" in forced
+    assert "# Guide body" in forced
+    assert "<builder_session>" not in forced
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_force_still_empty_when_guide_load_fails():
+    session = _session(None)
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        side_effect=OSError("missing"),
+    ):
+        assert await build_builder_system_prompt_suffix(session, force=True) == ""
 
 
 @pytest.mark.asyncio

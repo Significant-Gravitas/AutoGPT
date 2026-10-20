@@ -1,10 +1,12 @@
 import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_TODOS,
   countCompleted,
   getCurrentLabel,
   getCurrentTask,
   getLatestTaskList,
+  haveSameTodos,
   isAllComplete,
   type TodoItem,
 } from "../helpers";
@@ -26,11 +28,25 @@ function messageWithTodoWrite(todos: unknown, state?: string): UIMessage {
 }
 
 describe("getLatestTaskList", () => {
-  it("returns null when there are no TodoWrite parts", () => {
+  it("returns the shared empty list when there are no TodoWrite parts", () => {
     const messages = [
       { id: "m1", role: "assistant", parts: [{ type: "text", text: "hi" }] },
     ] as unknown as UIMessage[];
-    expect(getLatestTaskList(messages)).toBeNull();
+    expect(getLatestTaskList(messages)).toBe(EMPTY_TODOS);
+    expect(getLatestTaskList([])).toBe(EMPTY_TODOS);
+    expect(EMPTY_TODOS).toHaveLength(0);
+  });
+
+  it("keeps finding an earlier turn's list when the newest turn has none", () => {
+    const messages = [
+      messageWithTodoWrite([todo("Earlier plan", "in_progress")]),
+      {
+        id: "m2",
+        role: "assistant",
+        parts: [{ type: "text", text: "no tasks here" }],
+      } as unknown as UIMessage,
+    ];
+    expect(getLatestTaskList(messages)[0].content).toBe("Earlier plan");
   });
 
   it("returns the todos from the most recent TodoWrite part", () => {
@@ -69,8 +85,34 @@ describe("getLatestTaskList", () => {
     expect(result?.[0].content).toBe("Valid");
   });
 
-  it("returns null when todos is not an array", () => {
-    expect(getLatestTaskList([messageWithTodoWrite({})])).toBeNull();
+  it("returns the shared empty list when todos is not an array", () => {
+    expect(getLatestTaskList([messageWithTodoWrite({})])).toBe(EMPTY_TODOS);
+  });
+});
+
+describe("haveSameTodos", () => {
+  it("matches lists with the same tasks in the same states", () => {
+    expect(
+      haveSameTodos(
+        [todo("a", "completed"), todo("b", "in_progress", "Doing b")],
+        [todo("a", "completed"), todo("b", "in_progress", "Doing b")],
+      ),
+    ).toBe(true);
+  });
+
+  it("tells apart a changed status, label, order or length", () => {
+    const base = [todo("a", "completed"), todo("b", "in_progress")];
+    expect(
+      haveSameTodos(base, [todo("a", "completed"), todo("b", "completed")]),
+    ).toBe(false);
+    expect(
+      haveSameTodos(base, [
+        todo("a", "completed"),
+        todo("b", "in_progress", "Doing b"),
+      ]),
+    ).toBe(false);
+    expect(haveSameTodos(base, [...base].reverse())).toBe(false);
+    expect(haveSameTodos(base, base.slice(0, 1))).toBe(false);
   });
 });
 

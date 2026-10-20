@@ -1,47 +1,31 @@
 import { render, screen, fireEvent } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-// Only the artifacts flag resolves — querying any other flag returns undefined,
-// so the trigger disappears and the assertions below fail loudly.
-const { artifactsEnabledMock, useGetFlagMock, toggleContextPanelMock } =
-  vi.hoisted(() => {
-    const artifactsEnabledMock = { current: true };
-    return {
-      artifactsEnabledMock,
-      useGetFlagMock: vi.fn((flag: string) =>
-        flag === "artifacts" ? artifactsEnabledMock.current : undefined,
-      ),
-      toggleContextPanelMock: vi.fn(),
-    };
-  });
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useGetFlag: useGetFlagMock };
-});
-
-vi.mock("../../../store", () => ({
-  useCopilotUIStore: (selector: (state: unknown) => unknown) =>
-    selector({ toggleContextPanel: toggleContextPanelMock }),
-}));
-
-import { Flag } from "@/services/feature-flags/use-get-flag";
+import { beforeEach, describe, expect, it } from "vitest";
+import { useCopilotUIStore } from "../../../store";
+import { MobileHeader } from "../../MobileHeader/MobileHeader";
 import { WorkspaceFilesTrigger } from "../WorkspaceFilesTrigger";
 
+beforeEach(() => {
+  useCopilotUIStore.setState((state) => ({
+    contextPanelExpert: null,
+    artifactPanel: {
+      ...state.artifactPanel,
+      isOpen: false,
+      activeTab: "files",
+      activeArtifact: null,
+      lastArtifact: null,
+      history: [],
+      mode: "artifact",
+      isComputerOpen: false,
+    },
+  }));
+});
+
 describe("WorkspaceFilesTrigger", () => {
-  beforeEach(() => {
-    toggleContextPanelMock.mockClear();
-    useGetFlagMock.mockClear();
-    artifactsEnabledMock.current = true;
-  });
-
-  it("gates on the artifacts flag specifically", () => {
+  it("offers workspace files without a feature flag", () => {
     render(<WorkspaceFilesTrigger />);
-
-    expect(useGetFlagMock).toHaveBeenCalledWith(Flag.ARTIFACTS);
+    expect(
+      screen.getByRole("button", { name: /open workspace files/i }),
+    ).toBeDefined();
   });
 
   it("toggles the context panel when clicked", () => {
@@ -51,17 +35,7 @@ describe("WorkspaceFilesTrigger", () => {
       screen.getByRole("button", { name: /open workspace files/i }),
     );
 
-    expect(toggleContextPanelMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders nothing when the artifacts flag is off", () => {
-    artifactsEnabledMock.current = false;
-
-    render(<WorkspaceFilesTrigger />);
-
-    expect(
-      screen.queryByRole("button", { name: /open workspace files/i }),
-    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
 
   it("forwards className so the header can restyle it", () => {
@@ -70,5 +44,44 @@ describe("WorkspaceFilesTrigger", () => {
     expect(
       screen.getByRole("button", { name: /open workspace files/i }).className,
     ).toContain("rounded-full");
+  });
+});
+
+describe.each([
+  ["classic layout", MobileHeader],
+  ["new layout", WorkspaceFilesTrigger],
+] as const)("workspace files button in the %s", (_layout, Controls) => {
+  it.each([true, false])(
+    "opens files after integrations when the panel is open: %s",
+    (isOpen) => {
+      useCopilotUIStore.getState().toggleIntegrationsPanel({
+        id: "expert-maria",
+        name: "Maria",
+      });
+      if (!isOpen)
+        useCopilotUIStore.getState().toggleContextPanelTab("integrations");
+      render(<Controls />);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /open workspace files/i }),
+      );
+
+      expect(useCopilotUIStore.getState().artifactPanel).toMatchObject({
+        isOpen: true,
+        activeTab: "files",
+      });
+    },
+  );
+
+  it("closes files when clicked again", () => {
+    render(<Controls />);
+    const button = screen.getByRole("button", {
+      name: /open workspace files/i,
+    });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });

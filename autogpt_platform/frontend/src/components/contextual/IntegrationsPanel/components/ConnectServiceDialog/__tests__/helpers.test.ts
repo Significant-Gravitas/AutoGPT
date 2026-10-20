@@ -18,6 +18,77 @@ function makeMeta(overrides: Partial<ProviderMetadata> = {}): ProviderMetadata {
 }
 
 describe("toConnectableProviders", () => {
+  test("merges a vendor's block provider and its sign-in into one service", () => {
+    const mcpServer = {
+      server_url: "https://mcp.notion.com/mcp",
+      documentation_url: "https://developers.notion.com/docs/mcp",
+      setup_instructions: "Sign in to your Notion workspace.",
+      connection_mode: "hosted" as const,
+      auth_methods: ["oauth" as const],
+      icon_id: "notion",
+    };
+    const block = makeMeta({
+      name: "notion",
+      description: "Docs and databases",
+      service: "notion",
+      service_name: null,
+      service_icon: "notion",
+    });
+    const preset = {
+      name: "mcp_notion",
+      display_name: "Notion",
+      description: "Search and edit workspace content",
+      supported_auth_types: [],
+      mcp_server: mcpServer,
+      service: "notion",
+      service_name: "Notion",
+      service_icon: "notion",
+    };
+    const merged = {
+      id: "notion",
+      serviceId: "notion",
+      name: "Notion",
+      description: "Docs and databases",
+      supportedAuthTypes: ["oauth2", "api_key"],
+      mcpServer,
+      iconId: "notion",
+    };
+
+    const blockFirst = toConnectableProviders([block, preset]);
+    expect(blockFirst).toHaveLength(1);
+    expect(blockFirst[0]).toMatchObject(merged);
+
+    const catalogFirst = toConnectableProviders([preset, block]);
+    expect(catalogFirst).toHaveLength(1);
+    expect(catalogFirst[0]).toMatchObject(merged);
+  });
+
+  test("keeps a service reached only through its sign-in under its catalog name", () => {
+    const result = toConnectableProviders([
+      {
+        name: "mcp_sentry",
+        display_name: "Sentry",
+        supported_auth_types: [],
+        service: "sentry",
+        service_name: "Sentry",
+        service_icon: "sentry",
+        mcp_server: {
+          server_url: "https://mcp.sentry.dev/mcp",
+          documentation_url: "https://docs.sentry.io",
+          setup_instructions: "Sign in to Sentry.",
+          connection_mode: "hosted",
+          auth_methods: ["oauth"],
+        },
+      },
+    ]);
+    expect(result[0]).toMatchObject({
+      id: "mcp_sentry",
+      serviceId: "sentry",
+      name: "Sentry",
+      supportedAuthTypes: [],
+    });
+  });
+
   test("formats provider name and preserves description and supported types", () => {
     const result = toConnectableProviders([
       makeMeta({ name: "github", description: "Issues and PRs" }),
@@ -25,9 +96,11 @@ describe("toConnectableProviders", () => {
     expect(result).toEqual([
       {
         id: "github",
+        serviceId: "github",
         name: "GitHub",
         description: "Issues and PRs",
         supportedAuthTypes: ["oauth2", "api_key"],
+        iconId: "github",
       },
     ]);
   });
@@ -87,18 +160,21 @@ describe("filterConnectableProviders", () => {
   const providers: ConnectableProvider[] = [
     {
       id: "github",
+      serviceId: "github",
       name: "GitHub",
       description: "Issues and PRs",
       supportedAuthTypes: ["oauth2", "api_key"],
     },
     {
       id: "acai-juice",
+      serviceId: "acai-juice",
       name: "Açaí",
       description: "Bowls",
       supportedAuthTypes: ["api_key"],
     },
     {
       id: "linear",
+      serviceId: "linear",
       name: "Linear",
       description: "Project tracking",
       supportedAuthTypes: ["oauth2"],

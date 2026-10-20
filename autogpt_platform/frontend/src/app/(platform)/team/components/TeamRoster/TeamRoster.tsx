@@ -32,7 +32,7 @@ export function TeamRoster({
   renderCard,
   onAutopilotChat,
 }: Props) {
-  // Autopilot reports on the whole team, so its summary ignores the toolbar.
+  // Otto reports on the whole team, so its summary ignores the toolbar.
   const summary = getAutopilotSummary({ experts, schedulesForExpert });
   const autopilot = (
     <AutopilotCard
@@ -54,7 +54,7 @@ export function TeamRoster({
         </div>
       ) : (
         <div className={TEAM_GRID_CLASS}>
-          {/* Autopilot is pinned rather than filtered — it is always on the
+          {/* Otto is pinned rather than filtered — it is always on the
               team, so it stays put unless the roster is being narrowed. */}
           {isNarrowed ? null : autopilot}
           {visibleExperts.map(renderCard)}

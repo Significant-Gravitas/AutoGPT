@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
@@ -17,10 +18,10 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
+from .cost_tracking import TokenUsage
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
-    _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _close_codex_gateway_for_finally,
@@ -31,8 +32,8 @@ from .service import (
     _normalize_model_name,
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
+    _record_result_usage,
     _redact_cli_stderr,
-    _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
@@ -299,7 +300,7 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
@@ -1159,18 +1160,7 @@ class TestRetryStateObservedModel:
 
 
 class TestMoonshotCostOverrideGate:
-    """Regression guards for the decision logic in
-    ``_run_stream_attempt`` that picks between the CLI-reported cost
-    and the Moonshot rate-card override.  The code:
-
-        active_model = state.observed_model or getattr(state.options, "model", None)
-        if _is_moonshot_model(active_model):
-            state.usage.cost_usd = _override_cost_for_moonshot(...)
-        else:
-            state.usage.cost_usd = sdk_msg.total_cost_usd
-
-    is critical-path billing logic — make sure observed_model wins over
-    the requested primary, and Anthropic turns pass through untouched."""
+    """Observed model wins over requested primary when pricing a billed result."""
 
     def _decide_cost(
         self,
@@ -1181,21 +1171,25 @@ class TestMoonshotCostOverrideGate:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
     ) -> float:
-        """Mirror of the real decision block — lets us assert the gate
-        without constructing the whole 1000-line generator."""
-        from .service import _is_moonshot_model, _override_cost_for_moonshot
-
-        active_model = observed_model or options_model
-        if _is_moonshot_model(active_model):
-            return _override_cost_for_moonshot(
-                model=active_model,
-                sdk_reported_usd=sdk_reported_usd,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cache_read_tokens=0,
-                cache_creation_tokens=0,
-            )
-        return sdk_reported_usd
+        """Exercise the production result handler with a minimal SDK result."""
+        state = MagicMock(
+            observed_model=observed_model,
+            options=SimpleNamespace(model=options_model),
+            usage=TokenUsage(),
+        )
+        result = ResultMessage(
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
+            total_cost_usd=sdk_reported_usd,
+            usage={"input_tokens": prompt_tokens, "output_tokens": completion_tokens},
+        )
+        _record_result_usage(result, state, "")
+        assert state.usage.cost_usd is not None
+        return state.usage.cost_usd
 
     def test_anthropic_turn_passes_sdk_cost_through(self):
         """Anthropic — the CLI's pricing table is authoritative, so
@@ -1283,10 +1277,7 @@ class TestMoonshotCostOverrideGate:
 
 
 class TestMoonshotHelperReexports:
-    """``sdk/service.py`` imports the Moonshot helpers under local
-    aliases (``_is_moonshot_model``, ``_override_cost_for_moonshot``).
-    Regression guard so a refactor doesn't silently break the import
-    path the hot-loop code relies on."""
+    """The service's model-dependent environment gates use the shared predicate."""
 
     def test_is_moonshot_model_aliased(self):
         from backend.copilot.moonshot import is_moonshot_model as canonical
@@ -1295,18 +1286,11 @@ class TestMoonshotHelperReexports:
 
         assert _is_moonshot_model is canonical
 
-    def test_override_cost_for_moonshot_aliased(self):
-        from backend.copilot.moonshot import override_cost_usd as canonical
-
-        from .service import _override_cost_for_moonshot
-
-        assert _override_cost_for_moonshot is canonical
-
 
 class TestIdleTimeoutThreshold:
     """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
     fires when the SDK is idle with no tool pending. The longer 2-hour cap
-    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    applies while any tool call is pending so a 45-min sub-Otto isn't
     killed, but a truly hung tool still eventually frees session resources."""
 
     def _make_adapter(self, current: dict, resolved: set):
@@ -1352,7 +1336,7 @@ class TestIdleTimeoutThreshold:
 
     def test_hung_tool_cap_is_2_hours(self):
         # Hard cap protects against a hung tool leaking resources forever.
-        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        # 2 hours is plenty for any legitimate sub-Otto or graph run.
         assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
 
     def test_long_cap_is_strictly_longer_than_short_cap(self):
@@ -1926,128 +1910,6 @@ class TestConsumeSdkUntilDone:
         assert loop_state.consecutive_empty_tool_calls >= 0
 
 
-class TestResolveDynamicMaxBudgetUsd:
-    """The per-query SDK budget is sized to the smaller of the static
-    config cap and the user's *actual* remaining USD spend, so the
-    CLI's "wrap up gracefully" reminder fires on real headroom."""
-
-    @pytest.mark.asyncio
-    async def test_returns_static_cap_without_user_id(self):
-        with patch(
-            "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-            7.5,
-        ):
-            result = await _resolve_dynamic_max_budget_usd(None)
-        assert result == 7.5
-
-    @pytest.mark.asyncio
-    async def test_returns_static_cap_when_unlimited(self):
-        # When tier limits are 0/0 we treat as unlimited and fall back to the
-        # static config cap (the per-query soft ceiling still applies).
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(0, 0, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=float("inf")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-    @pytest.mark.asyncio
-    async def test_uses_remaining_when_smaller_than_static(self):
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=2.5),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 2.5
-
-    @pytest.mark.asyncio
-    async def test_clamps_to_floor_when_remaining_is_below(self):
-        # A near-capped user still gets enough headroom to dispatch the
-        # turn (and surface the wrap-up reminder) instead of being
-        # blocked at the SDK level.
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=0.05),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == _MAX_BUDGET_USD_FLOOR
-
-    @pytest.mark.asyncio
-    async def test_static_cap_wins_when_smaller_than_remaining(self):
-        # User has plenty of headroom — the per-query soft ceiling still
-        # applies so a single chat cannot blow the entire daily budget.
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(100_000_000, 0, "PRO")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=80.0),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-    @pytest.mark.asyncio
-    async def test_redis_brownout_falls_back_to_static_cap(self):
-        """Redis brown-out → ``get_remaining_usd_budget`` returns the
-        ``floor_usd`` we passed.  The resolver passes ``-1.0`` as a
-        sentinel and falls back to the static cap when it sees that —
-        otherwise every turn during a Redis outage would shrink to the
-        $0.50 floor instead of the configured per-query cap."""
-        with (
-            patch(
-                "backend.copilot.sdk.service.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
-            ),
-            patch(
-                "backend.copilot.sdk.service.get_remaining_usd_budget",
-                new=AsyncMock(return_value=-1.0),
-            ),
-            patch(
-                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
-                10.0,
-            ),
-        ):
-            result = await _resolve_dynamic_max_budget_usd("u-1")
-        assert result == 10.0
-
-
 class TestStreamEndedWithoutResultMessage:
     """When the SDK CLI hangs up without a ResultMessage (per-query budget
     exhausted, max_turns hit, OOM, crash) the post-stream branch must
@@ -2098,7 +1960,7 @@ class TestStreamEndedWithoutResultMessage:
         transcript_builder.append_assistant = MagicMock()
         transcript_builder.append_tool_result = MagicMock()
         return _RetryState(
-            options=MagicMock(),
+            options=MagicMock(resume=None, session_id=session_id),
             query_message="hello",
             compaction_stats=None,
             use_resume=False,
@@ -2276,6 +2138,55 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_ERROR_MARKER not in contents, contents
 
+    @pytest.mark.asyncio
+    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(self):
+        """Once the governor is refusing tools, a CLI hangup ended the landing:
+        the turn pauses (no checkpoint claimed) rather than showing the
+        incomplete-turn notice, and a paused turn never auto-continues."""
+        from backend.copilot.constants import STREAM_INCOMPLETE_MARKER
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.sdk.governor import TurnGovernor
+        from backend.copilot.sdk.service import _run_stream_attempt
+        from backend.copilot.turn_budget import TurnBudget
+        from backend.copilot.turn_pause import pause_of
+
+        ctx = self._ctx()
+        state = self._state()
+        governor = TurnGovernor(
+            budget=TurnBudget(usd=0.0, limiting="weekly"), step_checkin=450
+        )
+        assert governor.refusal() is not None
+        state.governor = governor
+        state.adapter.governor = governor
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            events = [ev async for ev in _run_stream_attempt(ctx, state)]
+
+        paused = [e for e in events if isinstance(e, StreamTurnPaused)]
+        assert len(paused) == 1
+        assert paused[0].pause["reason"] == "weekly"
+        assert paused[0].pause["checkpoint_saved"] is False
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_INCOMPLETE_MARKER not in contents, contents
+        assert pause_of(ctx.session.messages[-1]) is not None
+        assert governor.landed is True
+
 
 class TestHiddenShortNamesForPermissions:
     """``_hidden_short_names_for_permissions`` is the pure function that
@@ -2306,8 +2217,8 @@ class TestHiddenShortNamesForPermissions:
     def test_whitelist_hides_everything_not_listed(self):
         all_tools = all_known_tool_names()
         # Pick one stable, well-known tool as the whitelist.
-        keep = "find_block"
-        assert keep in all_tools, "test relies on find_block being registered"
+        keep = "find_capability"
+        assert keep in all_tools, "test relies on find_capability being registered"
         perms = CopilotPermissions(
             tools=[keep],
             tools_exclude=False,

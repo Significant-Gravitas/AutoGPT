@@ -4,6 +4,7 @@ import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBri
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWorkTime, getRunTriggerLabel } from "../helpers";
 
 interface Props {
@@ -61,6 +62,9 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
   return (
     <Link
       href={outcome.link}
+      onClick={() =>
+        trackFunnel("briefing_outcome_clicked", { status: outcome.status })
+      }
       title={outcome.summary}
       className={cn(ROW_CLASS, LINK_CLASS)}
     >

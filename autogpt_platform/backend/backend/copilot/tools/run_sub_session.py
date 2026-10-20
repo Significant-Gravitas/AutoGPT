@@ -1,4 +1,4 @@
-"""Start a sub-AutoPilot conversation via the copilot_executor queue.
+"""Start a sub-Otto conversation via the copilot_executor queue.
 
 Mirror-image of ``run_agent`` + ``view_agent_output`` for copilot turns:
 
@@ -28,7 +28,8 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import (
@@ -46,6 +47,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.tree import SpawnRequest
 
 from .base import BaseTool
+from .expert_delegation import sent_from_metadata
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -68,7 +70,7 @@ _WORKSPACE_FILE_MANIFEST_LIMIT = 50
 
 
 class RunSubSessionTool(BaseTool):
-    """Delegate a task to a fresh sub-AutoPilot via the copilot_executor queue."""
+    """Delegate a task to a fresh sub-Otto via the copilot_executor queue."""
 
     @property
     def name(self) -> str:
@@ -81,11 +83,11 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh sub-AutoPilot. Runs on the copilot "
+            "Delegate a task to a fresh child session. Runs on the copilot "
             "executor queue — survives tab-close AND worker restarts. Waits "
             f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
             "If not done, returns status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property
@@ -95,12 +97,14 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the sub-AutoPilot to execute.",
+                    "description": "The task for the child session to execute.",
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
@@ -109,6 +113,8 @@ class RunSubSessionTool(BaseTool):
                         "Cheaper when the follow-up builds on what it read."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -117,6 +123,8 @@ class RunSubSessionTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["prompt"],
@@ -137,12 +145,12 @@ class RunSubSessionTool(BaseTool):
             return ErrorResponse(
                 message="prompt is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Resolve the sub's ChatSession id — either resume an owned one or
         # create a fresh session that inherits the parent's dry_run so a
@@ -160,7 +168,7 @@ class RunSubSessionTool(BaseTool):
                         "run_sub_session call of yours."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if owned.expert_id != session.expert_id:
                 return ErrorResponse(
                     message=(
@@ -169,7 +177,7 @@ class RunSubSessionTool(BaseTool):
                         "fresh sub for this assistant."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Only the session that opened a sub may steer it: same scope is
             # not enough, or any sibling — or the sub itself — could queue a
             # prompt into it under its envelope rather than their own.
@@ -191,7 +199,7 @@ class RunSubSessionTool(BaseTool):
                         "sub."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Subs are created as automations below, so only a sub may be
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
@@ -212,7 +220,7 @@ class RunSubSessionTool(BaseTool):
                         "session."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if (
                 owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id
@@ -221,7 +229,7 @@ class RunSubSessionTool(BaseTool):
                 return ErrorResponse(
                     message="codex_session_route_mismatch",
                     session_id=session.session_id,
-                )
+                ).from_outside()
             inner_session_id = sub_session_param
             opened_here = False
         else:
@@ -269,6 +277,7 @@ class RunSubSessionTool(BaseTool):
             # write to it; depth bounds how far it may spawn onward.
             spawn=SpawnRequest(may_spawn=True, shares_memory=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session),
         )
         elapsed = time.monotonic() - started_at
         discarded = opened_here and await discard_unused_sub_session(
@@ -287,13 +296,14 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+        outcome_response.message += await build_spawn_state_note()
         if discarded:
             # The row is gone, so its id and link would send the model to poll
             # a sub-session that no longer exists. Keep the reason, drop the
             # handles — the same shape handoff_to_expert returns on refusal.
             return ErrorResponse(
                 message=outcome_response.message, session_id=session.session_id
-            )
+            ).from_outside()
         return outcome_response
 
 
@@ -301,28 +311,14 @@ def apply_delegated_expert(
     response: SubSessionStatusResponse,
     expert: DelegatedExpertInfo | None,
 ) -> SubSessionStatusResponse:
-    """Re-badge a sub-session response as a named teammate's delegated run.
-
-    Only sets the ``expert`` field for the ToolChain card; the message text
-    is already correct when the caller passed ``actor=expert.name`` into
-    ``response_from_outcome`` up front. The ``replace`` below is a fallback
-    for callers that built the message with the default "Sub-AutoPilot"
-    wording and only learn the delegate's identity afterwards — it is a
-    no-op once the message was built with the right actor. No-op entirely
-    for same-scope subs.
-    """
+    """Attach delegated expert metadata without rewriting the response text."""
     if expert is None:
         return response
-    return response.model_copy(
-        update={
-            "message": response.message.replace("Sub-AutoPilot", expert.name),
-            "expert": expert,
-        }
-    )
+    return response.model_copy(update={"expert": expert})
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:
-    """Build the CoPilot UI URL for a sub-AutoPilot session.
+    """Build the CoPilot UI URL for a sub-Otto session.
 
     Kept in one place so the format stays consistent across the
     running/completed/error paths, and so the frontend only has one
@@ -483,13 +479,13 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
-    actor: str = "Sub-AutoPilot",
+    actor: str = "Subtask",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
     ``actor`` names who ran the turn in the human-readable message — the
-    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    default ``"Subtask"`` for a same-scope sub, or the delegate's name
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
@@ -511,7 +507,7 @@ def response_from_outcome(
                 f"Target session already had a turn in flight; the message "
                 f"was queued ({result.pending_buffer_length} now pending) and "
                 "will be processed by the existing turn on its next drain. "
-                f"Call get_sub_session_result to poll progress"
+                f"Call tool:get_sub_session_result to poll progress"
                 f"{f' or watch live at {link}' if link else ''}."
             ),
             session_id=parent_session_id,
@@ -520,14 +516,30 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
+
+    if outcome == "queued_for_slot":
+        return SubSessionStatusResponse(
+            message=(
+                f"{actor} is queued: the user's task slots for sub-work are all "
+                "taken, and it starts on its own when one frees. Call "
+                "tool:get_sub_session_result to wait for it or check on it"
+                f"{f', or watch at {link}' if link else ''}."
+            ),
+            session_id=parent_session_id,
+            status="queued",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        ).from_outside()
 
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
                 f"{actor} is still running after {elapsed:.0f}s."
                 f"{f' Watch live at {link}.' if link else ''} "
-                "Call get_sub_session_result (optionally with "
+                "Call tool:get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
             ),
             session_id=parent_session_id,
@@ -536,7 +548,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "refused":
         # The turn never started; the tree or the target said why.
@@ -548,7 +560,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "rejected_concurrent_turn_cap":
         # No sub-session record / transcript exists yet — the per-user
@@ -556,14 +568,14 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
+            message=spawn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "failed":
         return SubSessionStatusResponse(
@@ -574,7 +586,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     # completed — prefer the authoritative listing supplied by the caller;
     # fall back to mining the tool-call log when it's unavailable.
@@ -600,4 +612,4 @@ def response_from_outcome(
         sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
-    )
+    ).from_outside(result.response_text, workspace_files)

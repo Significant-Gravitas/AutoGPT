@@ -9,6 +9,8 @@ from backend.copilot.response_model import (
     ResponseType,
     StreamCompactionProgress,
     StreamModeChanged,
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
     StreamToolDisplayAvailable,
     ToolDisplayData,
 )
@@ -82,3 +84,25 @@ class TestStreamCompactionProgress:
 
         with pytest.raises(ValidationError):
             StreamCompactionProgress(phase="done")
+
+
+class TestStreamPendingDrained:
+    def test_to_sse_carries_the_drained_messages(self):
+        """The client renders the mid-turn follow-up bubble straight from the
+        hint, so the text has to ride along inside the ``data`` envelope."""
+        evt = StreamPendingDrained(
+            drainedCount=1,
+            messages=[StreamPendingDrainedMessage(id="pm-1", content="also add tests")],
+        )
+        payload = json.loads(evt.to_sse().removeprefix("data: "))
+        assert payload == {
+            "type": "data-pending-drained",
+            "data": {
+                "drainedCount": 1,
+                "messages": [{"id": "pm-1", "content": "also add tests"}],
+            },
+        }
+
+    def test_messages_default_to_empty(self):
+        payload = json.loads(StreamPendingDrained(drainedCount=2).to_sse()[6:])
+        assert payload["data"] == {"drainedCount": 2, "messages": []}

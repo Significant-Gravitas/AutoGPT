@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { cleanUpHandleId, isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { getFieldDomId } from "../../field-accessibility";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
@@ -41,7 +42,7 @@ export default function TitleField(props: TitleFieldProps) {
       )}
       <Text
         variant={isArrayItemFlag ? "small" : "body"}
-        id={id}
+        id={getFieldDomId(id, registry.formContext)}
         className={cn(
           "line-clamp-1",
           smallText && "text-sm text-zinc-700",
@@ -57,7 +58,7 @@ export default function TitleField(props: TitleFieldProps) {
         <Text
           variant="small"
           className={cn("ml-2", isInputBroken && "line-through", colorClass)}
-          id={description_id}
+          id={getFieldDomId(description_id, registry.formContext)}
         >
           ({displayType})
         </Text>

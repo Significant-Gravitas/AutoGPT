@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { AdminSkillSubmissionFiles } from "./AdminSkillSubmissionFiles";
 import { useAdminSkillSubmissions } from "./useAdminSkillSubmissions";
 
 export function AdminSkillSubmissions() {
@@ -76,6 +77,10 @@ export function AdminSkillSubmissions() {
               Approve
             </Button>
           </div>
+          <AdminSkillSubmissionFiles
+            versionId={submission.skill_listing_version_id}
+            files={submission.files ?? []}
+          />
         </li>
       ))}
     </ul>

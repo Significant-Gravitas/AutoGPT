@@ -7,6 +7,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -122,6 +123,7 @@ class TavilySearchBlock(Block):
                     "usage": {"credits": 1},
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def _search(self, credentials: APIKeyCredentials, **kwargs) -> dict[str, Any]:

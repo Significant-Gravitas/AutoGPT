@@ -14,6 +14,7 @@ from uuid import uuid4
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.copilot.pending_messages import FOLLOW_UP_CLOSE_TAG, FOLLOW_UP_OPEN_TAG
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.provider_failure import status_for
@@ -29,12 +30,22 @@ from backend.integrations.codex.models import (
 )
 from backend.integrations.codex.transport import (
     CodexAgentSession,
+    CodexCredentialLease,
     CodexTransport,
     get_codex_transport,
 )
 from backend.integrations.credential_lease import CredentialLease
 
 _MAX_REQUEST_BYTES = 16 * 1024 * 1024
+# Bounds on the per-conversation replay cache. A retry arrives seconds to
+# minutes after the original, so no entry has to outlive its own turn: over 30
+# days of Dev logs the longest Codex turn ran 1,406 s and resolved 67 tool calls
+# (2026-09-18), one boundary each. An entry holds only the response body -- a
+# tool_use boundary or the final text -- never the 0.97M-5.8M token request that
+# provoked the retry, and the byte cap is half the request limit above.
+_MAX_REPLAY_ENTRIES = 128
+_MAX_REPLAY_BYTES = 8 * 1024 * 1024
+_REPLAY_TTL_SECONDS = 1800.0
 _MAX_LOGGED_ERROR_MESSAGE_CHARS = 240
 _REDACTED = "[REDACTED]"
 _TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
@@ -52,6 +63,19 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"token|api[_ -]?key)\b)"
     r"\s*[\"']?\s*[:=]\s*(?:Bearer\s+)?"
     r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
+)
+# A queued user message the PostToolUse hook injected, wrapper included.
+# `format_pending_as_followup` escapes the tags inside each message, so a
+# block's own tags are the only raw ones in it. Greedy up to the next opening
+# tag, never past it, so two blocks never merge into one match that carries
+# the CLI's text between them.
+_FOLLOW_UP_BLOCK = re.compile(
+    re.escape(FOLLOW_UP_OPEN_TAG)
+    + r"(?:(?!"
+    + re.escape(FOLLOW_UP_OPEN_TAG)
+    + r").)*"
+    + re.escape(FOLLOW_UP_CLOSE_TAG),
+    re.DOTALL,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +98,10 @@ class _AgentSession(Protocol):
         ],
         event_handler: Callable[[CodexStreamEvent], Awaitable[None]] | None = None,
     ) -> CodexInvocationResult: ...
+
+
+class _SseSink(Protocol):
+    async def write(self, data: bytes) -> None: ...
 
 
 class _GatewayState(BaseModel):
@@ -101,6 +129,16 @@ class _Failed(_GatewayState):
 _ConversationEvent = _TextDelta | _ToolUse | _Completed | _Failed
 
 
+class _Replay(_GatewayState):
+    """A response already delivered, kept to answer a byte-identical retry."""
+
+    status: int
+    headers: dict[str, str]
+    body: bytes
+    streamed: bool
+    expires_at: float
+
+
 class _Conversation(_GatewayState):
     id: str
     queue: asyncio.Queue[_ConversationEvent] = Field(default_factory=asyncio.Queue)
@@ -108,6 +146,17 @@ class _Conversation(_GatewayState):
     response_lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
     task: asyncio.Task[None] | None = None
     result: CodexInvocationResult | None = None
+    replays: dict[str, _Replay] = Field(default_factory=dict)
+
+
+class _Continuation(_GatewayState):
+    conversation: _Conversation
+    replay_key: str
+
+
+class _DuplicateSubmission(_GatewayState):
+    conversation: _Conversation
+    replay_key: str
 
 
 class _ToolCallRecord(_GatewayState):
@@ -122,6 +171,8 @@ class _ToolCallRecord(_GatewayState):
 
 _Conversation.model_rebuild()
 _ToolCallRecord.model_rebuild()
+_Continuation.model_rebuild()
+_DuplicateSubmission.model_rebuild()
 
 
 class _DuplicateToolResultError(ValueError):
@@ -134,6 +185,7 @@ class CodexAnthropicGateway:
         *,
         credential_lease: CredentialLease | None = None,
         agent_session: _AgentSession | None = None,
+        credential_id: str | None = None,
         model: str,
         effort: CodexReasoningEffort | None = None,
         transport: CodexTransport | _AgentTransport | None = None,
@@ -143,6 +195,9 @@ class CodexAnthropicGateway:
                 "Codex gateway requires a credential lease or agent session"
             )
         self._credential_lease = credential_lease
+        # Named on every failure so the client can tell which ChatGPT account
+        # refused. A bare agent session has no lease to read it from.
+        self._credential_id = credential_id
         # The last failure this gateway named, kept so the service layer can
         # report *what* went wrong. By the time a failure reaches the CLI it
         # is an HTTP status and a sentence; the typed exception only exists
@@ -327,9 +382,7 @@ class CodexAnthropicGateway:
             )
 
         try:
-            conversation = self._continue_conversation(payload)
-            if conversation is None:
-                conversation = self._start_conversation(payload)
+            continuation = self._continue_conversation(payload)
         except _DuplicateToolResultError as exc:
             return _anthropic_error(
                 409,
@@ -343,19 +396,65 @@ class CodexAnthropicGateway:
                 str(exc),
             )
 
+        streamed = payload.get("stream") is True
+        if isinstance(continuation, _DuplicateSubmission):
+            return await self._duplicate_response(request, continuation, streamed)
+        if continuation is None:
+            conversation, replay_key = self._start_conversation(payload), None
+        else:
+            conversation = continuation.conversation
+            replay_key = continuation.replay_key
+
         input_tokens = _estimate_input_tokens(payload)
-        if payload.get("stream") is True:
+        if streamed:
             return await self._streaming_response(
                 request,
                 conversation,
                 input_tokens,
+                replay_key,
             )
-        return await self._nonstreaming_response(conversation, input_tokens)
+        return await self._nonstreaming_response(
+            conversation,
+            input_tokens,
+            replay_key,
+        )
+
+    async def _duplicate_response(
+        self,
+        request: web.Request,
+        duplicate: _DuplicateSubmission,
+        streamed: bool,
+    ) -> web.StreamResponse:
+        # The lock is held while the accepted request is still writing, so
+        # waiting on it is what gives a concurrent duplicate the same answer.
+        async with duplicate.conversation.response_lock:
+            replay = self._take_replay(
+                duplicate.conversation,
+                duplicate.replay_key,
+                streamed=streamed,
+            )
+        if replay is None:
+            return _anthropic_error(
+                409,
+                "invalid_request_error",
+                "This tool-result request was already accepted",
+            )
+        if not replay.streamed:
+            return web.Response(
+                status=replay.status,
+                body=replay.body,
+                headers=replay.headers,
+            )
+        response = web.StreamResponse(status=replay.status, headers=replay.headers)
+        await response.prepare(request)
+        await response.write(replay.body)
+        await response.write_eof()
+        return response
 
     def _continue_conversation(
         self,
         payload: dict[str, object],
-    ) -> _Conversation | None:
+    ) -> _Continuation | _DuplicateSubmission | None:
         tool_results = _extract_tool_results(payload.get("messages"))
         known = [
             (self._tool_calls[call_id], result)
@@ -378,9 +477,15 @@ class CodexAnthropicGateway:
         ]
         fingerprint = _tool_result_request_fingerprint(payload)
         if not claimable:
-            if any(record.claim_fingerprint == fingerprint for record, _ in known):
-                raise _DuplicateToolResultError(
-                    "This tool-result request was already accepted"
+            claimed_by = [
+                record for record, _ in known if record.claim_fingerprint == fingerprint
+            ]
+            if claimed_by:
+                # The CLI re-sends this verbatim when its first attempt times
+                # out, so the response that request produced is the answer.
+                return _DuplicateSubmission(
+                    conversation=claimed_by[0].conversation,
+                    replay_key=fingerprint,
                 )
             if any(record.result is None for record, _ in known):
                 raise _DuplicateToolResultError(
@@ -394,13 +499,8 @@ class CodexAnthropicGateway:
         if any(record.conversation is not conversation for record, _ in claimable):
             raise ValueError("Tool results span multiple model conversations")
 
-        for record, result in claimable:
-            record.result = result
-            record.claim_fingerprint = fingerprint
-        for record, result in claimable:
-            if not record.future.done():
-                record.future.set_result(result)
-        return conversation
+        _claim(claimable, fingerprint, payload.get("messages"))
+        return _Continuation(conversation=conversation, replay_key=fingerprint)
 
     def _start_conversation(self, payload: dict[str, object]) -> _Conversation:
         agent_session = self._agent_session
@@ -498,7 +598,8 @@ class CodexAnthropicGateway:
         failure = classify_provider_failure(
             failed.error,
             auth_provider="codex",
-            credential_id=(
+            credential_id=self._credential_id
+            or (
                 self._credential_lease.credentials.id
                 if self._credential_lease is not None
                 else None
@@ -518,12 +619,14 @@ class CodexAnthropicGateway:
         request: web.Request,
         conversation: _Conversation,
         input_tokens: int,
+        replay_key: str | None = None,
     ) -> web.StreamResponse:
         async with conversation.response_lock:
             return await self._streaming_response_locked(
                 request,
                 conversation,
                 input_tokens,
+                replay_key,
             )
 
     async def _streaming_response_locked(
@@ -531,24 +634,24 @@ class CodexAnthropicGateway:
         request: web.Request,
         conversation: _Conversation,
         input_tokens: int,
+        replay_key: str | None,
     ) -> web.StreamResponse:
         first = await conversation.queue.get()
         if isinstance(first, _Failed):
             return self._failure_response(first)
 
-        response = web.StreamResponse(
-            status=200,
-            headers={
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-        )
+        headers = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+        response = web.StreamResponse(status=200, headers=headers)
         await response.prepare(request)
+        sink = _RecordingSink(response)
         message_id = f"msg_codex_{uuid4().hex}"
         try:
             await _write_sse(
-                response,
+                sink,
                 {
                     "type": "message_start",
                     "message": {
@@ -566,17 +669,30 @@ class CodexAnthropicGateway:
                     },
                 },
             )
-            await self._write_boundary(response, conversation, first)
+            await self._write_boundary(sink, conversation, first)
             await response.write_eof()
         except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
+        body = sink.body
+        if body is not None:
+            self._record_replay(
+                conversation,
+                replay_key,
+                _Replay(
+                    status=200,
+                    headers=headers,
+                    body=body,
+                    streamed=True,
+                    expires_at=_now() + _REPLAY_TTL_SECONDS,
+                ),
+            )
         return response
 
     async def _write_boundary(
         self,
-        response: web.StreamResponse,
+        sink: _SseSink,
         conversation: _Conversation,
         first: _ConversationEvent,
     ) -> None:
@@ -589,7 +705,7 @@ class CodexAnthropicGateway:
                 emitted_text = True
                 if not text_open:
                     await _write_sse(
-                        response,
+                        sink,
                         {
                             "type": "content_block_start",
                             "index": index,
@@ -598,7 +714,7 @@ class CodexAnthropicGateway:
                     )
                     text_open = True
                 await _write_sse(
-                    response,
+                    sink,
                     {
                         "type": "content_block_delta",
                         "index": index,
@@ -608,19 +724,19 @@ class CodexAnthropicGateway:
             elif isinstance(event, _ToolUse):
                 if text_open:
                     await _write_sse(
-                        response,
+                        sink,
                         {"type": "content_block_stop", "index": index},
                     )
                     index += 1
                     text_open = False
-                await _write_tool_use(response, index, event)
-                await _write_message_end(response, "tool_use", 0)
+                await _write_tool_use(sink, index, event)
+                await _write_message_end(sink, "tool_use", 0)
                 return
             elif isinstance(event, _Completed):
                 if not emitted_text and event.result.final_response:
                     if not text_open:
                         await _write_sse(
-                            response,
+                            sink,
                             {
                                 "type": "content_block_start",
                                 "index": index,
@@ -629,7 +745,7 @@ class CodexAnthropicGateway:
                         )
                         text_open = True
                     await _write_sse(
-                        response,
+                        sink,
                         {
                             "type": "content_block_delta",
                             "index": index,
@@ -641,13 +757,13 @@ class CodexAnthropicGateway:
                     )
                 if text_open:
                     await _write_sse(
-                        response,
+                        sink,
                         {"type": "content_block_stop", "index": index},
                     )
                 output_tokens = (
                     event.result.usage.output_tokens if event.result.usage else 0
                 )
-                await _write_message_end(response, "end_turn", output_tokens)
+                await _write_message_end(sink, "end_turn", output_tokens)
                 return
             elif isinstance(event, _Failed):
                 # The HTTP status can no longer change once streaming starts,
@@ -657,7 +773,7 @@ class CodexAnthropicGateway:
                 self._failure_response(event)
                 failure = self.last_failure
                 await _write_sse(
-                    response,
+                    sink,
                     {
                         "type": "error",
                         "error": {
@@ -673,7 +789,7 @@ class CodexAnthropicGateway:
                 return
             else:
                 await _write_sse(
-                    response,
+                    sink,
                     {
                         "type": "error",
                         "error": {
@@ -689,17 +805,20 @@ class CodexAnthropicGateway:
         self,
         conversation: _Conversation,
         input_tokens: int,
+        replay_key: str | None = None,
     ) -> web.Response:
         async with conversation.response_lock:
             return await self._nonstreaming_response_locked(
                 conversation,
                 input_tokens,
+                replay_key,
             )
 
     async def _nonstreaming_response_locked(
         self,
         conversation: _Conversation,
         input_tokens: int,
+        replay_key: str | None,
     ) -> web.Response:
         content: list[dict[str, object]] = []
         text_parts: list[str] = []
@@ -738,7 +857,7 @@ class CodexAnthropicGateway:
                 "api_error",
                 "Codex model transport failed",
             )
-        return web.json_response(
+        response = web.json_response(
             {
                 "id": f"msg_codex_{uuid4().hex}",
                 "type": "message",
@@ -753,6 +872,48 @@ class CodexAnthropicGateway:
                 },
             }
         )
+        self._record_replay(
+            conversation,
+            replay_key,
+            _Replay(
+                status=response.status,
+                headers={"Content-Type": response.headers["Content-Type"]},
+                body=cast(bytes, response.body),
+                streamed=False,
+                expires_at=_now() + _REPLAY_TTL_SECONDS,
+            ),
+        )
+        return response
+
+    def _record_replay(
+        self,
+        conversation: _Conversation,
+        replay_key: str | None,
+        replay: _Replay,
+    ) -> None:
+        if replay_key is None or len(replay.body) > _MAX_REPLAY_BYTES:
+            return
+        replays = conversation.replays
+        replays.pop(replay_key, None)
+        replays[replay_key] = replay
+        stored = sum(len(entry.body) for entry in replays.values())
+        while len(replays) > _MAX_REPLAY_ENTRIES or stored > _MAX_REPLAY_BYTES:
+            stored -= len(replays.pop(next(iter(replays))).body)
+
+    def _take_replay(
+        self,
+        conversation: _Conversation,
+        replay_key: str,
+        *,
+        streamed: bool,
+    ) -> _Replay | None:
+        replay = conversation.replays.get(replay_key)
+        if replay is None or replay.streamed != streamed:
+            return None
+        if replay.expires_at <= _now():
+            conversation.replays.pop(replay_key, None)
+            return None
+        return replay
 
     def _is_authorized(self, request: web.Request) -> bool:
         authorization = request.headers.get("Authorization", "")
@@ -764,6 +925,58 @@ class CodexAnthropicGateway:
             api_key,
             self._auth_token,
         )
+
+
+def gateway_for_lease(
+    lease: CredentialLease | CodexCredentialLease,
+    *,
+    model: str,
+    effort: CodexReasoningEffort | None,
+) -> CodexAnthropicGateway:
+    """The gateway for a ChatGPT turn, told which account it spends.
+
+    A failure it reports names the account, so the client offers the user's
+    other ChatGPT accounts rather than hiding every one of them.
+    """
+    if isinstance(lease, CodexCredentialLease):
+        return CodexAnthropicGateway(
+            agent_session=lease,
+            credential_id=lease.credentials.id,
+            model=model,
+            effort=effort,
+        )
+    return CodexAnthropicGateway(credential_lease=lease, model=model, effort=effort)
+
+
+class _RecordingSink:
+    """Mirrors the stream into a buffer so a retry can be answered verbatim."""
+
+    def __init__(self, response: web.StreamResponse) -> None:
+        self._response = response
+        self._chunks: list[bytes] = []
+        self._buffered = 0
+        self._recording = True
+
+    async def write(self, data: bytes) -> None:
+        if self._recording:
+            self._buffered += len(data)
+            # A body past the cap can never be stored, so holding on to it
+            # would buffer an unbounded stream for a replay nobody can keep.
+            if self._buffered > _MAX_REPLAY_BYTES:
+                self._chunks.clear()
+                self._recording = False
+            else:
+                self._chunks.append(data)
+        await self._response.write(data)
+
+    @property
+    def body(self) -> bytes | None:
+        """None once the stream outgrew the cap; a partial body must not be cached."""
+        return b"".join(self._chunks) if self._recording else None
+
+
+def _now() -> float:
+    return asyncio.get_running_loop().time()
 
 
 def _parse_tools(
@@ -912,6 +1125,77 @@ def _extract_tool_results(value: object) -> dict[str, CodexDynamicToolResult]:
     return results
 
 
+def _claim(
+    claimable: list[tuple[_ToolCallRecord, CodexDynamicToolResult]],
+    fingerprint: str,
+    messages: object,
+) -> None:
+    """Hand each result to the Codex call waiting on it.
+
+    ``record.result`` stays exactly what the CLI sent as the result, since
+    every later request is checked against it. The user's queued messages
+    that came with the results travel with the last of them, so Codex reads
+    them once.
+    """
+    followup = _followup_after_results(
+        messages, [record.gateway_call_id for record, _ in claimable]
+    )
+    for record, result in claimable:
+        record.result = result
+        record.claim_fingerprint = fingerprint
+    last = claimable[-1][0]
+    for record, result in claimable:
+        if not record.future.done():
+            record.future.set_result(
+                result.model_copy(update={"followup": followup})
+                if record is last
+                else result
+            )
+
+
+def _followup_after_results(messages: object, call_ids: list[str]) -> str | None:
+    """The user's queued messages the CLI sent with these tool results.
+
+    The PostToolUse hook hands them over as ``<user_follow_up>`` blocks in its
+    context, which the CLI sends after the result: for a non-Claude model
+    name, in a ``system`` message after the result's message (CLI 2.1.284 and
+    2.1.296); older builds, in a text block beside the result. Only the blocks
+    are passed on. The CLI's own notes can ride the same way (2.1.296 adds a
+    ``<total_tokens>`` count every round) and must not become user turns. A
+    block inside the result itself, the CLI's shape for Claude model names,
+    is not read here: the result is forwarded whole, so Codex already has it.
+    """
+    if not isinstance(messages, list):
+        return None
+    start = next(
+        (
+            index
+            for index, message in enumerate(messages)
+            if _carries_tool_result(message, call_ids)
+        ),
+        None,
+    )
+    if start is None:
+        return None
+    texts = [
+        _content_text(message.get("content"))
+        for message in messages[start:]
+        if isinstance(message, dict) and message.get("role") != "assistant"
+    ]
+    blocks = [block for text in texts for block in _FOLLOW_UP_BLOCK.findall(text)]
+    return "\n\n".join(blocks) or None
+
+
+def _carries_tool_result(message: object, call_ids: list[str]) -> bool:
+    content = message.get("content") if isinstance(message, dict) else None
+    return isinstance(content, list) and any(
+        isinstance(block, dict)
+        and block.get("type") == "tool_result"
+        and block.get("tool_use_id") in call_ids
+        for block in content
+    )
+
+
 def _tool_result_request_fingerprint(payload: dict[str, object]) -> str:
     serialized = json.dumps(
         payload.get("messages"),
@@ -963,19 +1247,19 @@ def _safe_exception_message(
     return message
 
 
-async def _write_sse(response: web.StreamResponse, event: dict[str, object]) -> None:
+async def _write_sse(sink: _SseSink, event: dict[str, object]) -> None:
     event_type = str(event["type"])
     payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-    await response.write(f"event: {event_type}\ndata: {payload}\n\n".encode())
+    await sink.write(f"event: {event_type}\ndata: {payload}\n\n".encode())
 
 
 async def _write_tool_use(
-    response: web.StreamResponse,
+    sink: _SseSink,
     index: int,
     event: _ToolUse,
 ) -> None:
     await _write_sse(
-        response,
+        sink,
         {
             "type": "content_block_start",
             "index": index,
@@ -988,7 +1272,7 @@ async def _write_tool_use(
         },
     )
     await _write_sse(
-        response,
+        sink,
         {
             "type": "content_block_delta",
             "index": index,
@@ -999,25 +1283,25 @@ async def _write_tool_use(
         },
     )
     await _write_sse(
-        response,
+        sink,
         {"type": "content_block_stop", "index": index},
     )
 
 
 async def _write_message_end(
-    response: web.StreamResponse,
+    sink: _SseSink,
     stop_reason: str,
     output_tokens: int,
 ) -> None:
     await _write_sse(
-        response,
+        sink,
         {
             "type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": None},
             "usage": {"output_tokens": output_tokens},
         },
     )
-    await _write_sse(response, {"type": "message_stop"})
+    await _write_sse(sink, {"type": "message_stop"})
 
 
 def _anthropic_error(status: int, error_type: str, message: str) -> web.Response:

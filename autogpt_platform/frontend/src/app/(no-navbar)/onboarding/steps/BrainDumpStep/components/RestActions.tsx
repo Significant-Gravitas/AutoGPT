@@ -8,7 +8,7 @@ interface Props {
   onWrite: () => void;
 }
 
-// The two ways to tell AutoPilot about your work, side by side, so neither
+// The two ways to tell Otto about your work, side by side, so neither
 // is hidden behind a link. Talking leads; writing is the equal alternative.
 export function RestActions({ onTalk, onWrite }: Props) {
   return (

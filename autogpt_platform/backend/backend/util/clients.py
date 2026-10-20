@@ -52,12 +52,16 @@ def get_database_manager_async_client(
 
 
 @thread_cached
-def get_scheduler_client() -> "SchedulerClient":
-    """Get a thread-cached SchedulerClient."""
+def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
+    """Get a thread-cached SchedulerClient.
+
+    ``should_retry`` repeats a call that failed in transit, such as on a pooled
+    connection the scheduler had just closed; only for calls safe to repeat.
+    """
     from backend.executor.scheduler import SchedulerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(SchedulerClient)
+    return get_service_client(SchedulerClient, request_retry=should_retry)
 
 
 @thread_cached
@@ -199,7 +203,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        (dry-run simulator, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
-       OpenAI-compatible endpoint AutoPilot uses, with the same generous
+       OpenAI-compatible endpoint Otto uses, with the same generous
        request timeout — those helpers fire under the same hardware
        constraints (CPU-only Ollama is slow). ``prefer_openrouter`` is
        intentionally ignored here: the local client is the only sane

@@ -14,6 +14,7 @@ export function deploymentOffer(
 ): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",

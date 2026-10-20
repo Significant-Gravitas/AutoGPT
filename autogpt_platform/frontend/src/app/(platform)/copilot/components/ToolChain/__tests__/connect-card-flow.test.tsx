@@ -51,6 +51,14 @@ vi.mock("@/lib/oauth-popup", () => ({
   }),
 }));
 
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn() }),
+  useToastOnFail: () => () => {},
+}));
+
+import { toast } from "@/components/molecules/Toast/use-toast";
+
 const REQUIRED_SCOPE = "repo";
 const SESSION_ID = "session-1";
 
@@ -404,19 +412,87 @@ describe("copilot Connect card, upgrade-target selection", () => {
 
   afterEach(resetStores);
 
-  it("picks no upgrade target when two accounts could be the one", async () => {
+  it("asks which account to update when two could be the one", async () => {
     savedCredentials = [
       oauthCredential("cred-a", ["notifications"]),
       oauthCredential("cred-b", ["read:user"]),
     ];
 
     renderChain();
-    await completeConnectFlow();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
 
-    // Choosing between them would be a guess; the backend upgrades in place,
-    // so guessing wrong silently broadens the wrong account.
+    // Choosing between them on the user's behalf would be a guess, and the
+    // backend upgrades in place, so a wrong guess silently broadens the wrong
+    // account. Signing in without a target stored a third credential instead.
+    // So the user names the account.
+    expect(await screen.findByText("Update a GitHub account")).toBeDefined();
+    expect(requestedScopes).toBeNull();
+
+    const accounts = await screen.findAllByRole("radio");
+    await user.click(accounts[1]);
+    await user.click(
+      screen.getByRole("button", { name: "Update this account" }),
+    );
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-b"));
+  });
+
+  it("adds a new account beside two existing ones when asked to", async () => {
+    savedCredentials = [
+      oauthCredential("cred-a", ["notifications"]),
+      oauthCredential("cred-b", ["read:user"]),
+    ];
+
+    renderChain();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await user.click(await screen.findByRole("button", { name: "Add new" }));
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
     await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
     expect(upgradedCredentialID).toBeNull();
+  });
+
+  it("surfaces the backend's refusal when the sign-in is a different user", async () => {
+    savedCredentials = [
+      oauthCredential("cred-a", ["notifications"]),
+      oauthCredential("cred-b", ["read:user"]),
+    ];
+    server.use(
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json(
+          { detail: "Username mismatch: authenticated as a different user" },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderChain();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    const accounts = await screen.findAllByRole("radio");
+    await user.click(accounts[1]);
+    await user.click(
+      screen.getByRole("button", { name: "Update this account" }),
+    );
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    // The sign-in was aimed at cred-b, and a different user behind it is
+    // refused rather than stored as yet another account.
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-b"));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Username mismatch: authenticated as a different user",
+          variant: "destructive",
+        }),
+      ),
+    );
   });
 
   it("does not offer a managed account, which the backend refuses to upgrade", async () => {
@@ -771,6 +847,254 @@ describe("copilot Connect card, a card that arrives after the first connection",
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("copilot Connect card, a saved credential the provider refused", () => {
+  // The credential the provider refused. It stays on file and still has every
+  // scope the card asks for, which is what made the row read Connected.
+  const refused = oauthCredential("cred-refused", [REQUIRED_SCOPE]);
+  let picked: Record<string, string> | null = null;
+
+  beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
+    picked = null;
+    savedCredentials = [refused];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "github", description: "Repositories" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/github/login", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        requestedScopes = query.get("scopes") ?? "";
+        upgradedCredentialID = query.get("credential_id");
+        return HttpResponse.json({
+          login_url: "https://github.com/login/oauth/authorize",
+          state_token: "state-token",
+        });
+      }),
+      // A re-auth aimed at an account updates it in place: same id, new token.
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json(refused),
+      ),
+      http.put(
+        "*/api/chat/sessions/:sessionId/credential-selection",
+        async ({ request }) => {
+          picked = ((await request.json()) as { selections: typeof picked })
+            .selections;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+  });
+
+  afterEach(resetStores);
+
+  function renderRefusedChain() {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[refusedRequirementsPart("cred-refused")]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    return { onSend };
+  }
+
+  async function reconnect() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+  }
+
+  it("offers Reconnect instead of calling the refused credential Connected", async () => {
+    const { onSend } = renderRefusedChain();
+
+    // A Connected row renders no button, so it would leave nothing to click.
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("renews the refused account in place and continues the chat", async () => {
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-refused"));
+    // The renewal keeps the credential's id, so a card that kept treating that
+    // id as refused would never send.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-refused" });
+    await screen.findByText("Connected. Continuing…");
+  });
+
+  it("runs on the new credential, not the refused one, when the sign-in adds one", async () => {
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
+  it("keeps asking when the sign-in comes back without the access needed", async () => {
+    // A narrower grant is stored beside the refused account, not over it.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const short = oauthCredential("cred-short", []);
+        savedCredentials = [refused, short];
+        return HttpResponse.json(short);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(savedCredentials).toHaveLength(2));
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("finds the new account when the sign-in does not report it", async () => {
+    // Any 2xx other than 200 reaches the dialog as a success with no
+    // credential, which is how a credential-less approval looks to the row.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added, { status: 201 });
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    // Nothing says the refused account was renewed, so it must not be the
+    // one the chat runs on.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
+  describe("when another saved account still works", () => {
+    const other = {
+      ...oauthCredential("cred-other", [REQUIRED_SCOPE]),
+      title: "Work",
+    };
+
+    beforeEach(() => {
+      savedCredentials = [refused, other];
+    });
+
+    it("asks instead of quietly running on the other account", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      // A different account can mean posting as someone else, so the row
+      // waits for the user rather than calling the other one Connected.
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      expect(screen.queryByText("Connected")).toBeNull();
+      // Only the account that still works is offered; the refused one is
+      // renewed through Add new.
+      expect(screen.queryByRole("radio", { name: /GitHub/ })).toBeNull();
+      await user.click(await screen.findByRole("radio", { name: /Work/ }));
+      await user.click(
+        screen.getByRole("button", { name: "Use this account" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-other" });
+    });
+
+    it("runs on the renewed account once the user signs in to it again", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(await screen.findByText("OAuth"));
+      await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+      // Both accounts now fit; the one just signed in to is the one meant.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-refused" });
+    });
+
+    it("waits for a newly added account rather than falling back to the other", async () => {
+      // The first list fetched after the sign-in predates it, as when the
+      // provider list lags the callback.
+      let staleFetches = 0;
+      server.use(
+        http.post("*/api/integrations/github/callback", () => {
+          const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+          savedCredentials = [refused, other, added];
+          staleFetches = 1;
+          return HttpResponse.json(added);
+        }),
+        http.get("*/api/integrations/credentials", () => {
+          if (staleFetches === 0) return HttpResponse.json(savedCredentials);
+          staleFetches -= 1;
+          return HttpResponse.json([refused, other]);
+        }),
+      );
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(await screen.findByText("OAuth"));
+      await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+      // Until the list shows the new account, the other one is the only
+      // usable match; picking it then would run on an account nobody chose.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-new" });
+    });
+  });
+});
+
+function refusedRequirementsPart(credentialID: string): MessagePart {
+  const part = setupRequirementsPart() as unknown as {
+    output: Record<string, unknown>;
+  };
+  return {
+    ...part,
+    output: {
+      ...part.output,
+      message: "The saved Github credential 'GitHub' could not be refreshed.",
+      rejection: {
+        provider: "github",
+        detail: "invalid_grant",
+        status_code: null,
+        credential_id: credentialID,
+        credential_title: "GitHub",
+      },
+    },
+  } as unknown as MessagePart;
+}
 
 function renderChain() {
   const onSend = vi.fn();

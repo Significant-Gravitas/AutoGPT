@@ -1,6 +1,7 @@
 "use client";
 
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -8,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
 import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
 import { useState } from "react";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
@@ -19,6 +21,7 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
   coverColor: string | undefined;
   onAsk?: (prompt: string) => void;
@@ -26,13 +29,13 @@ interface Props {
 
 export function ExpertWorkflowCard({
   workflow,
+  libraryAgent,
   expertId,
   coverColor,
   onAsk,
 }: Props) {
   const {
     name,
-    libraryAgent,
     runCount,
     isTriggerWorkflow,
     status,
@@ -43,7 +46,11 @@ export function ExpertWorkflowCard({
     chatPrompt,
     openRun,
     openTriggers,
-  } = useExpertWorkflowCard({ workflow, expertId });
+  } = useExpertWorkflowCard({
+    workflow,
+    libraryAgent,
+    expertId,
+  });
   const [hasImageError, setHasImageError] = useState(false);
 
   return (
@@ -63,6 +70,7 @@ export function ExpertWorkflowCard({
         {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
+            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"

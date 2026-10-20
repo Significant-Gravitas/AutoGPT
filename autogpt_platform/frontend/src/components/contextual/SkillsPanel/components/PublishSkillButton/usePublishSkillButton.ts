@@ -70,10 +70,12 @@ export function usePublishSkillButton({ skillName }: Args) {
     })),
     providers,
     setProviders,
-    providerItems: (providersQuery.data ?? []).map((provider) => ({
-      value: provider.name,
-      label: formatProviderName(provider.name),
-    })),
+    providerItems: (providersQuery.data ?? [])
+      .filter((provider) => !provider.mcp_server)
+      .map((provider) => ({
+        value: provider.name,
+        label: formatProviderName(provider.name),
+      })),
     submit,
   };
 }

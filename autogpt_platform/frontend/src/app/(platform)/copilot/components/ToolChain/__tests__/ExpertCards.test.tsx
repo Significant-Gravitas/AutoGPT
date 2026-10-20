@@ -1,8 +1,15 @@
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import type { ToolUIPart } from "ai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../../store";
+import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import {
   ExpertChangeCard,
   ExpertChangeGroup,
@@ -11,15 +18,16 @@ import {
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
 
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
+
 vi.mock("../../../tools/GenericTool/GenericTool", () => ({
   GenericTool: () => <div data-testid="generic-tool" />,
 }));
 
-const artifactsFlag = { enabled: false };
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS: "artifacts" },
-  useGetFlag: () => artifactsFlag.enabled,
-}));
+const onSend = vi.fn();
 
 function row(tool: string, output: unknown): ChainRow {
   return {
@@ -34,9 +42,7 @@ function row(tool: string, output: unknown): ChainRow {
 
 describe("expert change cards", () => {
   afterEach(() => {
-    artifactsFlag.enabled = false;
     useCopilotUIStore.getState().resetArtifactPanel();
-    useCopilotUIStore.getState().setInitialPrompt(null);
   });
 
   it("shows who the proposed expert is and nothing else", () => {
@@ -60,7 +66,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Raise an expert")).toBeDefined();
+    expect(screen.getByText("Create an Expert")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.getByText("Sorts your morning inbox.")).toBeDefined();
@@ -72,7 +78,6 @@ describe("expert change cards", () => {
   });
 
   it("opens the full charter in the side panel from Show more", async () => {
-    artifactsFlag.enabled = true;
     const user = userEvent.setup();
     render(
       <ExpertChangeCard
@@ -153,7 +158,6 @@ describe("expert change cards", () => {
   });
 
   it("always offers Details when the panel is available", () => {
-    artifactsFlag.enabled = true;
     render(
       <ExpertChangeCard
         artifactId="call-1"
@@ -227,7 +231,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Expert raised")).toBeDefined();
+    expect(screen.getByText("Expert created")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.queryByText("Raised")).toBeNull();
@@ -391,22 +395,28 @@ describe("ExpertChangeGroup", () => {
 });
 
 describe("expert approval", () => {
-  function prompt(): string | null {
-    return useCopilotUIStore.getState().initialPrompt;
+  beforeEach(() => {
+    onSend.mockClear();
+    vi.mocked(toast).mockClear();
+  });
+
+  function renderGroup(
+    parts: ToolUIPart[],
+    props?: { isCurrentlyStreaming?: boolean; readOnly?: boolean },
+  ) {
+    return render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup parts={parts} {...props} />
+      </CopilotChatActionsProvider>,
+    );
   }
 
-  it("moves to the next expert on each decision, then drafts all of them", async () => {
+  it("moves to the next expert on each decision, then sends all of them", async () => {
     const user = userEvent.setup();
-    render(
-      <ExpertChangeGroup
-        parts={[proposal("Fiona", "a"), proposal("Bhaskar", "b")]}
-      />,
-    );
+    renderGroup([proposal("Fiona", "a"), proposal("Bhaskar", "b")]);
 
     expect(screen.getByText("Fiona")).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Add decisions to message" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(screen.getByText("Bhaskar")).toBeDefined();
@@ -422,23 +432,51 @@ describe("expert approval", () => {
     ).toContain("red");
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
 
-    await user.click(
-      screen.getByRole("button", { name: "Add decisions to message" }),
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Fiona (confirmation_id: c-a).\n" +
+        "Not approved: do not create Bhaskar, discard that proposal (confirmation_id: c-b).",
     );
-    expect(prompt()).toContain("Approved: create Fiona");
-    expect(prompt()).toContain("c-a");
-    expect(prompt()).toContain("Not approved: do not create Bhaskar");
-    expect(prompt()).toContain("c-b");
-    expect(screen.getByText("Added to message")).toBeDefined();
+    expect(screen.getByText("Sent")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Undo decline" })).toBeNull();
+  });
+
+  it("holds the send until the stream has settled", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderGroup([proposal("Otto", "a")], {
+      isCurrentlyStreaming: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+
+    rerender(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ExpertChangeGroup
+          parts={[proposal("Otto", "a")]}
+          isCurrentlyStreaming={false}
+        />
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Send decisions" }),
+    ).toBeDefined();
+  });
+
+  it("offers no send without a chat actions provider", async () => {
+    const user = userEvent.setup();
+    render(<ExpertChangeGroup parts={[proposal("Otto", "a")]} />);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
   });
 
   it("remembers a decision when paging back", async () => {
     const user = userEvent.setup();
-    render(
-      <ExpertChangeGroup
-        parts={[proposal("Fiona", "a"), proposal("Bhaskar", "b")]}
-      />,
-    );
+    renderGroup([proposal("Fiona", "a"), proposal("Bhaskar", "b")]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
     await user.click(screen.getByRole("button", { name: "Previous expert" }));
@@ -453,43 +491,60 @@ describe("expert approval", () => {
     ).not.toContain("emerald");
   });
 
-  it("drafts a single expert straight after its decision", async () => {
+  it("sends a single expert straight after its decision", async () => {
     const user = userEvent.setup();
-    render(<ExpertChangeGroup parts={[proposal("Otto", "a")]} />);
+    renderGroup([proposal("Otto", "a")]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(
-      screen.getByRole("button", { name: "Add decisions to message" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
-    expect(prompt()).toBe("Approved: create Otto (confirmation_id: c-a).");
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: c-a).",
+    );
   });
 
-  it("drafts the verb the proposal actually asks for", async () => {
+  it("reports a rejected send and keeps the card marked sent", async () => {
     const user = userEvent.setup();
-    render(
-      <ExpertChangeGroup
-        parts={[
-          expertPart(
-            "output-available",
-            {
-              type: "expert_change_proposed",
-              applied: false,
-              confirmation_id: "c-u",
-              preview: { kind: "update", name: "Otto", role: "Engineer" },
-            },
-            "u",
-          ),
-        ]}
-      />,
-    );
+    onSend.mockRejectedValueOnce(new Error("boom"));
+    renderGroup([proposal("Otto", "a")]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(
-      screen.getByRole("button", { name: "Add decisions to message" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
-    expect(prompt()).toBe("Approved: update Otto (confirmation_id: c-u).");
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't send message",
+          description:
+            "boom — it is still in the thread, use Retry to send it again.",
+          variant: "destructive",
+        }),
+      ),
+    );
+    expect(screen.getByText("Sent")).toBeDefined();
+  });
+
+  it("sends the verb the proposal actually asks for", async () => {
+    const user = userEvent.setup();
+    renderGroup([
+      expertPart(
+        "output-available",
+        {
+          type: "expert_change_proposed",
+          applied: false,
+          confirmation_id: "c-u",
+          preview: { kind: "update", name: "Otto", role: "Engineer" },
+        },
+        "u",
+      ),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: update Otto (confirmation_id: c-u).",
+    );
   });
 
   it("offers no decision once applied or on a read-only transcript", () => {

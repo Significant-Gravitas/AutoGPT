@@ -5,10 +5,10 @@ import {
   useGetV2ListChatConnections,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useQueryClient } from "@tanstack/react-query";
+import { isProviderLinked } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/helpers";
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useOnboardingWizardStore } from "../../store";
-import { hasLinkedSubscription } from "./helpers";
 
 export function useConnectStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -22,20 +22,23 @@ export function useConnectStep() {
       ? connectionsQuery.data.data.offers
       : undefined;
 
-  // A successful sign-in does not move the wizard on: the box turns to
-  // "Connected" and the user goes on with Next when they are ready.
+  function finishConnection() {
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListChatConnectionsQueryKey(),
+    });
+  }
+
   const { connect, isPending } = useOAuthConnect({
     provider: "codex",
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
-        queryKey: getGetV2ListChatConnectionsQueryKey(),
-      }),
+    onSuccess: finishConnection,
   });
 
   return {
     connect,
+    finishConnection,
     isConnecting: isPending,
     skip: nextStep,
-    isAlreadyLinked: hasLinkedSubscription(offers),
+    isChatGPTLinked: isProviderLinked(offers, "codex"),
+    isMicrosoftLinked: isProviderLinked(offers, "microsoft_365_copilot"),
   };
 }

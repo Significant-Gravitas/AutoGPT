@@ -1,5 +1,4 @@
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,13 +10,18 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
 import {
-  AUTOPILOT_BLURB,
-  AUTOPILOT_PILL_CLASS,
-  AUTOPILOT_ROLE,
-} from "../helpers";
+  CHIP_SHAPE,
+  CHIP_SIZE,
+} from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
+import { categoryTagStyle } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
+
+const AUTOPILOT_COVER_COLOR = AUTOPILOT_HEX;
 
 interface Props {
   skillCount: number;
@@ -34,26 +38,22 @@ export function AutopilotCard({
 }: Props) {
   return (
     <section
-      aria-label="Autopilot"
+      aria-label={AUTOPILOT_NAME}
       className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
     >
       <Link
         href="/team/autopilot"
-        aria-label="View Autopilot"
+        aria-label={`View ${AUTOPILOT_NAME}`}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
-        <ExpertCover color={undefined} status="built-in" />
+        <ExpertCover color={AUTOPILOT_COVER_COLOR} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="relative z-10 -mt-12 ml-1 flex size-[5.5rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
-            <BotAvatar
-              config={AUTOPILOT_AVATAR}
-              size={80}
-              trackPointer
-              title="Autopilot"
-              showBadge={false}
-            />
-          </span>
+          <AutopilotAvatar
+            size={88}
+            backgroundColor={AUTOPILOT_COVER_COLOR}
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
+          />
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
@@ -62,20 +62,22 @@ export function AutopilotCard({
             tone="primary"
             className="w-full truncate pb-1"
           >
-            Autopilot
+            {AUTOPILOT_NAME}
           </Text>
-          <Text
-            variant="small-medium"
-            as="span"
-            className={cn(
-              "inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
-              AUTOPILOT_PILL_CLASS,
-            )}
+          {/* Not a category, but it sits in the same row as the experts'
+              topic tags and should not read as a different kind of thing. */}
+          <span
+            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
+            style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
-            <Icon icon={SparklesIcon} size={12} />
-            {AUTOPILOT_ROLE}
-          </Text>
-          <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
+            <Icon icon={SparklesIcon} size={12} className="shrink-0" />
+            <span className="truncate">{AUTOPILOT_ROLE}</span>
+          </span>
+          <Text
+            variant="body"
+            tone="muted"
+            className="mt-1 line-clamp-2 min-h-[2lh]"
+          >
             {AUTOPILOT_BLURB}
           </Text>
         </div>

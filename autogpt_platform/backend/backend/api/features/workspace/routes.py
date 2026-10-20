@@ -9,9 +9,10 @@ import re
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
+import aiohttp
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
-from fastapi import Query, UploadFile
+from fastapi import Depends, Query, UploadFile
 from fastapi.responses import Response
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, Field, field_validator
@@ -19,7 +20,11 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.db import get_chat_session_expert_ids
-from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
+from backend.copilot.rate_limit import (
+    enforce_payment_paywall,
+    get_workspace_storage_limit_bytes,
+)
+from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
     count_workspace_files,
@@ -35,7 +40,10 @@ from backend.data.workspace_scope import (
 )
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager, format_bytes
-from backend.util.workspace_storage import get_workspace_storage
+from backend.util.workspace_storage import (
+    WorkspaceStorageBackend,
+    get_workspace_storage,
+)
 
 
 def _sanitize_filename_for_header(
@@ -81,9 +89,49 @@ def _create_streaming_response(
         media_type=file.mime_type,
         headers={
             "Content-Disposition": disposition,
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
             "Content-Length": str(len(content)),
         },
     )
+
+
+_STORAGE_READ_ATTEMPTS = 2
+
+
+async def _read_file_content(
+    storage: WorkspaceStorageBackend, file: WorkspaceFile
+) -> bytes:
+    """Read a file's bytes, retrying once on a transient storage error.
+
+    Content missing from storage is a 404, not a server error. A storage read
+    that keeps failing (a GCS body cut off mid-transfer, a timeout, a 5xx from
+    the bucket) is a 502, logged with its traceback so it reaches Sentry.
+    """
+    attempt = 1
+    while True:
+        try:
+            return await storage.retrieve(file.storage_path)
+        except FileNotFoundError:
+            logger.warning(
+                f"File {file.id} has a record but no content in storage "
+                f"(storagePath={file.storage_path})"
+            )
+            raise fastapi.HTTPException(status_code=404, detail="File not found")
+        except (aiohttp.ClientError, OSError) as e:
+            if attempt < _STORAGE_READ_ATTEMPTS:
+                logger.warning(f"Retrying read of file {file.id} after {e!r}")
+                attempt += 1
+                continue
+            logger.error(
+                f"Failed to read file {file.id} from storage after {attempt} "
+                f"attempts (storagePath={file.storage_path}): {e!r}",
+                exc_info=True,
+            )
+            raise fastapi.HTTPException(
+                status_code=502,
+                detail="File storage is temporarily unavailable, please retry",
+            ) from e
 
 
 async def create_file_download_response(
@@ -92,45 +140,30 @@ async def create_file_download_response(
     """
     Create a download response for a workspace file.
 
-    Handles both local storage (direct streaming) and GCS (signed URL redirect
-    with fallback to streaming).
+    GCS files redirect to a signed URL when the credentials can sign one;
+    otherwise (local storage, or GCS without a signing key) the content is
+    streamed through the API.
     """
     storage = await get_workspace_storage()
 
-    # For local storage, stream the file directly
-    if file.storage_path.startswith("local://"):
-        content = await storage.retrieve(file.storage_path)
-        return _create_streaming_response(content, file, inline=inline)
-
-    # For GCS, try to redirect to signed URL, fall back to streaming
-    try:
-        url = await storage.get_download_url(file.storage_path, expires_in=300)
-        # If we got back an API path (fallback), stream directly instead
-        if url.startswith("/api/"):
-            content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file, inline=inline)
-        return fastapi.responses.RedirectResponse(url=url, status_code=302)
-    except Exception as e:
-        # Log the signed URL failure with context
-        logger.error(
-            f"Failed to get signed URL for file {file.id} "
-            f"(storagePath={file.storage_path}): {e}",
-            exc_info=True,
-        )
-        # Fall back to streaming directly from GCS
+    if not file.storage_path.startswith("local://"):
         try:
-            content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file, inline=inline)
-        except Exception as fallback_error:
-            logger.error(
-                f"Fallback streaming also failed for file {file.id} "
-                f"(storagePath={file.storage_path}): {fallback_error}",
-                exc_info=True,
+            url = await storage.get_download_url(file.storage_path, expires_in=300)
+        except Exception as e:
+            logger.warning(
+                f"Could not sign a download URL for file {file.id}, "
+                f"streaming it instead: {e!r}"
             )
-            raise
+            url = None
+        # An /api/ path means the backend cannot sign URLs, so stream instead.
+        if url and not url.startswith("/api/"):
+            return fastapi.responses.RedirectResponse(url=url, status_code=302)
+
+    content = await _read_file_content(storage, file)
+    return _create_streaming_response(content, file, inline=inline)
 
 
-class UploadFileResponse(BaseModel):
+class WorkspaceFileUploadResponse(BaseModel):
     file_id: str
     name: str
     path: str
@@ -160,7 +193,7 @@ class WorkspaceFileItem(BaseModel):
     origin: Literal["uploaded", "generated"]
     created_at: str
     # Hired expert whose conversation the file lives in; None for personal
-    # AutoPilot chats, Builder output and uploads outside a chat.
+    # Otto chats, Builder output and uploads outside a chat.
     expert_id: str | None = None
 
 
@@ -221,6 +254,7 @@ async def download_file(
 
 @router.get(
     "/files/{file_id}/preview",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Preview file by ID",
     operation_id="getWorkspaceFilePreview",
 )
@@ -280,7 +314,7 @@ async def delete_workspace_file(
     operation_id="renameWorkspaceFile",
     responses={
         404: {"description": "File not found"},
-        409: {"description": "A file with this name already exists here"},
+        409: {"description": "File name conflict or skill capacity reached"},
     },
 )
 async def rename_workspace_file_route(
@@ -298,6 +332,8 @@ async def rename_workspace_file_route(
         raise fastapi.HTTPException(
             status_code=409, detail="A file with this name already exists here"
         )
+    except SkillLimitError as exc:
+        raise fastapi.HTTPException(status_code=409, detail=str(exc))
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
@@ -306,6 +342,7 @@ async def rename_workspace_file_route(
 
 @router.post(
     "/files/upload",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Upload file to workspace",
     operation_id="uploadWorkspaceFile",
 )
@@ -314,7 +351,7 @@ async def upload_file(
     file: UploadFile,
     session_id: str | None = Query(default=None),
     overwrite: bool = Query(default=False),
-) -> UploadFileResponse:
+) -> WorkspaceFileUploadResponse:
     """
     Upload a file to the user's workspace.
 
@@ -357,6 +394,11 @@ async def upload_file(
         raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
     except VirusScanError as e:
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
+    except OSError as e:
+        logger.exception("Failed to store uploaded workspace file")
+        raise fastapi.HTTPException(
+            status_code=500, detail="Unable to store file. Please try again."
+        ) from e
     except ValueError as e:
         # write_file raises ValueError for path-conflict, size-limit, and
         # storage-quota cases; map each to its correct HTTP status.
@@ -389,7 +431,7 @@ async def upload_file(
             ),
         )
 
-    return UploadFileResponse(
+    return WorkspaceFileUploadResponse(
         file_id=workspace_file.id,
         name=workspace_file.name,
         path=workspace_file.path,
@@ -505,8 +547,17 @@ async def list_workspace_files(
         default=None,
         min_length=1,
         description=(
-            "Only return files from this hired expert's conversations. "
-            "Cannot be combined with session_id, folder_id or root_only."
+            "Only return files from this hired expert's own conversations. "
+            "Combines with folder_id, root_only and include_user_files; "
+            "cannot be combined with session_id."
+        ),
+    ),
+    include_user_files: bool = Query(
+        default=False,
+        description=(
+            "With expert_id, also return the user's own files — everything "
+            "outside /sessions/, /experts/ and /skills/ — which the expert "
+            "may read but which are not its own. Requires expert_id."
         ),
     ),
 ) -> ListFilesResponse:
@@ -525,9 +576,17 @@ async def list_workspace_files(
     ``root_only`` likewise conflict; passing conflicting filters returns a 400
     rather than silently yielding an empty list.
 
-    ``expert_id`` narrows the listing to files from that hired expert's own
-    conversations. It excludes the other axes for the same reason. An expert
-    the caller does not own (or no longer has) yields an empty list.
+    ``expert_id`` narrows the listing to that hired expert's own
+    conversations. It conflicts with ``session_id`` — both name which
+    conversations to show — but composes with the folder filters, which select
+    across the whole workspace. An expert the caller does not own (or no
+    longer has) yields an empty list.
+
+    ``include_user_files`` widens an ``expert_id`` listing with the user's own
+    files, which an expert may read but which are nobody's conversation. It is
+    opt-in so that a view already filtered to one expert keeps showing that
+    expert's files and nothing else; the composer's picker sends it when its
+    "only this expert" filter is switched off.
     """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
@@ -549,12 +608,17 @@ async def list_workspace_files(
             status_code=400,
             detail="folder_id and root_only are mutually exclusive",
         )
-    if expert_id is not None and (
-        session_id is not None or folder_id is not None or root_only
-    ):
+    if expert_id is not None and session_id is not None:
         raise fastapi.HTTPException(
             status_code=400,
-            detail="expert_id cannot be combined with session_id, folder_id or root_only",
+            detail="expert_id cannot be combined with session_id",
+        )
+    if include_user_files and expert_id is None:
+        # Without an expert there is no scope to widen: an unscoped listing
+        # already spans the whole workspace, so this could only mislead.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="include_user_files requires expert_id",
         )
 
     workspace = await get_or_create_workspace(user_id)
@@ -588,12 +652,15 @@ async def list_workspace_files(
         root_only=root_only,
     )
     if expert_id is not None:
-        # Fails closed: an unowned or archived expert resolves to no sessions,
-        # and an empty prefix list matches nothing.
+        # Fails closed: an unowned or archived expert resolves to no sessions
+        # and no user-file grant, so every branch of the filter matches nothing.
         scope = await resolve_expert_workspace_scope(user_id, expert_id)
         list_kwargs["allowed_path_prefixes"] = [
             session_path_prefix(sid) for sid in scope.session_ids
         ]
+        list_kwargs["include_user_files"] = (
+            include_user_files and scope.reads_user_files
+        )
     files = await manager.list_files(**list_kwargs)
     has_more = len(files) > limit
     page = files[:limit]

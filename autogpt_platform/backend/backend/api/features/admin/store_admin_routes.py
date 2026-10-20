@@ -187,6 +187,31 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     return await skill_submission_db.list_pending_skill_submissions()
 
 
+@router.get(
+    "/skills/submissions/{skill_listing_version_id}/files/{path:path}",
+    summary="Admin Read Skill Submission File",
+    tags=["store", "admin"],
+    response_class=fastapi.responses.PlainTextResponse,
+    responses={
+        404: {"description": "File not found"},
+        413: {"description": "File is too large to view"},
+        415: {"description": "File is not text"},
+    },
+    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
+)
+async def read_skill_submission_file(
+    skill_listing_version_id: str,
+    path: str,
+) -> str:
+    """One submitted file's text, so a reviewer reads a script before approving.
+
+    The version is addressed directly rather than through its listing: a first
+    submission has no approved version for a slug to resolve to, and this
+    router's admin check is what grants the pending read.
+    """
+    return await skill_routes.read_package_file(skill_listing_version_id, path)
+
+
 @router.post(
     "/skills/submissions/{skill_listing_version_id}/review",
     summary="Review Skill Submission",

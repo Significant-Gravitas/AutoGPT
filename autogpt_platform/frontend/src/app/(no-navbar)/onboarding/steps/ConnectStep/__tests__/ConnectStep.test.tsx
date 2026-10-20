@@ -6,14 +6,23 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useOnboardingWizardStore } from "../../../store";
 import { ConnectStep } from "../ConnectStep";
-import { hasLinkedSubscription, linkedModelsSentence } from "../helpers";
+import {
+  hasLinkedSubscription,
+  linkedModelsSentence,
+  linkedSubscriptionName,
+} from "../helpers";
 
 const connect = vi.fn();
 let onConnected: (() => void) | undefined;
@@ -27,10 +36,33 @@ vi.mock(
   }),
 );
 
+vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => {
+  interface Props {
+    provider: string;
+    providerName: string;
+    onSuccess: () => void;
+  }
+
+  function MockDeviceAuthConnectButton({
+    provider,
+    providerName,
+    onSuccess,
+  }: Props) {
+    return (
+      <button data-provider={provider} onClick={onSuccess}>
+        Connect {providerName}
+      </button>
+    );
+  }
+
+  return { DeviceAuthConnectButton: MockDeviceAuthConnectButton };
+});
+
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
     provider_family: "autogpt",
+    auth_provider: "platform",
     display_name: "Self-hosted chat",
     auth_method: "deployment",
     credential_id: null,
@@ -44,13 +76,14 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
     lock_reason: null,
     unlock_href: null,
     ...over,
-  } as AIConnectionOffer;
+  };
 }
 
 function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return offer({
     offer_id: "codex:cred-1",
     provider_family: "openai",
+    auth_provider: "codex",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
     credential_id: "cred-1",
@@ -82,6 +115,21 @@ function chatgptTiers(): ProviderTiers {
       { tier: "advanced", label: "Advanced", display_model: "GPT-5.6 Sol" },
     ],
   } as ProviderTiers;
+}
+
+function microsoftCopilot(
+  over: Partial<AIConnectionOffer> = {},
+): AIConnectionOffer {
+  return offer({
+    offer_id: "microsoft_365_copilot:cred-msft",
+    provider_family: "microsoft",
+    auth_provider: "microsoft_365_copilot",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "device_code",
+    credential_id: "cred-msft",
+    is_default: false,
+    ...over,
+  });
 }
 
 function mockOffers(
@@ -185,6 +233,111 @@ describe("ConnectStep", () => {
     expect(screen.queryByRole("button", { name: /ChatGPT/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
   });
+
+  it("opens Microsoft device sign-in from its logo card", async () => {
+    mockOffers([offer()]);
+    render(<ConnectStep />);
+
+    const card = await screen.findByRole("button", {
+      name: "Microsoft 365 Copilot",
+    });
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/microsoft.webp",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.queryByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
+    ).toBeNull();
+    await userEvent.click(card);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("button", {
+        name: /Connect Microsoft 365 Copilot/,
+      }),
+    ).toBeDefined();
+    expect(
+      within(dialog).getByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
+    ).toBeDefined();
+  });
+
+  it("refreshes Microsoft connection status without advancing the wizard", async () => {
+    mockOffers([offer()]);
+    render(
+      <>
+        <QueryClientProbe />
+        <ConnectStep />
+      </>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Microsoft 365 Copilot" }),
+    );
+    await waitFor(() =>
+      expect(
+        queryClient?.getQueryState(getGetV2ListChatConnectionsQueryKey())
+          ?.fetchStatus,
+      ).toBe("idle"),
+    );
+    mockOffers([offer(), microsoftCopilot()]);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+    );
+
+    expect(
+      await screen.findByText(/Your Microsoft 365 Copilot is connected/),
+    ).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
+    expect(screen.getByRole("button", { name: /ChatGPT/ })).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+    ).toBeNull();
+  });
+
+  it("keeps ChatGPT available when only Microsoft is linked", async () => {
+    mockOffers([offer(), microsoftCopilot()]);
+    render(<ConnectStep />);
+
+    expect(
+      await screen.findByText(/Your Microsoft 365 Copilot is connected/),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /ChatGPT/ })).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeNull();
+    expect(screen.getByText(/does not run AutoGPT tools/)).toBeDefined();
+  });
+
+  it("keeps Microsoft available when only ChatGPT is linked", async () => {
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectStep />);
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeDefined();
+  });
+
+  it("shows both connected providers without offering either sign-in", async () => {
+    mockOffers([offer(), chatgpt(), microsoftCopilot()]);
+    render(<ConnectStep />);
+
+    expect(
+      await screen.findByText(/Your Microsoft 365 Copilot is connected/),
+    ).toBeDefined();
+    expect(screen.getAllByText("Connected")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /ChatGPT/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+    ).toBeNull();
+  });
 });
 
 describe("ConnectStep helpers", () => {
@@ -193,6 +346,9 @@ describe("ConnectStep helpers", () => {
     // an API key in a file -- which is what this step offers a way around.
     expect(hasLinkedSubscription([offer()])).toBe(false);
     expect(hasLinkedSubscription([offer(), chatgpt()])).toBe(true);
+    expect(linkedSubscriptionName([offer(), microsoftCopilot()])).toBe(
+      "Microsoft 365 Copilot",
+    );
   });
 
   it("names the models from the catalog rather than hardcoding them", () => {

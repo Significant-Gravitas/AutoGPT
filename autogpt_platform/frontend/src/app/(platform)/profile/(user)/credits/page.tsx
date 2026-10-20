@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -41,7 +42,7 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">AutoPilot Usage & Storage</h3>
+      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
       <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
         {usage.daily && (
           <UsageBar
@@ -60,7 +61,7 @@ function CoPilotUsageSection() {
         <StorageBar />
       </div>
       <Button className="w-full" onClick={() => router.push("/copilot")}>
-        Open AutoPilot
+        Open Otto
       </Button>
     </div>
   );
@@ -87,6 +88,8 @@ export default function CreditsPage() {
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
+  const checkoutRedirect = useCheckoutRedirect();
+  const [isRequestingTopUp, setIsRequestingTopUp] = useState(false);
 
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [topUpTransactions, setTopUpTransactions] = useState<
@@ -132,10 +135,15 @@ export default function CreditsPage() {
 
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isRequestingTopUp || checkoutRedirect.isRedirecting) return;
     const form = e.currentTarget;
     const amount =
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
-    requestTopUp(amount).catch(toastOnFail("request top-up"));
+    setIsRequestingTopUp(true);
+    requestTopUp(amount)
+      .then(() => checkoutRedirect.markRedirecting())
+      .catch(toastOnFail("request top-up"))
+      .finally(() => setIsRequestingTopUp(false));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -202,7 +210,11 @@ export default function CreditsPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
+            >
               Top-up
             </Button>
           </form>
@@ -259,9 +271,9 @@ export default function CreditsPage() {
 
             <p className="text-sm">
               <b>Note:</b> For your safety, we will top up your balance{" "}
-              <b>at most once</b> per agent execution to prevent unintended
+              <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
-              amount is sufficient for your agent&apos;s operation.
+              amount is sufficient for your workflow&apos;s operation.
             </p>
 
             {autoTopUpConfig?.amount ? (
@@ -288,7 +300,7 @@ export default function CreditsPage() {
             )}
           </form>
 
-          {/* AutoPilot Usage Limits */}
+          {/* Expert Usage Limits */}
           <CoPilotUsageSection />
         </div>
 

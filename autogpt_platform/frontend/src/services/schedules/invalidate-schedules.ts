@@ -8,7 +8,7 @@ import type { QueryClient } from "@tanstack/react-query";
 // Schedule mutations (create / edit / delete) need to invalidate every
 // list query that might cache the affected row.  There are four:
 //   - user-wide /api/v1/schedules — unified `/library/followups` page
-//     AND the "Autopilot library" briefing pill count.
+//     AND the "Otto library" briefing pill count.
 //   - per-graph /api/v1/graphs/{id}/schedules — agent detail page
 //     sidebar + selected-schedule view.
 //   - copilot followups list — same scheduler primitive, separate

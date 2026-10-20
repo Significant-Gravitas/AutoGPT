@@ -43,5 +43,5 @@ export function continueLabel(hiredCount: number): string {
 
 export function raiseNote(role: string | null | undefined): string | null {
   if (!role) return null;
-  return `Nobody on the roster covers ${role} yet — you can raise your own ${role} once you're set up.`;
+  return `Nobody on the roster covers ${role} yet — you can create your own ${role} once you're set up.`;
 }

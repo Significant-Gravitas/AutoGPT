@@ -11,10 +11,11 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import active_turns, turn_queue
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -245,6 +246,23 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_propagates_dry_run_to_sub(self, mock_queue, mock_waiter, mock_model):
         """Fresh sub-session must inherit the parent's dry_run flag."""
         parent = _session("alice")
@@ -448,6 +466,23 @@ class TestRunSubSession:
         )
         mock_waiter.assert_awaited_once()
         assert mock_waiter.await_args.kwargs["permissions"] is perms
+
+    @pytest.mark.asyncio
+    async def test_sub_message_carries_parent_provenance(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A plain Otto parent stamps its session with no expert, so the
+        sub's thread can link back and label the sender as Otto."""
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", session_id="s-parent"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_waiter.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": None,
+        }
 
     @pytest.mark.asyncio
     async def test_wait_for_result_zero_returns_running(
@@ -772,6 +807,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "already done"
         assistant.tool_calls = None
@@ -803,16 +839,23 @@ class TestGetSubSessionResult:
         assert r.response == "already done"
         mock_waiter.result_mock.assert_not_awaited()
 
+    @pytest.mark.parametrize(
+        "prior_metadata",
+        [None, {turn_queue._REFUSED_KEY: True}],
+        ids=["stale-result", "stale-refusal"],
+    )
     @pytest.mark.asyncio
     async def test_resume_turn_in_flight_does_not_return_stale(
-        self, monkeypatch, mock_waiter
+        self, monkeypatch, mock_waiter, prior_metadata
     ):
         """Regression for sentry r3105409601: on a resumed session whose
         stream_registry status is 'running' (new turn is mid-flight) the
-        tool must NOT short-circuit to the prior turn's terminal message.
-        It subscribes to the stream like a normal running-session poll."""
-        # DB state reflects the PREVIOUS turn's terminal assistant message.
+        tool must NOT short-circuit to the prior turn's terminal message,
+        nor to a refusal that closed an earlier queued turn. It subscribes
+        to the stream like a normal running-session poll."""
+        # DB state reflects the PREVIOUS turn's last assistant message.
         prior = MagicMock()
+        prior.metadata = prior_metadata
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
@@ -849,6 +892,40 @@ class TestGetSubSessionResult:
         assert r.status == "running"
         # And crucially NOT the stale content.
         assert r.response is None or r.response == ""
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_ended_without_a_reply_is_not_called_cancelled(
+        self, mock_waiter
+    ):
+        """Idle with the user's message last and no stream left: only a cancel
+        that wrote its note says "cancelled"; this one reaches the waiter."""
+        asked = MagicMock(metadata=None, role="user", content="do it", tool_calls=None)
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[asked], chat_status="idle"
+        )
+        sub.metadata.delegated_by_session_id = None
+        mock_waiter.result_mock.return_value = ("failed", SessionResult())
+
+        with (
+            patch(
+                "backend.copilot.tools.get_sub_session_result.get_chat_session",
+                AsyncMock(return_value=sub),
+            ),
+            patch(
+                "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            r = await GetSubSessionResultTool()._execute(
+                user_id="alice",
+                session=_session("alice"),
+                sub_session_id="inner-12",
+                wait_if_running=30,
+            )
+
+        mock_waiter.result_mock.assert_awaited_once()
+        assert isinstance(r, SubSessionStatusResponse)
+        assert turn_queue.TURN_CANCELLED not in (r.message or "")
 
     @pytest.mark.asyncio
     async def test_cancel_publishes_cancel_event(
@@ -890,6 +967,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
         assistant.tool_calls = None  # no write calls on the last message
@@ -944,7 +1022,7 @@ class TestGetSubSessionResult:
 class TestHollowResponseRepro:
     """Deterministic repro for SECRT-2377.
 
-    A sub-AutoPilot that does its real work into workspace files and then
+    A sub-Otto that does its real work into workspace files and then
     returns a short "delivered in three docs, what's next?" message finishes
     ``COMPLETED`` with a hollow body. ``response_from_outcome`` surfaces only
     ``response_text`` plus a raw tool-call log to the parent — it carries no
@@ -1073,6 +1151,31 @@ class TestHollowResponseRepro:
 # ---------------------------------------------------------------------------
 
 
+def test_a_sub_refused_at_the_inflight_cap_is_told_to_wait(monkeypatch):
+    monkeypatch.setattr(active_turns, "get_inflight_turn_limit", lambda: 15)
+    r = response_from_outcome(
+        outcome="rejected_concurrent_turn_cap",
+        result=SessionResult(),
+        inner_session_id="inner-1",
+        parent_session_id="parent-1",
+        elapsed=1.0,
+    )
+    assert r.message is not None
+    assert "already has 15 tasks running or waiting to start" in r.message
+
+
+def test_a_sub_waiting_for_a_slot_is_reported_queued_with_its_handle():
+    r = response_from_outcome(
+        outcome="queued_for_slot",
+        result=SessionResult(queued=True),
+        inner_session_id="inner-1",
+        parent_session_id="parent-1",
+        elapsed=1.0,
+    )
+    assert (r.status, r.sub_session_id) == ("queued", "inner-1")
+    assert "starts on its own when one frees" in (r.message or "")
+
+
 class TestActorParameter:
     def test_default_actor_is_sub_autopilot(self):
         r = response_from_outcome(
@@ -1082,7 +1185,7 @@ class TestActorParameter:
             parent_session_id="parent-1",
             elapsed=1.0,
         )
-        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+        assert r.message is not None and r.message.startswith("Subtask completed")
 
     @pytest.mark.parametrize(
         "outcome,expected_prefix",
@@ -1105,25 +1208,30 @@ class TestActorParameter:
         )
         assert r.message is not None and r.message.startswith(expected_prefix)
 
-    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
-        """When the caller already passed the delegate's name as ``actor``,
-        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
-        find nothing to substitute — the message was already built correctly
-        by response_from_outcome, not patched up afterwards."""
+    @pytest.mark.parametrize(
+        "expert_name", ["Bea", "Subtask Reviewer", "Senior Subtask Analyst", "Subtask"]
+    )
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self, expert_name):
+        """Attaching metadata preserves the message even when the expert's
+        name contains the default actor label."""
         response = response_from_outcome(
             outcome="completed",
             result=SessionResult(),
             inner_session_id="inner-1",
             parent_session_id="parent-1",
             elapsed=1.0,
-            actor="Bea",
+            actor=expert_name,
         )
         expert = DelegatedExpertInfo(
-            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+            id="expert-b",
+            name=expert_name,
+            role="Ops lead",
+            avatar_url=None,
+            color="violet",
         )
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
-        assert "Sub-AutoPilot" not in (result.message or "")
+        assert result.expert == expert
 
 
 class TestSpawnEnvelopeArguments:

@@ -263,6 +263,11 @@ class LibraryAgent(pydantic.BaseModel):
             raise ValueError("Associated Agent record is required.")
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+        if agent.AgentGraph.userId != agent.userId:
+            # Someone else's agent in this user's library (e.g. from the
+            # marketplace): its input defaults mustn't carry the owner's
+            # picked files or the credentials embedded in them.
+            graph.clear_auto_credentials()
 
         created_at = agent.createdAt
 
@@ -302,7 +307,9 @@ class LibraryAgent(pydantic.BaseModel):
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:

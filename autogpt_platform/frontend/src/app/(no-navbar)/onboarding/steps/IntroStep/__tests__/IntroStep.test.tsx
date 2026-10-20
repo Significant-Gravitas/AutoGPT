@@ -16,10 +16,20 @@ describe("IntroStep", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  it("shows the AutoPilot slide", () => {
+  it("shows the Otto slide", () => {
     render(<IntroStep slide="autopilot" />);
     expect(
       screen.getByRole("heading", { name: INTRO_SLIDES.autopilot.title }),
     ).toBeDefined();
+  });
+
+  it("shows the three approved identities without invented task states", () => {
+    render(<IntroStep slide="team" />);
+    expect(
+      screen.getByRole("img", { name: "Otto, your personal Head of AI" }),
+    ).toBeDefined();
+    expect(screen.getByRole("img", { name: "Maria, AI Expert" })).toBeDefined();
+    expect(screen.getByRole("img", { name: "Mina, AI Expert" })).toBeDefined();
+    expect(screen.queryAllByTestId("status-dot")).toHaveLength(0);
   });
 });

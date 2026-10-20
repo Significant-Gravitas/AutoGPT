@@ -24,8 +24,8 @@ export function MobileWarning() {
         <div className="flex flex-col items-center gap-4 px-1 py-2 text-center">
           <Icon icon={SmartPhone01Icon} className="h-10 w-10 text-amber-600" />
           <Text variant="body" className="text-zinc-700">
-            The agent builder relies on canvas interactions that don&apos;t work
-            well on this screen size. For the best experience, switch to a
+            The workflow builder relies on canvas interactions that don&apos;t
+            work well on this screen size. For the best experience, switch to a
             desktop browser.
           </Text>
           <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">

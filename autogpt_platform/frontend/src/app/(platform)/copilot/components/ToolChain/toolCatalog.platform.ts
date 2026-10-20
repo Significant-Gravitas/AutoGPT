@@ -47,6 +47,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Ran command",
     subject: (input) => quoted(input, "command", 60),
   },
+  start_desktop: {
+    category: "browser",
+    running: "Starting desktop",
+    done: "Started desktop",
+  },
   list_workspace_files: {
     category: "file-list",
     running: "Listing workspace files",
@@ -101,8 +106,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   list_agent_triggers: {
     category: "trigger",
-    running: "Listing agent triggers",
-    done: "Listed agent triggers",
+    running: "Listing workflow triggers",
+    done: "Listed workflow triggers",
   },
   setup_agent_webhook_trigger: {
     category: "trigger",
@@ -131,10 +136,39 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     subject: (_input, context) =>
       quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
+  find_capability: {
+    category: "block",
+    running: "Searching capabilities for",
+    done: "Searched capabilities for",
+    subject: (input) => quoted(input, "query"),
+  },
+  describe_capability: {
+    category: "block",
+    running: "Reading capability",
+    done: "Read capability",
+    subject: (input) => quotedName(strField(input, "id")),
+  },
+  run_capability: {
+    category: "block",
+    running: "Running",
+    done: "Ran",
+    subject: (input, context) =>
+      quotedName(
+        getBlockDisplayName(context.displayName, context.output) ??
+          strField(input, "id"),
+      ),
+  },
+  resume_capability: {
+    category: "block",
+    running: "Resuming",
+    done: "Resumed",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
+  },
   schedule_agent: {
     category: "agent",
-    running: "Scheduling agent",
-    done: "Scheduled agent",
+    running: "Scheduling workflow",
+    done: "Scheduled workflow",
   },
   continue_run_block: {
     category: "block",

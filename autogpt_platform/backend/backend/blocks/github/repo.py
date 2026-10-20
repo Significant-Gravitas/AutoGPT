@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -88,6 +89,7 @@ class GithubListTagsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -215,6 +217,7 @@ class GithubListDiscussionsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -435,6 +438,7 @@ class GithubListReleasesBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -565,6 +569,7 @@ class GithubCreateRepositoryBlock(Block):
                     "https://github.com/owner/test-repo.git",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -678,6 +683,7 @@ class GithubListStargazersBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -774,6 +780,7 @@ class GithubGetRepositoryInfoBlock(Block):
                     "open_issues_count": 3,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -848,6 +855,7 @@ class GithubForkRepositoryBlock(Block):
                     "myuser/repo",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -913,6 +921,7 @@ class GithubStarRepositoryBlock(Block):
             test_mock={
                 "star_repo": lambda *args, **kwargs: "Repository starred successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

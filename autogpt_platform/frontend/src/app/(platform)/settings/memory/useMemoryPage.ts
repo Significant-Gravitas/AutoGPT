@@ -16,10 +16,19 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { getActiveExperts, getScopeName, RECENT_FACTS_LIMIT } from "./helpers";
+import {
+  getActiveExperts,
+  getScopeName,
+  readExpertScopeFromUrl,
+  RECENT_FACTS_LIMIT,
+} from "./helpers";
 
-export function useMemoryPage() {
-  const [scopeExpertID, setScopeExpertID] = useState<string | null>(null);
+export function useMemoryPage(memoryEnabled = true) {
+  // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
+  // the link opens on that expert. Read once — the dropdown owns it after.
+  const [scopeExpertID, setScopeExpertID] = useState<string | null>(
+    readExpertScopeFromUrl,
+  );
   const queryClient = useQueryClient();
 
   // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
@@ -31,7 +40,7 @@ export function useMemoryPage() {
   );
 
   // A selected expert can disappear (fired in another tab, roster changed) —
-  // fall back to AutoPilot instead of driving queries with a dead scope id.
+  // fall back to Otto instead of driving queries with a dead scope id.
   useEffect(() => {
     if (!scopeExpertID || !expertsSettled) return;
     if (!experts.some((expert) => expert.id === scopeExpertID)) {
@@ -41,22 +50,22 @@ export function useMemoryPage() {
 
   const accountFacts = useListMyMemoryFacts(
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID === null } },
+    { query: { enabled: memoryEnabled && scopeExpertID === null } },
   );
   const expertFacts = useListMyExpertMemoryFacts(
     scopeExpertID ?? "",
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID !== null } },
+    { query: { enabled: memoryEnabled && scopeExpertID !== null } },
   );
   const factsQuery = scopeExpertID === null ? accountFacts : expertFacts;
   const facts =
     factsQuery.data?.status === 200 ? factsQuery.data.data.items : [];
 
   const accountOverview = useGetMyMemoryOverview({
-    query: { enabled: scopeExpertID === null },
+    query: { enabled: memoryEnabled && scopeExpertID === null },
   });
   const expertOverview = useGetMyExpertMemoryOverview(scopeExpertID ?? "", {
-    query: { enabled: scopeExpertID !== null },
+    query: { enabled: memoryEnabled && scopeExpertID !== null },
   });
   const overviewQuery =
     scopeExpertID === null ? accountOverview : expertOverview;

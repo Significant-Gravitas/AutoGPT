@@ -113,7 +113,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     // The regression: with the flag off the intro query is disabled, so it
     // never answers — and "no answer yet" was read as "still generating".
     // isAwaitingGreeting stayed true forever and EmptySession hides the
-    // composer and SuggestionThemes behind it, so the default
+    // composer behind it, so the default
     // flag-off copilot rendered a hero with no way to type.
     flags.current = {};
 
@@ -198,7 +198,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
 
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBe("1");
-    // The invitation AutoPilot just issued: the first voice message in the
+    // The invitation Otto just issued: the first voice message in the
     // composer is the dump this user skipped, and is reported as such.
     expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBe("1");
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });

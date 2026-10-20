@@ -158,6 +158,33 @@ describe("getPendingQuestions", () => {
 });
 
 describe("buildAnswersMessage", () => {
+  it("renders a multi-select answer as a bullet list", () => {
+    const message = buildAnswersMessage(
+      [
+        {
+          question: "What areas should they own?",
+          keyword: "areas",
+          options: ["Research", "Outreach"],
+          allow_multiple: true,
+        },
+      ],
+      { areas: { selected: ["Research"], custom: " Outreach " } },
+    );
+
+    expect(message).toContain(
+      "> What areas should they own?\n\n- Research\n- Outreach",
+    );
+  });
+
+  it("leaves a one-pick multi-select answer inline", () => {
+    const message = buildAnswersMessage(
+      [{ question: "Which areas?", keyword: "areas", allow_multiple: true }],
+      { areas: { selected: ["Research"], custom: "" } },
+    );
+
+    expect(message).toContain("> Which areas?\n\nResearch\n\nPlease proceed.");
+  });
+
   it("quotes each question above its trimmed answer", () => {
     const message = buildAnswersMessage(
       [

@@ -65,6 +65,26 @@ cd ../backend
 prisma migrate dev --schema postgres/schema.prisma
 ```
 
+## Redis
+
+The platform uses Redis for caching, distributed locks, rate limits, and the streams that carry agent output to the browser.
+
+The Docker Compose stack runs its own Redis Cluster: three `redis:7` shards on ports `17000` to `17002`, joined by a one-shot `redis-init` service. `make start-core` starts it along with the other dependencies.
+
+### Using an external Redis cluster
+
+The backend connects with a cluster client only, so the deployment must have cluster mode enabled. A standalone server, with cluster mode disabled, does not work.
+
+The cluster also needs:
+
+- **Redis 7.0 or later, or a compatible engine such as Valkey.** The backend uses sharded pub/sub (`SPUBLISH`, `SSUBSCRIBE`), which Redis 7.0 introduced, along with Streams and Lua scripts. It uses no Redis modules.
+- **Shard addresses the backend can reach.** With `REDIS_USE_ANNOUNCED_ADDRESS=true`, the backend connects to each shard at the address the cluster announces, so those addresses must resolve from where the backend runs. Without it, the backend connects to every shard at `REDIS_HOST` and keeps only the announced port, which works only when every shard is reachable on that one host.
+- **A private network between the backend and every shard.** The backend connects without TLS and does not send a username. It sends `REDIS_PASSWORD` when one is set, and a cluster without a password works too. Nothing on the connection is encrypted, so don't route it over a network you don't trust.
+
+Point `REDIS_HOST` and `REDIS_PORT` at any node of the cluster, and set `REDIS_PASSWORD` if the cluster has one.
+
+In the Compose stack, `REDIS_HOST`, `REDIS_PORT` and `REDIS_USE_ANNOUNCED_ADDRESS` are set in the `x-backend-env` block of `autogpt_platform/docker-compose.platform.yml`, which takes precedence over `backend/.env`, so change them there. `REDIS_PASSWORD` is read from `backend/.env`. The bundled shards still start, because the backend services wait for `redis-0` to be healthy.
+
 ## AutoGPT Agent Server Advanced set up
 
 This guide walks you through a dockerized set up, with an external DB (postgres)

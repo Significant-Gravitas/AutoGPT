@@ -10,9 +10,9 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CategoryFilter } from "../../../components/CategoryFilter/CategoryFilter";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
+import { SkillTopicChips } from "../../../components/SkillTopicChips/SkillTopicChips";
 import { useSkillsBrowsePage } from "./useSkillsBrowsePage";
 
 const GRID_CLASS = "grid grid-cols-1 gap-5 md:grid-cols-2";
@@ -52,10 +52,10 @@ export function SkillsBrowsePage() {
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
             <Icon icon={BookOpen01Icon} size={30} aria-hidden />
-            AutoPilot Skills
+            Skills
           </h1>
           <p className="mt-2 text-base text-zinc-500">
-            Playbooks your AutoPilot follows. Install one and it knows how.
+            Playbooks your experts follow. Teach them your way of working.
           </p>
         </div>
         <SearchBar
@@ -67,7 +67,13 @@ export function SkillsBrowsePage() {
         />
       </div>
 
-      <CategoryFilter selected={category} onSelect={setCategory} />
+      <div className="mb-8">
+        <SkillTopicChips
+          selected={category}
+          onSelect={setCategory}
+          size="default"
+        />
+      </div>
 
       {!ready || isLoading ? (
         <div

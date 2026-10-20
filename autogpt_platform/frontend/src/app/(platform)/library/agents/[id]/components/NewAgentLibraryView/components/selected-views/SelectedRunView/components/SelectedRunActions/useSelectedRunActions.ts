@@ -12,6 +12,7 @@ import {
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -97,6 +98,9 @@ export function useSelectedRunActions({
       });
 
       const newRunId = okData(res)?.id;
+      if (newRunId) {
+        trackAgentRunGoal({ id: run.graph_id, name: agent?.name }, "rerun");
+      }
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),

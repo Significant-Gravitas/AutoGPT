@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -95,7 +96,9 @@ class StagehandObserveBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -123,6 +126,7 @@ class StagehandObserveBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandObserveBlock.Input,
             output_schema=StagehandObserveBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -178,7 +182,9 @@ class StagehandActBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -214,6 +220,7 @@ class StagehandActBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandActBlock.Input,
             output_schema=StagehandActBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -274,7 +281,9 @@ class StagehandExtractBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -297,6 +306,7 @@ class StagehandExtractBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandExtractBlock.Input,
             output_schema=StagehandExtractBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

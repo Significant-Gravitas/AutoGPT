@@ -1,5 +1,10 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
+});
 import { Flag, useGetFlag } from "../use-get-flag";
 
 // LD is enabled but has not answered for any key — the exact window
@@ -21,7 +26,6 @@ const DREAM_GRAPHITI_FLAGS = [
   Flag.GRAPHITI_MEMORY,
   Flag.GRAPHITI_COMMUNITIES_ENABLED,
   Flag.DREAM_PASS_ENABLED,
-  Flag.DREAM_PASS_WEB_FACT_CHECK,
   Flag.DREAM_PASS_INVALIDATE_ENTITY,
 ] as const;
 

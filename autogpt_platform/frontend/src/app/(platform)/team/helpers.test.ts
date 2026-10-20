@@ -7,6 +7,7 @@ import {
   filterExpertSchedules,
   filterExpertWorkflows,
   getAssignToastTitle,
+  getExpertCover,
   getExpertRosterStatus,
   groupExpertsByPods,
 } from "./helpers";
@@ -256,5 +257,46 @@ describe("filterExpertSchedules", () => {
     expect(
       filterExpertSchedules(all, "", "later", now).map((s) => s.id),
     ).toEqual(["s3", "s4"]);
+  });
+});
+
+describe("getExpertCover", () => {
+  test("covers take the identity's own family, and General for a custom upload without a category", () => {
+    expect(
+      getExpertCover({
+        role: "Marketing",
+        color: "",
+        avatar_url: "/experts/maria.svg",
+        categories: ["marketing", "content"],
+        id: "expert-1",
+      }),
+    ).toEqual({ art: null, color: "#C47F5C" });
+    expect(
+      getExpertCover({
+        role: "Marketing",
+        color: "",
+        avatar_url: "/experts/clay/v2/jules.png",
+        categories: ["content", "marketing"],
+        id: "expert-2",
+      }),
+    ).toEqual({ art: null, color: "#C47F5C" });
+    expect(
+      getExpertCover({
+        role: "Marketing writer",
+        color: "",
+        avatar_url: "/uploads/custom.png",
+        categories: [],
+        id: "expert-3",
+      }),
+    ).toEqual({ art: null, color: "#B5ADA0" });
+    expect(
+      getExpertCover({
+        role: "Anything",
+        color: "",
+        avatar_url: "/uploads/custom.png",
+        categories: ["finance"],
+        id: "expert-4",
+      }),
+    ).toEqual({ art: null, color: "#A5B09A" });
   });
 });

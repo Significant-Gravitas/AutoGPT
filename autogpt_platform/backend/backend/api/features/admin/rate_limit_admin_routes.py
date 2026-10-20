@@ -1,5 +1,6 @@
 """Admin endpoints for checking and resetting user CoPilot rate limit usage."""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -11,6 +12,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     SubscriptionTier,
     get_global_rate_limits,
+    get_stripe_sweep_revert_warning,
     get_tier_multipliers,
     get_usage_status,
     get_user_tier,
@@ -46,6 +48,10 @@ class UserRateLimitResponse(BaseModel):
 class UserTierResponse(BaseModel):
     user_id: str
     tier: SubscriptionTier
+    # Set by POST /rate_limit/tier when the grant will not stick: the user has
+    # a Stripe customer without an active subscription, so the Stripe
+    # reconciliation sweep will revert the tier to NO_TIER on its next run.
+    warning: Optional[str] = None
 
 
 class SetUserTierRequest(BaseModel):
@@ -238,7 +244,25 @@ async def set_user_rate_limit_tier(
         logger.exception("Failed to set user tier")
         raise HTTPException(status_code=500, detail="Failed to set tier") from e
 
-    return UserTierResponse(user_id=request.user_id, tier=request.tier)
+    warning = await _sweep_revert_warning(request.user_id, request.tier)
+    return UserTierResponse(user_id=request.user_id, tier=request.tier, warning=warning)
+
+
+async def _sweep_revert_warning(user_id: str, tier: SubscriptionTier) -> Optional[str]:
+    """Best-effort: the tier is already written, so a Stripe or DB hiccup here
+    must not turn the response into a 500 or hold the admin for long."""
+    try:
+        return await asyncio.wait_for(
+            get_stripe_sweep_revert_warning(user_id, tier), timeout=5.0
+        )
+    except Exception:
+        logger.warning(
+            "Could not check whether the Stripe sweep will revert the tier grant"
+            " for user %s",
+            user_id,
+            exc_info=True,
+        )
+        return None
 
 
 class UserSearchResult(BaseModel):

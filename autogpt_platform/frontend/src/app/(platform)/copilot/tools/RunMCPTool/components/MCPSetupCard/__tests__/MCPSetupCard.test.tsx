@@ -30,6 +30,10 @@ vi.mock(
 // Mock the OAuth popup utility
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 // Mock the generated API functions
@@ -40,12 +44,33 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
 }));
 
+const mockGrant = vi.fn();
+let mockExpertGrants: { credential_id: string }[] = [];
+vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  grantExpertCredentials: (...args: unknown[]) => mockGrant(...args),
+  useListExpertCredentials: () => ({
+    data: mockExpertGrants,
+    isFetchedAfterMount: true,
+    isError: false,
+  }),
+  getListExpertCredentialsQueryKey: (id: string) => [
+    "experts",
+    id,
+    "credentials",
+  ],
+  getGetExpertQueryKey: (id: string) => ["experts", id],
+  getListExpertSetupItemsQueryKey: () => ["experts", "setup"],
+  getListExpertsQueryKey: () => ["experts"],
+  getListExpertIdentitiesQueryKey: () => ["experts", "identities"],
+}));
+
 // Mock the credentials list hook used for the on-mount live-cred re-sync.
 // Default: no stored creds → ``liveHasCred=false`` matches the persisted
 // ``has_all_credentials=false`` snapshot so the existing tests don't have
 // to thread a connected state through MSW.  ``setMockLiveCreds`` lets
 // individual tests override the live state to verify the refresh path.
 let mockLiveCreds: Array<{
+  id?: string;
   provider: string;
   host?: string | null;
   mcp_auth_scheme?: "basic" | "bearer" | null;
@@ -56,6 +81,7 @@ let mockLiveCredsFetched = true;
 let mockLiveCredsError = false;
 function setMockLiveCreds(
   next: Array<{
+    id?: string;
     provider: string;
     host?: string | null;
     mcp_auth_scheme?: "basic" | "bearer" | null;
@@ -127,6 +153,7 @@ describe("MCPSetupCard", () => {
     // `not.toHaveBeenCalled()` assertion silently depends on declaration order.
     vi.clearAllMocks();
     setMockLiveCreds([]);
+    mockExpertGrants = [];
     currentOnSend = mockOnSend;
   });
 
@@ -222,7 +249,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -234,7 +261,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
   });
 
   it("surfaces a rejected authorization response instead of offering a token", async () => {
@@ -292,12 +319,12 @@ describe("MCPSetupCard", () => {
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never);
 
@@ -342,7 +369,7 @@ describe("MCPSetupCard", () => {
     // First click: OAuth fails with 400 → shows manual token input
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -391,7 +418,7 @@ describe("MCPSetupCard", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -446,7 +473,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -497,7 +524,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -512,7 +539,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
@@ -531,7 +558,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -578,12 +605,85 @@ describe("MCPSetupCard", () => {
     // Drain the in-flight promise so React doesn't warn on unmount.
     resolveLogin?.({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     });
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
+  });
+
+  // #14532: the sign-in window has to be opened inside the tap, before the
+  // initiate request is awaited — iOS Safari discards the gesture context at
+  // the first async break and then blocks window.open() outright.
+  it("opens the sign-in window before the initiate await and hands it over", async () => {
+    const callOrder: string[] = [];
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockClear();
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn() },
+    } as never);
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+      async () => {
+        callOrder.push("initiate");
+        return {
+          status: 200,
+          data: { login_url: "https://login.example.com", state_token: "tok" },
+          headers: new Headers(),
+        } as never;
+      },
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+    // The ordering IS the fix — asserting only that it was called would pass
+    // on a version that called it after the await, which is the bug.
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://login.example.com",
+      expect.objectContaining({ preOpenedWindow: fakeWindow }),
+    );
+    expect(fakeWindow.close).not.toHaveBeenCalled();
+  });
+
+  it("closes the sign-in window when the server has no OAuth", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    // openOAuthPopup never runs on this path, so nothing else can reach the
+    // about:blank window it left behind.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
   });
 
   it("shows timeout-specific error message when OAuth popup times out", async () => {
@@ -700,7 +800,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -794,7 +894,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
@@ -829,7 +929,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -864,7 +964,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     // Never settles: pins the in-flight state.
@@ -901,7 +1001,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -1053,5 +1153,288 @@ describe("MCPSetupCard", () => {
         token: "Basic encoded-chain-value",
       });
     });
+  });
+
+  function makeExpertOutput(credentials: { id: string; title: string }[]) {
+    const output = makeSetupOutput();
+    output.setup_info.user_readiness.missing_credentials = {
+      credentials: {
+        id: "credentials",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP",
+        expert_grant: { expert_id: "expert-maria", credentials },
+      },
+    } as never;
+    return output;
+  }
+
+  it("offers Grant access when the account already has the server and grants on click", async () => {
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [
+        {
+          credential_id: "cred-existing",
+          provider: "mcp",
+          title: "x",
+          type: "oauth2",
+          service: "sentry",
+        },
+      ],
+      headers: new Headers(),
+    });
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    );
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-existing"],
+      }),
+    );
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+  });
+
+  it("offers Grant access even though the account's own credential list has the server", async () => {
+    setMockLiveCreds([
+      {
+        id: "cred-existing",
+        provider: "mcp",
+        host: "https://mcp.example.com/mcp",
+      },
+    ]);
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    ).toBeDefined();
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
+
+  it("shows Connected once the expert has been granted the account's credential for the server", () => {
+    setMockLiveCreds([
+      {
+        id: "cred-existing",
+        provider: "mcp",
+        host: "https://mcp.example.com/mcp",
+      },
+    ]);
+    mockExpertGrants = [{ credential_id: "cred-existing" }];
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Grant access/ })).toBeNull();
+  });
+
+  it("grants the credential an OAuth sign-in returns and retries only after the grant lands", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "auth-code", state: "st" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockResolvedValue({
+      id: "cred-oauth",
+      provider: "mcp",
+      type: "oauth2",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+    let resolveGrant: (value: unknown) => void = () => {};
+    mockGrant.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveGrant = resolve;
+      }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeExpertOutput([])} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-oauth"],
+      }),
+    );
+    expect(mockOnSend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveGrant({ status: 200, data: [], headers: new Headers() });
+    });
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledTimes(1));
+  });
+
+  it("grants only once when Grant access is clicked twice", async () => {
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [],
+      headers: new Headers(),
+    });
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    const grant = await screen.findByRole("button", { name: /Grant access/ });
+    fireEvent.click(grant);
+    fireEvent.click(grant);
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+    expect(mockGrant).toHaveBeenCalledTimes(1);
+    expect(mockOnSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers to retry granting a freshly connected credential when the grant fails", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-new",
+        provider: "mcp",
+        type: "oauth2",
+        title: "t",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+    mockGrant
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: 200, data: [], headers: new Headers() });
+
+    render(<MCPSetupCard output={makeExpertOutput([])} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "my-secret-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    expect(await screen.findByText(/could not grant/i)).toBeDefined();
+    expect(mockOnSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Grant access/ }));
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+    expect(mockGrant).toHaveBeenLastCalledWith("expert-maria", {
+      credential_ids: ["cred-new"],
+    });
+  });
+
+  it("grants a freshly connected credential to the expert", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { tools: [], server_url: "https://mcp.example.com/mcp" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-new",
+        provider: "mcp",
+        type: "oauth2",
+        title: "t",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [],
+      headers: new Headers(),
+    });
+
+    render(<MCPSetupCard output={makeExpertOutput([])} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "my-secret-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-new"],
+      }),
+    );
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+  });
+
+  it("keeps the connection and shows the failure when the grant fails", async () => {
+    mockGrant.mockRejectedValue(new Error("boom"));
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /could not grant/i,
+    );
+    expect(screen.getByRole("button", { name: /Grant access/ })).toBeDefined();
+    expect(mockOnSend).not.toHaveBeenCalled();
   });
 });

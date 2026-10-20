@@ -44,6 +44,19 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset(
     }
 )
 
+# Stored recordings are named ``brain-dump-{recording_id}.{ext}``. The
+# retention sweep finds them in the bucket by this name, so the two must
+# stay in step.
+RECORDING_FILENAME_PREFIX = "brain-dump-"
+AUDIO_FILE_EXTENSIONS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
+
 
 class UploadPartResponse(BaseModel):
     recording_id: str
@@ -100,7 +113,7 @@ class SuggestedPrompt(BaseModel):
 
 
 class RecommendedExpert(BaseModel):
-    """One roster template AutoPilot suggests hiring first.
+    """One roster template Otto suggests hiring first.
 
     ``template_id`` is always a live template — the model only ever picks
     ids off the roster it was shown, and anything else is dropped before
@@ -129,7 +142,7 @@ class RaiseSuggestion(BaseModel):
 
 
 class ExpertRecommendations(BaseModel):
-    """The team AutoPilot proposes after the dump.
+    """The team Otto proposes after the dump.
 
     ``source`` says where it came from: "llm" for a real read of the
     transcript, "fallback" for the deterministic role/pain-point mapping,

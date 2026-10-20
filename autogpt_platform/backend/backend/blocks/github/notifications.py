@@ -3,6 +3,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -120,6 +121,7 @@ class GithubListNotificationsBlock(Block):
             test_mock={
                 "list_notifications": lambda *args, **kwargs: [TEST_NOTIFICATION_ITEM]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -222,6 +224,7 @@ class GithubGetNotificationThreadBlock(Block):
             test_mock={
                 "get_thread": lambda *args, **kwargs: TEST_NOTIFICATION_ITEM,
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -291,6 +294,7 @@ class GithubMarkNotificationsAsReadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"mark_all_as_read": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -348,6 +352,7 @@ class GithubMarkNotificationThreadAsReadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"mark_thread_as_read": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -401,6 +406,7 @@ class GithubMarkNotificationThreadAsDoneBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"mark_thread_as_done": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -454,6 +460,7 @@ class GithubUnsubscribeNotificationThreadBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"unsubscribe_thread": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

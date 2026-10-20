@@ -1,9 +1,9 @@
-"""Tests for list_expert_chats / read_expert_chat (Autopilot reads an expert's chats).
+"""Tests for list_expert_chats / read_expert_chat (Otto reads an expert's chats).
 
 The capability is one-directional and read-only, so what is tested here is
 mostly what the tools refuse: an expert session never sees them and is turned
 away if it names one anyway, another user's chat is indistinguishable from one
-that does not exist, and a chat outside the listing's scope (Autopilot's own,
+that does not exist, and a chat outside the listing's scope (Otto's own,
 a dream artifact) cannot be reached by id. The rest pins the paging contract —
 the character cap drops rows from the OLD end so the cursor it reports brings
 them back.
@@ -26,8 +26,8 @@ from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetad
 from backend.copilot.tools import (
     TOOL_GROUPS,
     execute_tool,
-    get_available_tools,
     get_tool,
+    reachable_tool_names,
 )
 
 from .expert_chats import _MAX_PAGE_CHARS, ListExpertChatsTool, ReadExpertChatTool
@@ -37,7 +37,7 @@ _NOW = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
 
 
 def _caller(session_id: str = "s1", expert_id: str | None = None) -> MagicMock:
-    """The Autopilot session the tool is called from."""
+    """The Otto session the tool is called from."""
     session = MagicMock()
     session.session_id = session_id
     session.expert_id = expert_id
@@ -162,23 +162,23 @@ async def _list(db: _FakeChatDB, **kwargs):
 
 
 class TestGating:
-    """Autopilot-only: the tools ride the ``expert_admin`` group, which the
+    """Otto-only: the tools ride the ``expert_admin`` group, which the
     engines disable for every expert session."""
 
     def test_both_tools_are_in_the_autopilot_only_group(self) -> None:
         assert TOOL_GROUPS["list_expert_chats"] == "expert_admin"
         assert TOOL_GROUPS["read_expert_chat"] == "expert_admin"
 
-    def test_an_autopilot_session_is_offered_them_and_an_expert_session_is_not(
+    def test_an_autopilot_session_can_reach_them_and_an_expert_session_cannot(
         self,
     ) -> None:
-        autopilot = {t["function"]["name"] for t in get_available_tools()}
+        # Both tools are deferred, so ask what the session can reach through
+        # run_capability, not what it declares — the schema list leaves them
+        # out of both sides and would pass whether the group gate works or not.
+        autopilot = reachable_tool_names()
         # What survives the filter, NOT what it hid — naming this `hidden`
         # invites "fixing" the assertion below into its own inverse.
-        expert = {
-            t["function"]["name"]
-            for t in get_available_tools(disabled_groups=["expert_admin"])
-        }
+        expert = reachable_tool_names(disabled_groups=["expert_admin"])
         assert {"list_expert_chats", "read_expert_chat"} <= autopilot
         assert not {"list_expert_chats", "read_expert_chat"} & expert
 
@@ -199,6 +199,7 @@ class TestGating:
                 session=_caller(expert_id="expert-a"),
                 tool_call_id="call-1",
                 disabled_groups=["expert_admin"],
+                disabled_tools=(),
             )
         execute_mock.assert_not_awaited()
         assert result.success is False
@@ -335,6 +336,26 @@ class TestReadRendering:
         assert "[called: run_agent]" in result.messages[1].content
 
     @pytest.mark.asyncio
+    async def test_the_platforms_notes_to_the_owner_are_left_out(self) -> None:
+        db = _FakeChatDB(
+            messages=[
+                _msg(
+                    1,
+                    "assistant",
+                    "Paused: Discord monitor can't use Discord",
+                    metadata={
+                        "kind": "scheduled_chat_notice",
+                        "hidden_from_model": True,
+                    },
+                ),
+                _msg(2, "assistant", "Posted the summary"),
+            ]
+        )
+        result = await _read(db)
+        assert isinstance(result, ExpertChatTranscriptResponse)
+        assert [m.sequence for m in result.messages] == [2]
+
+    @pytest.mark.asyncio
     async def test_tool_output_is_available_on_request(self) -> None:
         db = _FakeChatDB(messages=[_msg(1, "tool", "bulk", tool_call_id="c1")])
         result = await _read(db, include_tool_results=True)
@@ -342,8 +363,10 @@ class TestReadRendering:
 
 
 class TestReadPaging:
+    # Each row is over the row cap, so it truncates to exactly _MAX_MESSAGE_CHARS
+    # and _MAX_PAGE_CHARS // _MAX_MESSAGE_CHARS = 4 of the 6 fit on a page.
     def _long_chat(self) -> _FakeChatDB:
-        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 6)])
+        return _FakeChatDB(messages=[_msg(i, content="x" * 2_500) for i in range(1, 7)])
 
     @pytest.mark.asyncio
     async def test_the_cap_drops_the_oldest_rows_and_reports_them_as_more(
@@ -351,7 +374,7 @@ class TestReadPaging:
     ) -> None:
         result = await _read(self._long_chat())
         assert sum(len(m.content) for m in result.messages) <= _MAX_PAGE_CHARS
-        assert [m.sequence for m in result.messages] == [3, 4, 5]
+        assert [m.sequence for m in result.messages] == [3, 4, 5, 6]
         assert result.has_more is True
         assert result.next_before_sequence == 3
 

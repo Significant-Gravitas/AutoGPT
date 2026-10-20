@@ -35,6 +35,20 @@ import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
+vi.mock("@/lib/oauth-popup", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/oauth-popup")>();
+  return {
+    ...actual,
+    preOpenOAuthPopup: () => null,
+    openOAuthPopup: () => ({
+      promise: Promise.resolve({ code: "code", state: "state" }),
+      cleanup: { abort: () => {} },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    }),
+  };
+});
+
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
@@ -44,6 +58,7 @@ const toastMock = vi.hoisted(() => vi.fn());
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
 }));
+const autoModeFlag = vi.hoisted(() => ({ enabled: false }));
 
 function libraryResponse(
   agents: LibraryAgent[],
@@ -100,6 +115,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  autoModeFlag.enabled = false;
   toastMock.mockReset();
 });
 
@@ -122,6 +138,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
       flag === "hire-experts"
         ? setFlagStatusMock()
         : actual.useFlagStatus(flag as never),
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.COPILOT_AUTO_MODE
+        ? autoModeFlag.enabled
+        : actual.useGetFlag(flag as never),
   };
 });
 
@@ -197,12 +217,12 @@ const scheduledMaria: Expert = {
 };
 
 describe("TeamPage", () => {
-  test("renders the Autopilot card first", async () => {
+  test("renders the Otto card first", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
-    const autopilot = await screen.findByText("Autopilot");
+    const autopilot = await screen.findByText("Otto");
     expect(screen.getByText("Head of AI")).toBeDefined();
 
     const maria = await screen.findByText("Maria");
@@ -217,7 +237,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const raise = await screen.findByRole("link", { name: "Raise expert" });
+    const raise = await screen.findByRole("link", { name: "Create an Expert" });
     expect(raise.getAttribute("href")).toBe("/raise");
     expect(
       screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
@@ -232,14 +252,42 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(await screen.findByText("Maria")).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    // The job title now rides the name line, after a bullet.
+    expect(screen.getByText(/Marketing Strategist/)).toBeDefined();
     const card = screen.getByRole("link", { name: "View Maria" });
-    expect(within(card).getByText("Idle")).toBeDefined();
+    expect(within(card).queryByText("Idle")).toBeNull();
     expect(getStatValue(card, "Workflows")).toBe("2");
     // Empty totals are left off the meta line.
     expect(within(card).queryByText("Skills")).toBeNull();
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("badges an expert whose new chats start unsupervised", async () => {
+    autoModeFlag.enabled = true;
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, autopilot_mode: "unsupervised" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).getByText("Unsupervised")).toBeDefined();
+  });
+
+  test("hides the unsupervised badge while approval modes are off", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, autopilot_mode: "unsupervised" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).queryByText("Unsupervised")).toBeNull();
   });
 
   test("links the card content to the expert page", async () => {
@@ -252,7 +300,7 @@ describe("TeamPage", () => {
     expect(link.getAttribute("href")).toBe("/team/expert-maria");
   });
 
-  test("opens an inline chat from the expert and Autopilot cards", async () => {
+  test("opens an inline chat from the expert and Otto cards", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
@@ -279,10 +327,10 @@ describe("TeamPage", () => {
 
     await user.click(autopilotChat);
     const autopilotPanel = await screen.findByRole("complementary", {
-      name: "Chat with Autopilot",
+      name: "Chat with Otto",
     });
     expect(
-      within(autopilotPanel).getByPlaceholderText("Message Autopilot…"),
+      within(autopilotPanel).getByPlaceholderText("Message Otto…"),
     ).toBeDefined();
     await waitFor(() => {
       expect(
@@ -295,10 +343,23 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("counts the integrations an expert has been granted", async () => {
+  test("shows an expert's integrations as logos, the rest behind +N more", async () => {
+    const user = userEvent.setup();
     const credentialRequests = vi.fn();
     server.use(
-      getListExpertsMockHandler([{ ...hiredMaria, credential_count: 2 }]),
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 5,
+          credential_providers: [
+            "github",
+            "linear",
+            "figma",
+            "notion",
+            "slack",
+          ],
+        },
+      ]),
       http.get("*/api/experts/:expertId/credentials", () => {
         credentialRequests();
         return HttpResponse.json([]);
@@ -308,8 +369,92 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const card = await screen.findByRole("link", { name: "View Maria" });
-    await waitFor(() => expect(getStatValue(card, "Integrations")).toBe("2"));
+    const integrations = within(card).getByRole("list", {
+      name: "Integrations",
+    });
+    const logos = within(integrations).getAllByRole("img");
+    expect(logos.map((logo) => logo.getAttribute("alt"))).toEqual([
+      "GitHub",
+      "Linear",
+      "Figma",
+    ]);
+    expect(logos.map((logo) => logo.getAttribute("src"))).toEqual([
+      "/integrations/github.png",
+      "/integrations/linear.png",
+      "/integrations/figma.png",
+    ]);
+    // The roster response already carries the providers; no per-card fetch.
     expect(credentialRequests).not.toHaveBeenCalled();
+
+    // Inside the card link nothing may take focus, so the names ride along
+    // as screen-reader text and the tooltip is the pointer affordance.
+    const more = within(integrations).getByText("+2 more");
+    expect(more.getAttribute("tabindex")).toBeNull();
+    expect(more.textContent).toContain("Notion, Slack");
+    await user.hover(more);
+    await screen.findByRole("tooltip", { name: "Notion, Slack" });
+  });
+
+  test("a logo says on hover whose account it is", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 1,
+          credential_providers: ["github"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    await user.hover(within(card).getByRole("img", { name: "GitHub" }));
+    await screen.findByRole("tooltip", {
+      name: "Maria has access to your GitHub account",
+    });
+  });
+
+  test("uses plain covers for built-in experts", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        hiredMaria,
+        {
+          ...hiredMaria,
+          id: "expert-max",
+          name: "Max",
+          avatar_url: "/experts/max.svg",
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const max = await screen.findByRole("link", { name: "View Max" });
+    expect(
+      max.querySelector('img[src="/experts/covers/max-1.jpg"]'),
+    ).toBeNull();
+    const maria = screen.getByRole("link", { name: "View Maria" });
+    expect(maria.querySelector('img[src^="/experts/covers/"]')).toBeNull();
+    const otto = screen.getByRole("link", { name: "View Otto" });
+    expect(otto.querySelector('img[src^="/experts/covers/"]')).toBeNull();
+  });
+
+  test("shows no integrations item on a card with none granted", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, credential_count: 0, credential_providers: [] },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(getStatValue(card, "Workflows")).toBe("2");
+    expect(
+      within(card).queryByRole("list", { name: "Integrations" }),
+    ).toBeNull();
   });
 
   test("counts an expert's schedules on their card", async () => {
@@ -328,6 +473,28 @@ describe("TeamPage", () => {
     await screen.findAllByText("Maria");
     const card = await screen.findByRole("link", { name: "View Maria" });
     expect(getStatValue(card, "Schedules")).toBe("1");
+  });
+
+  test("keeps the roster when only the schedules query fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get(
+        "*/api/schedules",
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByRole("link", { name: "View Maria" }),
+    ).toBeDefined();
+    // The roster loaded, so the page must not claim it could not.
+    await waitFor(() =>
+      expect(
+        screen.queryByText("We could not load your hired experts."),
+      ).toBeNull(),
+    );
   });
 
   test("does not badge a card for a workflow without a schedule", async () => {
@@ -449,7 +616,12 @@ describe("TeamPage", () => {
         "These rules are part of every expert's soul and cannot be edited.",
       ),
     ).toBeDefined();
-    expect(screen.getAllByRole("textbox")).toHaveLength(4);
+    // The roster's search field is a textbox too; count only the Soul's.
+    expect(
+      screen
+        .getAllByRole("textbox")
+        .filter((box) => box.id !== "team-roster-search"),
+    ).toHaveLength(4);
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
@@ -870,14 +1042,16 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    expect(await screen.findByText("Autopilot")).toBeDefined();
+    expect(await screen.findByText("Otto")).toBeDefined();
     const link = await screen.findByRole("link", {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
-    expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
-    ).toBe("/raise");
+    for (const createLink of screen.getAllByRole("link", {
+      name: "Create an Expert",
+    })) {
+      expect(createLink.getAttribute("href")).toBe("/raise");
+    }
   });
 
   test("shows an error card and retries when loading experts fails", async () => {
@@ -902,7 +1076,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await screen.findByText("Autopilot");
+    await screen.findByText("Otto");
     expect(await screen.findByText("Maria")).toBeDefined();
   });
 
@@ -1036,6 +1210,36 @@ describe("TeamPage - setup needed card", () => {
     ).toBe("/library/agents/lib-1");
   });
 
+  test("an input only the user can give is named, with the workflow to fill it in", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({
+          workflow_name: "Personal Newsletter",
+          providers: [],
+          resolution: "inputs",
+          missing_inputs: ["Email Address"],
+        }),
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(
+      within(card).getByText("Schedule Personal Newsletter for Maria"),
+    ).toBeDefined();
+    expect(
+      within(card).getByText(
+        "Needs Email Address before it can run on schedule.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(card)
+        .getByRole("link", { name: "Open workflow" })
+        .getAttribute("href"),
+    ).toBe("/library/agents/lib-1");
+  });
+
   test("a provider the user cannot connect is explained instead of offered", async () => {
     server.use(
       getListExpertSetupItemsMockHandler([
@@ -1048,6 +1252,41 @@ describe("TeamPage - setup needed card", () => {
     const card = await screen.findByTestId("setup-needed");
     expect(within(card).getByText("Needs a platform key")).toBeDefined();
     expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
+  test("offers Connect for a service reached only through its own sign-in", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({ providers: ["mcp_notion"] }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "mcp_notion",
+          display_name: "Notion",
+          supported_auth_types: [],
+          mcp_server: {
+            server_url: "https://mcp.notion.com/mcp",
+            documentation_url: "https://developers.notion.com/guides/mcp",
+            setup_instructions: "Sign in to Notion.",
+            connection_mode: "hosted",
+            auth_methods: ["oauth"],
+          },
+        },
+      ]),
+    );
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(within(card).getByText("Setup needed (1)")).toBeDefined();
+    fireEvent.click(
+      await within(card).findByRole("button", { name: "Connect" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Sign in to Notion.")).toBeDefined();
+    expect(
+      within(dialog).queryByRole("button", { name: "Continue" }),
+    ).toBeNull();
   });
 
   test("Allow grants the existing credential to that expert", async () => {
@@ -1084,6 +1323,115 @@ describe("TeamPage - setup needed card", () => {
     );
   });
 
+  test("connecting a service clears its row without a reload", async () => {
+    let items = [makeSetupItem()];
+    let granted: string[][] = [];
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      getGetV1ListProvidersMockHandler([
+        { name: "notion", supported_auth_types: ["api_key"] },
+      ]),
+      http.post("/api/proxy/api/integrations/notion/credentials", () =>
+        HttpResponse.json(
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "api_key",
+            title: "Team Notion",
+          },
+          { status: 201 },
+        ),
+      ),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = [...granted, body.credential_ids];
+          items = [];
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /API Key/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByPlaceholderText("My Notion key"),
+      "Team Notion",
+    );
+    await userEvent.type(
+      within(dialog).getByPlaceholderText("sk-..."),
+      "secret-value",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
+    await waitFor(() =>
+      expect(screen.queryByTestId("setup-needed")).toBeNull(),
+    );
+  });
+
+  test("signing in with OAuth clears its row without a reload", async () => {
+    let items = [makeSetupItem({ providers: ["google"] })];
+    let granted: string[][] = [];
+    server.use(
+      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      getGetV1ListProvidersMockHandler([
+        { name: "google", supported_auth_types: ["oauth2"] },
+      ]),
+      http.get("/api/proxy/api/integrations/google/login", () =>
+        HttpResponse.json({
+          login_url: "https://accounts.example/auth",
+          state_token: "state",
+        }),
+      ),
+      http.post("/api/proxy/api/integrations/google/callback", () =>
+        HttpResponse.json({
+          id: "cred-google",
+          provider: "google",
+          type: "oauth2",
+          title: "Work Google",
+        }),
+      ),
+      http.post(
+        "/api/proxy/api/experts/:expertId/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = [...granted, body.credential_ids];
+          items = [];
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /OAuth/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Continue" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual([["cred-google"]]));
+    await waitFor(() =>
+      expect(screen.queryByTestId("setup-needed")).toBeNull(),
+    );
+  });
+
   test("Connect opens the connect dialog on that provider", async () => {
     server.use(
       getListExpertSetupItemsMockHandler([makeSetupItem()]),
@@ -1107,5 +1455,78 @@ describe("TeamPage - setup needed card", () => {
     );
     expect(within(dialog).getByRole("button", { name: "Back" })).toBeDefined();
     expect(within(dialog).getAllByText(/Notion/).length).toBeGreaterThan(0);
+  });
+
+  test("follows a fresh hire's setup until its skills land", async () => {
+    let reads = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        reads += 1;
+        return reads === 1
+          ? [{ ...hiredMaria, setup_status: "installing", skills: [] }]
+          : [{ ...hiredMaria, setup_status: "ready", skills: ["a", "b"] }];
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Setting up Maria's skills and workflows…"),
+    ).toBeDefined();
+    const card = screen.getByRole("link", { name: "View Maria" });
+    await waitFor(() => expect(getStatValue(card, "Skills")).toBe("2"), {
+      timeout: 5_000,
+    });
+    expect(
+      screen.queryByText("Setting up Maria's skills and workflows…"),
+    ).toBeNull();
+  });
+
+  test("a failed setup offers a retry that re-hires the template", async () => {
+    const hires: unknown[] = [];
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: "template-maria",
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+      http.post("/api/proxy/api/experts", async ({ request }) => {
+        hires.push(await request.json());
+        return HttpResponse.json({ expert: hiredMaria });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Retry setup" }));
+    await waitFor(() =>
+      expect(hires).toEqual([{ template_id: "template-maria" }]),
+    );
+  });
+
+  test("a failed setup with no template offers no retry", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: null,
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Retry setup" })).toBeNull();
   });
 });

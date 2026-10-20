@@ -1,4 +1,4 @@
-"""The copilot home's onboarding greeting: what AutoPilot says it heard.
+"""The copilot home's onboarding greeting: what Otto says it heard.
 
 Generated while the onboarding loading screen is still up, then stored —
 landing on ``/copilot`` must never wait on a model. If generation fails the
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5")
+_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
 _TIMEOUT_SECONDS = 30
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
@@ -77,7 +77,7 @@ DEFAULT_PROMPT_ICON = "sparkle"
 # diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are AutoPilot, this user's built-in Head of AI. \
+_LOCAL_PROMPT = """You are Otto, this user's built-in Head of AI. \
 You are theirs alone, never shared, and you run a team for them: you can \
 build real recurring automations (watch sources, draft content, send \
 digests, run agents while they sleep) and you can bring in experts to own \
@@ -299,7 +299,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
     """
     return [
         SuggestedPrompt(
-            title="Build an agent that drafts your Monday status report before you wake up",
+            title="Build a workflow that drafts your Monday status report before you wake up",
             prompt=(
                 "I want a recurring weekly summary of my work. Ask me what "
                 "sources to pull from, then draft the first report so I can "
@@ -335,7 +335,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
             icon="megaphone",
         ),
         SuggestedPrompt(
-            title="Find the two tasks eating your week and hand them to an agent today",
+            title="Find the two tasks eating your week and hand them to an expert today",
             prompt=(
                 "Help me find what to automate. Interview me briefly about "
                 "what repeats every week, then propose the two tasks you'd "

@@ -8,11 +8,13 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 from backend.copilot.sdk.subscription import validate_subscription
 
@@ -56,7 +58,10 @@ def build_sdk_env(
     3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
        from the parent environment (no overrides needed).
     4. **OpenRouter** (default) — overrides base URL and auth token to
-       route through the proxy, with Langfuse trace headers.
+       route through the proxy, with the headers and body fields OpenRouter
+       Broadcast attributes generations by (user, chat session,
+       environment). Only this mode reaches Broadcast, so only its
+       generations show in PostHog LLM analytics and Langfuse broadcast.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
@@ -142,7 +147,9 @@ def build_sdk_env(
             "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
         }
 
-        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        # Inject broadcast headers: OpenRouter Broadcast skips the
+        # Anthropic-native ``/messages`` endpoint unless ``x-session-id``
+        # is present.
         def _safe(v: str) -> str:
             return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
 
@@ -153,6 +160,7 @@ def build_sdk_env(
             parts.append(f"x-user-id: {_safe(user_id)}")
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
 
     # --- Common: workspace isolation + security hardening (all modes) ---
     # Route subagent temp files into the per-session workspace so output
@@ -166,6 +174,13 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Run sub-agents in the foreground.  Since Claude Code 2.1.198 the
+    # Agent/Task tool launches them in the background by default and returns
+    # ``async_launched`` at once; their report only arrives as a new CLI turn
+    # after the ``ResultMessage``, by which point the turn has ended and the
+    # CLI has been closed, killing the sub-agent and losing its work.  This
+    # also stops the CLI from moving long tool calls to the background.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter
@@ -251,3 +266,20 @@ def _autocompact_pct_for_model(model: str | None) -> int:
     if model and "claude-sonnet-5" in model:
         pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
     return pct
+
+
+def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
+    """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
+    (main turn, sub-agents, compaction), carrying the fields OpenRouter
+    Broadcast attributes a generation by.
+
+    ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
+    session ids) so that every user field on the request names the same
+    platform user.
+    """
+    body = openrouter_attribution(
+        user_id=user_id, session_id=session_id, generation_name="copilot-sdk"
+    )
+    if user_id:
+        body["metadata"] = {"user_id": body["user"]}
+    return json.dumps(body)

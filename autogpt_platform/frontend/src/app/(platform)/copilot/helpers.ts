@@ -1,11 +1,12 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/auth/actions";
-import type { UIMessage } from "ai";
+import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
-
-export const ORIGINAL_TITLE = "AutoGPT";
+import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
+import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
 /**
  * Title/body/icon for the OS-level notification fired when a copilot session
@@ -32,7 +33,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
+    throw new CopilotAuthError();
   }
   return {
     Authorization: `Bearer ${token}`,
@@ -40,14 +41,12 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
+/** The server answered and has no session token: signed out, not offline. */
+export class CopilotAuthError extends Error {
+  constructor() {
+    super("Authentication failed — please sign in again.");
+    this.name = "CopilotAuthError";
+  }
 }
 
 /**
@@ -106,8 +105,9 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
 /**
  * Whether the trailing assistant message has at least one part the UI
  * would visibly render: text with non-empty content, reasoning with
- * non-empty content, or any tool part (tool cards render regardless of
- * state). Used to gate the resume-snapshot discard — the replay may stream
+ * non-empty content, any tool part (tool cards render regardless of
+ * state), or a Paused card — a turn refused before it ran streams nothing
+ * else. Used to gate the resume-snapshot discard — the replay may stream
  * empty reasoning-start / step-start chunks for minutes before any
  * rendered content (e.g. Perplexity deep research), and we do not want to
  * drop the pre-replay snapshot until the user actually sees something.
@@ -119,6 +119,7 @@ export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
     if (part.type === "text" && part.text.trim().length > 0) return true;
     if (part.type === "reasoning" && part.text.trim().length > 0) return true;
     if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
+    if (part.type === TURN_PAUSED_PART_TYPE) return true;
     return false;
   });
 }
@@ -224,11 +225,40 @@ export function extractSendMessageText(firstArg: unknown): string {
   return String(firstArg ?? "");
 }
 
+/** What the files and folders passed to `sendMessage` point at, sorted, so
+ *  two sends can be told apart when their text is the same. */
+export function extractSendMessageAttachments(firstArg: unknown): string[] {
+  if (!firstArg || typeof firstArg !== "object") return [];
+  if ("files" in firstArg && Array.isArray(firstArg.files))
+    return attachmentKeys(firstArg.files);
+  if ("parts" in firstArg && Array.isArray(firstArg.parts))
+    return attachmentKeys(firstArg.parts);
+  return [];
+}
+
+function attachmentKeys(parts: readonly unknown[]): string[] {
+  return parts
+    .flatMap((part) => {
+      if (!part || typeof part !== "object" || !("type" in part)) return [];
+      if (part.type === "file" && "url" in part)
+        return typeof part.url === "string" ? [part.url] : [];
+      if (part.type === WORKSPACE_FOLDER_PART_TYPE && "data" in part) {
+        const data = part.data as { id?: unknown } | null;
+        return typeof data?.id === "string" ? [`folder:${data.id}`] : [];
+      }
+      return [];
+    })
+    .sort();
+}
+
 interface SuppressDuplicateArgs {
   text: string;
+  /** The outgoing message's attachments, from `extractSendMessageAttachments`. */
+  attachments?: string[];
   isReconnectScheduled: boolean;
   lastSubmittedText: string | null;
   messages: UIMessage[];
+  status?: ChatStatus;
 }
 
 /**
@@ -236,8 +266,9 @@ interface SuppressDuplicateArgs {
  *
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
- * - ``"duplicate"``: the same text was just submitted and echoed back
- *   by the session — safe to silently drop (user double-clicked).
+ * - ``"duplicate"``: the same text, with the same attachments, was just
+ *   submitted and echoed back by the session — safe to silently drop
+ *   (user double-clicked).
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -250,11 +281,24 @@ export type SuppressReason = "reconnecting" | "duplicate" | null;
  */
 export function getSendSuppressionReason({
   text,
+  attachments = [],
   isReconnectScheduled,
   lastSubmittedText,
   messages,
+  status,
 }: SuppressDuplicateArgs): SuppressReason {
   if (isReconnectScheduled) return "reconnecting";
+
+  const lastMessage = messages.at(-1);
+  const hasRetryableError =
+    status === "ready" &&
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.some(
+      (part) =>
+        part.type === "text" &&
+        parseSpecialMarkers(part.text).markerType === "retryable_error",
+    );
+  if (status === "error" || hasRetryableError) return null;
 
   if (text && lastSubmittedText === text) {
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
@@ -262,7 +306,13 @@ export function getSendSuppressionReason({
       ?.map((p) => ("text" in p ? p.text : ""))
       .join("")
       .trim();
-    if (lastUserText === text) return "duplicate";
+    // The same caption on other files is a new message, not a resend.
+    const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
+    if (
+      lastUserText === text &&
+      lastUserAttachments.join("\n") === attachments.join("\n")
+    )
+      return "duplicate";
   }
 
   return null;
@@ -327,10 +377,15 @@ export function shouldDebounceReconnect(
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
+  // Fingerprints seen per user turn. Nested rather than one composite
+  // `${userID}:${fingerprint}` string, which would be rebuilt and re-hashed in
+  // full for every assistant message on every call; the cached fingerprint
+  // string keeps its hash.
+  const seenFingerprintsByTurn = new Map<string, Set<string>>();
   let lastUserMsgID = "";
+  const newestIndex = messages.length - 1;
 
-  return messages.filter((msg) => {
+  const kept = messages.filter((msg, index) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
@@ -343,19 +398,9 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
     }
 
     if (msg.role === "assistant") {
-      // JSON.stringify the parts array to avoid separator-collision false
-      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
-      // produces the same string. JSON encoding each element is unambiguous.
-      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
-      // a toolCallId (e.g. step-start) so structurally different parts never
-      // collapse to the same empty-string fingerprint element.
-      const contentFingerprint = JSON.stringify(
-        msg.parts.map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            JSON.stringify(p),
-        ),
+      const contentFingerprint = getContentFingerprint(
+        msg,
+        index === newestIndex,
       );
 
       if (contentFingerprint !== "[]") {
@@ -367,14 +412,60 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
         // resumeStream() first strips the in-progress assistant message —
         // handleReconnect, the wake-resync path, and the hydration-effect path
         // all do this. See useCopilotStream.ts.
-        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
-        if (seenFingerprints.has(contextKey)) return false;
-        seenFingerprints.add(contextKey);
+        let seenInTurn = seenFingerprintsByTurn.get(lastUserMsgID);
+        if (!seenInTurn) {
+          seenInTurn = new Set<string>();
+          seenFingerprintsByTurn.set(lastUserMsgID, seenInTurn);
+        }
+        if (seenInTurn.has(contentFingerprint)) return false;
+        seenInTurn.add(contentFingerprint);
       }
     }
 
     return true;
   });
+  // Same array back when nothing was dropped, so memos keyed on it hold.
+  return kept.length === messages.length ? messages : kept;
+}
+
+// Keyed by the parts array, which every streamed update replaces, so a
+// message that has not changed is never serialised twice. The length check
+// catches parts pushed in place. The newest message is never cached: the SDK
+// can still be appending to it in place until its next flush.
+const contentFingerprints = new WeakMap<
+  UIMessage["parts"],
+  { partCount: number; fingerprint: string }
+>();
+
+function getContentFingerprint(msg: UIMessage, isNewest: boolean): string {
+  if (isNewest) return computeContentFingerprint(msg.parts);
+  const cached = contentFingerprints.get(msg.parts);
+  if (cached && cached.partCount === msg.parts.length) {
+    return cached.fingerprint;
+  }
+  const fingerprint = computeContentFingerprint(msg.parts);
+  contentFingerprints.set(msg.parts, {
+    partCount: msg.parts.length,
+    fingerprint,
+  });
+  return fingerprint;
+}
+
+function computeContentFingerprint(parts: UIMessage["parts"]): string {
+  // JSON.stringify the parts array to avoid separator-collision false
+  // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
+  // produces the same string. JSON encoding each element is unambiguous.
+  // Fall back to JSON.stringify(p) for parts that carry neither a text nor
+  // a toolCallId (e.g. step-start) so structurally different parts never
+  // collapse to the same empty-string fingerprint element.
+  return JSON.stringify(
+    parts.map(
+      (p) =>
+        ("text" in p && p.text) ||
+        ("toolCallId" in p && p.toolCallId) ||
+        JSON.stringify(p),
+    ),
+  );
 }
 
 /**

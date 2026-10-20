@@ -294,3 +294,57 @@ async def test_auto_lookup_returns_none_when_a_real_refresh_fails():
         ),
     ):
         assert await auto_lookup_mcp_credential("user-1", _SERVER_URL) is None
+
+
+# ---------------------------------------------------------------------------
+# auto_lookup_mcp_credential — allowed_ids
+# ---------------------------------------------------------------------------
+
+
+def _manual_credential(cred_id: str, expires_at: int) -> OAuth2Credentials:
+    """A pasted MCP credential for _SERVER_URL; no refresh, so no refresh call."""
+    return OAuth2Credentials(
+        id=cred_id,
+        provider="mcp",
+        title=f"MCP: {cred_id}",
+        access_token=SecretStr(f"token-{cred_id}"),
+        refresh_token=None,
+        access_token_expires_at=expires_at,
+        scopes=[],
+        metadata={"mcp_server_url": _SERVER_URL},
+    )
+
+
+async def test_allowed_ids_narrows_before_ranking():
+    """The grant filter has to run before the ranking, not after it.
+
+    Ranking the whole set and checking only the winner refuses an expert that
+    holds a usable grant, whenever an ungranted row outranks it.
+    """
+    granted = _manual_credential("granted", expires_at=1)
+    ungranted = _manual_credential("ungranted", expires_at=999)
+
+    with _real_manager_over([granted, ungranted]):
+        best = await auto_lookup_mcp_credential(
+            "user-1", _SERVER_URL, allowed_ids={"granted"}
+        )
+
+    assert best is not None and best.id == "granted"
+
+
+async def test_no_allowed_ids_keeps_the_global_best():
+    granted = _manual_credential("granted", expires_at=1)
+    ungranted = _manual_credential("ungranted", expires_at=999)
+
+    with _real_manager_over([granted, ungranted]):
+        best = await auto_lookup_mcp_credential("user-1", _SERVER_URL)
+
+    assert best is not None and best.id == "ungranted"
+
+
+async def test_allowed_ids_matching_nothing_yields_none():
+    with _real_manager_over([_manual_credential("ungranted", expires_at=1)]):
+        assert (
+            await auto_lookup_mcp_credential("user-1", _SERVER_URL, allowed_ids=set())
+            is None
+        )

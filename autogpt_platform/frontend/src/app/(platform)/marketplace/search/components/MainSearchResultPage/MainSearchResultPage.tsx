@@ -9,7 +9,7 @@ import { MainSearchResultPageLoading } from "../../../components/MainSearchResul
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
-import { BookOpen01Icon } from "@hugeicons/core-free-icons";
+import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -27,23 +27,32 @@ export const MainSearchResultPage = ({
     agents,
     creators,
     skills,
+    experts,
+    hiredTemplateIds,
     totalCount,
     agentsCount,
     creatorsCount,
     skillsCount,
+    expertsCount,
     handleFilterChange,
     handleSortChange,
     showAgents,
     showCreators,
     showSkills,
+    showExperts,
+    isExpertsVisible,
     isSkillsHubEnabled,
     isAgentsLoading,
     isCreatorsLoading,
+    isExpertsLoading,
     isAgentsError,
     isCreatorsError,
   } = useMainSearchResultPage({ searchTerm, sort });
 
-  const isLoading = isAgentsLoading || isCreatorsLoading;
+  // Experts gate the skeleton too: without it a roster still in flight reads
+  // as zero results, and a search matching only an expert says "No results
+  // found" before the card arrives.
+  const isLoading = isAgentsLoading || isCreatorsLoading || isExpertsLoading;
   const hasError = isAgentsError || isCreatorsError;
 
   if (isLoading) {
@@ -98,6 +107,7 @@ export const MainSearchResultPage = ({
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
                 skillsCount={isSkillsHubEnabled ? skillsCount : undefined}
+                expertsCount={isExpertsVisible ? expertsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
               <div className="mt-4 md:!mt-0">
@@ -106,15 +116,29 @@ export const MainSearchResultPage = ({
             </div>
             {/* Content section */}
             <div className="min-h-[500px] max-w-[1440px] space-y-8 py-8">
+              {showExperts && expertsCount > 0 ? (
+                <section aria-labelledby="search-experts-heading">
+                  <SectionHeader
+                    title="Experts"
+                    titleId="search-experts-heading"
+                  />
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+                    {experts.map((expert) => (
+                      <ExpertCard
+                        key={expert.id}
+                        expert={expert}
+                        isHired={hiredTemplateIds.has(expert.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               {showAgents && agentsCount > 0 && agents && (
                 <AgentsSection agents={agents} />
               )}
               {showSkills && skillsCount > 0 ? (
                 <section aria-labelledby="search-skills-heading">
                   <SectionHeader
-                    titleIcon={
-                      <Icon icon={BookOpen01Icon} size={30} aria-hidden />
-                    }
                     title="Skills"
                     titleId="search-skills-heading"
                   />
@@ -131,10 +155,7 @@ export const MainSearchResultPage = ({
               ) : null}
               <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
-                <FeaturedCreators
-                  featuredCreators={creators}
-                  title="Creators"
-                />
+                <FeaturedCreators featuredCreators={creators} />
               )}
             </div>
           </>

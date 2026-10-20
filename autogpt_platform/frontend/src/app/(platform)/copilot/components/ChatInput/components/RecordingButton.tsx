@@ -12,7 +12,7 @@ interface Props {
   disabled: boolean;
   onClick: () => void;
   // One-time highlight for the user who skipped the onboarding brain
-  // dump: AutoPilot's intro invites them to record, so the button it
+  // dump: Otto's intro invites them to record, so the button it
   // points at has to be findable.
   highlight?: boolean;
   className?: string;

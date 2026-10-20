@@ -475,6 +475,33 @@ class TestFixAiModelParameter:
 
         assert result["nodes"][0]["input_default"]["model"] == "claude-opus-4-6"
 
+    def test_new_generic_model_survives_string_model_field(self):
+        """claude-opus-5-5 was added to generic_allowed_models; a no-enum AI
+        block (plain string model field) must preserve it instead of
+        falling back to the generic default."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=block_id,
+            input_default={"model": "claude-opus-5-5"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {"model": {"type": "string"}},
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "claude-opus-5-5"
+
     def test_block_specific_enum_uses_block_default(self):
         """Blocks with their own model enum (e.g. PerplexityBlock) should use
         the block's allowed models and default, not the generic ones."""

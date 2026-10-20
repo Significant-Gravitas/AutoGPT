@@ -7,6 +7,7 @@ import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useLocalDay } from "@/hooks/useLocalDay";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
@@ -15,10 +16,12 @@ import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById, activeExpertIds } = useExpertMap();
+  // Re-groups "Today" / "Yesterday" at midnight: list polls that return the
+  // same sessions no longer re-render this component.
+  useLocalDay();
   const {
     sessions,
     isLoading,
@@ -59,19 +62,19 @@ export function RecentChats() {
   }
 
   function renderItem(session: (typeof sessions)[number]) {
+    const isEditing = editingSessionId === session.id;
     return (
       <RecentChatItem
         key={session.id}
         session={session}
         isActive={session.id === activeSessionId}
-        isEditing={editingSessionId === session.id}
-        editingTitle={editingTitle}
+        isEditing={isEditing}
+        editingTitle={isEditing ? editingTitle : ""}
         onEditingTitleChange={setEditingTitle}
         onSubmitRename={submitRename}
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
-        chatSharingEnabled={chatSharingEnabled}
         chatPinningEnabled={chatPinningEnabled}
         onPin={togglePin}
         onRename={startRename}
@@ -112,8 +115,11 @@ export function RecentChats() {
                 // survives the session list's periodic refetch.
                 <ExpertChatGroup
                   key={group.expertId ?? "autopilot"}
-                  label={
-                    group.expertId ? (expert?.name ?? "Expert") : "Autopilot"
+                  label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
+                  role={
+                    group.expertId
+                      ? expert?.jobTitle || expert?.role
+                      : "Head of AI"
                   }
                   avatarUrl={expert?.avatarUrl ?? null}
                   color={expert?.color ?? null}
@@ -139,7 +145,7 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60"
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60 max-md:py-3 max-md:text-base"
         >
           {isLoadingMore && (
             <LoadingSpinner size="small" className="size-4 text-zinc-500" />

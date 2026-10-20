@@ -83,7 +83,7 @@ class UpdateExpertSoulTool(BaseTool):
             "voice preferences, or boundaries. Never writes: it returns the "
             "before/after diff plus a one-time confirmation_id. Show the user "
             "the diff and, only after they explicitly approve, call "
-            "confirm_expert_soul_update with that confirmation_id."
+            "tool:confirm_expert_soul_update with that confirmation_id."
         )
 
     @property
@@ -188,7 +188,7 @@ class UpdateExpertSoulTool(BaseTool):
             message=(
                 "Nothing saved yet. Show the user this before/after diff and ask "
                 "them to approve. Only after they explicitly approve, call "
-                "confirm_expert_soul_update with this confirmation_id."
+                "tool:confirm_expert_soul_update with this confirmation_id."
             ),
             session_id=session_id,
             applied=False,
@@ -221,6 +221,7 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The confirmation_id returned by update_expert_soul.",
+                    "entity": "soul_change",
                 },
             },
             "required": ["confirmation_id"],
@@ -249,7 +250,7 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 message=(
                     "confirm_expert_soul_update applies exactly the previewed "
                     "proposal and does not accept field values. Call "
-                    "update_expert_soul to propose a different edit."
+                    "tool:update_expert_soul to propose a different edit."
                 ),
                 session_id=session_id,
             )

@@ -40,7 +40,7 @@ async def test_roster_skips_nodes_but_detail_loads_workflow_chain(with_metrics):
         patch.object(experts_db, "_weekly_spends", new=AsyncMock(return_value={})),
         patch.object(experts_db, "get_weekly_spend", new=AsyncMock(return_value=0)),
         patch.object(
-            experts_db, "count_expert_credentials", new=AsyncMock(return_value={})
+            experts_db, "expert_credential_providers", new=AsyncMock(return_value={})
         ),
         patch.object(experts_db, "_to_model", side_effect=convert),
     ):

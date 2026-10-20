@@ -1,17 +1,15 @@
 import {
-  getListExpertSetupItemsQueryKey,
-  getListExpertsQueryKey,
   useGrantExpertCredentials,
   useListExpertSetupItems,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { getGetV1ListExecutionSchedulesForAUserQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
 import { okData } from "@/app/api/helpers";
 import { toConnectableProviders } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { serviceName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -37,21 +35,10 @@ export function useSetupNeeded({ enabled }: Args) {
     toConnectableProviders(providersQuery.data ?? []).map((p) => p.id),
   );
 
-  // A grant is what lets the backend create the pending schedule, so the
-  // roster (schedule counts) and the schedule list move with the card.
-  function invalidate() {
-    for (const queryKey of [
-      getListExpertSetupItemsQueryKey(),
-      getListExpertsQueryKey(),
-      getGetV1ListExecutionSchedulesForAUserQueryKey(),
-    ]) {
-      queryClient.invalidateQueries({ queryKey });
-    }
-  }
-
   const { mutate: grant, isPending: isGranting } = useGrantExpertCredentials({
     mutation: {
-      onSuccess: invalidate,
+      onSuccess: (_response, { expertId }) =>
+        invalidateExpertGrantQueries(queryClient, expertId),
       onError: () =>
         toast({ title: "Could not add integration", variant: "destructive" }),
     },
@@ -59,12 +46,21 @@ export function useSetupNeeded({ enabled }: Args) {
 
   function grantTo(
     item: ExpertSetupItem,
-    credential: { id: string; provider?: string },
+    credential: {
+      id: string;
+      provider?: string;
+      service?: string;
+      service_name?: string | null;
+    },
   ) {
     // A row can name a credential without naming its provider, and half a
     // sentence is worse than a general one.
     const service = credential.provider
-      ? formatProviderName(credential.provider)
+      ? serviceName({
+          provider: credential.provider,
+          service: credential.service,
+          service_name: credential.service_name,
+        })
       : "this service";
     grant(
       { expertId: item.expert_id, data: { credential_ids: [credential.id] } },

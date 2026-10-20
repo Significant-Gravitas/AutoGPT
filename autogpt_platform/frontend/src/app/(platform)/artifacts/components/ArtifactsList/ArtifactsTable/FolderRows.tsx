@@ -5,17 +5,24 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useState } from "react";
 import { useArtifactsFolders } from "../../../useArtifactsFolders";
 import { FolderDialogs } from "../../WorkspaceFolders/FolderDialogs";
+import {
+  childrenOf,
+  subfolderCountOf,
+} from "../../WorkspaceFolders/folderTree";
 import { FolderRow } from "./FolderRow";
 import { SkeletonRow } from "./SkeletonRow";
 
 interface Props {
+  /** Folder whose children are listed; `null` is the workspace root. */
+  parentId: string | null;
   onSelectFolder: (folderId: string) => void;
 }
 
-export function FolderRows({ onSelectFolder }: Props) {
+export function FolderRows({ parentId, onSelectFolder }: Props) {
   const { folders, isLoading, isError, error, moveFilesToFolder } =
     useArtifactsFolders();
   const [editing, setEditing] = useState<WorkspaceFolder | null>(null);
+  const [moving, setMoving] = useState<WorkspaceFolder | null>(null);
   const [deleting, setDeleting] = useState<WorkspaceFolder | null>(null);
 
   if (isLoading) {
@@ -41,16 +48,18 @@ export function FolderRows({ onSelectFolder }: Props) {
 
   return (
     <>
-      {folders.map((folder, index) => (
+      {childrenOf(folders, parentId).map((folder, index) => (
         <FolderRow
           key={folder.id}
           index={index}
           id={folder.id}
           name={folder.name}
           fileCount={folder.file_count ?? 0}
+          subfolderCount={subfolderCountOf(folders, folder.id)}
           updatedAt={folder.updated_at}
           onOpen={() => onSelectFolder(folder.id)}
           onEdit={() => setEditing(folder)}
+          onMove={() => setMoving(folder)}
           onDelete={() => setDeleting(folder)}
           onFileDrop={(fileIds) => {
             moveFilesToFolder({ fileIds, folderId: folder.id }).catch(() => {});
@@ -59,8 +68,10 @@ export function FolderRows({ onSelectFolder }: Props) {
       ))}
       <FolderDialogs
         editing={editing}
+        moving={moving}
         deleting={deleting}
         onEditClose={() => setEditing(null)}
+        onMoveClose={() => setMoving(null)}
         onDeleteClose={() => setDeleting(null)}
       />
     </>

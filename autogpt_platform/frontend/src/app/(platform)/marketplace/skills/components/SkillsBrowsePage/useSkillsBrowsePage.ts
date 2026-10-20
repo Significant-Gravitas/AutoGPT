@@ -27,7 +27,7 @@ export function useSkillsBrowsePage() {
     { query: { getNextPageParam: getPaginationNextPageNumber } },
   );
 
-  const installed = useListCopilotSkills({
+  const installed = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled: isLoggedIn },
   });
 

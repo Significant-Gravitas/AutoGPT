@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
@@ -9,10 +9,16 @@ import {
 } from "@/tests/integrations/trial-fixtures";
 import SettingsBillingPage from "../page";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 beforeEach(() => setTrialUser());
 afterEach(() => setTrialUser(null));
 
-it.each(["past_due", "unpaid", "incomplete_expired", "trialing", "canceled"])(
+it.each(["incomplete_expired", "trialing", "canceled"])(
   "keeps plan selection available for an inactive %s trial",
   async (status) => {
     server.use(
@@ -33,11 +39,13 @@ it.each(["past_due", "unpaid", "incomplete_expired", "trialing", "canceled"])(
     expect(
       await screen.findByText("Pick a plan to continue using AutoGPT."),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Get Pro" })).toBeDefined();
+    expect(
+      screen.getAllByRole("button", { name: "Start Pro" }).length,
+    ).toBeGreaterThan(0);
   },
 );
 
-it("keeps the regular plan card hidden during an active trial", async () => {
+it("shows the trial as the current plan during an active trial", async () => {
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
     http.get("*/api/credits/subscription", () =>
@@ -51,6 +59,116 @@ it("keeps the regular plan card hidden during an active trial", async () => {
   );
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
-  expect(screen.queryByText("Your plan")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
+  expect(screen.getAllByText("Your plan").length).toBeGreaterThan(0);
+  expect(screen.queryByRole("button", { name: "Start Pro" })).toBeNull();
 });
+
+const trialSubscription = {
+  tier: "TRIAL",
+  monthly_cost: 0,
+  proration_credit_cents: 0,
+  has_active_stripe_subscription: true,
+  tier_costs: { PRO: 5000, MAX: 32000 },
+  tier_multipliers: { PRO: 1, MAX: 8.5 },
+};
+
+function mockBilling(trial: ReturnType<typeof trialResponse>, tier: string) {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(trial),
+    http.get("*/api/credits/subscription", () =>
+      HttpResponse.json({ ...trialSubscription, tier }),
+    ),
+    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+  );
+}
+
+it("offers plan choices while a trial cancellation is pending", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "TRIAL");
+  render(<SettingsBillingPage />);
+  expect(
+    await screen.findByRole("button", { name: "Subscribe to Pro" }),
+  ).toBeDefined();
+  expect(screen.getByRole("button", { name: "Upgrade to Max" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Start Pro" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Start Pro now/i })).toBeNull();
+});
+
+it("offers no plan choices during a trial that will convert", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "TRIAL");
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Cancel trial" });
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("offers no plan choices once a cancel-pending trial has converted", async () => {
+  mockBilling(
+    trialResponse({
+      cancel_at_period_end: true,
+      converted: true,
+    }),
+    "PRO",
+  );
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Upgrade to Max" });
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("offers no plan choices once a cancel-pending trial has ended", async () => {
+  mockBilling(
+    trialResponse({
+      active: false,
+      status: "canceled",
+      cancel_at_period_end: true,
+    }),
+    "NO_TIER",
+  );
+  render(<SettingsBillingPage />);
+  expect(
+    (await screen.findAllByRole("button", { name: "Start Pro" })).length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("shows a plan bought during a cancel-pending trial the cleanup has not ended", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "MAX");
+  render(<SettingsBillingPage />);
+  expect(await screen.findByText("Active")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Max" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Resume trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+});
+
+it("keeps a trial that will convert as the plan whatever tier is reported", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "MAX");
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Cancel trial" });
+  expect(screen.getByRole("heading", { name: "Your trial" })).toBeDefined();
+  expect(screen.queryByText("Active")).toBeNull();
+});
+
+it.each(["PRO", "MAX"])(
+  "drops the ended trial once a %s plan has replaced it",
+  async (tier) => {
+    mockBilling(
+      trialResponse({
+        active: false,
+        status: "canceled",
+        cancel_at_period_end: true,
+      }),
+      tier,
+    );
+    render(<SettingsBillingPage />);
+    expect(await screen.findByText("Active")).toBeDefined();
+    expect(screen.queryByText("Your trial has ended")).toBeNull();
+    expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+    expect(
+      screen.getByRole("heading", {
+        name: tier === "PRO" ? "Pro" : "Max",
+      }),
+    ).toBeDefined();
+  },
+);

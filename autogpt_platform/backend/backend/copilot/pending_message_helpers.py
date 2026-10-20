@@ -7,8 +7,10 @@ Also provides the call-rate-limit check for the queue endpoint so
 routes.py stays free of Redis/Lua details.
 """
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Callable
+import uuid
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -24,17 +26,27 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
+    claim_client_message,
     drain_pending_messages,
+    finish_despite_cancellation,
     format_pending_as_user_message,
+    peek_pending_count,
     push_pending_message,
     push_pending_message_if_session_running,
+    release_client_message,
+)
+from backend.copilot.response_model import (
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
 )
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
-from backend.data.workspace import resolve_attachable_workspace_files
+from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
@@ -141,6 +153,7 @@ async def queue_user_message(
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
+    metadata: dict[str, Any] | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -148,11 +161,16 @@ async def queue_user_message(
     called from the HTTP pending-message path and the autopilot block.
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
+
+    ``metadata`` lands on the user row the message is persisted as. It is
+    for internal senders only (a session messaging another session); the
+    HTTP path never passes it.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
+        metadata=metadata or None,
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -198,7 +216,9 @@ async def queue_pending_for_http(
     message: str,
     context: dict[str, str] | None,
     file_ids: list[str] | None,
+    folder_ids: list[str] | None,
     expert_id: str | None,
+    client_message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -210,6 +230,17 @@ async def queue_pending_for_http(
     3. ``{url, content}`` dict → ``PendingMessageContext`` coercion.
     4. Push via ``queue_user_message``.
 
+    Attached folders are appended to the message text here rather than carried
+    as a field: a pending message is rendered from ``content`` when the turn
+    drains it, and entries written by older workers are still in Redis.
+
+    ``client_message_id`` is the send's scoped idempotency key.  A send
+    whose key was already accepted is answered without pushing again (see
+    :func:`already_accepted_response`), and a push that does not land gives
+    the key back so a genuine retry can.  A copy that arrives while another
+    is still being pushed waits for its outcome, and gets a 503 if that
+    outlasts the wait.
+
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
     returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
@@ -220,6 +251,11 @@ async def queue_pending_for_http(
             user_id, file_ids, session_id=session_id, expert_id=expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
+    if folder_ids:
+        folders = await resolve_attachable_workspace_folders(
+            user_id, folder_ids, expert_id=expert_id
+        )
+        message += build_files_block([], folders)
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently
@@ -235,18 +271,56 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    response = await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
-        require_turn_in_flight=True,
+    claim_owner = uuid.uuid4().hex
+    if client_message_id is not None:
+        claim = await claim_client_message(session_id, client_message_id, claim_owner)
+        if claim == "accepted":
+            logger.info(
+                "pending_messages: skipped retransmit of an accepted message "
+                "for session=%s",
+                session_id,
+            )
+            return await already_accepted_response(session_id)
+        if claim == "reserved":
+            raise client_message_in_progress_error()
+
+    push = asyncio.ensure_future(
+        queue_user_message(
+            session_id=session_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+        )
     )
+    try:
+        response = await asyncio.shield(push)
+    except asyncio.CancelledError:
+        # The append may already have landed (the push still awaits its
+        # SPUBLISH), so settle the claim by what the push did, not by the
+        # cancellation: releasing it would let a retry queue a second copy.
+        if client_message_id is not None:
+            await finish_despite_cancellation(
+                asyncio.ensure_future(
+                    _settle_claim_of_cancelled_push(
+                        push, session_id, client_message_id, claim_owner
+                    )
+                )
+            )
+        raise
+    except BaseException:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
+        raise
     if not response.turn_in_flight:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
+    if client_message_id is not None:
+        await accept_client_message(session_id, client_message_id, claim_owner)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -263,6 +337,60 @@ async def queue_pending_for_http(
         )
 
     return response
+
+
+async def _settle_claim_of_cancelled_push(
+    push: "asyncio.Future[QueuePendingMessageResponse]",
+    session_id: str,
+    client_message_id: str,
+    owner: str,
+) -> None:
+    try:
+        response = await push
+    except Exception:
+        await release_client_message(session_id, client_message_id, owner)
+        return
+    if response.turn_in_flight:
+        await accept_client_message(session_id, client_message_id, owner)
+    else:
+        await release_client_message(session_id, client_message_id, owner)
+
+
+def client_message_in_progress_error() -> HTTPException:
+    """For a copy that arrived while the first copy was still being scheduled
+    and outlasted the wait for its outcome.  It is neither accepted nor
+    refused yet, so the client is told to retry, as for a degraded registry.
+    """
+    return HTTPException(
+        status_code=503,
+        detail="Your message is still being sent, retry shortly",
+        headers={"Retry-After": "5"},
+    )
+
+
+async def already_accepted_response(session_id: str) -> QueuePendingMessageResponse:
+    """Answer a retransmit of a send the server already accepted.
+
+    ``turn_in_flight`` is ``True`` whatever the turn is doing now: it tells the
+    client its message was taken, and ``False`` would make it fall back to
+    ``POST /stream`` and send the message all over again.
+    """
+    try:
+        buffer_length = await peek_pending_count(session_id)
+    except Exception as e:
+        # The count is informational. A Redis blip must not turn an accepted
+        # send into an error, which the client would answer by resending it.
+        logger.warning(
+            "pending_messages: buffer length lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        buffer_length = 0
+    return QueuePendingMessageResponse(
+        buffer_length=buffer_length,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
 
 
 async def check_pending_call_rate(user_id: str) -> int:
@@ -461,7 +589,9 @@ async def persist_pending_as_user_rows(
 
     for pm in pending:
         content = content_of(pm)
-        session.messages.append(ChatMessage(role="user", content=content))
+        session.messages.append(
+            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+        )
         if transcript_builder is not None:
             transcript_builder.append_user(content=content)
 
@@ -533,3 +663,20 @@ async def persist_pending_as_user_rows(
         len(pending),
     )
     return True
+
+
+def drained_rows_entry(
+    pending: list[PendingMessage],
+    content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
+) -> StreamPendingDrained:
+    """The stream entry for the user rows ``persist_pending_as_user_rows``
+    landed: one message per row, with the row's own content and metadata."""
+    return StreamPendingDrained(
+        drainedCount=len(pending),
+        messages=[
+            StreamPendingDrainedMessage(
+                id=pm.id, content=content_of(pm), metadata=pm.metadata or None
+            )
+            for pm in pending
+        ],
+    )

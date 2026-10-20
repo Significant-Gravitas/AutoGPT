@@ -2,7 +2,7 @@
 
 Step 2 of the confirm-gated team-change flow. One confirm tool serves both
 kinds: it takes nothing but the id, so the applied change is exactly what the
-user saw. The id is single-use and bound to the Autopilot session that
+user saw. The id is single-use and bound to the Otto session that
 produced it.
 """
 
@@ -58,6 +58,7 @@ class ConfirmExpertChangeTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The id returned by hire_expert/raise_expert.",
+                    "entity": "team_change",
                 },
             },
             "required": ["confirmation_id"],
@@ -80,8 +81,8 @@ class ConfirmExpertChangeTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "confirm_expert_change creates exactly the previewed "
-                    "expert and does not accept new values. Call hire_expert "
-                    "or raise_expert to propose something different."
+                    "expert and does not accept new values. Call tool:hire_expert "
+                    "or tool:raise_expert to propose something different."
                 ),
                 session_id=session_id,
             )

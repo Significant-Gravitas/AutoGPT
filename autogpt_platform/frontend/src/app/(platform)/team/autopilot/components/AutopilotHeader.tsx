@@ -1,5 +1,4 @@
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -7,25 +6,31 @@ import { Tick02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { cn } from "@/lib/utils";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
+import {
+  AUTOPILOT_COVER_URL,
+  AUTOPILOT_NAME,
+} from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 
 export function AutopilotHeader() {
   return (
     <header>
-      <ExpertCover className="h-36" color={undefined} builtIn />
+      <ExpertCover
+        className="h-36"
+        color={AUTOPILOT_HEX}
+        art={AUTOPILOT_COVER_URL}
+      />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <span className="relative z-10 -mt-12 ml-14 flex size-24 shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
-          <BotAvatar
-            config={AUTOPILOT_AVATAR}
-            size={80}
-            title="Autopilot"
-            showBadge={false}
-          />
-        </span>
+        <AutopilotAvatar
+          size={96}
+          transparent={false}
+          className="relative z-10 -mt-12 ml-4 rounded-full border border-[#e3e3e3]"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
-              Autopilot
+              {AUTOPILOT_NAME}
             </h1>
             <Text
               variant="small-medium"
