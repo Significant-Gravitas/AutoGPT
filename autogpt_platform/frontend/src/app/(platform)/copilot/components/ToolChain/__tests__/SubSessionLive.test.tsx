@@ -1,4 +1,5 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
@@ -69,6 +70,31 @@ function subSession(
 
 describe("SubSessionLive", () => {
   afterEach(cleanup);
+
+  it("shows a failure notice when Stop is declined by the server", async () => {
+    server.use(
+      subSession([], { chat_status: "running" }),
+      http.post(`${SESSION_ROUTE}/cancel`, () =>
+        HttpResponse.json({ cancelled: false, reason: "not_cancelled" }),
+      ),
+    );
+    render(
+      <>
+        <Toaster />
+        <SubSessionCard
+          output={{
+            status: "running",
+            sub_session_id: "sub-1",
+            background_task_id: "task",
+          }}
+        />
+      </>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop background subtask" }),
+    );
+    expect(await screen.findByText("Could not stop subtask")).toBeDefined();
+  });
 
   it("labels a background subtask and stops it through the existing endpoint", async () => {
     let stopped = false;

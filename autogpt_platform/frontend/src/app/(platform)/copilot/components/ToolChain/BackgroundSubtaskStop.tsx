@@ -16,21 +16,27 @@ export function BackgroundSubtaskStop({ sessionId }: Props) {
   const queryClient = useQueryClient();
   const { mutate, isPending } = usePostV2CancelSessionTask({
     mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({
+      onSuccess: (response) => {
+        if (response.status !== 200 || !response.data.cancelled)
+          showStopError();
+        return queryClient.invalidateQueries({
           queryKey: getGetV2GetSessionQueryKey(sessionId),
-        }),
-      onError: () =>
-        toast({
-          title: "Could not stop subtask",
-          description: "Please try again.",
-          variant: "destructive",
-        }),
+        });
+      },
+      onError: showStopError,
     },
   });
 
   function stop() {
     mutate({ sessionId });
+  }
+
+  function showStopError() {
+    toast({
+      title: "Could not stop subtask",
+      description: "Please try again.",
+      variant: "destructive",
+    });
   }
 
   return (
