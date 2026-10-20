@@ -19,12 +19,7 @@ from urllib.parse import unquote
 from gcloud.aio import storage as async_storage
 
 from backend.api.features.store.local_media import media_root
-from backend.data.account_deletion.models import (
-    SAFE_ID,
-    StepReport,
-    StepStatus,
-    Subject,
-)
+from backend.data.account_erasure.models import SAFE_ID, StepReport, StepStatus, Subject
 from backend.data.db import query_raw_with_schema
 from backend.util.data import get_data_path
 from backend.util.gcs_utils import is_not_found_error

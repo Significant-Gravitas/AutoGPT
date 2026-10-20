@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from backend.data.account_deletion import storage
-from backend.data.account_deletion.models import StepStatus, Subject
+from backend.data.account_erasure import storage
+from backend.data.account_erasure.models import StepStatus, Subject
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 WORKSPACE_ID = "a1b2c3d4-0000-4000-8000-000000000001"

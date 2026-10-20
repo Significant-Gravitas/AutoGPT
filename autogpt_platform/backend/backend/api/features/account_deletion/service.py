@@ -102,6 +102,7 @@ CONFIRMATION_EMAIL_TIMEOUT_SECONDS = 15.0
 _SURFACES = {
     AccountDeletionSource.SETTINGS: "settings",
     AccountDeletionSource.PAYWALL: "paywall",
+    AccountDeletionSource.EMAIL: "email",
 }
 
 

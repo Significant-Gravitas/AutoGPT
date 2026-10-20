@@ -141,10 +141,6 @@ model User {
   // MailerLite for good (backend/notifications/consent.py).
   marketingExcludedCountry String?
 
-  // Set by `delete-account --lock`: sign-in is banned and the account waits
-  // out the undo window before the full deletion may run (SECRT-2854).
-  deletionLockedAt DateTime?
-
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
   // the server picks, exactly as it did before this setting existed. The
@@ -365,6 +361,8 @@ model SubscriptionTrialClaim {
 enum AccountDeletionSource {
   SETTINGS
   PAYWALL
+  // A request made by email to privacy@, closed by `erase-account --close`.
+  EMAIL
 }
 
 // A user's request to delete their account. Its presence closes the account
@@ -2341,7 +2339,7 @@ model CreditTransaction {
 
   // No foreign key: the ledger is a billing record and outlives the account
   // (kept six years). Account deletion strips the personal content from its
-  // metadata instead (backend/data/account_deletion/database.py).
+  // metadata instead (backend/data/account_erasure/database.py).
   userId String
 
   amount Int

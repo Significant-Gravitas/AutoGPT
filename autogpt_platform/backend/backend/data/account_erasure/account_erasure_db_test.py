@@ -2,47 +2,48 @@
 
 An account with a published agent (and the sub-agent it runs) that another
 account has in its library and has run, a private agent in a folder, a draft
-listing, reviews both ways, a credit ledger and a personal org is deleted:
+listing, reviews both ways, a credit ledger and a personal org is closed the
+way Settings closes it (`close_account`, SECRT-2877), and its deletion
+request is then processed:
+- it is pending once past the grace, and the confirmation the close did not
+  send goes out first, to its address;
 - its published agent, sub-agent and listing go to the "deleted user"
-  account, and the other account can still open and run it;
+  account, the listing still taken down, and the other account can still
+  open and run the agent;
 - everything else of the account goes, including its auth identity, and the
   orphan-healing job finds nothing to bring it back from;
 - the ledger stays, stripped of the block inputs and personal Stripe details;
+- the request stays, marked done, and is no longer pending;
 - a rerun is a no-op.
 
-An account whose agents live in an org another member is active in: the
-org-home and team agents (which every member, or the team, can open, though
-nobody has added or run them) go to the placeholder with their org and team,
-while an org whose only other member is suspended goes with the account.
-
-And the lock and unlock: a lock bans sign-in and records the date, an unlock
-lifts only what the lock did, and an account banned before the lock stays
-banned, for its own reason, after the unlock.
+An account whose agents live in an org another member is active in, closed by
+a request made by email: the org-home and team agents (which every member, or
+the team, can open, though nobody has added or run them) go to the
+placeholder with their org and team, while an org whose only other member is
+suspended goes with the account.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import prisma.enums
 import prisma.models
 import pytest
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data.account_deletion.activity import disable_sign_in
-from backend.data.account_deletion.database import delete_rows
-from backend.data.account_deletion.deleted_user import (
-    DELETED_USER_ID,
-    DELETED_USER_NAME,
-)
-from backend.data.account_deletion.lock import lift_lock, record_lock
-from backend.data.account_deletion.marketplace import delete_marketplace
-from backend.data.account_deletion.models import Subject
-from backend.data.account_deletion.preflight import load_subject
-from backend.data.account_deletion.shared_agents import (
+from backend.data.account_deletion import close_account
+from backend.data.account_erasure import request, routine
+from backend.data.account_erasure.database import delete_rows
+from backend.data.account_erasure.deleted_user import DELETED_USER_ID, DELETED_USER_NAME
+from backend.data.account_erasure.marketplace import delete_marketplace
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.preflight import load_subject
+from backend.data.account_erasure.shared_agents import (
     plan_transfer,
     transfer_shared_agents,
 )
-from backend.data.account_deletion.storage import kept_media
+from backend.data.account_erasure.storage import kept_media
 from backend.data.db import execute_raw_with_schema
 from backend.data.graph import get_graph
 from backend.data.user import find_orphaned_auth_identities, get_or_create_user
@@ -63,7 +64,7 @@ async def _account() -> str:
             "id": str(uuid.uuid4()),
             "token": str(uuid.uuid4()),
             "userId": user_id,
-            "expiresAt": datetime.now(timezone.utc) + timedelta(days=1),
+            "expiresAt": datetime.now(UTC) + timedelta(days=1),
         }
     )
     await prisma.models.AuthAccount.prisma().create(
@@ -221,7 +222,7 @@ async def _verifications(user_id: str, email: str) -> list[str]:
     names the address, in any case) of the account; and a cooldown of an
     address that only ends like its own, which stays. The ID of the one that
     stays."""
-    expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+    expires = datetime.now(UTC) + timedelta(minutes=10)
     rows = {
         f"{user_id}-reset": (f"reset-password:{uuid.uuid4()}", user_id),
         f"{user_id}-cooldown": (f"verify-email:{email.upper()}", "sent"),
@@ -239,7 +240,8 @@ async def _verifications(user_id: str, email: str) -> list[str]:
     return [f"{user_id}-other"]
 
 
-async def _delete(user_id: str) -> Subject:
+async def _erase_rows(user_id: str) -> Subject:
+    """The steps that change rows, without the routine's outside services."""
     subject = await load_subject(user_id)
     plan = await plan_transfer(user_id)
     subject.shared_graph_ids = plan.graph_ids
@@ -248,6 +250,29 @@ async def _delete(user_id: str) -> Subject:
     await delete_marketplace(subject, dry_run=False)
     await delete_rows(subject, dry_run=False)
     return subject
+
+
+@pytest.fixture
+def outside_services(monkeypatch):
+    """The erasure's steps that reach other services, stubbed: the work stop
+    (scheduler, queues), files, memory, PostHog and MailerLite. The
+    confirmation email is captured."""
+    for name in (
+        "stop_work",
+        "delete_files",
+        "delete_memory",
+        "delete_posthog_person",
+        "forget_mailerlite_subscriber",
+    ):
+        step = name.removeprefix("delete_").removeprefix("forget_")
+
+        async def done(subject: Subject, *, dry_run: bool, _step=step):
+            return StepReport(name=_step, status=StepStatus.DONE)
+
+        monkeypatch.setattr(routine, name, done)
+    sent = AsyncMock()
+    monkeypatch.setattr(request, "send_account_deleted_email", sent)
+    return sent
 
 
 async def _left_of(user_id: str) -> dict[str, int]:
@@ -273,8 +298,8 @@ async def _left_of(user_id: str) -> dict[str, int]:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
-    server: SpinTestServer,
+async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
+    server: SpinTestServer, outside_services: AsyncMock
 ):
     user_id = await _account()
     other_id = await _account()
@@ -300,15 +325,32 @@ async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
     assert dry.counts["user"] == 1
     assert dry.counts["credit_transactions_scrubbed"] == 2
 
-    subject = await _delete(user_id)
+    # Closed from Settings, with the confirmation email not sent.
+    assert await close_account(user_id, prisma.enums.AccountDeletionSource.SETTINGS)
+    soon = datetime.now(UTC) + timedelta(minutes=1)
+    assert user_id not in await request.pending_user_ids(now=soon)
+    assert user_id in await request.pending_user_ids(grace=timedelta(0), now=soon)
+    subject = await load_subject(user_id)
+    subject.kept_listing_ids = (await plan_transfer(user_id)).listing_ids
 
+    report = await routine.erase_account(user_id, dry_run=False)
+
+    assert report.complete, report
+    outside_services.assert_awaited_once_with(email)
     assert set((await _left_of(user_id)).values()) == {0}
+    done = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
+        where={"userId": user_id}
+    )
+    assert done.confirmationSentAt is not None
+    assert done.completedAt is not None
+    assert user_id not in await request.pending_user_ids(grace=timedelta(0), now=soon)
     verifications = await prisma.models.AuthVerification.prisma().find_many(
         where={"id": {"startswith": user_id}}
     )
     assert [row.id for row in verifications] == kept_verification
     # The published agent, its sub-agent and its listing now belong to the
-    # placeholder, and the listing stays live with the other's review on it.
+    # placeholder, with the other's review on it. The close took the listing
+    # down, and the erasure does not put it back up.
     for graph in (published, sub_agent):
         kept = await prisma.models.AgentGraph.prisma().find_first_or_raise(
             where={"id": graph.id}
@@ -321,6 +363,7 @@ async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
     assert version.StoreListing and version.StoreListing.owningUserId == (
         DELETED_USER_ID
     )
+    assert version.StoreListing.isDeleted
     assert version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
     assert await prisma.models.StoreListingReview.prisma().count(
         where={"storeListingVersionId": own_version}
@@ -371,51 +414,27 @@ async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
         where={"reviewByUserId": user_id}
     )
 
-    # A rerun finds nothing and changes nothing.
+    # A rerun finds nothing, changes nothing and sends nothing.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()
+    rerun = await routine.erase_account(user_id, dry_run=False)
+    assert rerun.complete
+    outside_services.assert_awaited_once()
+    assert (
+        await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
+            where={"userId": user_id}
+        )
+    ).completedAt == done.completedAt
 
     # The healing job finds no orphaned identity to re-create the account
     # from. (Its query, read-only: healing would provision other tests' rows.)
     orphans = await find_orphaned_auth_identities(
-        datetime.now(timezone.utc) + timedelta(minutes=1), limit=10_000
+        datetime.now(UTC) + timedelta(minutes=1), limit=10_000
     )
     assert user_id not in {orphan.id for orphan in orphans}
 
-    await _delete(other_id)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_a_lock_bans_sign_in_and_an_unlock_lifts_only_that(
-    server: SpinTestServer,
-):
-    user_id = await _account()
-    subject = await load_subject(user_id)
-
-    await disable_sign_in(subject, dry_run=False)
-    await record_lock(subject, dry_run=False)
-
-    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
-        where={"id": user_id}
-    )
-    user = await prisma.models.User.prisma().find_unique_or_raise(where={"id": user_id})
-    assert identity.banned
-    assert user.deletionLockedAt is not None
-    assert user.marketingOptOutAt is not None
-    assert not await prisma.models.AuthSession.prisma().count(where={"userId": user_id})
-
-    await lift_lock(await load_subject(user_id), dry_run=False)
-
-    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
-        where={"id": user_id}
-    )
-    user = await prisma.models.User.prisma().find_unique_or_raise(where={"id": user_id})
-    assert not identity.banned
-    assert user.deletionLockedAt is None
-    assert user.marketingOptOutAt is None
-
-    await _delete(user_id)
+    await _erase_rows(other_id)
 
 
 async def _org(*members: tuple[str, str]) -> str:
@@ -467,14 +486,17 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     # Before: the colleague sees the org agent without any row of its own.
     assert await get_graph(org_home.id, None, colleague, organization_id=shared_org)
 
+    # Closed for a request made by email.
+    assert await close_account(user_id, prisma.enums.AccountDeletionSource.EMAIL)
     subject = await load_subject(user_id)
+    assert subject.has_request
     assert shared_org not in subject.sole_org_ids
     assert lapsed_org in subject.sole_org_ids
     assert sorted((await plan_transfer(user_id)).graph_ids) == sorted(
         [org_home.id, team_agent.id]
     )
 
-    await _delete(user_id)
+    await _erase_rows(user_id)
 
     for graph, team_id in ((org_home, None), (team_agent, team.id)):
         kept = await prisma.models.AgentGraph.prisma().find_first_or_raise(
@@ -493,36 +515,4 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
         where={"orgId": shared_org, "userId": colleague}
     )
 
-    await _delete(colleague)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_a_ban_in_force_before_the_lock_survives_the_unlock(
-    server: SpinTestServer,
-):
-    user_id = await _account()
-    await prisma.models.AuthUser.prisma().update(
-        where={"id": user_id},
-        data={"banned": True, "banReason": "Abuse", "banExpires": None},
-    )
-    subject = await load_subject(user_id)
-
-    await disable_sign_in(subject, dry_run=False)
-    await record_lock(subject, dry_run=False)
-
-    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
-        where={"id": user_id}
-    )
-    assert (identity.banned, identity.banReason) == (True, "Abuse")
-    assert not await prisma.models.AuthSession.prisma().count(where={"userId": user_id})
-
-    unlocked = await lift_lock(await load_subject(user_id), dry_run=False)
-
-    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
-        where={"id": user_id}
-    )
-    assert (identity.banned, identity.banReason) == (True, "Abuse")
-    assert unlocked.counts["ban_lifted"] == 0
-    assert unlocked.counts["lock_cleared"] == 1
-
-    await _delete(user_id)
+    await _erase_rows(colleague)

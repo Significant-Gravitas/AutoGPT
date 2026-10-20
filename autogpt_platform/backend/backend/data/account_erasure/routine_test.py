@@ -1,30 +1,26 @@
 """The routine runs every step in order, deletes nothing on a dry run or when
 something is blocked, stops at the first failed step so a rerun can resume,
-and a rerun of a finished deletion is a no-op. The lock runs only the steps
-that stop the account; the unlock only lifts the lock."""
+and a rerun of a finished erasure is a no-op."""
 
 from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.data.account_deletion import routine
-from backend.data.account_deletion.deleted_user import DELETED_USER_ID
-from backend.data.account_deletion.models import (
-    AccountDeletionBlocked,
+from backend.data.account_erasure import routine
+from backend.data.account_erasure.models import (
+    AccountErasureBlocked,
     Blocker,
     StepReport,
     StepStatus,
     Subject,
 )
-from backend.data.account_deletion.shared_agents import TransferPlan
+from backend.data.account_erasure.shared_agents import TransferPlan
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 STEP_NAMES = [
-    "sign_in",
-    "schedules",
-    "executions",
-    "subscriptions",
-    "integrations",
+    "stop_work",
+    "confirmation",
+    "org_subscriptions",
     "shared_agents",
     "marketplace",
     "files",
@@ -32,6 +28,7 @@ STEP_NAMES = [
     "posthog",
     "mailerlite",
     "database",
+    "request",
 ]
 
 
@@ -43,20 +40,17 @@ class Steps:
         self.subjects: list[Subject] = []
         self.failing = failing
         targets = {
-            "sign_in": "disable_sign_in",
-            "schedules": "stop_schedules",
-            "executions": "stop_executions",
-            "subscriptions": "cancel_subscriptions",
-            "integrations": "release_integrations",
+            "stop_work": "stop_work",
+            "confirmation": "send_confirmation",
+            "org_subscriptions": "cancel_org_subscriptions",
             "shared_agents": "transfer_shared_agents",
             "marketplace": "delete_marketplace",
-            "lock": "record_lock",
-            "unlock": "lift_lock",
             "files": "delete_files",
             "memory": "delete_memory",
             "posthog": "delete_posthog_person",
             "mailerlite": "forget_mailerlite_subscriber",
             "database": "delete_rows",
+            "request": "complete_request",
         }
         for name, attribute in targets.items():
             monkeypatch.setattr(routine, attribute, self._step(name))
@@ -75,7 +69,9 @@ class Steps:
 
 @pytest.fixture
 def account(monkeypatch):
-    subject = Subject(user_id=USER_ID, email="sam@example.com", has_user_row=True)
+    subject = Subject(
+        user_id=USER_ID, email="sam@example.com", has_user_row=True, has_request=True
+    )
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=subject))
     monkeypatch.setattr(
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
@@ -88,7 +84,7 @@ def account(monkeypatch):
 async def test_a_dry_run_runs_every_step_as_a_dry_run(monkeypatch, account):
     steps = Steps(monkeypatch)
 
-    report = await routine.delete_account(USER_ID)
+    report = await routine.erase_account(USER_ID)
 
     assert steps.calls == [(name, True) for name in STEP_NAMES]
     assert report.dry_run and not report.complete
@@ -99,7 +95,7 @@ async def test_a_dry_run_runs_every_step_as_a_dry_run(monkeypatch, account):
 async def test_an_apply_runs_every_step_in_order_and_completes(monkeypatch, account):
     steps = Steps(monkeypatch)
 
-    report = await routine.delete_account(USER_ID, dry_run=False)
+    report = await routine.erase_account(USER_ID, dry_run=False)
 
     assert steps.calls == [(name, False) for name in STEP_NAMES]
     assert report.complete
@@ -108,11 +104,11 @@ async def test_an_apply_runs_every_step_in_order_and_completes(monkeypatch, acco
 @pytest.mark.asyncio
 async def test_a_blocker_stops_an_apply_before_any_step(monkeypatch, account):
     steps = Steps(monkeypatch)
-    blocker = Blocker(name="undo_window_open", count=2, resolution="x")
+    blocker = Blocker(name="not_closed", count=0, resolution="x")
     monkeypatch.setattr(routine, "find_blockers", AsyncMock(return_value=[blocker]))
 
-    with pytest.raises(AccountDeletionBlocked) as raised:
-        await routine.delete_account(USER_ID, dry_run=False)
+    with pytest.raises(AccountErasureBlocked) as raised:
+        await routine.erase_account(USER_ID, dry_run=False)
 
     assert steps.calls == []
     assert raised.value.report.blockers == [blocker]
@@ -124,7 +120,7 @@ async def test_a_dry_run_reports_blockers_instead_of_raising(monkeypatch, accoun
     blocker = Blocker(name="shared_orgs_without_another_owner", count=1, resolution="x")
     monkeypatch.setattr(routine, "find_blockers", AsyncMock(return_value=[blocker]))
 
-    report = await routine.delete_account(USER_ID)
+    report = await routine.erase_account(USER_ID)
 
     assert report.blockers == [blocker]
     assert len(report.steps) == len(STEP_NAMES)
@@ -134,11 +130,13 @@ async def test_a_dry_run_reports_blockers_instead_of_raising(monkeypatch, accoun
 async def test_a_failed_step_stops_the_apply_and_keeps_the_rows(monkeypatch, account):
     steps = Steps(monkeypatch, failing="mailerlite")
 
-    report = await routine.delete_account(USER_ID, dry_run=False)
+    report = await routine.erase_account(USER_ID, dry_run=False)
 
     ran = [name for name, _ in steps.calls]
     assert ran == STEP_NAMES[: STEP_NAMES.index("mailerlite") + 1]
     assert "database" not in ran
+    # The request stays pending, for the next run to finish.
+    assert "request" not in ran
     assert report.failed and not report.complete
     failed = report.steps[-1]
     assert failed.status == StepStatus.FAILED
@@ -151,7 +149,7 @@ async def test_a_failed_step_stops_the_apply_and_keeps_the_rows(monkeypatch, acc
 async def test_a_failed_step_does_not_stop_a_dry_run(monkeypatch, account):
     steps = Steps(monkeypatch, failing="files")
 
-    report = await routine.delete_account(USER_ID)
+    report = await routine.erase_account(USER_ID)
 
     assert [name for name, _ in steps.calls] == STEP_NAMES
     assert report.failed
@@ -159,7 +157,7 @@ async def test_a_failed_step_does_not_stop_a_dry_run(monkeypatch, account):
 
 @pytest.mark.asyncio
 async def test_a_second_run_finds_nothing_and_still_completes(monkeypatch):
-    gone = Subject(user_id=USER_ID)
+    gone = Subject(user_id=USER_ID, has_request=True, request_completed=True)
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=gone))
     monkeypatch.setattr(
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
@@ -167,7 +165,7 @@ async def test_a_second_run_finds_nothing_and_still_completes(monkeypatch):
     monkeypatch.setattr(routine, "find_blockers", AsyncMock(return_value=[]))
     Steps(monkeypatch)
 
-    report = await routine.delete_account(USER_ID, dry_run=False)
+    report = await routine.erase_account(USER_ID, dry_run=False)
 
     assert not report.account_found
     assert report.complete
@@ -182,118 +180,37 @@ async def test_every_step_sees_the_agents_that_go_to_the_placeholder(
     monkeypatch.setattr(routine, "plan_transfer", AsyncMock(return_value=plan))
     steps = Steps(monkeypatch)
 
-    await routine.delete_account(USER_ID)
+    await routine.erase_account(USER_ID)
 
     assert {tuple(s.shared_graph_ids) for s in steps.subjects} == {("g1",)}
     assert {tuple(s.kept_listing_ids) for s in steps.subjects} == {("l1",)}
 
 
 @pytest.mark.asyncio
-async def test_force_reaches_the_blocker_check(monkeypatch, account):
+@pytest.mark.parametrize("closing", [False, True])
+async def test_closing_reaches_the_blocker_check(monkeypatch, account, closing):
     Steps(monkeypatch)
     find_blockers = AsyncMock(return_value=[])
     monkeypatch.setattr(routine, "find_blockers", find_blockers)
 
-    await routine.delete_account(USER_ID, dry_run=False, force=True)
+    await routine.erase_account(USER_ID, closing=closing)
 
-    assert find_blockers.await_args.kwargs["force"] is True
-
-
-LOCK_STEPS = ["sign_in", "schedules", "executions", "subscriptions", "lock"]
-
-
-@pytest.mark.asyncio
-async def test_the_lock_only_stops_the_account(monkeypatch, account):
-    steps = Steps(monkeypatch)
-
-    report = await routine.lock_account(USER_ID, dry_run=False)
-
-    assert steps.calls == [(name, False) for name in LOCK_STEPS]
-    assert report.complete
-    # Nothing that deletes data, and no undo window or plan to wait for.
-    routine.find_blockers.assert_not_awaited()
-    routine.plan_transfer.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_dry_run_lock_changes_nothing(monkeypatch, account):
-    steps = Steps(monkeypatch)
-
-    report = await routine.lock_account(USER_ID)
-
-    assert steps.calls == [(name, True) for name in LOCK_STEPS]
-    assert report.dry_run
-
-
-@pytest.mark.asyncio
-async def test_the_unlock_only_lifts_the_lock(monkeypatch, account):
-    steps = Steps(monkeypatch)
-
-    report = await routine.unlock_account(USER_ID, dry_run=False)
-
-    assert steps.calls == [("unlock", False)]
-    assert report.complete
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("action", ["lock_account", "unlock_account"])
-async def test_the_placeholder_account_is_never_locked_or_unlocked(
-    monkeypatch, account, action
-):
-    placeholder = Subject(user_id=DELETED_USER_ID, has_user_row=True)
-    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=placeholder))
-    steps = Steps(monkeypatch)
-
-    with pytest.raises(AccountDeletionBlocked):
-        await getattr(routine, action)(DELETED_USER_ID, dry_run=False)
-
-    assert steps.calls == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("action", ["lock_account", "unlock_account"])
-async def test_an_unknown_account_is_not_locked_or_unlocked(
-    monkeypatch, account, action
-):
-    monkeypatch.setattr(
-        routine, "load_subject", AsyncMock(return_value=Subject(user_id=USER_ID))
-    )
-    steps = Steps(monkeypatch)
-
-    with pytest.raises(AccountDeletionBlocked) as raised:
-        await getattr(routine, action)(USER_ID, dry_run=False)
-
-    assert steps.calls == []
-    assert raised.value.report.blockers[0].name == "account_not_found"
+    assert find_blockers.await_args.kwargs["closing"] is closing
 
 
 @pytest.mark.asyncio
 async def test_a_malformed_id_runs_no_step(monkeypatch):
-    """The ID check is in the preflight, so not even the stop steps (which
-    reach Stripe and the scheduler) see a malformed ID."""
-    bad = Subject(user_id="../everyone")
+    """The ID check is in the preflight, so not even the work stop (which
+    reaches the scheduler) sees a malformed ID."""
+    bad = Subject(user_id="../everyone", has_request=True)
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=bad))
     monkeypatch.setattr(
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
     )
     steps = Steps(monkeypatch)
 
-    with pytest.raises(AccountDeletionBlocked) as raised:
-        await routine.delete_account("../everyone", dry_run=False, force=True)
-
-    assert steps.calls == []
-    assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("action", ["lock_account", "unlock_account"])
-async def test_a_malformed_id_is_not_locked_or_unlocked(monkeypatch, action):
-    bad = Subject(user_id="../everyone", has_user_row=True)
-    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=bad))
-    steps = Steps(monkeypatch)
-
-    with pytest.raises(AccountDeletionBlocked) as raised:
-        await getattr(routine, action)("../everyone", dry_run=False)
+    with pytest.raises(AccountErasureBlocked) as raised:
+        await routine.erase_account("../everyone", dry_run=False)
 
     assert steps.calls == []
     assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]

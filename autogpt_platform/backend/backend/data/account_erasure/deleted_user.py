@@ -7,7 +7,7 @@ setting off. It is created on first use, with a fixed ID, the way
 `create_default_user` provisions the self-hosted default user.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma import Prisma
 from prisma.enums import BriefingFrequency
@@ -38,7 +38,7 @@ async def ensure_deleted_user(client: Prisma) -> str:
                 "briefingFrequency": BriefingFrequency.OFF,
                 "alertsEnabled": False,
                 "notifyOnStoreVerdict": False,
-                "marketingOptOutAt": datetime.now(timezone.utc),
+                "marketingOptOutAt": datetime.now(UTC),
                 "marketingOptOutSource": _OPT_OUT_SOURCE,
             },
             "update": {},

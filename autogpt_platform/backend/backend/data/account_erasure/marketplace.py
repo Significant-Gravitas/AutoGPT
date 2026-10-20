@@ -17,7 +17,7 @@ from prisma.models import (
 )
 from prisma.types import StoreListingWhereInput
 
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 
 
 async def delete_marketplace(subject: Subject, *, dry_run: bool) -> StepReport:

@@ -9,7 +9,7 @@ billing records accounting keeps. Langfuse traces expire on their own after
 import logging
 from urllib.parse import urlencode
 
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.notifications import mailerlite
 from backend.util.request import Requests
 from backend.util.settings import Settings

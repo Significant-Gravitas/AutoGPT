@@ -6,7 +6,7 @@ from falkordb.asyncio import FalkorDB
 
 from backend.copilot.graphiti.client import derive_memory_group_id, evict_client
 from backend.copilot.graphiti.config import graphiti_config
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 
 
 async def delete_memory(subject: Subject, *, dry_run: bool) -> StepReport:

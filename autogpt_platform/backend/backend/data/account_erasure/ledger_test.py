@@ -1,12 +1,12 @@
 """The ledger keeps IDs and amounts and loses everything personal: the block
 inputs, free-text reasons and the customer details of stored Stripe objects.
-What the scrub does to real rows is checked in `account_deletion_db_test.py`."""
+What the scrub does to real rows is checked in `account_erasure_db_test.py`."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.data.account_deletion import ledger
+from backend.data.account_erasure import ledger
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 

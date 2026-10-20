@@ -1,12 +1,7 @@
 import re
-from datetime import datetime, timedelta
 from enum import Enum
 
 from pydantic import BaseModel
-
-# How long a locked account waits before the full deletion may run, so a
-# request can still be undone (`delete-account --unlock`).
-UNDO_WINDOW = timedelta(days=14)
 
 # Account IDs are UUIDs. Anything else is refused before a step runs
 # (`preflight.invalid_id`) and never turned into a storage prefix
@@ -42,7 +37,7 @@ class Blocker(BaseModel):
     resolution: str
 
 
-class DeletionReport(BaseModel):
+class ErasureReport(BaseModel):
     user_id: str
     dry_run: bool
     # False when neither a platform User nor an auth identity was found.
@@ -74,13 +69,20 @@ class Subject(BaseModel):
     # Organizations only this account belongs to: its personal org, and any
     # other org it is the sole member of. They go with the account.
     sole_org_ids: list[str] = []
-    # The account's own Stripe customer and those of its sole orgs.
-    stripe_customer_ids: list[str] = []
+    # The Stripe customers of its sole orgs, other than the account's own:
+    # closing the account (`account_deletion.service.delete_account`) already
+    # cancelled that one's subscriptions.
+    org_stripe_customer_ids: list[str] = []
     # Experts it owns, each with its own memory graph.
     expert_ids: list[str] = []
-    # When `delete-account --lock` stopped the account; the full deletion
-    # waits `UNDO_WINDOW` from then.
-    locked_at: datetime | None = None
+    # Its `AccountDeletionRequest`: the account is closed, and the erasure
+    # may run. Without one it is refused (`preflight.find_blockers`).
+    has_request: bool = False
+    # Whether the account-deleted email went out (the request's
+    # `confirmationSentAt`); the erasure sends it first when it did not.
+    confirmation_sent: bool = False
+    # The request's `completedAt` is set: an earlier erasure finished.
+    request_completed: bool = False
     # Its agents other accounts still use (`shared_agents.py`): handed to the
     # "deleted user" account instead of deleted, all versions of each.
     shared_graph_ids: list[str] = []
@@ -88,8 +90,8 @@ class Subject(BaseModel):
     kept_listing_ids: list[str] = []
 
 
-class AccountDeletionBlocked(RuntimeError):
-    def __init__(self, report: DeletionReport):
+class AccountErasureBlocked(RuntimeError):
+    def __init__(self, report: ErasureReport):
         names = ", ".join(blocker.name for blocker in report.blockers)
-        super().__init__(f"Account deletion blocked: {names}")
+        super().__init__(f"Account erasure blocked: {names}")
         self.report = report

@@ -29,11 +29,11 @@ from pydantic import BaseModel
 
 from backend.api.features.store.cache import clear_all_caches as clear_store_caches
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data.account_deletion.deleted_user import (
+from backend.data.account_erasure.deleted_user import (
     DELETED_USER_ID,
     ensure_deleted_user,
 )
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 
 logger = logging.getLogger(__name__)

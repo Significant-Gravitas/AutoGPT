@@ -21,8 +21,8 @@ from datetime import timedelta
 
 from pydantic import BaseModel
 
-from backend.data.account_deletion.ledger import count_unscrubbed, scrub_ledger
-from backend.data.account_deletion.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.ledger import count_unscrubbed, scrub_ledger
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.user import _invalidate_user_caches
 
