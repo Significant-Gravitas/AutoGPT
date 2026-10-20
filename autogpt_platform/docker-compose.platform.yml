@@ -138,8 +138,11 @@ services:
     <<: *redis-node
     depends_on: [redis-0, redis-1, redis-2]
     restart: "no"
+    # A started shard can take a second to accept connections, and this runs once: wait for every PONG.
     command: >-
-      sh -c "redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
+      sh -c "for node in redis-0:17000 redis-1:17001 redis-2:17002; do
+      i=0; until redis-cli -h $${node%:*} -p $${node#*:} ping 2>/dev/null | grep -q PONG || [ $$i -ge 60 ]; do i=$$((i + 1)); sleep 0.5; done; done;
+      redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
       redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes"
   falkordb:
     image: falkordb/falkordb:latest
