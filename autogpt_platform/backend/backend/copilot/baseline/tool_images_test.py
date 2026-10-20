@@ -1,8 +1,13 @@
 import asyncio
 import io
+from collections.abc import Sequence
+from functools import partial
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import orjson
 import pytest
+from openai.types.chat import ChatCompletionChunk
 from PIL import Image
 
 from backend.copilot.baseline import service
@@ -11,8 +16,110 @@ from backend.copilot.baseline.service_cancellation_test import baseline_io
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.tool_image import prepare_image
+from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util.tool_call_loop import LLMToolCall, ToolCallResult, tool_call_loop
 
 __all__ = ["baseline_io"]
+
+
+@pytest.mark.parametrize(("rounds", "batch_size"), [(12, 1), (1, 12)])
+async def test_image_context_stays_bounded_through_tool_rounds(
+    monkeypatch, baseline_io, rounds, batch_size
+):
+    output = io.BytesIO()
+    Image.new("RGB", (20, 20), "blue").save(output, format="PNG")
+    image = prepare_image(output.getvalue())
+    sent: list[list[dict[str, Any]]] = []
+
+    async def provider(**kwargs):
+        sent.append(orjson.loads(orjson.dumps(kwargs["messages"])))
+        round_number = len(sent)
+        calls = (
+            [
+                {
+                    "index": index,
+                    "id": f"page-{round_number}-{index}",
+                    "type": "function",
+                    "function": {"name": "read_workspace_file", "arguments": "{}"},
+                }
+                for index in range(batch_size)
+            ]
+            if round_number <= rounds
+            else []
+        )
+        chunk = ChatCompletionChunk.model_validate(
+            {
+                "id": "image-round",
+                "created": 0,
+                "model": "gpt-4o",
+                "object": "chat.completion.chunk",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": calls,
+                            "content": None if calls else "Done",
+                        },
+                        "finish_reason": "tool_calls" if calls else "stop",
+                    }
+                ],
+            }
+        )
+        stream = MagicMock()
+        stream.__aiter__.return_value = [chunk]
+        stream.close = AsyncMock()
+        return stream
+
+    async def read_image(call: LLMToolCall, tools: Sequence[Any]) -> ToolCallResult:
+        return ToolCallResult(
+            tool_call_id=call.id,
+            tool_name=call.name,
+            content=f"workspace://{call.id}.png",
+            image_blocks=[image.anthropic()],
+        )
+
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    transcript = TranscriptBuilder()
+    messages = [{"role": "user", "content": "Inspect the pages"}]
+    async for _ in tool_call_loop(
+        messages=messages,
+        tools=[],
+        llm_call=partial(
+            service._baseline_llm_caller,
+            state=service._BaselineStreamState(model="gpt-4o"),
+        ),
+        execute_tool=read_image,
+        update_conversation=partial(
+            service._baseline_conversation_updater, transcript_builder=transcript
+        ),
+        max_iterations=rounds + 1,
+        last_iteration_message="Finish",
+    ):
+        pass
+
+    assert len(sent) == rounds + 1
+    for index, request in enumerate(sent):
+        images = [
+            part
+            for message in request
+            if isinstance(message.get("content"), list)
+            for part in message["content"]
+            if part["type"] == "image_url"
+        ]
+        assert len(images) == min(index * batch_size, 10)
+        assert all(part == image.openai() for part in images)
+    assert "omitted" in orjson.dumps(sent[-1]).decode()
+    assert [
+        message["content"] for message in sent[-1] if message["role"] == "tool"
+    ] == [
+        f"workspace://page-{round_number}-{index}.png"
+        for round_number in range(1, rounds + 1)
+        for index in range(batch_size)
+    ]
+    assert (
+        orjson.dumps(transcript.entries_as_dicts()).count(image.data_base64.encode())
+        == rounds * batch_size
+    )
 
 
 async def test_requeued_approved_image_survives_turn_start_budget(

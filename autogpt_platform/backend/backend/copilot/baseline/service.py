@@ -35,6 +35,7 @@ from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
 )
+from backend.copilot.baseline.image_context import prune_image_context
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
@@ -884,6 +885,7 @@ async def _baseline_llm_caller(
 
     round_text = ""
     try:
+        prune_image_context(messages)
         client = _get_main_client()
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
