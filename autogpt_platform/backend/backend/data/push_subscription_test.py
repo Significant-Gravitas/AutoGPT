@@ -1,10 +1,11 @@
 """Tests for Web Push subscription CRUD operations."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
-from prisma.errors import UniqueViolationError
+from prisma.errors import RecordNotFoundError, UniqueViolationError
 
 from backend.data import push_subscription
 
@@ -18,7 +19,14 @@ def mock_prisma(mocker):
     mock_client.find_unique = AsyncMock(return_value=None)
     mock_client.delete_many = AsyncMock()
     mock_client.update_many = AsyncMock()
-    mocker.patch(
+    mock_client.tx = MagicMock(name="tx")
+
+    @asynccontextmanager
+    async def fake_transaction():
+        yield mock_client.tx
+
+    mocker.patch("backend.data.push_subscription.transaction", fake_transaction)
+    mock_client.model_prisma = mocker.patch(
         "backend.data.push_subscription.PushSubscription.prisma",
         return_value=mock_client,
     )
@@ -173,6 +181,54 @@ class TestUpsertPushSubscription:
         # taken over is added, so they end at the cap rather than one past it.
         mock_prisma.delete_many.assert_awaited_once_with(where={"id": "row-0"})
         assert writes == ["delete", "upsert"]
+
+    @pytest.mark.asyncio
+    async def test_cap_check_eviction_and_claim_share_one_transaction(
+        self, mock_prisma
+    ):
+        # A claim that fails after the eviction must roll the eviction back,
+        # or the account loses a registration for nothing.
+        mock_prisma.find_many.return_value = [
+            MagicMock(
+                id=f"row-{i}",
+                endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
+            )
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        mock_prisma.find_unique.return_value = MagicMock(userId="user-1")
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/TAKEN",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        assert mock_prisma.model_prisma.call_args_list == [call(mock_prisma.tx)]
+        mock_prisma.delete_many.assert_awaited_once()
+        mock_prisma.upsert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_once_when_the_row_vanished_mid_upsert(self, mock_prisma):
+        # The failed-push cleanup can delete the row between Prisma's read
+        # and write; the second run creates it.
+        expected = MagicMock()
+        mock_prisma.upsert.side_effect = [
+            RecordNotFoundError(MagicMock()),
+            expected,
+        ]
+
+        result = await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        assert result is expected
+        assert mock_prisma.upsert.await_count == 2
 
     @pytest.mark.asyncio
     async def test_refreshing_own_endpoint_at_the_cap_drops_nothing(self, mock_prisma):

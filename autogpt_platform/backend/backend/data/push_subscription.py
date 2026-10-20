@@ -3,10 +3,11 @@
 import logging
 from datetime import datetime, timezone
 
-from prisma.errors import UniqueViolationError
+from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import PushSubscription
 from pydantic import BaseModel
 
+from backend.data.db import transaction
 from backend.util.request import parse_url, validate_url_host
 
 logger = logging.getLogger(__name__)
@@ -87,69 +88,69 @@ async def upsert_push_subscription(
     auth: str,
     user_agent: str | None = None,
 ) -> PushSubscription:
-    existing = await PushSubscription.prisma().find_many(
-        where={"userId": user_id},
-    )
-    # The cap stops one account registering unbounded endpoints to amplify
-    # outbound pushes. Refreshing its own endpoint is always fine. A new
-    # endpoint past the cap is refused, but taking over one another account
-    # registered (the same browser after switching accounts) is not: refusing
-    # would leave that account's notifications arriving on this browser. That
-    # makes room instead, dropping this account's least recently refreshed
-    # subscription, the device most likely gone.
-    if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not any(
-        row.endpoint == endpoint for row in existing
-    ):
-        if (
-            await PushSubscription.prisma().find_unique(where={"endpoint": endpoint})
-            is None
-        ):
-            raise ValueError(
-                f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
-            )
-        stalest = min(existing, key=lambda row: row.updatedAt)
-        await PushSubscription.prisma().delete_many(where={"id": stalest.id})
     try:
-        return await _claim_endpoint(user_id, endpoint, p256dh, auth, user_agent)
-    except UniqueViolationError:
-        # A concurrent subscribe created this endpoint's row between Prisma's
-        # read and write; it exists now, so a second try updates it.
-        return await _claim_endpoint(user_id, endpoint, p256dh, auth, user_agent)
+        return await _subscribe(user_id, endpoint, p256dh, auth, user_agent)
+    except (UniqueViolationError, RecordNotFoundError):
+        # Prisma runs the upsert as a read then a write, and a concurrent write
+        # changed the endpoint's row in between: another subscribe created it,
+        # or the failed-push cleanup deleted it. The transaction rolled back,
+        # so one more run sees the row as it is now.
+        return await _subscribe(user_id, endpoint, p256dh, auth, user_agent)
 
 
-async def _claim_endpoint(
+async def _subscribe(
     user_id: str,
     endpoint: str,
     p256dh: str,
     auth: str,
     user_agent: str | None,
 ) -> PushSubscription:
-    """Write the endpoint's single row, moving it to ``user_id``.
+    """Check the cap, make room if needed and claim the endpoint, all or nothing.
 
     An endpoint belongs to one browser profile (``endpoint`` is unique), so
     whoever subscribed it last owns it. Signing into a second account on the
     same browser then stops the first account's notifications arriving there.
     """
-    return await PushSubscription.prisma().upsert(
-        where={"endpoint": endpoint},
-        data={
-            "create": {
-                "userId": user_id,
-                "endpoint": endpoint,
-                "p256dh": p256dh,
-                "auth": auth,
-                "userAgent": user_agent,
+    async with transaction() as tx:
+        subscriptions = PushSubscription.prisma(tx)
+        existing = await subscriptions.find_many(where={"userId": user_id})
+        # The cap stops one account registering unbounded endpoints to amplify
+        # outbound pushes. Refreshing its own endpoint is always fine. A new
+        # endpoint past the cap is refused, but taking over one another
+        # account registered (the same browser after switching accounts) is
+        # not: refusing would leave that account's notifications arriving on
+        # this browser. That makes room instead, dropping this account's least
+        # recently refreshed subscription, the device most likely gone.
+        if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not any(
+            row.endpoint == endpoint for row in existing
+        ):
+            if await subscriptions.find_unique(where={"endpoint": endpoint}) is None:
+                raise ValueError(
+                    f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} "
+                    "per user reached"
+                )
+            stalest = min(existing, key=lambda row: row.updatedAt)
+            await subscriptions.delete_many(where={"id": stalest.id})
+        return await subscriptions.upsert(
+            where={"endpoint": endpoint},
+            data={
+                "create": {
+                    "userId": user_id,
+                    "endpoint": endpoint,
+                    "p256dh": p256dh,
+                    "auth": auth,
+                    "userAgent": user_agent,
+                },
+                "update": {
+                    "User": {"connect": {"id": user_id}},
+                    "p256dh": p256dh,
+                    "auth": auth,
+                    "userAgent": user_agent,
+                    "failCount": 0,
+                    "lastFailedAt": None,
+                },
             },
-            "update": {
-                "User": {"connect": {"id": user_id}},
-                "p256dh": p256dh,
-                "auth": auth,
-                "userAgent": user_agent,
-                "failCount": 0,
-                "lastFailedAt": None,
-            },
-        },
-    )
+        )
 
 
 async def get_user_push_subscriptions(user_id: str) -> list[PushSubscriptionDTO]:
