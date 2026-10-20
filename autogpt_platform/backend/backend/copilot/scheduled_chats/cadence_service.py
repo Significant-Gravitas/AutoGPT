@@ -73,7 +73,8 @@ async def set_cadence(
 ) -> ScheduledChatCadence:
     """Switch the chat to *cron*, one of the cadences it was offered."""
     schedule = await _schedule(user_id, schedule_key)
-    if cron not in {option.cron for option in _cadence(schedule).options}:
+    offered = less_often(schedule.crons, schedule.timezone, datetime.now(timezone.utc))
+    if cron not in {rung.cron for rung in offered}:
         raise CadenceNotOffered(cron)
     if schedule.routine is not None:
         try:

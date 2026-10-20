@@ -105,6 +105,13 @@ def less_often(crons: list[str], timezone: str, now: datetime) -> list[Cadence]:
     ]
 
 
+def runs_more_than_weekly(crons: list[str], timezone: str, now: datetime) -> bool:
+    """Whether ``less_often`` has something to offer, without building the
+    ladder: a schedule that runs more than once a week can run once a week on
+    its busiest day."""
+    return len(_fires(crons, timezone, now, limit=2)) >= 2
+
+
 def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     """How often the schedule runs, in words: "Every minute", "Every day at
     08:30", "Twice a day". None for one that runs less than twice a week and

@@ -8,6 +8,7 @@ from backend.copilot.scheduled_chats.cadence import (
     _runs_per_day,
     describe,
     less_often,
+    runs_more_than_weekly,
 )
 
 _CHICAGO = "America/Chicago"
@@ -207,3 +208,29 @@ def test_weekdays_read_late_in_the_week_do_not_pass_for_daily(now):
     fall between two runs of the ones read."""
     assert describe(["0 9 * * 1-5"], _CHICAGO, now) == "5 times a week"
     assert describe(["*/30 * * * mon-fri"], _CHICAGO, now) == "240 times a week"
+
+
+@pytest.mark.parametrize(
+    "crons",
+    [
+        ["* * * * *"],
+        ["17 * * * *"],
+        ["0 9 * * 1-5"],
+        ["0 9,17 * * 4"],
+        ["*/5 * * * sat"],
+        ["* * * * sat"],
+        ["0 9 * * mon"],
+        ["0 9 * * mon", "0 9 * * thu"],
+        ["0 9 1 * *"],
+        [],
+        ["not a cron"],
+    ],
+)
+def test_the_skip_note_offers_run_less_often_exactly_when_the_ladder_has_a_rung(
+    crons,
+):
+    """The note asks the cheap question on every skipped run; the dialog
+    builds the ladder. They must agree, or the button opens on nothing."""
+    assert runs_more_than_weekly(crons, _CHICAGO, _NOW) == bool(
+        less_often(crons, _CHICAGO, _NOW)
+    )

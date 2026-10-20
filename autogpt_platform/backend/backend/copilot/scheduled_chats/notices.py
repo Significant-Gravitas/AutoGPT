@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field
 
 from backend.copilot.hidden_rows import HIDDEN_FROM_MODEL_KEY
-from backend.copilot.scheduled_chats.cadence import less_often
+from backend.copilot.scheduled_chats.cadence import runs_more_than_weekly
 from backend.copilot.turn_queue import TurnRefusal
 from backend.data.db_accessors import chat_db
 
@@ -136,8 +136,12 @@ def skip_notice(
             refusal, title=title, run=run, user_timezone=user_timezone
         )
         # Its runs could fit the allowance: only a repeating schedule, with
-        # something less often than it to offer.
-        if run == "recurring" and less_often(crons or [], user_timezone or "UTC", now):
+        # something less often than it to offer. Every skipped run gets here
+        # and its window's note is written once, so the dialog builds the
+        # ladder, not this.
+        if run == "recurring" and runs_more_than_weekly(
+            crons or [], user_timezone or "UTC", now
+        ):
             notice.actions.append(NoticeRunLessOften())
         return notice
     if refusal.kind == "usage":
