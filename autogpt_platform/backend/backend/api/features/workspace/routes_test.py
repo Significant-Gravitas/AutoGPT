@@ -984,6 +984,54 @@ class TestSanitizeFilenameForHeader:
         result = _sanitize_filename_for_header('file"name.txt')
         assert 'filename="file\\"name.txt"' in result
 
+    def test_backslash_does_not_escape_quote(self):
+        from email.message import Message
+
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        filename = "report.pdf\\\"; filename*=UTF-8''pwn.exe; x=\""
+        result = _sanitize_filename_for_header(filename)
+
+        # The whole filename must stay inside the one quoted string: no
+        # injected "filename*" parameter may appear.
+        msg = Message()
+        msg["Content-Disposition"] = result
+        assert msg.get_filename() == filename
+        assert msg.get_param("filename*") is None
+
+    def test_trailing_backslash_produces_well_formed_header(self):
+        from email.message import Message
+
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        filename = "report.pdf\\"
+        result = _sanitize_filename_for_header(filename)
+
+        assert result == 'attachment; filename="report.pdf\\\\"'
+        msg = Message()
+        msg["Content-Disposition"] = result
+        assert msg.get_filename() == filename
+
+    def test_normal_filename_unchanged(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        assert _sanitize_filename_for_header("quarterly report.pdf") == (
+            'attachment; filename="quarterly report.pdf"'
+        )
+
+    def test_backslash_and_quote_escaped(self):
+        from email.message import Message
+
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        filename = 'a\\b"c.txt'
+        result = _sanitize_filename_for_header(filename)
+
+        assert result == 'attachment; filename="a\\\\b\\"c.txt"'
+        msg = Message()
+        msg["Content-Disposition"] = result
+        assert msg.get_filename() == filename
+
     def test_header_injection_blocked(self):
         from backend.api.features.workspace.routes import _sanitize_filename_for_header
 
