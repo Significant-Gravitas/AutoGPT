@@ -89,7 +89,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.permissions import denied_tool_names
+from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     approval_mode_supplement,
@@ -97,6 +97,7 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_provider_ceiling_supplement,
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
@@ -149,6 +150,7 @@ from backend.copilot.tools import (
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
+    forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
@@ -1899,6 +1901,7 @@ async def stream_chat_completion_baseline(
                 volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
                 expert_id=session.expert_id,
                 user_id=user_id,
+                providers=allowed_providers(permissions),
                 # Counted just before the try/finally that releases it, below:
                 # everything between here and there can still fail or be
                 # stopped, and a count with no release keeps the expert's box
@@ -1907,6 +1910,7 @@ async def stream_chat_completion_baseline(
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+            await forget_turn_ceiling(session_id, session.expert_id)
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
@@ -2008,6 +2012,8 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        # Empty unless the run's permissions restrict connected accounts.
+        + get_provider_ceiling_supplement(permissions)
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement

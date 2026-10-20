@@ -6,15 +6,12 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import {
-  hasConsentFor,
-  isConsentManagerConfigured,
-} from "@/services/consent/consent";
+import { hasConsentFor } from "@/services/consent/consent";
 import Script from "next/script";
 import { environment } from "../environment";
 import { GoogleConsentModeSync } from "./GoogleConsentModeSync";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
-import { DATAFAST_SCRIPT_SRC, isDataFastConsentExempt } from "./loading-policy";
+import { DATAFAST_SCRIPT_SRC } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
@@ -34,8 +31,7 @@ export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
   const adsID = environment.getGoogleAdsID();
-  const { googleTagEnabled, dataFastEnabled, dataFastWithoutConsent } =
-    useSetupAnalytics(host);
+  const { googleTagEnabled, dataFastEnabled } = useSetupAnalytics(host);
 
   return (
     <>
@@ -72,7 +68,6 @@ export function SetupAnalytics(props: SetupProps) {
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
           data-domain="agpt.co"
           src={DATAFAST_SCRIPT_SRC}
-          data-consent-exempt={dataFastWithoutConsent ? "true" : undefined}
           onLoad={flushDatafastQueue}
         />
       ) : null}
@@ -127,24 +122,24 @@ const MAX_QUEUED_DATAFAST_EVENTS = 100;
 const datafastQueue: DatafastEvent[] = [];
 let datafastQueueOverflowWarned = false;
 
-function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  // Checked on every event, not only before the script loads: a script the
-  // tour loaded stays on window after navigating away from it, and must not
-  // carry events the visitor never agreed to. Pre-consent events must not
+// Returns whether the event was sent or queued, so a once-per-session guard
+// can stay unset when the event was dropped.
+function sendDatafastEvent(
+  name: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  if (typeof window === "undefined") return false;
+  // Checked on every event, not only before the script loads: the script
+  // stays on window after consent is taken back. Pre-consent events must not
   // queue either — they would be replayed once consent is granted.
-  const consentExempt = isDataFastConsentExempt(
-    window.location.pathname,
-    isConsentManagerConfigured(),
-  );
-  if (!consentExempt && !hasConsentFor("analytics")) return;
+  if (!hasConsentFor("analytics")) return false;
   if (window.datafast) {
     // Self-heal if the Script's onLoad never fired (e.g. consent toggle
     // remounted it after the script had already loaded): replay the backlog
     // first so queued events keep their order ahead of this one.
     flushDatafastQueue();
     window.datafast(name, metadata);
-    return;
+    return true;
   }
   // The script loads afterInteractive, so mount-time events (tour_start,
   // tour_scenario_start) fire before window.datafast exists. Queue them and
@@ -156,9 +151,10 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
         `DataFast queue full (${MAX_QUEUED_DATAFAST_EVENTS} events); dropping new events until the script loads`,
       );
     }
-    return;
+    return false;
   }
   datafastQueue.push([name, metadata]);
+  return true;
 }
 
 export function flushDatafastQueue() {

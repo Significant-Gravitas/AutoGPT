@@ -52,10 +52,7 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });
 
-        analytics.sendDatafastEvent("add_to_library", {
-          name: data.name,
-          id: data.id,
-        });
+        analytics.sendDatafastEvent("add_to_library", { id: data.id });
       }
 
       router.push(`/library/agents/${data.id}`);
@@ -85,10 +82,7 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
         agentGraphExportFilename(file, agentName),
       );
 
-      analytics.sendDatafastEvent("download_agent", {
-        name: agentName,
-        id: agentId,
-      });
+      analytics.sendDatafastEvent("download_agent", { id: agentId });
 
       toast({
         title: "Download Complete",
