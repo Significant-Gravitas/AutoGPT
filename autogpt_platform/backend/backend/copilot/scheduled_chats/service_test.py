@@ -559,6 +559,31 @@ async def test_a_chat_resumed_some_other_way_that_runs_idle_is_not_called_paused
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_whose_card_failed_has_its_alert_withdrawn_when_it_ends(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """The pause raised its alert, but its card didn't post, so the streak
+    reads as never told. Resumed some other way, the run that ends it must
+    still withdraw the alert."""
+    mocker.patch(f"{_SERVICE}.post_notice", side_effect=RuntimeError("db"))
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.pausedAt is not None and row.notifiedAt is None
+        scheduler.get_execution_schedules.return_value = [MagicMock(id="sched-1")]
+
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_note_that_could_not_be_posted_is_told_on_the_next_run(
     server: SpinTestServer, scheduler: MagicMock, mocker
 ):
