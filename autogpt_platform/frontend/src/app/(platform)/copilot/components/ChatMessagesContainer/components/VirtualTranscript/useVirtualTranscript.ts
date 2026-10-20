@@ -24,6 +24,13 @@ const COMPACT_ROW_GAP_PX = 16;
 
 export type JumpToMessage = (messageID: string) => void;
 
+/** Where the first row sat before older history landed above it. */
+interface Prepend {
+  firstRowID: string;
+  scrollTop: number;
+  firstRowOffset: number;
+}
+
 interface Args {
   rows: TranscriptRow[];
   lastUserMessageID: string | null;
@@ -53,7 +60,7 @@ export function useVirtualTranscript({
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const enteringRef = useRef(false);
-  const prependingRef = useRef(false);
+  const prependRef = useRef<Prepend | null>(null);
   const hasViewportRef = useRef(false);
   hasViewportRef.current = hasViewport === true;
   const firstRowIDRef = useRef<string | undefined>(rows[0]?.message.id);
@@ -92,7 +99,7 @@ export function useVirtualTranscript({
     // StickToBottom holds a pinned thread at its end.
     if (
       hasViewportRef.current &&
-      !prependingRef.current &&
+      !prependRef.current &&
       !stickState?.isAtBottom
     ) {
       keepRowsBelowStill({
@@ -120,7 +127,7 @@ export function useVirtualTranscript({
   if (firstRowID !== firstRowIDRef.current) {
     const previousFirstID = firstRowIDRef.current;
     firstRowIDRef.current = firstRowID;
-    prependingRef.current = shiftOffsetForPrepend({
+    prependRef.current = shiftOffsetForPrepend({
       virtualizer,
       rows,
       previousFirstID,
@@ -157,9 +164,13 @@ export function useVirtualTranscript({
   }
 
   useLayoutEffect(() => {
-    prependingRef.current = false;
+    const prepend = prependRef.current;
+    prependRef.current = null;
     const scroller = scrollRef.current;
     const ready = scroller instanceof HTMLElement && scroller.clientHeight > 0;
+    if (prepend && ready) {
+      keepReadingRowAfterPrepend({ virtualizer, scroller, prepend });
+    }
     if (ready !== hasViewport) setHasViewport(ready);
     if (hasViewport !== null) {
       rememberMountedRows({
@@ -235,11 +246,10 @@ function keepRowsBelowStill({
 }
 
 /**
- * Older history landed above the rows on screen. `LoadMoreSentinel` moves the
- * scroll position down by the height that arrived; moving the window's
- * offset by the same amount here keeps the rows the user is reading mounted
- * through that commit, instead of windowing the new rows at the old offset.
- * Returns whether a prepend happened, so the commit leaves scrolling alone.
+ * Older history landed above the rows on screen. Moving the window's offset
+ * by the height that arrived keeps the rows the user is reading mounted
+ * through the commit, instead of windowing the new rows at the old offset.
+ * Returns where the old first row sat, for `keepReadingRowAfterPrepend`.
  */
 function shiftOffsetForPrepend({
   virtualizer,
@@ -251,17 +261,48 @@ function shiftOffsetForPrepend({
   rows: TranscriptRow[];
   previousFirstID: string | undefined;
   scrollMargin: number;
-}): boolean {
-  if (!previousFirstID || virtualizer.scrollOffset === null) return false;
+}): Prepend | null {
+  const scrollTop = virtualizer.scrollOffset;
+  if (!previousFirstID || scrollTop === null) return null;
+  if (scrollTop === Number.MAX_SAFE_INTEGER) return null;
   const previousIndex = rows.findIndex(
     (row) => row.message.id === previousFirstID,
   );
-  if (previousIndex <= 0) return false;
+  if (previousIndex <= 0) return null;
   virtualizer.getTotalSize();
   const previousStart = virtualizer.measurementsCache[previousIndex]?.start;
-  if (previousStart === undefined) return false;
-  virtualizer.scrollOffset += previousStart - scrollMargin;
-  return true;
+  if (previousStart === undefined) return null;
+  virtualizer.scrollOffset = scrollTop + previousStart - scrollMargin;
+  return {
+    firstRowID: previousFirstID,
+    scrollTop,
+    firstRowOffset: scrollMargin,
+  };
+}
+
+/**
+ * Puts the row that used to be first back where it was on screen, measured
+ * from the DOM after the commit. This runs after `LoadMoreSentinel`'s own
+ * restore, which moves by the change in total height: that is only the
+ * height that arrived above when nothing below changed, and a page that also
+ * merges rows further down would leave the reader somewhere else.
+ */
+function keepReadingRowAfterPrepend({
+  virtualizer,
+  scroller,
+  prepend,
+}: {
+  virtualizer: Virtualizer<HTMLElement, Element>;
+  scroller: HTMLElement;
+  prepend: Prepend;
+}) {
+  const node = virtualizer.elementsCache.get(prepend.firstRowID);
+  if (!node?.isConnected) return;
+  const rowOffset =
+    node.getBoundingClientRect().top -
+    scroller.getBoundingClientRect().top +
+    scroller.scrollTop;
+  scroller.scrollTop = prepend.scrollTop + rowOffset - prepend.firstRowOffset;
 }
 
 /** Rows mounted from here on, other than brand-new messages, skip the

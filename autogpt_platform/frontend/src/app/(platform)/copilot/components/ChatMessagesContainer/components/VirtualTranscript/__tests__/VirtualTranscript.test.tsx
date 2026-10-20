@@ -314,6 +314,22 @@ describe("VirtualTranscript", () => {
       expect(stick.scroller!.scrollTop).toBe(476 * ROW_STRIDE);
     });
 
+    it("puts the row being read back in place when older history arrives", () => {
+      const messages = Array.from({ length: 100 }, (_, i) => message(i + 50));
+      const { rerender } = renderTranscript(messages);
+      stick.state.isAtBottom = false;
+      scrollTo(0);
+
+      const older = Array.from({ length: 50 }, (_, i) => message(i));
+      // The page also merges ten rows further down, so the total height
+      // grows by less than the height that arrived above.
+      const merged = messages.filter((_, i) => i < 70 || i >= 80);
+      rerender(<Transcript messages={[...older, ...merged]} />);
+
+      expect(mountedIDs()).toContain("m50");
+      expect(stick.scroller!.scrollTop).toBe(50 * ROW_STRIDE);
+    });
+
     it("does not move for a row that enters below the viewport", () => {
       const messages = Array.from({ length: 500 }, (_, i) => message(i));
       renderTranscript(messages);
