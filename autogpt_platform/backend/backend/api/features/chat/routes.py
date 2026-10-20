@@ -2752,3 +2752,144 @@ ToolResponseUnion = (
 async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
     """Never called at runtime. Exists only so Orval generates TS types."""
     raise HTTPException(status_code=501, detail="Schema-only endpoint")
+
+
+@router.get("/_perf/db", include_in_schema=False)
+async def perf_db_probe(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Do-not-merge probe (#15739): what one database call costs per connection mode.
+
+    Timings in ms only; never hosts, users, passwords or rows."""
+    import os as _os
+    import socket as _socket
+    import statistics as _stats
+    import time as _time
+    import urllib.parse as _up
+
+    import psycopg2
+    from prisma import Prisma
+
+    from backend.data import db as _db
+
+    def ms(t0: float) -> float:
+        return round((_time.perf_counter() - t0) * 1000, 1)
+
+    def summary(values: list[float]) -> dict:
+        tail = values[1:] or values
+        return {"p50": _stats.median(tail), "min": min(tail), "n": len(tail)}
+
+    pooled_url = _db.DATABASE_URL
+    parts = _up.urlsplit(pooled_url)
+    query = dict(_up.parse_qsl(parts.query))
+    session_port = 5432 if parts.port == 6543 else parts.port
+    session_query = {
+        k: v
+        for k, v in query.items()
+        if k not in ("pgbouncer", "statement_cache_size")
+    }
+    session_url = _up.urlunsplit(
+        parts._replace(
+            netloc=parts.netloc.rsplit(":", 1)[0] + f":{session_port}",
+            query=_up.urlencode(session_query),
+        )
+    )
+
+    def tcp(port: int) -> dict:
+        out = []
+        for _ in range(6):
+            t0 = _time.perf_counter()
+            with _socket.create_connection((parts.hostname, port), timeout=5):
+                out.append(ms(t0))
+        return summary(out)
+
+    def pg_select1(url: str) -> dict:
+        u = _up.urlsplit(url)
+        conn = psycopg2.connect(
+            host=u.hostname,
+            port=u.port,
+            user=_up.unquote(u.username or ""),
+            password=_up.unquote(u.password or ""),
+            dbname=u.path.lstrip("/") or "postgres",
+            connect_timeout=10,
+            sslmode="require",
+        )
+        try:
+            conn.autocommit = True
+            cur = conn.cursor()
+            out = []
+            for _ in range(9):
+                t0 = _time.perf_counter()
+                cur.execute("SELECT 1")
+                cur.fetchall()
+                out.append(ms(t0))
+            return summary(out)
+        finally:
+            conn.close()
+
+    async def prisma_series(client: Prisma) -> dict:
+        async def run(fn) -> dict:
+            out = []
+            for _ in range(9):
+                t0 = _time.perf_counter()
+                await fn()
+                out.append(ms(t0))
+            return summary(out)
+
+        async def tx_one_read() -> None:
+            async with client.tx() as tx:
+                await tx.user.find_unique(where={"id": user_id})
+
+        return {
+            "raw_select1": await run(lambda: client.query_raw("SELECT 1")),
+            "find_unique": await run(
+                lambda: client.user.find_unique(where={"id": user_id})
+            ),
+            "find_with_include": await run(
+                lambda: client.user.find_unique(
+                    where={"id": user_id}, include={"ChatSessions": {"take": 1}}
+                )
+            ),
+            "noop_update": await run(
+                lambda: client.user.update_many(
+                    where={"id": "__perf_probe_no_such_user__"}, data={"name": "x"}
+                )
+            ),
+            "tx_one_read": await run(tx_one_read),
+        }
+
+    async def guarded(label: str, coro) -> object:
+        try:
+            return await coro
+        except Exception as exc:
+            return f"error: {type(exc).__name__}"
+
+    result: dict = {
+        "pooled_port": parts.port,
+        "pgbouncer": query.get("pgbouncer"),
+        "statement_cache_size": query.get("statement_cache_size"),
+        "connection_limit": query.get("connection_limit"),
+        "session_port": session_port,
+        "direct_url_set": bool(_os.environ.get("DIRECT_URL")),
+    }
+    result["tcp_pooled"] = await guarded("tcp", asyncio.to_thread(tcp, parts.port))
+    result["tcp_session"] = await guarded("tcp", asyncio.to_thread(tcp, session_port))
+    result["psycopg_pooled_select1"] = await guarded(
+        "pg", asyncio.to_thread(pg_select1, pooled_url)
+    )
+    result["psycopg_session_select1"] = await guarded(
+        "pg", asyncio.to_thread(pg_select1, session_url)
+    )
+    result["prisma_pooled"] = await guarded("prisma", prisma_series(_db.prisma))
+    session_client = Prisma(datasource={"url": session_url})
+    try:
+        await session_client.connect()
+        result["prisma_session"] = await guarded(
+            "prisma", prisma_series(session_client)
+        )
+    except Exception as exc:
+        result["prisma_session"] = f"error: {type(exc).__name__}"
+    finally:
+        if session_client.is_connected():
+            await session_client.disconnect()
+    return result
