@@ -671,6 +671,34 @@ async def persist_pending_as_user_rows(
     return True
 
 
+async def persist_unfolded_rows(
+    session: "ChatSession | None",
+    pending: list[PendingMessage],
+    *,
+    log_prefix: str,
+) -> None:
+    """Save rows a turn took but ended before folding in, such as results of
+    approved calls whose approvals it spent. Empties *pending*, so only the
+    first of several exits saves, and never raises over the turn's own error."""
+    if not pending or session is None:
+        return
+    saving = list(pending)
+    pending.clear()
+    try:
+        if any(message.model_image is not None for message in saving):
+            # No model transcript exists yet to retain the pixels. Requeue the
+            # whole batch so the next turn receives its images and order intact.
+            for message in saving:
+                await push_pending_message(session.session_id, message)
+            return
+        await persist_pending_as_user_rows(session, None, saving, log_prefix=log_prefix)
+    except Exception:
+        logger.warning(
+            f"{log_prefix} Could not save {len(saving)} unfolded row(s)",
+            exc_info=True,
+        )
+
+
 def drained_rows_entry(
     pending: list[PendingMessage],
     content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,

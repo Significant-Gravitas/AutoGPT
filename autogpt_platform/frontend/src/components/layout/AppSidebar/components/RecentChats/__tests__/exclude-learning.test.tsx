@@ -10,8 +10,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCopilotUIStore } from "../../../store";
-import { ChatSidebar } from "../ChatSidebar";
+import { RecentChats } from "../RecentChats";
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -33,14 +32,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-vi.mock("../../UsageLimits/UsageLimits", () => ({ UsageLimits: () => null }));
-vi.mock("../../UsageLimits/UsagePopover/UsagePopover", () => ({
-  UsagePopover: () => null,
-}));
-vi.mock("../components/NotificationToggle/NotificationToggle", () => ({
-  NotificationToggle: () => null,
-}));
-
 const sessions = [
   {
     id: "s1",
@@ -51,10 +42,9 @@ const sessions = [
   },
 ];
 
-describe("ChatSidebar — exclude from learning", () => {
+describe("RecentChats — exclude from learning", () => {
   beforeEach(() => {
     toastMock.mockClear();
-    useCopilotUIStore.setState({ sessionToDelete: null, isSearchOpen: false });
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
     );
@@ -78,16 +68,14 @@ describe("ChatSidebar — exclude from learning", () => {
     );
     render(
       <SidebarProvider>
-        <ChatSidebar />
+        <RecentChats />
       </SidebarProvider>,
     );
 
-    const row = (await screen.findByText("CSV import chat")).closest(
-      "div.group",
-    );
+    const row = (await screen.findByText("CSV import chat")).closest("li");
     if (!row) throw new Error("row not found");
     fireEvent.pointerDown(
-      within(row as HTMLElement).getByRole("button", { name: /more actions/i }),
+      within(row as HTMLElement).getByRole("button", { name: /chat actions/i }),
       { button: 0 },
     );
     fireEvent.click(

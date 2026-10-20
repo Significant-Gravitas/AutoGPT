@@ -53,7 +53,7 @@ def image():
 
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])
-@pytest.mark.parametrize("delivery", ["repeat_read", "late_result"])
+@pytest.mark.parametrize("delivery", ["repeat_read", "late_result", "failed_cap"])
 async def test_approved_image_is_delivered_once_without_refetch(
     rows, image, engine, delivery
 ):
@@ -75,12 +75,10 @@ async def test_approved_image_is_delivered_once_without_refetch(
     (review,) = rows.rows.values()
     assert image.data_base64 in review.payload["content"]
     rows.answer(ReviewStatus.APPROVED)
-    if delivery == "late_result":
-        late = await held._deliver(
-            "user-1",
-            session,
-            rows.held[0],
-            cap_late_tool_result if engine == "sdk" else str,
+    if delivery != "repeat_read":
+        cap = cap_late_tool_result if engine == "sdk" else str
+        late = await _late_result(
+            session, _failing_cap if delivery == "failed_cap" else cap
         )
         assert late.model_image == image
         assert len(late.content) < 2000
@@ -113,7 +111,7 @@ async def test_unapproved_image_never_reaches_late_model_message(rows, image, an
     (review,) = rows.rows.values()
     if answer == "expired":
         review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
-    late = await held._deliver("user-1", session, rows.held[0], cap_late_tool_result)
+    late = await _late_result(session)
     assert late.model_image is None
     assert image.data_base64 not in late.content
     assert tool.runs == 1
@@ -135,9 +133,26 @@ async def test_sandbox_image_survives_content_gate_and_late_approval(rows, image
     assert result["isError"]
     assert judge.call_args.kwargs["images"][0].data_base64 == image.data_base64
     rows.answer(ReviewStatus.APPROVED)
-    late = await held._deliver("user-1", session, rows.held[0], cap_late_tool_result)
+    late = await _late_result(session)
     assert late.model_image == image
     assert reader.await_count == 1
+
+
+async def _late_result(session, cap=cap_late_tool_result):
+    delivered: list[PendingMessage] = []
+    statuses = [
+        status
+        async for status in held.resolve_answered(
+            "user-1", session, delivered.append, cap=cap
+        )
+    ]
+    assert not statuses
+    (result,) = delivered
+    return result
+
+
+def _failing_cap(_text: str) -> str:
+    raise ValueError("capping failed")
 
 
 async def test_expired_image_is_not_released_on_identical_read(rows, image):
