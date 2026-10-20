@@ -89,7 +89,6 @@ function OfferPrice({
           variant="h3"
           as="span"
           aria-label={presentation.price}
-          unmask={false}
           className="leading-9 text-zinc-800"
         >
           {presentation.price}

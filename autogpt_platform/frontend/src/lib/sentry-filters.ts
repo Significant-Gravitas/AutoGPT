@@ -1,4 +1,4 @@
-import type { Event } from "@sentry/nextjs";
+import type { Event, init } from "@sentry/nextjs";
 
 // Next.js logs exactly this when a client-side navigation cannot fetch the RSC
 // payload (flaky network, tab backgrounded, deploy in progress). It then does a
@@ -66,10 +66,31 @@ export function isFromBot(userAgent: string | undefined) {
   return BOT_USER_AGENT.test(userAgent);
 }
 
-const CREDENTIAL_HEADERS = new Set(["cookie", "authorization"]);
+// Credentials, and the headers proxies put the visitor's IP address (and
+// Vercel the location it resolves from it) in.
+const PRIVATE_HEADERS = new Set([
+  "cookie",
+  "authorization",
+  "x-forwarded-for",
+  "x-real-ip",
+  "x-vercel-forwarded-for",
+  "x-vercel-proxied-for",
+  "cf-connecting-ip",
+  "true-client-ip",
+  "x-client-ip",
+  "forwarded",
+]);
+const PRIVATE_HEADER_PREFIX = "x-vercel-ip-";
 
-// Keeps the request's body, cookies and credential headers out of server and
-// edge events.
+function isPrivateHeader(name: string) {
+  const header = name.toLowerCase();
+  return (
+    PRIVATE_HEADERS.has(header) || header.startsWith(PRIVATE_HEADER_PREFIX)
+  );
+}
+
+// Keeps the request's body, cookies, credential headers and the visitor's IP
+// address out of server and edge events.
 export function stripRequestCredentials<T extends Event>(event: T): T {
   const { request } = event;
   if (!request) return event;
@@ -77,9 +98,92 @@ export function stripRequestCredentials<T extends Event>(event: T): T {
   delete request.cookies;
   if (!request.headers) return event;
   request.headers = Object.fromEntries(
-    Object.entries(request.headers).filter(
-      ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
-    ),
+    Object.entries(request.headers).filter(([name]) => !isPrivateHeader(name)),
   );
   return event;
+}
+
+const SENTRY_USER_FIELDS = new Set(["id", "role"]);
+
+// Error monitoring runs without consent (legitimate interest), so a user is
+// known to Sentry by their id and role only: never their email, name or IP
+// address, whichever code put them on the scope.
+export function stripUserPII<T extends Event>(event: T): T {
+  if (!event.user) return event;
+  const user = Object.fromEntries(
+    Object.entries(event.user).filter(([field]) =>
+      SENTRY_USER_FIELDS.has(field),
+    ),
+  );
+  if (Object.keys(user).length) event.user = user;
+  else delete event.user;
+  return event;
+}
+
+// The SDK copies the scope's user id, email and username into every log's and
+// span's attributes, web vital spans name the user by email in a bare `user`,
+// and server spans carry the visitor's address both as attributes of their own
+// (`http.client_ip`, `net.peer.ip`, `client.address`, `network.peer.address`)
+// and in every request header (`http.request.header.x_forwarded_for`,
+// `…x-real-ip`, `…x_vercel_ip_city`). Names are matched with dots and dashes
+// read as underscores, so one fragment covers every spelling.
+const IP_ATTRIBUTE_FRAGMENTS = [
+  "forwarded",
+  "proxied_for",
+  "real_ip",
+  "connecting_ip",
+  "client_ip",
+  "vercel_ip",
+  "peer_ip",
+  "peer_addr",
+  "client_address",
+  "ip_address",
+];
+
+function isIPAttribute(name: string) {
+  const key = name.toLowerCase().replace(/[.-]/g, "_");
+  if (key === "ip" || key.endsWith("_ip")) return true;
+  return IP_ATTRIBUTE_FRAGMENTS.some((fragment) => key.includes(fragment));
+}
+
+function isPrivateAttribute(name: string) {
+  if (name === "user") return true;
+  if (name.startsWith("user.")) return name !== "user.id";
+  return isIPAttribute(name);
+}
+
+function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([name]) => !isPrivateAttribute(name)),
+  );
+}
+
+type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
+type SentryLog = Parameters<NonNullable<SentryOptions["beforeSendLog"]>>[0];
+type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
+
+// Logs are known to Sentry by the user id only, like errors and transactions.
+export function stripLogUserPII(log: SentryLog): SentryLog {
+  if (!log.attributes) return log;
+  log.attributes = withoutPrivateAttributes(log.attributes);
+  return log;
+}
+
+// Transactions carry their root span's attributes in the trace context and
+// every child span's in its own data; an error raised inside a span carries
+// that span's attributes in its trace context too. beforeSend and
+// beforeSendTransaction are the last places to take the visitor's IP
+// address, email and name out of them.
+export function stripSpanPII<T extends Event>(event: T): T {
+  const trace = event.contexts?.trace;
+  if (trace?.data) trace.data = withoutPrivateAttributes(trace.data);
+  event.spans?.forEach(stripSpanDataPII);
+  return event;
+}
+
+// Standalone spans, such as the browser's web vitals, skip
+// beforeSendTransaction and pass through beforeSendSpan only.
+export function stripSpanDataPII(span: SentrySpan): SentrySpan {
+  if (span.data) span.data = withoutPrivateAttributes(span.data);
+  return span;
 }

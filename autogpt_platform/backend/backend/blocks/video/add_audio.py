@@ -6,6 +6,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -43,6 +44,7 @@ class AddAudioToVideoBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=AddAudioToVideoBlock.Input,
             output_schema=AddAudioToVideoBlock.Output,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(

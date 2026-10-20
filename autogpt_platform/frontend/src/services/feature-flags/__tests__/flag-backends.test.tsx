@@ -71,9 +71,21 @@ vi.mock("@/services/environment", () => ({
 
 const HIRE_EXPERTS = "hire-experts";
 
-describe("launchdarkly is the default backend", () => {
+describe("the default backend", () => {
+  it.each([undefined, "", "launch-darkly"])(
+    "asks the server when the backend is %j",
+    async (backend) => {
+      await loadWithBackend(backend);
+      const { FLAG_BACKEND } = await import("../flag-backend");
+
+      expect(FLAG_BACKEND).toBe("server");
+    },
+  );
+});
+
+describe("launchdarkly backend", () => {
   it("reads the LaunchDarkly value and never touches PostHog", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
 
     const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
@@ -84,7 +96,7 @@ describe("launchdarkly is the default backend", () => {
   });
 
   it("reports a flag LaunchDarkly has not answered for as not ready", async () => {
-    const { Flag, useFlagStatus } = await loadWithBackend(undefined);
+    const { Flag, useFlagStatus } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = {};
 
     const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
@@ -385,7 +397,7 @@ describe("dual backend", () => {
 
 describe("Sentry's flag context", () => {
   it.each([
-    ["launchdarkly", undefined],
+    ["launchdarkly", "launchdarkly"],
     ["posthog", "posthog"],
     ["dual", "dual"],
   ])("records the served boolean in %s mode", async (_, backend) => {
@@ -403,7 +415,7 @@ describe("Sentry's flag context", () => {
   });
 
   it("records a flag read by a component that throws in the same render", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     vi.spyOn(console, "error").mockImplementation(() => {});
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
     let recordedAtCatch: unknown[][] = [];
@@ -435,7 +447,7 @@ describe("Sentry's flag context", () => {
 
   it("records the default it serves while flags are disabled", async () => {
     env.launchDarklyEnabled = false;
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
 
     const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
@@ -449,7 +461,7 @@ describe("Sentry's flag context", () => {
 
   it("records nothing for an env-forced flag", async () => {
     const { Flag, useFlagStatus, useGetFlag } =
-      await loadWithBackend(undefined);
+      await loadWithBackend("launchdarkly");
     process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
 
     renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
@@ -459,7 +471,7 @@ describe("Sentry's flag context", () => {
   });
 
   it("records nothing for a JSON-valued flag", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = { "copilot-bot-platforms": { slack: false } };
 
     renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
@@ -468,7 +480,7 @@ describe("Sentry's flag context", () => {
   });
 
   it("still serves the flag when recording throws", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     sentry.addFeatureFlag.mockImplementation(() => {
       throw new Error("sentry down");
     });

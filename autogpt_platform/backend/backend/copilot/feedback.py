@@ -19,10 +19,12 @@ the user (distinct id = user id), for every user regardless of cookie
 consent, like the generations OpenRouter Broadcast sends there.
 ``$ai_session_id`` is the chat session id, the same value the chat's
 ``$ai_generation`` events carry, which is what joins a rating to the
-generations of its chat; ``message_id`` names the reply. It carries no
-``$ai_trace_id``: Broadcast assigns the generations' trace ids, so we have
-none to match. Rating again sends another event; the latest per
-``feedback_id`` is the rating that stands.
+generations of its chat; ``message_id`` names the reply. ``$ai_trace_id``
+is the trace of the turn that wrote the reply (``ChatMessage.traceId``, see
+``copilot.ai_spans``), the one its generations, tool spans and ``$ai_trace``
+carry, so the rating attaches to that reply's trace; a reply written before
+the column existed has none and attaches to the chat only. Rating again sends
+another event; the latest per ``feedback_id`` is the rating that stands.
 """
 
 import logging
@@ -224,6 +226,8 @@ def _send_to_posthog(
         "feedback_id": feedback_id,
         "impersonated": impersonated,
     }
+    if message.traceId:
+        properties["$ai_trace_id"] = message.traceId
     if comment:
         properties["$ai_feedback_text"] = comment
     capture(user_id, PostHogEvent.AI_METRIC, properties)

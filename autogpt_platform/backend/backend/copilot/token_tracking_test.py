@@ -413,8 +413,14 @@ class TestPlatformCostLogging:
         entry = mock_log.call_args[0][0]
         assert (entry.graph_exec_id, entry.chat_session_id) == expected
 
+    @pytest.mark.parametrize(
+        "prompt,completion,cache_read,cache_write",
+        [(100, 50, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100), (0, 0, 100, 100)],
+    )
     @pytest.mark.asyncio
-    async def test_logs_cost_entry_without_cost_usd(self):
+    async def test_logs_cost_entry_without_cost_usd(
+        self, prompt, completion, cache_read, cache_write
+    ):
         """When cost_usd is None, tracking_type should be 'tokens'."""
         mock_log = AsyncMock()
         with (
@@ -432,8 +438,10 @@ class TestPlatformCostLogging:
             await persist_and_record_usage(
                 session=None,
                 user_id="user-tokens",
-                prompt_tokens=100,
-                completion_tokens=50,
+                prompt_tokens=prompt,
+                completion_tokens=completion,
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_write,
                 log_prefix="[Baseline]",
             )
             await asyncio.sleep(0)
@@ -442,9 +450,12 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars is None
         assert entry.tracking_type == "tokens"
         assert entry.metadata["tracking_type"] == "tokens"
-        assert entry.metadata["tracking_amount"] == 150
+        assert entry.metadata["tracking_amount"] == prompt + completion
         assert entry.graph_exec_id is None
         assert entry.block_name == "copilot:Baseline"
+
+        assert entry.cache_read_tokens == (cache_read or None)
+        assert entry.cache_creation_tokens == (cache_write or None)
 
     @pytest.mark.asyncio
     async def test_skips_cost_log_when_no_user_id(self):

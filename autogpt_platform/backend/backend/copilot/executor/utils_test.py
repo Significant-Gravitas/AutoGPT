@@ -1,10 +1,13 @@
 """Tests for CoPilot executor utils (queue config, message models, logging)."""
 
-from contextlib import asynccontextmanager
+from collections.abc import Iterator
+from contextlib import asynccontextmanager, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
+from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
@@ -365,6 +368,97 @@ async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> Non
     assert dispatch.await_args.kwargs["message"] == "kick it off"
 
 
+@contextmanager
+def _scheduling(*, admitted: bool) -> Iterator[tuple[AsyncMock, AsyncMock]]:
+    """``schedule_chat_turn`` over a slot this call did or didn't admit."""
+    slot = MagicMock(admitted=admitted)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        yield append, dispatch
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_needing_a_fresh_slot_saves_nothing_on_a_held_chat():
+    # Another turn reserved the chat first, so this call only refreshed its
+    # slot: saving the note and dispatching would run two turns at once.
+    with _scheduling(admitted=False) as (append, dispatch):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message=KEEP_GOING_NOTE,
+            is_user_message=False,
+            require_fresh_slot=True,
+        )
+
+    assert turn_id is None
+    append.assert_not_awaited()
+    dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_needing_a_fresh_slot_dispatches_when_admitted():
+    with _scheduling(admitted=True) as (append, dispatch):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message=KEEP_GOING_NOTE,
+            is_user_message=False,
+            require_fresh_slot=True,
+        )
+
+    assert turn_id is not None
+    append.assert_awaited_once()
+    dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_still_saves_and_dispatches_on_a_refreshed_slot():
+    # /stream doesn't ask for a fresh slot; its behaviour is unchanged.
+    with _scheduling(admitted=False) as (append, dispatch):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1", user_id="u1", message="and the totals"
+        )
+
+    assert turn_id is not None
+    append.assert_awaited_once()
+    dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_dedupes_content_by_default():
+    with _scheduling(admitted=True) as (append, _dispatch):
+        await utils.schedule_chat_turn(
+            session_id="s1", user_id="u1", message="and the totals"
+        )
+
+    assert append.await_args.kwargs["dedupe_content"] is True
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_passes_content_dedupe_off_to_the_save():
+    with _scheduling(admitted=True) as (append, _dispatch):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message=KEEP_GOING_NOTE,
+            is_user_message=False,
+            dedupe_content=False,
+        )
+
+    assert append.await_args.kwargs["dedupe_content"] is False
+
+
 class TestNarrowPermissions:
     """The envelope's tool set becomes the turn's whitelist. The encoding of
     "no tools at all" is the trap: it is a blacklist of every tool, and a
@@ -397,6 +491,30 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+    def test_the_callers_provider_ceiling_is_kept(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"bash_exec"})}
+        )
+        caller = CopilotPermissions(providers=["github"], providers_exclude=True)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        assert not merged.is_provider_allowed("github")
+
+    def test_a_parents_provider_ceiling_is_kept_through_the_queue(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"bash_exec"})}
+        )
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        caller = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        again = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not again.is_provider_allowed("github")
 
 
 @pytest.mark.asyncio
@@ -491,3 +609,6 @@ async def test_queue_spawned_turn_stores_impersonation_with_the_queued_row() -> 
         )
 
     assert enqueue.await_args.kwargs["impersonated"] is True
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
