@@ -7,6 +7,7 @@ tool access, and dangerous input patterns.
 
 import logging
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -754,15 +755,15 @@ async def test_post_tool_use_injects_followup_additional_context(
         sdk_cwd=SDK_CWD,
     )
 
-    async def fake_drain(_session_id: str):
-        assert _session_id == "sess-post-inject"
-        return [pm_module.PendingMessage(content="please also do X")]
+    drain = AsyncMock(
+        return_value=[pm_module.PendingMessage(content="please also do X")]
+    )
 
     async def fake_stash(_session_id, _messages):
         return None
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
     monkeypatch.setattr(
         "backend.copilot.pending_messages.stash_pending_for_persist", fake_stash
@@ -782,6 +783,7 @@ async def test_post_tool_use_injects_followup_additional_context(
         context={},
     )
 
+    drain.assert_awaited_once_with("sess-post-inject", text_only=True)
     injected = result.get("hookSpecificOutput", {})
     assert injected.get("hookEventName") == "PostToolUse"
     assert "<user_follow_up>" in injected.get("additionalContext", "")
@@ -801,11 +803,10 @@ async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
         user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
     )
 
-    async def fake_drain(_session_id: str):
-        return []
+    drain = AsyncMock(return_value=[])
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -820,6 +821,7 @@ async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
     )
 
     # No additionalContext means Claude gets the tool_result verbatim.
+    drain.assert_awaited_once_with("sess-post-empty", text_only=True)
     assert "hookSpecificOutput" not in result
 
 
@@ -837,11 +839,10 @@ async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
         user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
     )
 
-    async def failing_drain(_session_id: str):
-        raise RuntimeError("redis down")
+    drain = AsyncMock(side_effect=RuntimeError("redis down"))
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", failing_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -855,6 +856,7 @@ async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
         context={},
     )
 
+    drain.assert_awaited_once_with("sess-post-fail", text_only=True)
     assert "hookSpecificOutput" not in result
 
 
@@ -870,15 +872,10 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
         sdk_cwd=SDK_CWD,
     )
 
-    drain_called = False
-
-    async def fake_drain(_session_id: str):
-        nonlocal drain_called
-        drain_called = True
-        return []
+    drain = AsyncMock(return_value=[])
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -892,7 +889,7 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
         context={},
     )
 
-    assert drain_called is False
+    drain.assert_not_awaited()
     assert "hookSpecificOutput" not in result
 
 
@@ -908,11 +905,9 @@ def _spans(monkeypatch):
     from backend.copilot import context as ctx_mod
     from backend.copilot.llm_attribution import set_turn_trace_id
 
-    async def no_drain(_session_id: str):
-        return []
-
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", no_drain
+        "backend.copilot.pending_messages.drain_pending_messages",
+        AsyncMock(return_value=[]),
     )
     session = MagicMock()
     session.session_id = "sess-spans"
