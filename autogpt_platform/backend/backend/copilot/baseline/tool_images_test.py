@@ -13,6 +13,7 @@ from PIL import Image
 from backend.copilot.baseline import service
 from backend.copilot.baseline.continuation_note_test import _sent_messages
 from backend.copilot.baseline.service_cancellation_test import baseline_io
+from backend.copilot.graphiti.context_marker import INJECTED_MEMORY_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.tool_image import prepare_image
@@ -211,8 +212,15 @@ async def test_context_and_attachments_survive_a_pending_image(
     assert isinstance(parts, list)
     text = "".join(part["text"] for part in parts if part["type"] == "text")
     for hint in [*hints.values(), seen, "Attached page", "Shared context"]:
-        assert hint in text
+        assert (
+            hint.replace(
+                "<temporal_context>", f"<temporal_context {INJECTED_MEMORY_MARKER}>"
+            )
+            in text
+        )
         assert hint not in session.model_dump_json()
+    assert text.count(INJECTED_MEMORY_MARKER) == 1
+    assert INJECTED_MEMORY_MARKER not in session.model_dump_json()
     assert text.index(seen) < text.index(hints["build_skills_update_notice"])
     assert text.index(hints["build_builder_context_turn_prefix"]) < text.index(
         hints["build_turn_budget_block"]
