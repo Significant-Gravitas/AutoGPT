@@ -169,6 +169,13 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 
 class TestGraphitiMemoryScope:
+    def test_supplement_keeps_tentative_memories_unconfirmed(self):
+        assert (
+            "Treat any memory marked tentative as an unconfirmed inference: "
+            "state that uncertainty before mentioning it, "
+            "and do not strengthen it or add details."
+        ) in prompting.get_graphiti_supplement()
+
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement()
 
