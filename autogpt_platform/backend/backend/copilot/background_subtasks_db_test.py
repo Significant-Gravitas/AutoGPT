@@ -487,6 +487,52 @@ async def test_worker_to_durable_handoff_to_parent_reply(
     assert [reply.content for reply in replies] == ["Your background subtask found 42."]
 
 
+async def test_completed_work_persists_even_when_cleanup_crosses_the_deadline(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    task = await world.launch()
+    finish = processor.finish_background_execution
+
+    async def slow_finish(entry: CoPilotExecutionEntry, error: str | None):
+        await asyncio.sleep(5.1)
+        await finish(entry, error)
+
+    async def scripted_model(**_kwargs: Any):
+        await append_and_save_message(
+            task.child_session_id,
+            ChatMessage(role="assistant", content="Finished before the deadline."),
+        )
+        yield StreamTextDelta(id=str(uuid4()), delta="Finished before the deadline.")
+
+    monkeypatch.setattr(processor, "background_timeout", lambda _: 5.0)
+    monkeypatch.setattr(processor, "finish_background_execution", slow_finish)
+    monkeypatch.setattr(processor, "ChatConfig", lambda: MagicMock(test_mode=True))
+    monkeypatch.setattr(processor, "stream_chat_completion_dummy", scripted_model)
+    monkeypatch.setattr(processor, "refusal_for", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        processor, "close_browser_daemon", AsyncMock(return_value=False)
+    )
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            worker.execute,
+            world.entry(task.child_session_id),
+            threading.Event(),
+            MagicMock(),
+        ),
+        timeout=20,
+    )
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "completed"
+    assert stored.result == "Finished before the deadline."
+    active = await stream_registry.get_session(task.child_session_id)
+    assert active and active.status == "completed"
+    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
+
+
 async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     world: World, monkeypatch: pytest.MonkeyPatch
 ):

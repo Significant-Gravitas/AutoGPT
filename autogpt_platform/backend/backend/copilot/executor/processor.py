@@ -948,6 +948,9 @@ class CoPilotProcessor:
                 log.error(f"Turn failed: {error_msg}")
             raise
         finally:
+            # Work has ended; its deadline must not interrupt outcome/usage persistence.
+            if deadline is not None and not deadline.expired():
+                deadline.reschedule(None)
             # Keep the monotonic deadline distinct from a user's Stop.
             if deadline is not None and deadline.expired():
                 error_msg = BACKGROUND_TIMEOUT_MESSAGE
