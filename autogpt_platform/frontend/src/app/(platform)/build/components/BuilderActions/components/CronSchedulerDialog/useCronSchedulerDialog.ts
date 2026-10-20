@@ -47,7 +47,7 @@ export function useCronSchedulerDialog({
               title: "Schedule created",
               description: "Schedule created successfully",
             });
-            if (flowID) trackScheduleCreatedGoal({ id: flowID }, "builder");
+            if (flowID) trackScheduleCreatedGoal(flowID, "builder");
             invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },
