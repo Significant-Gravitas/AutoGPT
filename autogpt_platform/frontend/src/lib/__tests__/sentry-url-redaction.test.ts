@@ -97,6 +97,7 @@ describe("redactURL", () => {
     "/api/orgs/o-1/invitations/i-1",
     "/api/invitations/pending",
     "/api/integrations/github/webhooks",
+    "/api/library/agents/a-1",
     "/api/chat/sessions/s-1/share/state",
     "/link/slack",
     "/link/slack/installed",
@@ -114,6 +115,10 @@ describe("redactURLsInText", () => {
     [
       '1.2.3.4:5 - "GET /api/invitations/i-1/decline?x=1 HTTP/1.1" 401',
       `1.2.3.4:5 - "GET /api/invitations/${REDACTED}/decline?x=${REDACTED} HTTP/1.1" 401`,
+    ],
+    [
+      '"GET /ws?q=it\'s&token=a HTTP/1.1"',
+      `"GET /ws?q=${REDACTED}&token=${REDACTED} HTTP/1.1"`,
     ],
     [
       "acting as user u for requesting GET https://h/api/public/shared/s-1?x=1",
