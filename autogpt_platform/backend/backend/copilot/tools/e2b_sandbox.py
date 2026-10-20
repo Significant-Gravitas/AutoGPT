@@ -1096,7 +1096,7 @@ async def pause_sandbox(
     async def _pause(sandbox: AsyncSandbox) -> None:
         nonlocal revoked
         revoked = await _revoke_stream(owner, sandbox)
-        await sandbox.pause()
+        await asyncio.sleep(0)  # do-not-merge probe (#15739): leave the box running
 
     # The stop gets its own share of the budget, so a box slow to answer it
     # still leaves the connect and the pause the time they always had.
@@ -1130,7 +1130,7 @@ async def pause_sandbox_direct(
         return False
     revoked = await _revoke_stream(owner, sandbox)
     try:
-        await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
+        await asyncio.wait_for(asyncio.sleep(0), timeout=_E2B_API_TIMEOUT_SECONDS)  # do-not-merge probe (#15739)
         logger.info("[E2B] Paused sandbox %.12s for %s", sandbox.sandbox_id, owner)
         await forget_sandbox(sandbox.sandbox_id)
         if not revoked:
