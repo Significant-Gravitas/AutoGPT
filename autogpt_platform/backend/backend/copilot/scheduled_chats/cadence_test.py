@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -10,6 +10,7 @@ from backend.copilot.scheduled_chats.cadence import (
     less_often,
     runs_more_than_weekly,
 )
+from backend.executor.scheduler import _build_trigger
 
 _CHICAGO = "America/Chicago"
 # A Sunday afternoon in Chicago.
@@ -234,3 +235,41 @@ def test_the_skip_note_offers_run_less_often_exactly_when_the_ladder_has_a_rung(
     assert runs_more_than_weekly(crons, _CHICAGO, _NOW) == bool(
         less_often(crons, _CHICAGO, _NOW)
     )
+
+
+def _scheduled(cron: str, start: datetime, end: datetime) -> list[datetime]:
+    """When the scheduler's own trigger fires *cron* between *start* and *end*."""
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    fires: list[datetime] = []
+    previous = None
+    while True:
+        fire = trigger.get_next_fire_time(previous, previous or start)
+        if fire is None or fire >= end:
+            return fires
+        fires.append(fire)
+        previous = fire
+
+
+@pytest.mark.parametrize(
+    "cron",
+    [
+        # The first Monday of the month: both days must match, not either.
+        "0 9 1-7 * mon",
+        # A step over every weekday counts from Monday.
+        "0 9 * * */2",
+        "0 9 * * */3",
+        "0 9 * * 5-2",
+        "0 9 * * 1-5",
+        "0 9 * * 1-5/2",
+        "0 9 * * 7",
+        "0 9 1,15 * *",
+        "*/30 * * * mon-fri",
+    ],
+)
+def test_runs_are_counted_as_the_scheduler_fires_them(cron):
+    start = datetime(2026, 10, 11, tzinfo=timezone.utc)
+    four_weeks = timedelta(weeks=4)
+
+    counted = _fires([cron], "UTC", start, span=four_weeks)
+
+    assert counted == _scheduled(cron, start, start + four_weeks)
