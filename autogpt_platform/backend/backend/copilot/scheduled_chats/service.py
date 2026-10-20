@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from prisma.errors import UniqueViolationError
 from prisma.models import ExpertRoutine, ScheduledChatStreak
 from prisma.types import (
+    ExpertRoutineWhereInput,
     ScheduledChatStreakWhereInput,
     ScheduledChatStreakWhereUniqueInput,
 )
@@ -177,7 +178,9 @@ async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
     A routine's streak is left alone: its paused jobs outlive any one
     schedule id, and a streak dropped from under them would stop the routine
     without a word."""
-    if await ExpertRoutine.prisma().find_unique(where={"id": schedule_key}):
+    if await ExpertRoutine.prisma().find_first(
+        where={"id": schedule_key, **_owned_by(user_id)}
+    ):
         return
     await ScheduledChatStreak.prisma().delete_many(
         where={"userId": user_id, "scheduleKey": schedule_key}
@@ -191,7 +194,7 @@ async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]
         order={"pausedAt": "desc"},
     )
     routines = await ExpertRoutine.prisma().find_many(
-        where={"id": {"in": [row.scheduleKey for row in rows]}}
+        where={"id": {"in": [row.scheduleKey for row in rows]}, **_owned_by(user_id)}
     )
     routine_ids = {routine.id for routine in routines}
     paused: list[PausedScheduledChat] = []
@@ -376,3 +379,9 @@ def _streak_of(row: ScheduledChatStreak | None) -> Streak | None:
 
 def _key(user_id: str, schedule_key: str) -> ScheduledChatStreakWhereUniqueInput:
     return {"userId_scheduleKey": {"userId": user_id, "scheduleKey": schedule_key}}
+
+
+def _owned_by(user_id: str) -> ExpertRoutineWhereInput:
+    """The account's own routines and its experts'. A streak's key is the
+    owner's routine only if it names one of these."""
+    return {"OR": [{"userId": user_id}, {"Expert": {"is": {"ownerUserId": user_id}}}]}

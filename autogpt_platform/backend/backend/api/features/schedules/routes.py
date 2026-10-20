@@ -194,6 +194,7 @@ async def list_paused_scheduled_chats(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/schedules/followups/{schedule_key}/resume",
     summary="Resume a scheduled chat paused after failing the same way",
     operation_id="resumeScheduledChat",
