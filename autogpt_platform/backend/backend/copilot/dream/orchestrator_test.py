@@ -659,6 +659,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -727,6 +728,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -840,6 +842,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -923,6 +926,11 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
     assert (
         apply_mock.await_args.kwargs["known_fact_uuids"]
         == input_bundle.known_fact_uuids
+    )
+    # What an uncited write rests on (``graphiti/recall_citations.py``).
+    assert (
+        apply_mock.await_args.kwargs["known_episode_uuids"]
+        == input_bundle.known_episode_uuids
     )
 
 

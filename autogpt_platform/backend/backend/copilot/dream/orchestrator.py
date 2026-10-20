@@ -632,6 +632,7 @@ async def _apply(
         run.pass_id,
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
+        known_episode_uuids=input_bundle.known_episode_uuids,
         lock_handle=lock_handle,
     )
     # Apply succeeded (even as a no-op) — stamp the marker so the
@@ -663,6 +664,9 @@ def _applied_result(
         completed_at=datetime.now(timezone.utc),
         elapsed_seconds=run.elapsed_seconds(),
         execution_path=run.execution_path,
+        dropped_forgotten=_as_int("dropped_forgotten"),
+        pending_writes=_as_int("pending_writes"),
+        failed_writes=_as_int("failed_writes"),
         consolidated_count=_as_int("consolidated_count"),
         proposal_count=_as_int("proposal_count"),
         demotion_count=_as_int("demotion_count"),

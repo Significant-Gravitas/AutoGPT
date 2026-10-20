@@ -234,6 +234,10 @@ const Sidebar = React.forwardRef<
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
+    function handleLinkClick(event: React.MouseEvent<HTMLDivElement>) {
+      if (isSameTabLinkClick(event)) setOpenMobile(false);
+    }
+
     if (collapsible === "none") {
       return (
         <div
@@ -274,9 +278,7 @@ const Sidebar = React.forwardRef<
             }}
             // The sheet covers the page, so a link that navigates in this
             // tab closes it on the way.
-            onClick={(event) => {
-              if (isSameTabLinkClick(event)) setOpenMobile(false);
-            }}
+            onClick={handleLinkClick}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
