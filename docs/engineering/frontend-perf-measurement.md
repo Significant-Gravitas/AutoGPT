@@ -130,6 +130,7 @@ Names come from the component function. Third-party code bundled already minifie
 | `builder-type-field` | Open the same 50-node workflow with no run, click the first node's text field and clear it | Type 20 characters, 50 ms apart | 2 s after the last key |
 | `builder-block-menu-search` | Open the same 50-node workflow with no run and open the block menu | Type "text" into its search, 120 ms a key, wait for the first result, then scroll the results 6 times (800 px, 400 ms apart) so more pages load. Results come from the real backend's block search | 2 s after the last scroll |
 | `builder-load-graph` | Open a 1-node workflow | Switch to a saved 100-node workflow with `history.pushState`, as opening another workflow does, until its last node is on the canvas | 2 s after the last node appears |
+| `copilot-open-long-thread` | Open the 10-message chat and list the 2,000-message one in the sidebar. The 2,000 rows are the 200 recorded ones repeated, with fresh ids and sequences past 200 | Click the 2,000-message chat until its newest message is on screen | 2 s after that |
 
 Each scenario's `readyWhen` field says exactly what setup waits for before the window opens. Most wait for the page's own content, then for network idle (at most 15 s, because some pages poll), then one more second.
 
