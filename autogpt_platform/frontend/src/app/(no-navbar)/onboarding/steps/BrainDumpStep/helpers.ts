@@ -123,14 +123,18 @@ export function finalizeErrorCode(error: unknown) {
   return error instanceof ApiError ? error.status : FINALIZE_REQUEST_ERROR;
 }
 
-// Counts words exactly as the backend's quality gate does (`quality.py`):
+// Counts words the way the backend's quality gate does (`quality.py`):
 // whitespace-separated tokens holding at least one letter or digit, so a
-// dump's analytics read straight against the gate's 40-word pass line.
+// dump's analytics read against the gate's 40-word pass line. The two agree
+// on ordinary text; a few rare separators (\x1c-\x1f, \x85, ﻿) split
+// differently in JavaScript and Python.
 export function countWords(text: string) {
   return text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
 }
 
 // How much was written, for analytics. What was written is never sent.
+// `chars` is the JavaScript length (UTF-16 units), so an emoji counts as 2
+// where Python's len() counts 1.
 export function dumpSize(text: string) {
   return { chars: text.length, words: countWords(text) };
 }
