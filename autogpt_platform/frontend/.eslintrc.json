@@ -141,7 +141,6 @@
         "src/app/(platform)/copilot/components/ChainActionCard/ConnectorRow.tsx",
         "src/app/(platform)/copilot/components/ChainActionCard/useExpertCredentialSelection.ts",
         "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx",
-        "src/app/(platform)/copilot/components/ChatInput/useVoiceRecording.ts",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/useVirtualTranscript.ts",
         "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
