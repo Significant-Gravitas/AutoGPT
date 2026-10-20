@@ -271,6 +271,22 @@ async def _end_replaced_subscription(failed: FailedInvoice) -> None:
     await sync_subscription_from_stripe(canceled)
 
 
+async def end_revived_plan(sub_id: str) -> None:
+    """End an old plan that was paid after a newer plan replaced it.
+
+    Stripe's card retry or the payment link can pay an old ``past_due`` plan
+    before any failure event reaches us. It is ended like a replaced plan, so
+    its update event never cancels the newer one. The payment that revived it
+    stays with Stripe and needs a manual refund.
+    """
+    logger.error(
+        f"Subscription {sub_id} was paid after a newer plan replaced it;"
+        " cancelling it. Its last payment needs a manual refund"
+    )
+    await _cancel_subscription(sub_id)
+    await _void_unpaid_invoices(sub_id)
+
+
 async def _cancel_subscription(sub_id: str) -> dict:
     try:
         canceled = await stripe_call(

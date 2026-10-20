@@ -2881,6 +2881,32 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
+async def _replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
+    """Whether the customer has an active or trialing plan created after this one.
+
+    A trial cancelled to end at ``trial_end`` does not count: it never becomes a
+    plan. Without a ``created`` on both, nothing is treated as newer.
+    """
+    created = subscription.get("created")
+    if not created:
+        return False
+    for status in ("active", "trialing"):
+        subscriptions = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=customer_id,
+            status=status,
+            limit=10,
+        )
+        async for other in stripe_list_items(subscriptions):
+            if other["id"] == subscription["id"]:
+                continue
+            if status == "trialing" and other.get("cancel_at_period_end"):
+                continue
+            if (other.get("created") or 0) > created:
+                return True
+    return False
+
+
 async def sync_subscription_from_stripe(
     stripe_subscription: dict, *, track_lifecycle: bool = True
 ) -> None:
@@ -2999,6 +3025,17 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             invalidate_subscription_caches(user.id)
             return
     price_id = ""
+    if status == "active" and await _replaced_by_newer_plan(
+        customer_id, stripe_subscription
+    ):
+        # Paying an old past-due plan revives it next to the plan that
+        # replaced it. Keep the newer plan and its tier; end this one.
+        from backend.data.subscription_payment_failure import (  # local import avoids circular
+            end_revived_plan,
+        )
+
+        await end_revived_plan(new_sub_id)
+        return
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
