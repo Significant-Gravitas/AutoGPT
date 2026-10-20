@@ -706,7 +706,13 @@ class ChatConfig(BaseSettings):
         "property for the final answer.",
     )
     openrouter_provider_order: Annotated[list[str], NoDecode] = Field(
-        default_factory=list,
+        default_factory=lambda: [
+            "google-vertex/global",
+            "anthropic",
+            "amazon-bedrock",
+            "azure/global",
+            "claude-on-aws",
+        ],
         description="Allowed OpenRouter providers for the SDK path's Claude "
         "calls, tried in order using the model's endpoint tags. Empty (the "
         "default) leaves the choice to OpenRouter. The hosted platform lists "
