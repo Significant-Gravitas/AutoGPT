@@ -533,6 +533,62 @@ async def test_completed_work_persists_even_when_cleanup_crosses_the_deadline(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
+async def test_stopping_a_running_followup_reports_cancellation_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    task = await world.launch()
+    await world.finish_parent()
+    await world.finish_child(task)
+    await background_delivery.reconcile_background_subtasks()
+    started = asyncio.Event()
+    cancel = threading.Event()
+
+    async def waiting_model(**_kwargs: Any):
+        started.set()
+        await asyncio.sleep(30)
+        yield StreamTextDelta(id="late", delta="Should have stopped")
+
+    async def deliver_cancel(session_id: str):
+        assert session_id == task.parent_session_id
+        cancel.set()
+
+    monkeypatch.setattr(
+        "backend.api.features.chat.routes.enqueue_cancel_task", deliver_cancel
+    )
+    monkeypatch.setattr(processor, "ChatConfig", lambda: MagicMock(test_mode=True))
+    monkeypatch.setattr(processor, "stream_chat_completion_dummy", waiting_model)
+    monkeypatch.setattr(processor, "refusal_for", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        processor, "close_browser_daemon", AsyncMock(return_value=False)
+    )
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    entry = world.entry(task.parent_session_id)
+    running = asyncio.create_task(
+        asyncio.to_thread(worker.execute, entry, cancel, MagicMock())
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        response = await cancel_session_task(task.parent_session_id, world.user_id)
+        assert response.cancelled
+    finally:
+        cancel.set()
+        await asyncio.wait_for(running, timeout=10)
+
+    await finish_background_execution(entry, stream_registry.CANCELLED_MESSAGE)
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    messages = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id}
+    )
+    notices = [m for m in messages if m.id == task.wake_id + "-notice"]
+    assert len(notices) == 1 and notices[0].role == "assistant"
+    assert (notices[0].content or "").startswith(
+        "Otto's background follow-up was cancelled."
+    )
+    assert task.child_session_id in (notices[0].content or "")
+
+
 async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     world: World, monkeypatch: pytest.MonkeyPatch
 ):

@@ -125,11 +125,16 @@ async def finish_background_turn(
                     )
                     if changed and error:
                         await _lock_session(tx, session_id)
+                        notice = (
+                            "Otto's background follow-up was cancelled."
+                            if error == CANCELLED_MESSAGE
+                            else "Otto couldn't complete the background follow-up within its limits."
+                        )
                         await _append(
                             tx,
                             session_id,
                             followup.wake_id + "-notice",
-                            "Otto couldn't complete the background follow-up within its limits. "
+                            f"{notice} "
                             f"[Open the subtask](/copilot?sessionId={followup.child_session_id}) for details.",
                             {"background_task_notice": followup.id},
                             role="assistant",
