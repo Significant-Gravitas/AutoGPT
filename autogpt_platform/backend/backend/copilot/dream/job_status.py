@@ -225,9 +225,10 @@ async def mark_complete(
 
 
 async def mark_errored(
-    *, kind: JobKind, job_id: str, error: str
+    *, kind: JobKind, job_id: str, error: str, result: BaseModel | None = None
 ) -> JobStatus[Any] | None:
-    """Transition to ``state='errored'`` with a short error string.
+    """Transition to ``state='errored'`` with a short error string, and the
+    work body's *result* when it returned one (a failed dream pass's usage).
 
     Refuses to overwrite a job already in ``state='complete'`` — the
     batch tail runs cleanup after ``mark_complete``, and a transient
@@ -258,6 +259,7 @@ async def mark_errored(
             "updated_at": now,
             "completed_at": now,
             "error": error[:2000],  # cap; error strings can be huge stack traces
+            "result": result.model_dump() if result is not None else existing.result,
         }
     )
     await _persist(updated)

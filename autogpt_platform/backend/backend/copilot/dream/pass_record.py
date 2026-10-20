@@ -2,8 +2,10 @@
 the row reads back as.
 
 Pure: how a route, a trigger and a step are named on the row, the insert or
-update each transition makes (``store.py`` writes them, bounded), and the
-``DreamPassResult`` a row describes, for the admin API and the eval driver.
+update each transition makes (``store.py`` writes them, bounded), including
+the two that stop a pass from outside (a cancel, an expiry), and what a row
+reads back as: the ``DreamPassResult`` it describes, for the admin API and the
+eval driver, and whether it says its pass was stopped.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -19,6 +21,7 @@ from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import (
+    INITIAL_CANCEL_GENERATION,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -177,6 +180,43 @@ def failed(
         usage=usage,
         completed_at=finished,
     )
+
+
+def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
+    """A cancel: the owner's open pass closes CANCELLED with *reason* as its
+    error, its cancel generation bumped so the running pass stops at its next
+    check. Written only while the row is open and the owner's."""
+    return DreamPassUpdate(
+        status=DreamPassStatus.CANCELLED,
+        error=reason[:MAX_ERROR_CHARS],
+        completed_at=datetime.now(timezone.utc),
+        bump_cancel_generation=True,
+        owner_user_id=owner_user_id,
+    )
+
+
+def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpdate:
+    """A newer pass's guard closing an open pass EXPIRED, its cancel
+    generation bumped like a cancel's. Written only while the row is open and,
+    given *not_updated_since* (the stale row as the guard read it), only if
+    nothing has written it since; an admin's forced expiry gives ``None``."""
+    return DreamPassUpdate(
+        status=DreamPassStatus.EXPIRED,
+        error=reason[:MAX_ERROR_CHARS],
+        completed_at=datetime.now(timezone.utc),
+        bump_cancel_generation=True,
+        not_updated_since=not_updated_since,
+    )
+
+
+def stop_error(row: DreamPassRecord) -> str | None:
+    """Why the row says its pass was stopped from outside, as the pass's
+    error (``cancelled: <reason>``, ``expired: <reason>``); ``None`` while its
+    cancel generation is still the one a new row starts at."""
+    if row.cancel_generation == INITIAL_CANCEL_GENERATION:
+        return None
+    how = row.status.value.lower()
+    return f"{how}: {row.error}" if row.error else how
 
 
 def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
