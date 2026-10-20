@@ -4,6 +4,7 @@ This module contains the processor class that handles CoPilot session execution
 in a thread-local context, following the graph executor pattern.
 """
 
+import time as _perf_time  # do-not-merge probe
 import asyncio
 import concurrent.futures
 import logging
@@ -696,8 +697,10 @@ class CoPilotProcessor:
                 )
             except Exception:
                 log.warning("Failed to publish setup status chunk")
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_pickup:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
 
             session = await get_chat_session(entry.session_id, entry.user_id)
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_session:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
             if session is None:
                 raise RuntimeError("copilot_session_not_found")
             if (
@@ -707,6 +710,7 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_tenancy:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.
@@ -753,10 +757,12 @@ class CoPilotProcessor:
                     await cost_context_stack.enter_async_context(
                         credit_billing(credit_turn)
                     )
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_gate:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
             if await _wait_for_expert_setup(session):
                 # Up to a minute: long enough for the user to convert or end
                 # their trial, so the rest of the setup reads both again.
                 trial_reads.forget()
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_setup_wait:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -895,10 +901,12 @@ class CoPilotProcessor:
                     )
                     engine = "sdk" if use_sdk else "baseline"
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_engine:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
 
             await cost_context_stack.enter_async_context(
                 trial_cost_context(entry.user_id, entry.cost_context)
             )
+            await stream_registry.publish_chunk(entry.turn_id, StreamStatus(message=f"perf:exec_cost_ctx:{int(_perf_time.time() * 1000) % 100000000}"), session_id=entry.session_id)
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
