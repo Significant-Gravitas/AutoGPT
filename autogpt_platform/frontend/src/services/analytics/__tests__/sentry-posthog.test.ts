@@ -143,6 +143,20 @@ describe("Sentry to PostHog correlation", () => {
     },
   );
 
+  it.each(["fetch", "xhr"])(
+    "does not mirror a failed %s response the HttpClient integration reports",
+    (type) => {
+      const event = sentryEvent();
+      event.exception!.values![0].mechanism = {
+        type: `auto.http.client.${type}`,
+        handled: false,
+      };
+      expect(processEvent(event)).toBe(event);
+      expect(event.tags).toEqual({ environment: "test" });
+      expect(posthog.capture).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([undefined, { statistics: false }, { marketing: true }])(
     "requires analytics consent: %j",
     (answer) => {

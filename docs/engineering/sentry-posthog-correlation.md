@@ -16,7 +16,10 @@ can therefore differ; a correlation ID does not confirm storage in both products
 Forwarding and links require analytics consent and an initialized, opted-in
 PostHog client. Consent is checked for each error. Early startup errors and
 errors without consent still go to Sentry, but are not queued for later mirroring.
-Sentry's existing filters run first. Warnings, transactions, backend errors, and
+Sentry's existing filters run first. Failed HTTP responses the HttpClient
+integration reports (mechanism `auto.http.client.*`) stay in Sentry only: they
+are not page bugs, and a failing PostHog relay would otherwise be mirrored
+back into PostHog. Warnings, transactions, backend errors, and
 historical events are outside this bridge. PostHog failures do not stop Sentry
 reporting. PostHog exception autocapture stays disabled to avoid a second capture
 of the same browser error.

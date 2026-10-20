@@ -10,11 +10,7 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
   });
 
   return function mirrorSentryEvent(event: ErrorEvent) {
-    if (
-      event.logger === "console" &&
-      event.message ===
-        "[PostHog.js] This capture call is ignored due to client rate limiting."
-    ) {
+    if (isPostHogRateLimitNotice(event) || isFailedHTTPResponse(event)) {
       return event;
     }
     try {
@@ -30,6 +26,26 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
     }
     return event;
   };
+}
+
+function isPostHogRateLimitNotice(event: ErrorEvent) {
+  return (
+    event.logger === "console" &&
+    event.message ===
+      "[PostHog.js] This capture call is ignored due to client rate limiting."
+  );
+}
+
+// A failed response the HttpClient integration reports is not a bug in the
+// page, and one from the PostHog relay would be mirrored back into PostHog.
+// These events carry no level today, so the allow-list skips them already;
+// this keeps them out if Sentry starts setting one.
+function isFailedHTTPResponse(event: ErrorEvent) {
+  return Boolean(
+    event.exception?.values?.some((exception) =>
+      exception.mechanism?.type?.startsWith("auto.http.client."),
+    ),
+  );
 }
 
 // The organization the hosted DSN reports to; next.config.mjs uploads source
