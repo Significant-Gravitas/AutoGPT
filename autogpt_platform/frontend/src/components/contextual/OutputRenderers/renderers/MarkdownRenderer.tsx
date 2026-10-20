@@ -402,7 +402,11 @@ function renderMarkdown(
           ),
           // Image handling
           img: ({ src, alt, ...props }) => {
-            if (src && (isVideoUrl(src) || isYouTubeUrl(src))) {
+            if (
+              src &&
+              typeof src === "string" &&
+              (isVideoUrl(src) || isYouTubeUrl(src))
+            ) {
               return <MarkdownVideoImage src={src} alt={alt} />;
             }
 
@@ -427,7 +431,10 @@ function renderMarkdown(
             // Check for video URLs in link children
             if (React.Children.count(children) === 1) {
               const child = React.Children.toArray(children)[0];
-              if (React.isValidElement(child) && child.type === "a") {
+              if (
+                React.isValidElement<{ href?: string }>(child) &&
+                child.type === "a"
+              ) {
                 const href = child.props.href;
                 if (href && isVideoUrl(href)) {
                   return renderVideoEmbed(href);

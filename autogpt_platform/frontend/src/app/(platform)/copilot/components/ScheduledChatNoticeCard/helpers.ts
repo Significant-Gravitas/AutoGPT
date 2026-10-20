@@ -15,10 +15,16 @@ export interface NoticeReconnectAction {
   provider: string;
 }
 
+export interface NoticeRunLessOftenAction {
+  kind: "run_less_often";
+  label: string;
+}
+
 export type NoticeAction =
   | NoticeLinkAction
   | NoticeResumeAction
-  | NoticeReconnectAction;
+  | NoticeReconnectAction
+  | NoticeRunLessOftenAction;
 
 export interface ScheduledChatNotice {
   reason: string;
@@ -41,6 +47,8 @@ function toAction(value: unknown): NoticeAction | null {
   const label = asString(action.label);
   if (!label) return null;
   if (action.kind === "resume") return { kind: "resume", label };
+  if (action.kind === "run_less_often")
+    return { kind: "run_less_often", label };
   if (action.kind === "reconnect") {
     const provider = asString(action.provider);
     return provider ? { kind: "reconnect", label, provider } : null;
@@ -74,8 +82,12 @@ export function getScheduledChatNotice(
     ? meta.actions
         .map(toAction)
         .filter((action): action is NoticeAction => action !== null)
-        // Resume needs to know which scheduled chat it resumes.
-        .filter((action) => action.kind !== "resume" || scheduleKey !== null)
+        // Resume and Run less often need to know which scheduled chat.
+        .filter(
+          (action) =>
+            (action.kind !== "resume" && action.kind !== "run_less_often") ||
+            scheduleKey !== null,
+        )
     : [];
 
   return {
