@@ -168,3 +168,66 @@ it("still mirrors a directly captured application message matching the diagnosti
     expect.anything(),
   );
 });
+
+it("mirrors only the PII-stripped error: no email, IP address, headers or breadcrumbs reach PostHog", async () => {
+  const delivered: unknown[] = [];
+  posthog.set_config({
+    before_send: (event) => {
+      delivered.push(event);
+      return null;
+    },
+  });
+  const email = "person@example.com";
+  const ip = "203.0.113.7";
+  const token = "secret-reset-token";
+  Sentry.setUser({ id: "user-123", email, ip_address: ip, username: "person" });
+  Sentry.addBreadcrumb({
+    category: "fetch",
+    data: { url: `https://api.example.com/reset?token=${token}` },
+  });
+
+  Sentry.captureEvent({
+    level: "error",
+    exception: { values: [{ type: "TypeError", value: "Workflow failed" }] },
+    request: {
+      url: `https://platform.example.com/reset-password?token=${token}`,
+      headers: { "X-Forwarded-For": ip, "X-Real-IP": ip },
+    },
+    contexts: {
+      trace: {
+        trace_id: "0123456789abcdef0123456789abcdef",
+        span_id: "0123456789abcdef",
+        data: { "client.address": ip, "user.email": email },
+      },
+    },
+    extra: { email },
+  });
+  await Sentry.flush(2000);
+  Sentry.setUser(null);
+  Sentry.getCurrentScope().clearBreadcrumbs();
+  posthog.set_config({ before_send: () => null });
+
+  expect(sent).toHaveLength(1);
+  expect(sent[0].user).toEqual({ id: "user-123" });
+  const captures = vi
+    .mocked(posthog.capture)
+    .mock.calls.filter(([name]) => name === "$exception");
+  expect(captures).toHaveLength(1);
+  expect(Object.keys(captures[0][1] ?? {}).sort()).toEqual([
+    "$exception_level",
+    "$exception_list",
+    "$exception_message",
+    "$exception_type",
+    "$sentry_event_id",
+    "$sentry_exception",
+    "$sentry_exception_message",
+    "$sentry_exception_type",
+    "$sentry_tags",
+  ]);
+  expect(delivered).toHaveLength(1);
+  const mirrored = JSON.stringify([captures[0][1], delivered]);
+  expect(mirrored).toContain(sent[0].event_id);
+  for (const secret of [email, ip, token, "X-Forwarded-For", "X-Real-IP"]) {
+    expect(mirrored).not.toContain(secret);
+  }
+});

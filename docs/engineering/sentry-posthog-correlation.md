@@ -29,6 +29,26 @@ The Sentry link uses the configured DSN's project in AutoGPT's Sentry organizati
 including preview projects. Other organizations and self-hosted DSNs still get
 PostHog tags, but no guessed Sentry URL.
 
+## What PostHog receives
+
+`beforeSend` first strips the event the way every Sentry event is stripped
+(the user reduced to id and role, IP-like span attributes dropped), runs the
+filters, and only then mirrors it. PostHog's integration copies just these
+fields of the Sentry event into `$exception`:
+
+- `$exception_list` and `$sentry_exception`: the exception type, message,
+  mechanism and stack frames (file URLs, functions, lines and columns).
+- `$exception_message`, `$exception_type`, `$sentry_exception_message`,
+  `$sentry_exception_type` and `$exception_level`.
+- `$sentry_event_id`, `$sentry_url` and `$sentry_tags` (the Sentry tags,
+  including the PostHog person and recording links).
+
+It never copies the Sentry user, request (URL, headers), contexts, extra data
+or breadcrumbs; `sentry-posthog-instrumentation.test.ts` checks that no email,
+IP address, IP header or breadcrumb URL reaches PostHog. PostHog then adds the
+standard properties it puts on every consented event (current URL, browser,
+device, session and person).
+
 ## Deploy
 
 The bridge uses the existing public PostHog key/host, Sentry DSN, and Cookiebot
@@ -38,16 +58,20 @@ install this browser bridge or synchronize issue resolution status.
 
 Source-map upload additionally requires these **build-time** variables:
 
-- `POSTHOG_API_KEY`: a private PostHog personal API key with source-map write access.
-- `POSTHOG_PROJECT_ID`: the destination project ID (`117338` for production).
+- `POSTHOG_SOURCEMAP_UPLOAD_KEY`: a private PostHog personal API key with source-map
+  write access. Not the backend's `POSTHOG_API_KEY`, which is the public project key.
+- `POSTHOG_SOURCEMAP_PROJECT_ID`: the destination project ID (`117338` for production).
 - `NEXT_PUBLIC_POSTHOG_HOST`: the matching PostHog Cloud region.
 - `NEXT_PUBLIC_SOURCEMAPS=true`: explicit opt-in for Docker builds; Vercel builds
   already enable source maps unless explicitly disabled.
 
 Set the private key in the deployment platform's secret store, never in a public
-environment variable or committed file. For Docker, pass it using BuildKit
-`--secret id=POSTHOG_API_KEY,env=POSTHOG_API_KEY`, plus
-`--build-arg POSTHOG_PROJECT_ID=117338 --build-arg NEXT_PUBLIC_SOURCEMAPS=true`.
+environment variable or committed file. On Vercel, add both variables to the
+Production environment only; Next.js inlines only `NEXT_PUBLIC_` variables and
+`env` from `next.config.mjs` into the browser, so neither reaches the bundle.
+Without them, builds still pass and PostHog shows minified stack traces. For Docker, pass it using BuildKit
+`--secret id=POSTHOG_SOURCEMAP_UPLOAD_KEY,env=POSTHOG_SOURCEMAP_UPLOAD_KEY`, plus
+`--build-arg POSTHOG_SOURCEMAP_PROJECT_ID=117338 --build-arg NEXT_PUBLIC_SOURCEMAPS=true`.
 The Dockerfile mounts the key only for the build command. Existing Sentry upload
 credentials remain necessary for Sentry's own source maps. Both plugins retain
 maps, matching the existing public-source policy and avoiding deletion races.

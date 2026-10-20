@@ -55,7 +55,9 @@ Sentry.init({
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
     if (isNextRSCNavigationFallback(event)) return null;
-    // Run after our filters; a regular integration runs before beforeSend.
+    // Mirror last: after our filters (an integration would run before
+    // beforeSend) and on the event stripped above, so PostHog never gets the
+    // email or IP address Sentry doesn't keep either.
     return mirrorSentryEvent(event);
   },
   beforeSendTransaction(event) {
