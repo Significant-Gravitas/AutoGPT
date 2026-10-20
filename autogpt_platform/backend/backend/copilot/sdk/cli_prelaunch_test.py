@@ -121,6 +121,79 @@ async def test_a_spawn_the_turn_cancels_midway_is_stopped(mocker):
     assert _FakeTransport.spawned[0].closed
 
 
+class _SlowToStopTransport(_FakeTransport):
+    """Its close waits until the test lets it finish, like the SDK's close
+    waiting for the process to exit before it kills it."""
+
+    stopping: ClassVar[asyncio.Event]
+    may_finish: ClassVar[asyncio.Event]
+
+    async def close(self) -> None:
+        _SlowToStopTransport.stopping.set()
+        await _SlowToStopTransport.may_finish.wait()
+        self.closed = True
+
+
+@pytest.fixture
+def slow_to_stop(mocker) -> list[_FakeTransport]:
+    _FakeTransport.spawned = []
+    _SlowToStopTransport.stopping = asyncio.Event()
+    _SlowToStopTransport.may_finish = asyncio.Event()
+    mocker.patch.object(cli_prelaunch, "SubprocessCLITransport", _SlowToStopTransport)
+    return _FakeTransport.spawned
+
+
+async def _stopping_begins() -> None:
+    # Bounded, so a cleanup that never starts the stop fails instead of hanging.
+    await asyncio.wait_for(_SlowToStopTransport.stopping.wait(), timeout=5)
+
+
+async def _let_the_stop_finish() -> None:
+    _SlowToStopTransport.may_finish.set()
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_spawn_is_stopped_when_cancelled_again_while_stopping(
+    slow_to_stop, mocker
+):
+    entered = asyncio.Event()
+
+    async def _hang(self) -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    mocker.patch.object(_SlowToStopTransport, "connect", _hang)
+    start = asyncio.create_task(CLIPrelaunch.start(ClaudeAgentOptions(), "[test]"))
+    await entered.wait()
+    start.cancel()
+    await _stopping_begins()
+    start.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+
+    await _let_the_stop_finish()
+    assert slow_to_stop[0].closed
+
+
+@pytest.mark.asyncio
+async def test_an_unclaimed_process_is_stopped_when_the_turn_is_cancelled_while_stopping(
+    slow_to_stop,
+):
+    prelaunch = await CLIPrelaunch.start(ClaudeAgentOptions(), "[test]")
+    assert prelaunch is not None
+
+    closing = asyncio.create_task(prelaunch.close())
+    await _stopping_begins()
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+
+    await _let_the_stop_finish()
+    assert slow_to_stop[0].closed
+
+
 _REPLY = "PRELAUNCH-REPLY-5d1e"
 
 

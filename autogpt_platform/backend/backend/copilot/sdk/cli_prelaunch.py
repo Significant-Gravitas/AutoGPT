@@ -11,6 +11,7 @@ hook handlers are still created after the attempt's per-turn resets and see
 the same context they always did.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import suppress
@@ -20,6 +21,10 @@ from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
 logger = logging.getLogger(__name__)
+
+# Stops still running after their caller was cancelled (``_stop``), held until
+# they finish: the loop keeps only weak references to tasks.
+_stopping: set[asyncio.Task[None]] = set()
 
 
 class CLIPrelaunch:
@@ -54,8 +59,7 @@ class CLIPrelaunch:
             # Also when the turn is cancelled mid-spawn: nothing holds the
             # process yet, so nothing else would stop it.
             if not connected:
-                with suppress(Exception):
-                    await transport.close()
+                await _stop(transport)
         return cls(options, transport)
 
     def claim(self, options: ClaudeAgentOptions) -> SubprocessCLITransport | None:
@@ -71,8 +75,28 @@ class CLIPrelaunch:
         if self._spent:
             return
         self._spent = True
-        with suppress(Exception):
-            await self._transport.close()
+        await _stop(self._transport)
+
+
+async def _stop(transport: SubprocessCLITransport) -> None:
+    """Close ``transport`` in a task of its own and wait for it.
+
+    Both callers usually run while their turn is being cancelled, and the SDK's
+    ``close()`` defers only anyio cancellation: an asyncio cancellation reaching
+    it mid-close skips the terminate/kill that ends the process. The shield
+    lets the caller's cancellation go on while the close finishes.
+    """
+    stop = asyncio.create_task(transport.close())
+    _stopping.add(stop)
+    stop.add_done_callback(_forget_stop)
+    with suppress(Exception):
+        await asyncio.shield(stop)
+
+
+def _forget_stop(stop: "asyncio.Task[None]") -> None:
+    _stopping.discard(stop)
+    if not stop.cancelled():
+        stop.exception()  # retrieved: a failed close was already suppressed
 
 
 async def _no_prompt() -> AsyncIterator[dict[str, Any]]:
