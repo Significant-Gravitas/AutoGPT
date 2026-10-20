@@ -470,9 +470,10 @@ never renders picker cards, never charges credits.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox so `bash_exec` can access it for further processing.
-The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+When you use `read_tool_result` to read an SDK tool-result file, E2B can copy
+it into the sandbox for further processing with `bash_exec`.
+If the response includes a `[Sandbox copy available at ...]` note, use the
+exact path from that note to access the copy.
 
 ### GitHub CLI (`gh`) and git
 - To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.
