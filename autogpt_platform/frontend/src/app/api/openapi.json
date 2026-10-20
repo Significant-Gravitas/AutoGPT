@@ -14723,6 +14723,102 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups/{schedule_key}/cadence": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "How often a scheduled chat runs, and how it could run less often",
+        "operationId": "getScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Run a scheduled chat less often",
+        "operationId": "setScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetScheduledChatCadenceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules/followups/{schedule_key}/resume": {
       "post": {
         "tags": ["v1", "schedules"],
@@ -20789,6 +20885,15 @@
         "type": "object",
         "required": ["file_ids"],
         "title": "BulkMoveFilesRequest"
+      },
+      "CadenceOption": {
+        "properties": {
+          "cron": { "type": "string", "title": "Cron" },
+          "label": { "type": "string", "title": "Label" }
+        },
+        "type": "object",
+        "required": ["cron", "label"],
+        "title": "CadenceOption"
       },
       "CancelSessionResponse": {
         "properties": {
@@ -31778,6 +31883,25 @@
         "title": "ScheduleUpdateRequest",
         "description": "Fields to change on an existing schedule; omitted fields keep their value."
       },
+      "ScheduledChatCadence": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "current": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "options": {
+            "items": { "$ref": "#/components/schemas/CadenceOption" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_key", "title", "current", "timezone", "options"],
+        "title": "ScheduledChatCadence"
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -32048,6 +32172,18 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetScheduledChatCadenceRequest": {
+        "properties": {
+          "cron": {
+            "type": "string",
+            "title": "Cron",
+            "description": "One of the cadences offered for this chat, as returned by getScheduledChatCadence"
+          }
+        },
+        "type": "object",
+        "required": ["cron"],
+        "title": "SetScheduledChatCadenceRequest"
       },
       "SetUserTierRequest": {
         "properties": {
