@@ -37,13 +37,13 @@ export function CollapsibleNavGroup({
       <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
+          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-sm"
         >
           <CollapsibleTrigger>
             {label}
             <Icon
               icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none max-md:size-5"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>

@@ -5,13 +5,21 @@ import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { DefaultStateType } from "../types";
 import { SearchHistoryChip } from "../SearchHistoryChip";
 import { HorizontalScroll } from "../HorizontalScroll";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState, setSearchQuery, setSearchId } =
-    useBlockMenuStore();
+    useBlockMenuStore(
+      useShallow((state) => ({
+        setIntegration: state.setIntegration,
+        setDefaultState: state.setDefaultState,
+        setSearchQuery: state.setSearchQuery,
+        setSearchId: state.setSearchId,
+      })),
+    );
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
   const suggestions = data?.suggestions;
   const hasRecentSearches = (suggestions?.recent_searches?.length ?? 0) > 0;

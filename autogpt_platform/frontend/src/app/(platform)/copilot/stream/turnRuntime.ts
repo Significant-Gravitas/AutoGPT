@@ -386,11 +386,20 @@ export class TurnRuntime {
 
   /** An answered approval starts the chat's next turn on the server; attach to it. */
   followBackendTurn() {
+    // Like a send, it asks for a turn, so an earlier Stop no longer holds. A
+    // stopped turn may still run; the approval's starts after it ends.
+    if (this.stopped) this.followPending = true;
+    this.stopped = false;
+    this.suppressAttach = false;
+    this.queueDeclined = false;
     if (this.runningTurn() || this.isPostPending()) {
       this.followPending = true;
       return;
     }
-    void this.probe(null, CONTINUATION_PROBES, true);
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
+    void this.probe(last?.log.turnId ?? null, CONTINUATION_PROBES, true);
   }
 
   dispose() {

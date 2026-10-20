@@ -15,19 +15,27 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
+import { v4 as uuidv4 } from "uuid";
 import { useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
-import { resolveSessionDryRun } from "./helpers";
-import { isPaywallError } from "./helpers/sendFailureToast";
+import {
+  CREATE_SESSION_RETRY_DELAY_MS,
+  resolveSessionDryRun,
+  retryLostCreateResponse,
+} from "./helpers";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
-import { useAutopilotModeStore } from "./autopilotModeStore";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 import {
@@ -52,6 +60,17 @@ export function useChatSession({
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
 
   const transportQuery = useGetV2ListChatTransports({
     query: {
@@ -129,6 +148,9 @@ export function useChatSession({
   // `useSendMessage` flushes its pending first message on *any* sessionId
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
+  // The id the last create named, kept while every attempt lost its response
+  // so a resend of the same request adopts what that attempt may have saved.
+  const pendingCreateRef = useRef<{ id: string; request: string } | null>(null);
   const canAdoptExpertSession =
     adoptLatestExpertThread &&
     !!expertId &&
@@ -241,7 +263,12 @@ export function useChatSession({
     }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
-    usePostV2CreateSession();
+    usePostV2CreateSession({
+      mutation: {
+        retry: retryLostCreateResponse,
+        retryDelay: CREATE_SESSION_RETRY_DELAY_MS,
+      },
+    });
 
   async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
@@ -318,12 +345,23 @@ export function useChatSession({
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
+      // Same rule as the route: only a mode the user picked travels, so a new
+      // expert thread starts on the expert's own default rather than "auto".
+      // It is part of the request, so a different pick names a new session.
+      const pickedMode = getAutopilotModeChoice(null);
+      if (pickedMode) sessionData.autopilot_mode = pickedMode;
+      // Naming the session up front lets a retry after a lost response adopt
+      // it. Kickoff is already get-or-create on the server.
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
-      const body =
-        Object.keys(sessionData).length > 0
-          ? { data: sessionData }
-          : { data: null };
-      const response = await createSessionMutation(body);
+      else {
+        const request = JSON.stringify(sessionData);
+        if (pendingCreateRef.current?.request !== request) {
+          // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+          pendingCreateRef.current = { id: uuidv4({}), request };
+        }
+        sessionData.session_id = pendingCreateRef.current.id;
+      }
+      const response = await createSessionMutation({ data: sessionData });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
@@ -331,6 +369,7 @@ export function useChatSession({
         });
         throw error;
       }
+      pendingCreateRef.current = null;
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
@@ -344,6 +383,7 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      if (!(error instanceof TypeError)) pendingCreateRef.current = null;
       // The caller owns the one toast for this failure (see
       // toastSendFailure); toasting here as well stacked two contradictory
       // messages. A paywall is an account state, not a fault.
@@ -400,6 +440,12 @@ export function useChatSession({
     sessionId && sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
       : null;
+  // What the AutoPilot budget follows: the session's own connection, or for a
+  // new chat the one it will start on (null until that is known).
+  const chatLlmAuthProvider = sessionId
+    ? sessionLlmAuthProvider
+    : (resolveCopilotLLMAuthSelection(chatTransports, copilotLlmAuth)
+        ?.authProvider ?? null);
 
   // The expert this session actually belongs to, straight off the session
   // response rather than the URL — the ?expertId= param only describes what
@@ -428,6 +474,7 @@ export function useChatSession({
     sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,

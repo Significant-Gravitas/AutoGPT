@@ -13,13 +13,15 @@ session-scoped event loop in conftest.py.
 
 import asyncio
 import contextlib
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 import pytest
 from e2b import SandboxState
 from e2b.exceptions import SandboxNotFoundException
+from redis.crc import key_slot
 
 from backend.blocks.desktop._api import _STOP_STREAM, SHARED_PATH, WORKSPACE_PATH
 from backend.blocks.desktop._common import (
@@ -37,6 +39,7 @@ from .e2b_sandbox import (
     SandboxLookupError,
     SandboxNotOwnedError,
     SandboxOwner,
+    _connect_pinned,
     _try_reconnect,
     connect_owned,
     count_expert_turn,
@@ -130,7 +133,13 @@ def _mock_redis(
     r.get = AsyncMock(side_effect=lambda key: raw if key == shell_key else None)
     r.set = AsyncMock(return_value=set_nx_result)
     r.delete = AsyncMock()
+    r.eval = AsyncMock(side_effect=_pin_ceiling_alone)
     return r
+
+
+def _pin_ceiling_alone(script, *args):
+    """The pin-ceiling script on a box no other turn pinned: only this pin's."""
+    return [args[3]] if "hset" in script else DEFAULT
 
 
 def _patch_redis(redis: AsyncMock):
@@ -150,7 +159,15 @@ def _patch_redis(redis: AsyncMock):
 def _no_proxy_credentials():
     """Pause and kill revoke the box's proxy credential (``e2b_network``),
     which has its own Redis handle; ``TestProxyCredentialIsRevoked`` covers it."""
-    with patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()):
+    with (
+        patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()),
+        # A reconnect with no ceiling given keeps the box's recorded one;
+        # ``TestProviderCeilingIsPinned`` covers that read.
+        patch(
+            "backend.copilot.tools.e2b_sandbox.recorded_providers",
+            AsyncMock(return_value=None),
+        ),
+    ):
         yield
 
 
@@ -628,6 +645,7 @@ class TestKillSandbox:
             f"copilot:e2b:sandbox:{_SESSION_ID}:display",
             f"copilot:e2b:sandbox:{_SESSION_ID}:stream",
             f"copilot:e2b:sandbox:{_SESSION_ID}:active",
+            f"{{copilot:e2b:sandbox:{_SESSION_ID}:active}}:ceilings",
             f"copilot:e2b:desktop:{_SESSION_ID}",
         }
 
@@ -1184,7 +1202,11 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     # Two scripts: ``_acquire_turn`` (INCR + EXPIRE) and ``_release_turn``
     # (DECR, and DEL when nothing is left).
     r.eval = AsyncMock(
-        side_effect=lambda script, *_: 1 if "incr" in script else max(decr_result, 0)
+        side_effect=lambda script, *args: (
+            [args[3]]
+            if "hset" in script
+            else 1 if "incr" in script else max(decr_result, 0)
+        )
     )
     return r
 
@@ -1646,8 +1668,14 @@ class TestExpertPause:
         sb.pause.assert_awaited_once()
         # One script does the DECR and, at zero, the DEL: no window for a turn
         # that starts in between to lose its count.
-        script, _, key = redis.eval.await_args.args
+        script, _, key, ceilings, session = redis.eval.await_args.args
         assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
+        # The ceilings pinned while turns shared the box go with the last one,
+        # in the counter's cluster slot: one script may touch only one slot.
+        assert ceilings == f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings"
+        assert key_slot(ceilings.encode()) == key_slot(key.encode())
+        # Only this session's ceiling goes; another's may be pinned, uncounted.
+        assert session == _SESSION_ID and "hdel" in script
 
     def test_concurrent_turn_keeps_the_box_running(self):
         """Pausing under another session of the same expert would sever its
@@ -1715,6 +1743,7 @@ class TestExpertKill:
             _EXPERT_DISPLAY_KEY,
             _EXPERT_STREAM_KEY,
             _EXPERT_ACTIVE_KEY,
+            f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings",
             _EXPERT_LEGACY_DESKTOP_KEY,
         }
         # The cached id was enough; no lookup for the shell box.
@@ -1770,6 +1799,7 @@ class TestKillSandboxForgetsScreen:
             f"copilot:e2b:sandbox:{_SESSION_ID}:display",
             f"copilot:e2b:sandbox:{_SESSION_ID}:stream",
             f"copilot:e2b:sandbox:{_SESSION_ID}:active",
+            f"{{copilot:e2b:sandbox:{_SESSION_ID}:active}}:ceilings",
             f"copilot:e2b:desktop:{_SESSION_ID}",
         }
 
@@ -2024,3 +2054,414 @@ class TestProxyCredentialIsRevoked:
             mock_cls.connect = AsyncMock(return_value=sb)
             assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
         forget.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# The box's own environment behind the swap proxy
+# ---------------------------------------------------------------------------
+
+
+class TestCreationEnvBehindTheSwapProxy:
+    """A new box behind the proxy starts with placeholders in its own env, for
+    what does not run through a command, and those credentials are granted to
+    it; without the proxy it starts with no integration env at all, as
+    before."""
+
+    def _create(self, *, proxy: str | None, user_id: str | None) -> dict:
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ) as lookup,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.grant_to_box", AsyncMock()
+            ) as grant,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ),
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, user_id=user_id
+                )
+            )
+        _, kwargs = mock_cls.create.call_args
+        self.lookup, self.grant = lookup, grant
+        return kwargs
+
+    def test_behind_the_proxy_the_box_starts_with_granted_placeholders(self):
+        kwargs = self._create(proxy="proxy:1080", user_id="user-a")
+        assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
+        assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
+        # A chat's own box starts with the chat's pick, under the turn's ceiling.
+        self.lookup.assert_awaited_once_with(
+            "user-a", providers=None, selected={"github": "cred-default"}
+        )
+        self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
+
+    @pytest.mark.parametrize(
+        "session_id, selected",
+        [("sess-1", {"github": "cred-b"}), (None, None)],
+        ids=["a chat's box: its pick", "an expert's box: the default"],
+    )
+    def test_the_box_is_granted_the_chats_pick_not_the_default(
+        self, session_id, selected
+    ):
+        """A chat that picked account B is not also granted the default A."""
+        from backend.util.e2b_network import EgressOwner
+
+        from .e2b_sandbox import _placeholder_grants
+
+        owner = EgressOwner(kind="session", id="sess-1", user_id="user-a")
+        with (
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address",
+                return_value="proxy:1080",
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-b"}),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={}),
+            ) as lookup,
+        ):
+            asyncio.run(_placeholder_grants(owner, session_id))
+        lookup.assert_awaited_once_with("user-a", providers=None, selected=selected)
+
+    def test_without_the_proxy_the_create_call_is_unchanged(self):
+        kwargs = self._create(proxy=None, user_id="user-a")
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+        self.grant.assert_not_awaited()
+
+    def test_a_box_with_no_user_gets_none(self):
+        kwargs = self._create(proxy="proxy:1080", user_id=None)
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+
+
+class TestGrantsAreRenewedOnReconnect:
+    """An expert's box can stay paused longer than a grant lasts: a reconnect
+    that will run work renews its grants, behind the proxy only."""
+
+    def _reconnect(self, *, proxy, pin_egress=True, user_id="user-a"):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.renew_box_grants", AsyncMock()
+            ) as renew,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned(
+                    "sb-1", owner, _API_KEY, user_id=user_id, pin_egress=pin_egress
+                )
+            )
+        return renew
+
+    def test_behind_the_proxy_a_reconnect_renews_the_grants(self):
+        self._reconnect(proxy="proxy:1080").assert_awaited_once_with("sb-1")
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"proxy": None},
+            {"proxy": "proxy:1080", "pin_egress": False},
+            {"proxy": "proxy:1080", "user_id": "user-b"},  # not the box's user
+        ],
+        ids=["no proxy", "pause or kill", "another user"],
+    )
+    def test_otherwise_nothing_is_renewed(self, kwargs):
+        self._reconnect(**kwargs).assert_not_awaited()
+
+
+def _pinning_connect() -> AsyncMock:
+    """``connect_sandbox`` deciding the pin the way the real one does, under
+    its lock; the owner it pinned with is ``.pinned``."""
+    mock = AsyncMock()
+
+    async def connect(cls, sandbox_id, owner, *, owner_at_pin=None, **kwargs):
+        if owner_at_pin is not None and kwargs.get("apply_network", True):
+            owner = await owner_at_pin(owner)
+        mock.pinned = owner
+        return MagicMock()
+
+    mock.side_effect = connect
+    return mock
+
+
+class TestProviderCeilingIsPinned:
+    """The turn's ceiling on connected accounts reaches the box's egress
+    record at create and at every reconnect (``e2b_network``)."""
+
+    def test_on_create(self):
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk(),
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.create_sandbox",
+                AsyncMock(return_value=_mock_sandbox("sb-new")),
+            ) as create,
+        ):
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    user_id="user-a",
+                    providers=("github",),
+                )
+            )
+        egress_owner = create.await_args.args[1]
+        assert egress_owner.user_id == "user-a"
+        assert egress_owner.providers == ("github",)
+
+    def test_on_reconnect(self):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                _pinning_connect(),
+            ) as connect,
+            _patch_redis(_mock_redis()),
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=())
+            )
+        assert connect.pinned.providers == ()
+
+
+class _CeilingRedis:
+    """The pin-ceiling and turn scripts, run against an in-memory store."""
+
+    def __init__(self) -> None:
+        self.hashes: dict[str, dict[str, str]] = {}
+        self.counts: dict[str, int] = {}
+
+    async def eval(self, script, numkeys, *args):
+        keys, argv = args[:numkeys], args[numkeys:]
+        if "hset" in script:
+            self.hashes.setdefault(keys[0], {})[argv[0]] = argv[1]
+            return list(self.hashes[keys[0]].values())
+        if "incr" in script:
+            self.counts[keys[0]] = self.counts.get(keys[0], 0) + 1
+            return self.counts[keys[0]]
+        self.hashes.get(keys[1], {}).pop(argv[0], None)
+        n = self.counts.get(keys[0], 0) - 1
+        if n <= 0:
+            self.counts.pop(keys[0], None)
+            return 0
+        self.counts[keys[0]] = n
+        return n
+
+    def count(self) -> None:
+        asyncio.run(self.eval("incr", 1, _EXPERT_ACTIVE_KEY, 1))
+
+    def release(self, session_id: str) -> None:
+        asyncio.run(
+            self.eval(
+                "hdel decr",
+                2,
+                _EXPERT_ACTIVE_KEY,
+                f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings",
+                session_id,
+            )
+        )
+
+
+class TestTurnsSharingABoxShareTheNarrowestCeiling:
+    """Turns share an expert's box and its egress: a turn's pin may narrow the
+    ceiling another live session pinned, never lift it, even when both pin at
+    once or one has not been counted yet."""
+
+    _OWNER = SandboxOwner(kind="expert", id=_EXPERT_ID)
+
+    def _pin(self, redis, providers, session_id) -> tuple[str, ...] | None:
+        stamp = self._OWNER.creation_metadata(user_id="user-a")
+        redis_patch = patch(
+            "backend.copilot.tools.e2b_sandbox.get_redis_async",
+            AsyncMock(return_value=redis),
+        )
+        with (
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                _pinning_connect(),
+            ) as connect,
+            redis_patch,
+        ):
+            asyncio.run(
+                _connect_pinned(
+                    "sb-1",
+                    MagicMock(metadata=stamp),
+                    self._OWNER,
+                    _API_KEY,
+                    timeout=None,
+                    user_id="user-a",
+                    providers=providers,
+                    pin_egress=True,
+                    session_id=session_id,
+                )
+            )
+        return connect.pinned.providers
+
+    @pytest.mark.parametrize(
+        "first, second, pinned",
+        [
+            (("slack",), None, ("slack",)),  # an unrestricted turn joins
+            (None, ("github",), ("github",)),  # a restricted turn joins
+            (("github", "slack"), ("slack",), ("slack",)),
+            (("github",), ("slack",), ()),
+            (None, None, None),
+        ],
+    )
+    def test_a_second_pin_keeps_what_both_allow_before_either_is_counted(
+        self, first, second, pinned
+    ):
+        redis = _CeilingRedis()
+        assert self._pin(redis, first, "s1") == first
+        assert self._pin(redis, second, "s2") == pinned
+
+    def test_another_sessions_release_keeps_an_uncounted_pin(self):
+        """s1 ends while s2 has pinned but is not counted yet: s2's ceiling
+        must still hold s3 down."""
+        redis = _CeilingRedis()
+        redis.count()
+        self._pin(redis, None, "s1")
+        self._pin(redis, ("slack",), "s2")
+        redis.release("s1")
+        assert self._pin(redis, None, "s3") == ("slack",)
+
+    def test_once_a_session_ends_its_ceiling_no_longer_holds(self):
+        redis = _CeilingRedis()
+        redis.count()
+        self._pin(redis, ("slack",), "s1")
+        redis.release("s1")
+        assert self._pin(redis, None, "s2") is None
+
+    def test_a_session_that_never_released_stops_holding_after_a_turn_can_end(
+        self,
+    ):
+        redis = _CeilingRedis()
+        self._pin(redis, ("slack",), "s1")
+        later = time.time() + 7 * 3600
+        with patch("backend.copilot.tools.e2b_sandbox.time.time", return_value=later):
+            assert self._pin(redis, None, "s2") is None
+
+    def test_without_the_record_the_boxs_ceiling_narrows_the_pin(self):
+        redis = MagicMock()
+        redis.eval = AsyncMock(side_effect=ConnectionError("redis down"))
+        with patch(
+            "backend.copilot.tools.e2b_sandbox.recorded_providers",
+            AsyncMock(return_value=("slack",)),
+        ):
+            assert self._pin(redis, None, "s1") == ("slack",)
+
+    def test_a_plain_session_box_is_its_own(self):
+        owner = SandboxOwner(kind="session", id=_SESSION_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        redis = _CeilingRedis()
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                _pinning_connect(),
+            ) as connect,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=None)
+            )
+        assert connect.pinned.providers is None
+        assert redis.hashes == {}
+
+
+class TestATurnWhoseBoxNeverCameUp:
+    """Its release will not run, so its ceiling entry is dropped at once
+    rather than holding every other session's pin down until it expires."""
+
+    def test_its_sessions_entry_goes_and_no_other(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, _EXPERT_ID))
+        redis.hdel.assert_awaited_once_with(
+            f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings", _SESSION_ID
+        )
+
+    def test_a_chats_own_box_has_none_to_drop(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, None))
+        redis.hdel.assert_not_awaited()
+
+
+class TestNoCeilingGivenKeepsTheBoxs:
+    """``start_desktop`` and the UI screen-on re-pin a box without a ceiling of
+    their own: that must keep the turn's, not widen it to every provider."""
+
+    def _reconnect(self, **kwargs) -> tuple[MagicMock, AsyncMock]:
+        owner = SandboxOwner(kind="session", id=_SESSION_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                _pinning_connect(),
+            ) as connect,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.recorded_providers",
+                AsyncMock(return_value=()),
+            ) as recorded,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", **kwargs)
+            )
+        return connect, recorded
+
+    def test_a_re_pin_without_one_keeps_the_recorded_ceiling(self):
+        connect, recorded = self._reconnect()
+        recorded.assert_awaited_once_with("sb-1")
+        assert connect.pinned.providers == ()
+
+    def test_a_turn_that_gives_one_sets_it(self):
+        connect, recorded = self._reconnect(providers=("github",))
+        recorded.assert_not_awaited()
+        assert connect.pinned.providers == ("github",)
+
+    def test_a_connect_that_does_not_pin_reads_nothing(self):
+        _, recorded = self._reconnect(pin_egress=False)
+        recorded.assert_not_awaited()

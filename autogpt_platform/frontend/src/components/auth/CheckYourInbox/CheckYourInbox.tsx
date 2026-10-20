@@ -49,7 +49,7 @@ export function CheckYourInbox({
         {copy.title}
       </Text>
 
-      <Text variant="body" tone="secondary" unmask={false} className="mt-3">
+      <Text variant="body" tone="secondary" className="mt-3">
         We sent an email to{" "}
         <span className="break-all font-medium text-slate-950">{email}</span>.
         Open the link in it to {copy.action}.

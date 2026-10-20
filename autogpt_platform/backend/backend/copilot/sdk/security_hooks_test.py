@@ -856,3 +856,143 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
 
     assert drain_called is False
     assert "hookSpecificOutput" not in result
+
+
+# -- PostHog spans for the CLI's built-in tools -------------------------------
+
+
+@pytest.fixture()
+def _spans(monkeypatch):
+    """A turn in progress, with PostHog's capture recorded."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot import ai_spans
+    from backend.copilot import context as ctx_mod
+    from backend.copilot.llm_attribution import set_turn_trace_id
+
+    async def no_drain(_session_id: str):
+        return []
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", no_drain
+    )
+    session = MagicMock()
+    session.session_id = "sess-spans"
+    ctx_mod.set_execution_context(
+        user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
+    )
+    set_turn_trace_id("turn-1")
+    ai_spans.set_turn_span("turn-1")
+    capture = MagicMock()
+    monkeypatch.setattr(ai_spans.posthog_client, "capture", capture)
+    yield capture
+    set_turn_trace_id(None)
+    ai_spans.set_turn_span(None)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_builtin_tool_call_is_a_posthog_span(_hooks, _spans):
+    pre, post, _ = _hooks
+    task = {"prompt": "the user's private request"}
+
+    await pre({"tool_name": "Task", "tool_input": task}, "tu-1", {})
+    await post(
+        {"tool_name": "Task", "tool_input": task, "tool_response": "results"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    _spans.assert_called_once()
+    distinct_id, event, properties = _spans.call_args.args
+    assert (distinct_id, event) == ("u1", "$ai_span")
+    assert properties["$ai_span_name"] == "Task"
+    assert properties["$ai_trace_id"] == "turn-1"
+    assert properties["$ai_session_id"] == "sess-spans"
+    assert properties["$ai_is_error"] is False
+    assert "private" not in repr(properties)
+    assert "results" not in repr(properties)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_failed_builtin_tool_is_an_error_span(_hooks, _spans):
+    pre, _, post_failure = _hooks
+
+    await pre({"tool_name": "Task", "tool_input": {"prompt": "x"}}, "tu-1", {})
+    await post_failure(
+        {"tool_name": "Task", "error": "the page said something private"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    properties = _spans.call_args.args[2]
+    assert properties["$ai_is_error"] is True
+    assert "private" not in repr(properties)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_refused_builtin_tool_sends_no_span(_hooks, _spans):
+    pre, _, post_failure = _hooks
+
+    result = await pre(
+        {"tool_name": "Read", "tool_input": {"file_path": "/etc/passwd"}}, "tu-1", {}
+    )
+    await post_failure({"tool_name": "Read", "error": "denied"}, "tu-1", {})
+
+    assert _is_denied(result)
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_platform_tool_gets_its_span_from_basetool_not_the_hooks(
+    _hooks, _spans
+):
+    pre, post, _ = _hooks
+
+    await pre({"tool_name": "mcp__copilot__run_block", "tool_input": {}}, "tu-1", {})
+    await post(
+        {"tool_name": "mcp__copilot__run_block", "tool_response": "ok"}, "tu-1", {}
+    )
+
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_high_volume_builtin_tool_sends_no_span(_hooks, _spans):
+    """The CLI's checklist and file lookups run tens of times a turn."""
+    pre, post, _ = _hooks
+    todos = {"todos": [{"content": "x", "status": "pending", "activeForm": "x"}]}
+
+    result = await pre({"tool_name": "TodoWrite", "tool_input": todos}, "tu-1", {})
+    await post(
+        {"tool_name": "TodoWrite", "tool_input": todos, "tool_response": "ok"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    assert not _is_denied(result)
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_builtin_tool_spans_turned_off_send_none(_spans):
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, builtin_tool_spans=False
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    post = hooks["PostToolUse"][0].hooks[0]
+    task = {"prompt": "x"}
+
+    await pre({"tool_name": "Task", "tool_input": task}, "tu-1", {})
+    await post(
+        {"tool_name": "Task", "tool_input": task, "tool_response": "results"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    _spans.assert_not_called()

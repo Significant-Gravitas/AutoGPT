@@ -4,10 +4,12 @@ Walks a user's recent memory window through the consolidate → recombine
 → sanitize pipeline, then applies the sanitizer's ``DreamOperations``
 to Graphiti + Postgres.
 
-Slice 1 of P-0 deliberately bypasses Anthropic batch — every phase
-calls the OpenRouter-fronted OpenAI-compat client. The batch path
-slots in below this layer (`routing.py` returns ``"batch"``) in a
-future PR.
+Each phase here is one ``structured_completion`` call on the chat
+transport's provider. When ``routing.resolve_dream_execution_path``
+picks ``anthropic_batch``, ``_submit_dream_pass_batch`` submits the
+first phase to Anthropic's Message Batches API instead and
+``batch_callbacks`` runs the later phases and the apply step as the
+results land.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set, so the admin trigger always
@@ -25,11 +27,12 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
-from .billing import check_dream_budget, record_phase_cost
+from .billing import check_dream_budget, priced_phase_usage, record_phase_cost
 from .fetch import (
     DreamInput,
     EpisodeRow,
@@ -46,12 +49,10 @@ from .llm import (
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
-    LOCAL_LOCK_TTL_SECONDS,
     DreamLockHandle,
     DreamLockHeld,
     dream_lock,
 )
-from .model_pricing import compute_cost_usd, execution_path_discount
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
     MAX_PROPOSALS_PER_PASS,
@@ -60,7 +61,7 @@ from .prompts import (
     build_recombine_prompt,
     build_sanitize_prompt,
 )
-from .routing import ExecutionPath, resolve_dream_execution_path
+from .routing import ExecutionPath, batch_discount, resolve_dream_execution_path
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -83,7 +84,13 @@ logger = logging.getLogger(__name__)
 CONSOLIDATE_TEMP = 0.2
 RECOMBINE_TEMP = 0.9
 SANITIZE_TEMP = 0.0
-CONSOLIDATE_MAX_TOKENS = 4096
+# The budget covers thinking as well as the JSON, and the standard slot can
+# run a model that thinks unasked. Sonnet 5 through OpenRouter spent all of
+# 4096 on reasoning over a 31-fact, 31-episode window (a 22.5K-token prompt)
+# and answered nothing, failing every pass of that account at this phase;
+# given 16384, the same call answered in 5,912 tokens, 5,068 of them
+# reasoning. Budget a model does not spend costs nothing.
+CONSOLIDATE_MAX_TOKENS = 16384
 # Recombine + sanitize emit list-heavy JSON (up to 30 writes + 20
 # proposals + 10 demotions, each with uuid arrays). At 8192 the
 # response truncates mid-array and the JSON-balanced-brace extractor
@@ -125,7 +132,8 @@ SANITIZE_MAX_TOKENS = 16384
 # Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
 # on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
-# Consolidate's 4096-token budget fits 240s at ~17 tok/s.
+# Consolidate's 240s covers its whole 16384 at ~68 tok/s, and a thinking
+# answer the size measured above (5,912 tokens) at ~25 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
@@ -153,12 +161,8 @@ MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
 # outlives the 14-day episode window; an expired or missing marker just
 # means one extra full pass (fail-open). The batch path does NOT stamp
 # this marker yet — batch users simply never benefit from the skip.
-LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
+# The key is ``MemoryScope.redis_key("last_completed")``.
 LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
-
-
-def _resolve_lock_ttl(transport_is_local: bool) -> int:
-    return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
 # High-precision filter for "transient intent" facts — content that
@@ -586,34 +590,26 @@ async def _run_sanitize(
 def _phase_usage_from_completion(
     phase: str, completion_usage: CompletionUsage, execution_path: ExecutionPath
 ) -> PhaseUsage:
-    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, computing
-    cost from the rate card when the provider didn't supply one.
+    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, pricing it
+    from the catalog price card when the provider didn't.
 
-    Provider-supplied cost (OpenRouter ``usage.cost``) wins when
-    present; otherwise we fall back to ``model_pricing.compute_cost_usd``.
-    Either way the execution-path discount has been applied: OpenRouter
-    spot prices are already post-discount (they ARE the rate we paid),
-    and the rate-card fallback explicitly multiplies the discount in.
+    Provider-supplied cost (OpenRouter ``usage.cost``) wins when present:
+    it is what we were billed. Otherwise ``billing.priced_phase_usage``
+    prices the tokens at the model's catalog list rate, less the
+    execution path's batch discount.
     """
-    cost = completion_usage.cost_usd
-    if cost is None:
-        cost = compute_cost_usd(
-            model=completion_usage.model,
-            input_tokens=completion_usage.input_tokens,
-            output_tokens=completion_usage.output_tokens,
-            cache_read_tokens=completion_usage.cache_read_tokens,
-            cache_creation_tokens=completion_usage.cache_creation_tokens,
-            execution_path=execution_path,
-        )
-    return PhaseUsage(
+    usage = PhaseUsage(
         phase=phase,  # type: ignore[arg-type]
         model=completion_usage.model,
         input_tokens=completion_usage.input_tokens,
         output_tokens=completion_usage.output_tokens,
         cache_read_tokens=completion_usage.cache_read_tokens,
         cache_creation_tokens=completion_usage.cache_creation_tokens,
-        cost_usd=cost,
+        cost_usd=completion_usage.cost_usd,
     )
+    if usage.cost_usd is not None:
+        return usage
+    return priced_phase_usage(usage, execution_path)
 
 
 def _aggregate_usage(
@@ -637,18 +633,11 @@ def _aggregate_usage(
         total_cache_read_tokens=sum(p.cache_read_tokens for p in phases),
         total_cache_creation_tokens=sum(p.cache_creation_tokens for p in phases),
         total_cost_usd=total_cost,
-        discount_applied=execution_path_discount(execution_path),
+        discount_applied=batch_discount(execution_path),
     )
 
 
-def _last_completed_key(user_id: str, expert_id: str | None = None) -> str:
-    scope_id = derive_memory_scope_key(user_id, expert_id)
-    return f"{LAST_COMPLETED_KEY_PREFIX}{scope_id}"
-
-
-async def _read_last_completed_marker(
-    user_id: str, expert_id: str | None = None
-) -> datetime | None:
+async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
     """When the user's last dream pass completed, or ``None``.
 
     Best-effort: a Redis error or an unparseable value fails open
@@ -659,9 +648,10 @@ async def _read_last_completed_marker(
     # in tests that mock redis.
     from backend.data.redis_client import get_redis_async
 
+    user_id = scope.owner_user_id
     try:
         redis = await get_redis_async()
-        raw = await redis.get(_last_completed_key(user_id, expert_id))
+        raw = await redis.get(scope.redis_key("last_completed"))
     except Exception:
         logger.warning(
             "Failed to read dream last-completed marker for user %s — "
@@ -685,9 +675,7 @@ async def _read_last_completed_marker(
     return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
 
 
-async def _stamp_last_completed_marker(
-    user_id: str, as_of: datetime, expert_id: str | None = None
-) -> None:
+async def _stamp_last_completed_marker(scope: MemoryScope, as_of: datetime) -> None:
     """Record the upper bound of the episode window the pass consolidated.
 
     ``as_of`` must be the gather snapshot time (``DreamInput.window_end``),
@@ -704,14 +692,14 @@ async def _stamp_last_completed_marker(
     try:
         redis = await get_redis_async()
         await redis.set(
-            _last_completed_key(user_id, expert_id),
+            scope.redis_key("last_completed"),
             as_of.isoformat(),
             ex=LAST_COMPLETED_TTL_SECONDS,
         )
     except Exception:
         logger.warning(
             "Failed to stamp dream last-completed marker for user %s",
-            user_id[:12],
+            scope.owner_user_id[:12],
             exc_info=True,
         )
 
@@ -737,11 +725,11 @@ def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> boo
     return False
 
 
+@attributed_usage
 async def _execute_dream_pass_async(
     user_id: str,
     *,
-    expert_id: str | None = None,
-    transport_is_local: bool = False,
+    expert_id: str | None,
     config: ChatConfig | None = None,
     status_id: str | None = None,
 ) -> DreamPassResult:
@@ -759,7 +747,7 @@ async def _execute_dream_pass_async(
     # batch path ship dark and roll out per-cohort. When on, phase 1 submits
     # via call_provider(execution_mode="batch"); the BatchExecutor polls and
     # dream's batch_callbacks chain phases 2 → 3 + apply when results land
-    # (~50% off the rate card, see model_pricing.execution_path_discount).
+    # (half the list price, see routing.batch_discount).
     #
     # ``transport_name`` short-circuits to sync_baseline for transports that
     # can't honour a batch path (local backends have no batch API;
@@ -772,9 +760,10 @@ async def _execute_dream_pass_async(
         transport_name=config.transport.name,
     )
 
-    ttl = _resolve_lock_ttl(transport_is_local)
+    ttl = DEFAULT_LOCK_TTL_SECONDS
     try:
-        lock_context = dream_lock(user_id, ttl_seconds=ttl, expert_id=expert_id)
+        scope = MemoryScope.build(user_id, expert_id)
+        lock_context = dream_lock(scope, ttl_seconds=ttl)
         async with lock_context as dream_lock_handle:
             # Pre-flight billing check. Runs inside the lock so a
             # paywalled user doesn't burn the slot for an eligible
@@ -801,7 +790,7 @@ async def _execute_dream_pass_async(
                     skip_reason=budget_skip or "insufficient_credits",
                 )
 
-            input_bundle = await gather_dream_input(user_id, expert_id=expert_id)
+            input_bundle = await gather_dream_input(scope)
 
             if not input_bundle.episodes and not input_bundle.facts:
                 # Nothing to consolidate — early-return as skipped so the
@@ -830,9 +819,7 @@ async def _execute_dream_pass_async(
             # silent no_new_activity skip would neuter it for up to the
             # marker's 35-day TTL.
             last_completed = (
-                await _read_last_completed_marker(user_id, expert_id)
-                if status_id is None
-                else None
+                await _read_last_completed_marker(scope) if status_id is None else None
             )
             if last_completed is not None and not _has_new_episodes_since(
                 input_bundle.episodes, last_completed
@@ -967,10 +954,9 @@ async def _execute_dream_pass_async(
                 known_fact_uuids=input_bundle.known_fact_uuids,
             )
             apply_stats = await apply_operations(
-                user_id,
+                scope,
                 pass_id,
                 ops,
-                expert_id=expert_id,
                 known_fact_uuids=input_bundle.known_fact_uuids,
                 lock_handle=dream_lock_handle,
             )
@@ -980,9 +966,7 @@ async def _execute_dream_pass_async(
             # mid-pass still count as new next time. Sync path only: batch
             # apply runs hours later in batch_callbacks, which doesn't
             # stamp yet.
-            await _stamp_last_completed_marker(
-                user_id, input_bundle.window_end, expert_id
-            )
+            await _stamp_last_completed_marker(scope, input_bundle.window_end)
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")
