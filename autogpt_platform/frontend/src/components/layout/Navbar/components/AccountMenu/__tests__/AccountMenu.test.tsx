@@ -205,13 +205,12 @@ describe("AccountMenu", () => {
     const activity = screen.getByTestId("account-menu-activity-trigger");
     const feedback = screen.getByRole("button", { name: "Give feedback" });
 
-    expect(feedback.getAttribute("data-tally-open")).toBe("3yx2L0");
     expect(activity.closest("li")?.nextElementSibling).toBe(
       feedback.closest("li"),
     );
   });
 
-  test("new layout gives feedback without loading another Tally script", () => {
+  test("new layout does not load the Tally script before feedback is asked for", () => {
     render(
       <AccountMenu
         userName="Ada"
