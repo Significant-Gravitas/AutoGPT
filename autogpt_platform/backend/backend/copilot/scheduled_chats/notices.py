@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field
 
 from backend.copilot.hidden_rows import HIDDEN_FROM_MODEL_KEY
+from backend.copilot.scheduled_chats.cadence import runs_more_than_weekly
 from backend.copilot.turn_queue import TurnRefusal
 from backend.data.db_accessors import chat_db
 
@@ -73,8 +74,17 @@ class NoticeReconnect(BaseModel):
     provider: str
 
 
+class NoticeRunLessOften(BaseModel):
+    """A button that offers cadences that run the scheduled chat less often,
+    so its runs fit the owner's usage limit."""
+
+    kind: Literal["run_less_often"] = "run_less_often"
+    label: str = "Run less often"
+
+
 NoticeAction = Annotated[
-    Union[NoticeLink, NoticeResume, NoticeReconnect], Field(discriminator="kind")
+    Union[NoticeLink, NoticeResume, NoticeReconnect, NoticeRunLessOften],
+    Field(discriminator="kind"),
 ]
 
 
@@ -115,13 +125,25 @@ def skip_notice(
     now: datetime,
     run: SkippedRun,
     user_timezone: str | None = None,
+    crons: list[str] | None = None,
 ) -> ScheduledChatNotice | None:
     """What to tell the owner about a run *refusal* stopped, or None when
     there is nothing for them to do (a banned account, or an outage on our
     side). Times are in *user_timezone*, the one the schedule was made in, else
-    UTC."""
+    UTC. *crons* are the schedule's, for offering to run it less often."""
     if refusal.kind == "usage" and refusal.window in ("daily", "weekly"):
-        return _usage_notice(refusal, title=title, run=run, user_timezone=user_timezone)
+        notice = _usage_notice(
+            refusal, title=title, run=run, user_timezone=user_timezone
+        )
+        # Its runs could fit the allowance: only a repeating schedule, with
+        # something less often than it to offer. Every skipped run gets here
+        # and its window's note is written once, so the dialog builds the
+        # ladder, not this.
+        if run == "recurring" and runs_more_than_weekly(
+            crons or [], user_timezone or "UTC", now
+        ):
+            notice.actions.append(NoticeRunLessOften())
+        return notice
     if refusal.kind == "usage":
         return _plan_notice(
             title=title,
