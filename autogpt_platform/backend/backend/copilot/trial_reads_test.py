@@ -18,6 +18,7 @@ from backend.copilot.trial_reads import (
     sharing_trial_reads,
     trial_reads_shared,
 )
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
 
@@ -188,8 +189,15 @@ async def test_the_chat_routes_trial_checks_read_the_trial_once():
     redis.get = AsyncMock(return_value=None)
     with (
         patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+            "backend.copilot.rate_limit.get_ready_usage_state",
+            new=AsyncMock(
+                return_value=UsageActivationState(
+                    user_id="trial-user",
+                    tier=SubscriptionTier.TRIAL,
+                    trial_id="trial-1",
+                    ready=True,
+                )
+            ),
         ),
         patch(
             "backend.copilot.rate_limit._fetch_cost_limits_flag",

@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import OnboardingProvider from "../onboarding-provider";
 
-const routerReplace = vi.fn();
+// Stable across renders like the real router and BackendAPI instance, so an
+// effect re-runs only when its real inputs change.
+const { routerReplace, router, api } = vi.hoisted(() => {
+  const replace = vi.fn();
+  return {
+    routerReplace: replace,
+    router: { replace, push: () => {}, refresh: () => {} },
+    api: { onWebSocketMessage: () => () => {}, connectWebSocket: () => {} },
+  };
+});
 const toast = vi.hoisted(() => vi.fn());
 let completionError: Error | null = null;
 
@@ -10,16 +19,11 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast }),
 }));
 let mockPathname = "/signup";
-let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    push: vi.fn(),
-    refresh: vi.fn(),
-  }),
-  useSearchParams: () => mockSearchParams,
+  useRouter: () => router,
   usePathname: () => mockPathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 let mockIsLoggedIn = true;
@@ -32,10 +36,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
-  useBackendAPI: () => ({
-    onWebSocketMessage: () => () => {},
-    connectWebSocket: () => {},
-  }),
+  useBackendAPI: () => api,
 }));
 
 vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
@@ -70,7 +71,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     routerReplace.mockClear();
     toast.mockClear();
     completionError = null;
-    mockSearchParams = new URLSearchParams();
+    window.history.replaceState(null, "", "/");
     mockPathname = "/signup";
     mockIsLoggedIn = true;
     mockIsCompleted = false;
@@ -173,7 +174,8 @@ describe("OnboardingProvider routing — logged-in user", () => {
 
   test("a safe ?next= deep link defers to the auth page — no redirect from provider", async () => {
     mockPathname = "/login";
-    mockSearchParams = new URLSearchParams({ next: "/library" });
+    // The provider reads `next` off the committed URL, not useSearchParams.
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
     mockIsCompleted = true;
 
     render(
@@ -189,12 +191,38 @@ describe("OnboardingProvider routing — logged-in user", () => {
     expect(completedCallCount.value).toBe(0);
   });
 
+  test("dropping ?next= on the same auth page re-runs the redirect", async () => {
+    mockPathname = "/login";
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
+    mockIsCompleted = true;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    window.history.replaceState(null, "", "/login");
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+  });
+
   test("an unsafe ?next= value is treated as no deep link and the provider routes normally", async () => {
     // `sanitizeAuthNext` drops absolute URLs as null. Without the alignment
     // fix, OnboardingProvider would defer (assuming the auth page handles it)
     // while the auth page silently drops the value — deadlocking the user.
     mockPathname = "/signup";
-    mockSearchParams = new URLSearchParams({ next: "https://phishing.site" });
+    window.history.replaceState(
+      null,
+      "",
+      `/signup?next=${encodeURIComponent("https://phishing.site")}`,
+    );
     mockIsCompleted = false;
 
     render(

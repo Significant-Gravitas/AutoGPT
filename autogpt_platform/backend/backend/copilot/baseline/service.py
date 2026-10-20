@@ -30,6 +30,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -48,6 +49,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
@@ -55,6 +57,7 @@ from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.hidden_rows import visible_to_model
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
@@ -1623,7 +1626,10 @@ async def _load_prior_transcript(
             session_id, restore.message_count, gap
         )
     if hole or gap:
-        _append_gap_to_builder(hole + gap, transcript_builder)
+        # The transcript is what later turns read back as their own history,
+        # so a row kept from the model never enters it. The upload's
+        # watermark still counts it, so it is not found again as a gap.
+        _append_gap_to_builder(visible_to_model(hole + gap), transcript_builder)
         logger.info(
             "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
             "+ %d gap msgs from DB",
@@ -2058,6 +2064,9 @@ async def stream_chat_completion_baseline(
             )
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
+    # Before anything is appended below: this reads the last entry, and the
+    # per-turn blocks then land on the note as they would on a typed message.
+    send_trailing_note_as_user(openai_messages)
 
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
@@ -2591,6 +2600,7 @@ async def stream_chat_completion_baseline(
                     # Persist the assistant/tool flush BEFORE the pending append
                     # so a later pending-persist failure can roll back the
                     # pending rows without also discarding LLM output.
+                    stamp_turn_trace_id(current_session.messages, turn_start)
                     current_session = await persist_session_safe(
                         current_session, "[Baseline]"
                     )
@@ -2756,6 +2766,7 @@ async def stream_chat_completion_baseline(
             retryable=failure.retryable if failure is not None else True,
             failure=failure.as_part() if failure is not None else None,
         ):
+            stamp_turn_trace_id(_failed_session.messages, turn_start)
             try:
                 await upsert_chat_session(_failed_session)
             except Exception as marker_err:
@@ -2937,6 +2948,7 @@ async def stream_chat_completion_baseline(
                     llm_credential_id=state.llm_credential_id,
                 )
             )
+        stamp_turn_trace_id(session.messages, turn_start)
         try:
             await upsert_chat_session(session)
             final_checkpoint = turn_checkpoint(session.messages, turn_start)

@@ -221,12 +221,11 @@ class TestMakeFlexGraphitiClient:
         # ``make_flex_graphiti_client`` imports both classes lazily;
         # patch them on their actual modules so the import inside the
         # function picks up the sentinel.
-        import graphiti_core.llm_client
-
         from . import flex_client as flex_module
+        from . import llm_client as llm_module
 
         monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
-        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+        monkeypatch.setattr(llm_module, "GraphitiOpenAIClient", regular_sentinel)
 
         await make_flex_graphiti_client("user_abc")
 
@@ -265,12 +264,11 @@ class TestMakeFlexGraphitiClient:
             client_mod, "_build_llm_config", lambda: MagicMock(name="LLMConfig")
         )
 
-        import graphiti_core.llm_client
-
         from . import flex_client as flex_module
+        from . import llm_client as llm_module
 
         monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
-        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+        monkeypatch.setattr(llm_module, "GraphitiOpenAIClient", regular_sentinel)
 
         await make_flex_graphiti_client("user_abc")
 
