@@ -36,7 +36,7 @@ export function TrialCanceledDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" unmask={false} className="!text-zinc-800">
+          <Text variant="body" className="!text-zinc-800">
             Your card won&apos;t be charged.{" "}
             <TrialTimeLeft endsAt={trial.ends_at} />
           </Text>

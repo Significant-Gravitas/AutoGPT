@@ -1,17 +1,21 @@
+import logging
 from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
-from starlette.status import HTTP_404_NOT_FOUND
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_503_SERVICE_UNAVAILABLE
 
 from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import (
+    ResumeScheduledChatResponse,
     ScheduleCreationRequest,
     ScheduleUpdateRequest,
 )
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.copilot.scheduled_chats import forget
+from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import get_user_team_ids
@@ -24,7 +28,9 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 
-# This router mounts at /api and keeps the section's full paths: its six routes
+logger = logging.getLogger(__name__)
+
+# This router mounts at /api and keeps the section's full paths: its routes
 # span two prefixes (/schedules and /graphs/{graph_id}/schedules), so a prefixed
 # mount would have to move one of them.
 router = APIRouter(dependencies=[Security(requires_user)])
@@ -167,6 +173,50 @@ async def list_copilot_turn_schedules(
     return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
+@router.get(
+    path="/schedules/followups/paused",
+    summary="List scheduled chats paused after failing the same way",
+    operation_id="listPausedScheduledChats",
+)
+async def list_paused_scheduled_chats(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduled_chats.PausedScheduledChat]:
+    """A paused job drops out of the follow-ups list above, so the chats a
+    failure streak paused are listed here, each once however many fire times
+    it has, with why and what Resume takes."""
+    return await scheduled_chats.list_paused_scheduled_chats(user_id)
+
+
+@router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
+    path="/schedules/followups/{schedule_key}/resume",
+    summary="Resume a scheduled chat paused after failing the same way",
+    operation_id="resumeScheduledChat",
+)
+async def resume_scheduled_chat(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> ResumeScheduledChatResponse:
+    try:
+        resumed = await scheduled_chats.resume_scheduled_chat(user_id, schedule_key)
+    except Exception:
+        # The scheduler refused or the database blinked: the chat stays
+        # paused, so Resume can simply be tried again.
+        logger.exception("Could not resume scheduled chat %s", schedule_key)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This scheduled chat could not be resumed just now. Try again.",
+        )
+    if not resumed:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat is not paused.",
+        )
+    return ResumeScheduledChatResponse(resumed=True)
+
+
 @router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
@@ -179,11 +229,30 @@ async def delete_graph_execution_schedule(
     try:
         await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
+        # Gone already, perhaps by a delete whose streak cleanup failed: a
+        # retry still clears the streak, or the chat stays listed as paused.
+        await _forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
+    # A follow-up's failure streak is keyed by its schedule id.
+    await _forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
+
+
+async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
+    """The schedule is gone whatever this does, so a failure is logged, not
+    answered: a 500 would say the delete failed. A streak left behind keeps
+    the chat listed as paused, and deleting it from there again clears it."""
+    try:
+        await forget.forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
+        )
 
 
 @router.patch(

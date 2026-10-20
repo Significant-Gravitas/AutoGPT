@@ -50,7 +50,6 @@ export function RecentMemoriesCard({
               <Text
                 variant="small"
                 as="span"
-                unmask={false}
                 className="min-w-0 flex-1 text-textBlack"
               >
                 {fact.fact || `${fact.source} → ${fact.target}`}
@@ -58,7 +57,6 @@ export function RecentMemoriesCard({
               <Text
                 variant="small"
                 as="span"
-                unmask={false}
                 className="hidden shrink-0 text-zinc-400 sm:inline"
               >
                 {formatWhen(fact.created_at)}

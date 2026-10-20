@@ -1222,7 +1222,7 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
         ),
         patch(
             "backend.copilot.tools.base._persist_and_summarize",
-            AsyncMock(side_effect=lambda raw_output, *args: raw_output),
+            AsyncMock(side_effect=lambda raw_output, *args, **kwargs: raw_output),
         ),
     ):
         to_model = _text_from_mcp_result(await wrapper({"url": "u"}))
