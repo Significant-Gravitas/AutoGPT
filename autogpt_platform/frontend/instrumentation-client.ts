@@ -15,7 +15,7 @@ import {
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
-import { setupSessionReplay } from "@/lib/session-replay";
+import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -116,4 +116,9 @@ Sentry.init({
   enableLogs: true,
 });
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export function onRouterTransitionStart(
+  ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
+) {
+  Sentry.captureRouterTransitionStart(...args);
+  holdReplayBackFor(args[0]);
+}

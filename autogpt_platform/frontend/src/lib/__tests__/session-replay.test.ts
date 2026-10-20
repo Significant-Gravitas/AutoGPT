@@ -11,6 +11,7 @@ import { setupSessionReplay } from "../session-replay";
 
 vi.mock("@sentry/nextjs", () => ({
   addIntegration: vi.fn(),
+  getReplay: vi.fn(),
   replayIntegration: vi.fn(() => ({ name: "Replay" })),
   replayCanvasIntegration: vi.fn(() => ({ name: "ReplayCanvas" })),
 }));
@@ -92,5 +93,151 @@ describe("setupSessionReplay", () => {
     expect(setupSessionReplay()).toEqual([]);
     answerCookiebot({ statistics: true });
     expect(Sentry.addIntegration).not.toHaveBeenCalled();
+  });
+});
+
+describe("session replay on a page whose address carries a credential", () => {
+  // The replay holds state across navigations, so each test loads it afresh.
+  async function load() {
+    vi.resetModules();
+    return {
+      Sentry: vi.mocked(await import("@sentry/nextjs")),
+      ...(await import("../session-replay")),
+    };
+  }
+
+  function recordingReplay(mode: "session" | "buffer") {
+    return {
+      getReplayId: vi.fn(() => "r-1"),
+      getRecordingMode: vi.fn(() => mode),
+      stop: vi.fn(async () => undefined),
+      start: vi.fn(),
+      startBuffering: vi.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+  });
+
+  afterEach(() => {
+    history.replaceState({}, "", "/");
+    removeCookiebot();
+    vi.unstubAllEnvs();
+  });
+
+  it.each(["/reset-password?token=r-1", "/link/t-1"])(
+    "starts no replay on %s",
+    async (page) => {
+      history.replaceState({}, "", page);
+      const { Sentry, setupSessionReplay } = await load();
+
+      expect(integrationNames(setupSessionReplay())).toEqual([
+        "ReplayEventURLRedaction",
+      ]);
+      expect(Sentry.replayIntegration).not.toHaveBeenCalled();
+    },
+  );
+
+  it("starts one on an ordinary page, query and all", async () => {
+    history.replaceState({}, "", "/copilot?sessionId=s-1");
+    const { setupSessionReplay } = await load();
+
+    expect(integrationNames(setupSessionReplay())).toEqual([
+      "Replay",
+      "ReplayEventURLRedaction",
+    ]);
+  });
+
+  it("starts the replay once the visitor leaves the page", async () => {
+    history.replaceState({}, "", "/link/t-1");
+    const { Sentry, setupSessionReplay, syncReplayWithPage } = await load();
+    setupSessionReplay();
+
+    syncReplayWithPage(`${location.origin}/link/t-1`);
+    expect(Sentry.addIntegration).not.toHaveBeenCalled();
+
+    history.replaceState({}, "", "/library");
+    syncReplayWithPage(location.href);
+    expect(addedIntegrationNames()).toEqual(["Replay"]);
+  });
+
+  it("starts nothing when consent is granted there, until the visitor leaves", async () => {
+    installCookiebot();
+    history.replaceState({}, "", "/reset-password?token=r-1");
+    const { setupSessionReplay, syncReplayWithPage } = await load();
+
+    expect(setupSessionReplay()).toEqual([]);
+    answerCookiebot({ statistics: true });
+    expect(addedIntegrationNames()).not.toContain("Replay");
+
+    history.replaceState({}, "", "/library");
+    syncReplayWithPage(location.href);
+    expect(
+      addedIntegrationNames().filter((name) => name === "Replay"),
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    ["session", "start"],
+    ["buffer", "startBuffering"],
+  ] as const)(
+    "stops a %s recording on the way in and resumes it on the way out",
+    async (mode, resume) => {
+      const { Sentry, holdReplayBackFor, syncReplayWithPage } = await load();
+      const replay = recordingReplay(mode);
+      Sentry.getReplay.mockReturnValue(replay as never);
+
+      // As Next calls it when the navigation starts, then once it has landed.
+      holdReplayBackFor("/link/t-1");
+      syncReplayWithPage(`${location.origin}/link/t-1`);
+      expect(replay.stop).toHaveBeenCalledTimes(1);
+      expect(replay.start).not.toHaveBeenCalled();
+      expect(replay.startBuffering).not.toHaveBeenCalled();
+
+      holdReplayBackFor("/library");
+      syncReplayWithPage(`${location.origin}/library`);
+      expect(replay[resume]).toHaveBeenCalledTimes(1);
+      expect(replay.stop).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("leaves a replay alone between ordinary pages", async () => {
+    const { Sentry, holdReplayBackFor, syncReplayWithPage } = await load();
+    const replay = recordingReplay("session");
+    Sentry.getReplay.mockReturnValue(replay as never);
+
+    holdReplayBackFor("/marketplace?page=2");
+    syncReplayWithPage(`${location.origin}/marketplace?page=2`);
+
+    expect(replay.stop).not.toHaveBeenCalled();
+    expect(replay.start).not.toHaveBeenCalled();
+  });
+
+  it("does not resume once consent is withdrawn", async () => {
+    const { Sentry, holdReplayBackFor, syncReplayWithPage } = await load();
+    const replay = recordingReplay("session");
+    Sentry.getReplay.mockReturnValue(replay as never);
+
+    holdReplayBackFor("/link/t-1");
+    answerCookiebot({ statistics: false });
+    syncReplayWithPage(`${location.origin}/library`);
+
+    expect(replay.stop).toHaveBeenCalledTimes(1);
+    expect(replay.start).not.toHaveBeenCalled();
+  });
+
+  it("does not start a replay that was not recording", async () => {
+    const { Sentry, holdReplayBackFor, syncReplayWithPage } = await load();
+    const replay = { ...recordingReplay("buffer"), getReplayId: vi.fn() };
+    Sentry.getReplay.mockReturnValue(replay as never);
+
+    holdReplayBackFor("/link/t-1");
+    syncReplayWithPage(`${location.origin}/library`);
+
+    expect(replay.stop).not.toHaveBeenCalled();
+    expect(replay.startBuffering).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,12 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REDACTED, redactURL, redactURLsInText } from "../sentry-url-redaction";
+import {
+  holdsCredential,
+  REDACTED,
+  redactURL,
+  redactURLsInText,
+} from "../sentry-url-redaction";
 
 describe("redactURL", () => {
   // backend/util/url_redaction_test.py's cases, which both sides must agree on.
@@ -144,3 +151,58 @@ describe("redactURLsInText", () => {
     },
   );
 });
+
+describe("holdsCredential", () => {
+  const APP = join(__dirname, "../../app");
+
+  // The app's pages that receive a credential in their query. A page or key
+  // renamed without updating the credential keys fails here.
+  it.each([
+    ["(platform)/reset-password/page.tsx", "token"],
+    ["(platform)/auth/authorize/page.tsx", "state"],
+    ["(platform)/auth/integrations/setup-wizard/page.tsx", "state"],
+  ])("holds for %s's ?%s=", (page, key) => {
+    expect(readFileSync(join(APP, page), "utf8")).toContain(
+      `searchParams.get("${key}")`,
+    );
+    expect(holdsCredential(`${routeOf(page)}?${key}=c-1`)).toBe(true);
+  });
+
+  it("holds for every page whose path is a token", () => {
+    const pages = readdirSync(APP, { recursive: true, encoding: "utf8" })
+      .map((path) => path.split("\\").join("/"))
+      .filter((path) => /\[token\]\/page\.tsx$/.test(path));
+
+    expect(pages).toHaveLength(3);
+    for (const page of pages) {
+      const url = routeOf(page).replace("[token]", "t-1");
+      expect(holdsCredential(url), url).toBe(true);
+    }
+  });
+
+  it.each([
+    "https://platform.agpt.co/link/t-1?platform=discord",
+    "/auth/callback#access_token=a&type=recovery",
+    "/x?CODE=1",
+  ])("holds for %s", (url) => {
+    expect(holdsCredential(url)).toBe(true);
+  });
+
+  it.each([
+    "/copilot?sessionId=s-1",
+    "/team?expertId=e-1&turn=2",
+    "/library?tab=runs&page=2",
+    "/marketplace#featured",
+    "/link/slack",
+    "/link/[token]",
+    "/",
+  ])("does not hold for %s", (url) => {
+    expect(holdsCredential(url)).toBe(false);
+  });
+});
+
+// A page file's route: route groups and the file name are not in the URL.
+function routeOf(page: string) {
+  const segments = page.split("/").slice(0, -1);
+  return "/" + segments.filter((segment) => !segment.startsWith("(")).join("/");
+}

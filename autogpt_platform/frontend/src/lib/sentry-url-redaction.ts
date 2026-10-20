@@ -24,6 +24,23 @@ export function redactURLsInText(text: string): string {
   return redactPath(text.replace(QUERY_IN_TEXT, redactQuery));
 }
 
+/**
+ * True when a page's address carries a credential: in a path segment the
+ * redactor masks, or under a credential key in its query or fragment.
+ */
+export function holdsCredential(url: string): boolean {
+  const start = url.search(/[?#]/);
+  const path = start < 0 ? url : url.slice(0, start);
+  if (redactPath(path) !== path) return true;
+  if (start < 0) return false;
+  return url
+    .slice(start + 1)
+    .split(/[?#&]/)
+    .some((pair) =>
+      CREDENTIAL_QUERY_KEYS.has(pair.split("=")[0].toLowerCase()),
+    );
+}
+
 type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
 type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
 
@@ -132,6 +149,16 @@ const API_CREDENTIAL_SEGMENT =
 // /link/slack is static, and a route name like /link/[token] holds no token.
 const PAGE_CREDENTIAL_SEGMENT =
   /(^|\s)((?:[a-z][a-z\d+.-]*:)?\/\/[^/?#\s]*)?(\/(?:link\/(?!slack(?:[/?#\s]|$))|share\/(?!chat\/\[)(?:chat\/)?))(?!\[)[^/?\s]+/gi;
+// Query keys that carry a credential into a page; a new page that receives one
+// in its query adds its key here. Masking needs no list: it masks every value.
+const CREDENTIAL_QUERY_KEYS = new Set([
+  "token",
+  "code",
+  "state",
+  "access_token",
+  "refresh_token",
+  "id_token",
+]);
 const QUERY_IN_TEXT = /\?\S+/g;
 const QUERY_VALUE = /=[^&]*/g;
 
