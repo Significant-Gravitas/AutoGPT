@@ -110,8 +110,9 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
     if not text or not any(ch.isalnum() for ch in text):
         return "reject"
 
-    # Onboarding analytics count words the same way (`countWords` in the
-    # frontend's BrainDumpStep/helpers.ts); change the two together.
+    # Onboarding analytics count words with `countWords` in the frontend's
+    # BrainDumpStep/helpers.ts. The two agree apart from a few rare separators
+    # (listed there), so change them together.
     words = [word for word in text.split() if any(ch.isalnum() for ch in word)]
     if not words:
         return "reject"
