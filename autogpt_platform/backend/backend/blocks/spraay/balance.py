@@ -1,136 +1,150 @@
 """Spraay token balance check block.
 
-This module provides the SpraayGetBalanceBlock, which queries the balance
-of any ERC-20 token or native token for a given wallet address on any
-of the 13 supported blockchain networks.
+Queries ``GET /api/v1/balances`` for a wallet's native ETH and ERC-20
+balances on Base, the chain the gateway reads balances from.
 """
+
+from typing import Any
 
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
 
 from ._api import spraay_request
-from ._config import spraay_provider
-from .batch_payment import ChainNetwork
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, spraay_provider
 
 
 class SpraayGetBalanceBlock(Block):
-    """Check a wallet's token balance on any supported chain.
+    """Check a wallet's token balances on Base.
 
-    Query the balance of any ERC-20 token or native token for a given wallet
-    address. Useful for pre-flight checks before sending payments, monitoring
-    agent wallets, or building conditional workflows based on funds available.
+    Useful as a pre-flight check before preparing a batch payment, or for
+    monitoring agent wallets. Costs $0.005 per call via x402.
     """
 
-    class Input(BlockSchema):
-        """Input schema for the balance check block."""
-
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = spraay_provider.credentials_field(
-            description="Spraay API credentials",
-        )
-        chain: ChainNetwork = SchemaField(
-            description="Blockchain network to query",
-            default=ChainNetwork.BASE,
+            description="Spraay x402 payer wallet private key",
         )
         wallet_address: str = SchemaField(
-            description="Wallet address to check balance for",
+            description="Wallet address to check balances for",
         )
         token_address: str = SchemaField(
             description=(
-                "Token contract address. "
-                "Use '0x0000000000000000000000000000000000000000' for native token. "
+                "ERC-20 contract address on Base to check. Leave empty to "
+                "list ETH plus non-zero balances of popular Base tokens. "
                 "USDC on Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             ),
+            default="",
         )
 
-    class Output(BlockSchema):
-        """Output schema for the balance check block."""
-
+    class Output(BlockSchemaOutput):
+        balances: list[dict[str, Any]] = SchemaField(
+            description=(
+                "All returned balances: symbol, address, decimals, "
+                "balance (human decimal), balanceRaw (base units)"
+            ),
+        )
         balance: str = SchemaField(
-            description="Token balance in the token's smallest unit (wei/lamports/sats)",
+            description="Requested token's balance in base units",
+            default="",
         )
         formatted_balance: str = SchemaField(
-            description="Human-readable balance with decimals applied",
+            description="Requested token's balance with decimals applied",
+            default="",
         )
         token_symbol: str = SchemaField(
-            description="Symbol of the token (e.g. USDC, ETH, SOL)",
-        )
-        error: str = SchemaField(
-            description="Error message if the balance check failed",
+            description="Requested token's symbol (e.g. USDC)",
+            default="",
         )
 
     def __init__(self):
-        """Initialize the SpraayGetBalanceBlock with metadata and test fixtures."""
         super().__init__(
             id="b81a036d-8bf7-460c-bca8-b1242d0aa3cb",
             description=(
-                "Check token balance for any wallet on 13 supported chains. "
-                "Supports native tokens and ERC-20s. "
-                "Powered by Spraay's x402 payment gateway."
+                "Check native ETH and ERC-20 balances for any wallet on Base. "
+                "Paid per call via Spraay x402."
             ),
             categories={BlockCategory.BASIC},
             input_schema=SpraayGetBalanceBlock.Input,
             output_schema=SpraayGetBalanceBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
             test_input={
-                "credentials": {
-                    "provider": "spraay",
-                    "id": "test-cred-id",
-                    "type": "api_key",
-                },
-                "chain": "base",
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "wallet_address": "0x1234567890abcdef1234567890abcdef12345678",
                 "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             },
             test_output=[
+                (
+                    "balances",
+                    [
+                        {
+                            "symbol": "ETH",
+                            "address": "native",
+                            "decimals": 18,
+                            "balance": "0.01",
+                            "balanceRaw": "10000000000000000",
+                        },
+                        {
+                            "symbol": "USDC",
+                            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                            "decimals": 6,
+                            "balance": "5.0",
+                            "balanceRaw": "5000000",
+                        },
+                    ],
+                ),
                 ("balance", "5000000"),
                 ("formatted_balance", "5.0"),
                 ("token_symbol", "USDC"),
             ],
             test_mock={
-                "fetch_balance": lambda *args, **kwargs: {
-                    "balance": "5000000",
-                    "formatted_balance": "5.0",
-                    "token_symbol": "USDC",
+                "fetch_balances": lambda *args, **kwargs: {
+                    "address": "0x1234567890abcdef1234567890abcdef12345678",
+                    "network": "base",
+                    "chainId": 8453,
+                    "balances": [
+                        {
+                            "symbol": "ETH",
+                            "address": "native",
+                            "decimals": 18,
+                            "balance": "0.01",
+                            "balanceRaw": "10000000000000000",
+                        },
+                        {
+                            "symbol": "USDC",
+                            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                            "decimals": 6,
+                            "balance": "5.0",
+                            "balanceRaw": "5000000",
+                        },
+                    ],
+                    "tokenCount": 2,
                 }
             },
         )
 
     @staticmethod
-    def fetch_balance(
-        api_key: str,
-        chain: str,
+    async def fetch_balances(
+        private_key: str,
         wallet_address: str,
         token_address: str,
-    ) -> dict:
-        """Fetch the token balance for a wallet via the Spraay gateway.
-
-        Args:
-            api_key: Spraay API key for authentication.
-            chain: Target blockchain network identifier.
-            wallet_address: Wallet address to query the balance for.
-            token_address: Contract address of the token to check.
-
-        Returns:
-            Dictionary containing balance, formatted_balance, and token_symbol.
-
-        Raises:
-            SpraayAPIError: If the gateway returns an error.
-        """
-        return spraay_request(
+    ) -> dict[str, Any]:
+        """Fetch wallet balances from the Spraay gateway."""
+        params = {"address": wallet_address}
+        if token_address:
+            params |= {"tokens": token_address, "showAll": "true"}
+        return await spraay_request(
             method="GET",
-            endpoint="/v1/balance",
-            api_key=api_key,
-            params={
-                "chain": chain,
-                "walletAddress": wallet_address,
-                "tokenAddress": token_address,
-            },
+            endpoint="/api/v1/balances",
+            private_key=private_key,
+            params=params,
         )
 
     async def run(
@@ -140,26 +154,28 @@ class SpraayGetBalanceBlock(Block):
         credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        """Execute the balance check block.
-
-        Args:
-            input_data: Validated input containing chain, wallet address,
-                and token address.
-            credentials: API key credentials injected by the framework.
-            **kwargs: Additional keyword arguments passed by the executor.
-
-        Yields:
-            Output fields: balance, formatted_balance, token_symbol, or error.
-        """
-        api_key = credentials.api_key.get_secret_value()
-
-        result = self.fetch_balance(
-            api_key=api_key,
-            chain=input_data.chain.value,
+        result = await self.fetch_balances(
+            private_key=credentials.api_key.get_secret_value(),
             wallet_address=input_data.wallet_address,
             token_address=input_data.token_address,
         )
 
-        yield "balance", result.get("balance", "0")
-        yield "formatted_balance", result.get("formatted_balance", "0")
-        yield "token_symbol", result.get("token_symbol", "")
+        balances = result.get("balances", [])
+        yield "balances", balances
+
+        if not input_data.token_address:
+            return
+
+        wanted = input_data.token_address.lower()
+        match = next(
+            (b for b in balances if b.get("address", "").lower() == wanted), None
+        )
+        if match is None or "error" in match:
+            yield "error", (match or {}).get(
+                "error", f"Token {input_data.token_address} not found in response"
+            )
+            return
+
+        yield "balance", match.get("balanceRaw", "0")
+        yield "formatted_balance", match.get("balance", "0")
+        yield "token_symbol", match.get("symbol", "")
