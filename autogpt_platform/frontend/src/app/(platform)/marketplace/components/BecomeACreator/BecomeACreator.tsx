@@ -6,12 +6,23 @@ interface BecomeACreatorProps {
   title?: string;
   description?: string;
   buttonText?: string;
+  onPublish?: () => void;
 }
 
 export function BecomeACreator({
   description = "Join a community where your workflows can inspire, engage, and be installed by users around the world.",
   buttonText = "Publish your workflow",
+  onPublish,
 }: BecomeACreatorProps) {
+  const publishTrigger = (
+    <button
+      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-zinc-900 px-8 text-[15px] font-medium text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]"
+      onClick={onPublish}
+    >
+      {buttonText}
+    </button>
+  );
+
   return (
     <div className="relative mx-auto w-full max-w-[1360px] py-24">
       <div className="mx-auto w-full max-w-2xl px-4 text-center">
@@ -24,13 +35,11 @@ export function BecomeACreator({
           {description}
         </p>
 
-        <PublishAgentModal
-          trigger={
-            <button className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-zinc-900 px-8 text-[15px] font-medium text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]">
-              {buttonText}
-            </button>
-          }
-        />
+        {onPublish ? (
+          publishTrigger
+        ) : (
+          <PublishAgentModal trigger={publishTrigger} />
+        )}
       </div>
     </div>
   );

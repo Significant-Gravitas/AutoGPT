@@ -9,10 +9,15 @@ export async function dismissTabIntros(page: Page) {
         .elementHandles();
       if (!button) return;
       try {
-        await button.click();
+        // A click can intercept its own handler after the outer wait expires.
+        await button.press("Enter");
       } catch (error) {
-        // An expiring optional wait can re-enter a card's exit animation.
-        if (await button.evaluate((element) => element.isConnected))
+        if (
+          !(error instanceof Error) ||
+          !/Element is not attached to the DOM|Execution context was destroyed/.test(
+            error.message,
+          )
+        )
           throw error;
       } finally {
         await button.dispose();

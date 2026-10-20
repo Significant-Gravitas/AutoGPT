@@ -1,11 +1,37 @@
 import { getGetV2ListStoreAgentsResponseMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { Flag } from "@/services/feature-flags/use-get-flag";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { MainMarkeplacePage } from "../MainMarketplacePage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockUseMainMarketplacePage = vi.hoisted(() => vi.fn());
 const mockUseFlagSource = vi.hoisted(() => vi.fn());
+const onboarding = vi.hoisted(() => ({
+  ready: false,
+  completeStep: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "marketplace-intro-user" },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
+}));
+
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  useOnboarding: () => ({
+    state: onboarding.ready ? { completedSteps: [] } : null,
+    completeStep: onboarding.completeStep,
+  }),
+  default: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 vi.mock("../useMainMarketplacePage", () => ({
   useMainMarketplacePage: mockUseMainMarketplacePage,
@@ -17,6 +43,9 @@ vi.mock("@/services/feature-flags/flag-source", () => ({
 
 describe("MainMarketplacePage", () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    onboarding.ready = false;
+    onboarding.completeStep.mockReset();
     mockUseFlagSource.mockReturnValue({
       value: undefined,
       resolved: false,
@@ -83,4 +112,65 @@ describe("MainMarketplacePage", () => {
       screen.getByRole("button", { name: "Become a Creator" }),
     ).toBeDefined();
   });
+
+  test.each([
+    { experts: true, emptyShelf: false, trigger: "Publish your workflows" },
+    { experts: false, emptyShelf: false, trigger: "Become a Creator" },
+    { experts: true, emptyShelf: true, trigger: "Become a Creator" },
+  ])(
+    "defers the intro while publishing from $trigger (experts=$experts, emptyShelf=$emptyShelf)",
+    async ({ experts, emptyShelf, trigger }) => {
+      mockUseFlagSource.mockImplementation((flag: string) => ({
+        value: flag === Flag.HIRE_EXPERTS ? experts : true,
+        resolved: true,
+      }));
+      if (emptyShelf) {
+        const data = mockUseMainMarketplacePage();
+        mockUseMainMarketplacePage.mockReturnValue({
+          ...data,
+          featuredAgents: { ...data.featuredAgents, agents: [] },
+          topAgents: { ...data.topAgents, agents: [] },
+        });
+      }
+      const { rerender } = render(<MainMarkeplacePage />);
+      await userEvent.click(screen.getByRole("button", { name: trigger }));
+      const publishDialog = await screen.findByRole("dialog", {
+        name: "Publish Workflow",
+      });
+      expect(screen.getByTestId("publish-agent-modal")).toBeDefined();
+
+      onboarding.ready = true;
+      rerender(<MainMarkeplacePage />);
+      expect(screen.queryByTestId("tab-intro-overlay")).toBeNull();
+      expect(onboarding.completeStep).not.toHaveBeenCalled();
+
+      mockUseFlagSource.mockImplementation((flag: string) => ({
+        value: flag === Flag.HIRE_EXPERTS ? !experts : true,
+        resolved: true,
+      }));
+      rerender(<MainMarkeplacePage />);
+      expect(screen.getByRole("dialog", { name: "Publish Workflow" })).toBe(
+        publishDialog,
+      );
+      expect(screen.queryByTestId("tab-intro-overlay")).toBeNull();
+      expect(onboarding.completeStep).not.toHaveBeenCalled();
+
+      await userEvent.click(
+        within(publishDialog).getByRole("button", {
+          name: "Close",
+        }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Workflows ready to work." }),
+      ).toBeDefined();
+      expect(onboarding.completeStep).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("button", { name: "Got it" }));
+      await waitFor(() =>
+        expect(screen.queryByTestId("tab-intro-overlay")).toBeNull(),
+      );
+      expect(onboarding.completeStep).toHaveBeenCalledWith(
+        "MARKETPLACE_TAB_INTRO",
+      );
+    },
+  );
 });

@@ -1,5 +1,8 @@
 "use client";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
+import { useState } from "react";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   Flag,
@@ -21,6 +24,16 @@ import { AGENTS_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
 export const MainMarkeplacePage = () => {
+  const [publishState, setPublishState] = useState<PublishState>({
+    isOpen: false,
+    step: "select",
+    submissionData: null,
+  });
+
+  function openPublishing() {
+    setPublishState({ isOpen: true, step: "select", submissionData: null });
+  }
+
   const {
     featuredAgents,
     topAgents,
@@ -86,6 +99,7 @@ export const MainMarkeplacePage = () => {
                 agents={topAgents.agents}
                 featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
                 total={topAgents.pagination.total_items}
+                onPublish={openPublishing}
               />
             )}
           </>
@@ -120,10 +134,16 @@ export const MainMarkeplacePage = () => {
             title="Become a Creator"
             description="Join our ever-growing community of hackers and tinkerers"
             buttonText="Become a Creator"
+            onPublish={openPublishing}
           />
         ) : null}
       </main>
-      <MarketplaceTabIntro />
+      <PublishAgentModal
+        showTrigger={false}
+        targetState={publishState}
+        onStateChange={setPublishState}
+      />
+      <MarketplaceTabIntro canShow={!publishState.isOpen} />
     </div>
   );
 };
