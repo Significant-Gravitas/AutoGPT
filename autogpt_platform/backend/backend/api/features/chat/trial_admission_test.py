@@ -297,22 +297,28 @@ def test_the_session_checks_run_beside_the_paywall_and_in_flight_reads(
     scheduled.assert_awaited_once()
 
 
-def test_a_refused_session_is_refused_whatever_the_other_reads_found(
+def test_a_refused_session_is_refused_whatever_the_in_flight_read_found(
     account: RouteTrialAccount,
     scheduled: AsyncMock,
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    account.end_trial()
-    account.read_error = ConnectionError("database unreachable")
+    """The in-flight read fails before the session is refused; awaited, its
+    error would be a 503."""
+    in_flight_failed = asyncio.Event()
+
+    async def read_in_flight(session_id: str) -> bool:
+        in_flight_failed.set()
+        raise StreamRegistryUnavailable("redis down")
+
+    async def refuse_session(*args, **kwargs) -> ChatSession:
+        await asyncio.wait_for(in_flight_failed.wait(), 2)
+        raise fastapi.HTTPException(status_code=404)
+
     mocker.patch.object(
-        chat_routes,
-        "_validate_and_get_session",
-        AsyncMock(side_effect=fastapi.HTTPException(status_code=404)),
+        chat_routes, "_validate_and_get_session", AsyncMock(side_effect=refuse_session)
     )
     mocker.patch.object(
-        chat_routes,
-        "is_turn_in_flight",
-        AsyncMock(side_effect=StreamRegistryUnavailable("redis down")),
+        chat_routes, "is_turn_in_flight", AsyncMock(side_effect=read_in_flight)
     )
 
     response = _send_message()
