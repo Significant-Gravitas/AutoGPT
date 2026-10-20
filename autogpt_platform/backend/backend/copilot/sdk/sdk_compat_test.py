@@ -289,6 +289,11 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           build_sdk_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
         #           guard remains required -- see
         #           cli_openrouter_compat_test.py, which CI runs.
+        "2.1.301",  # claude-agent-sdk 0.2.168 -- same beta string, still
+        #           stripped by the env guard (the bare reproduction in
+        #           cli_openrouter_compat_test.py still xfails, the guarded one
+        #           passes).  2.1.285+ starts SDK sessions in auto mode unless
+        #           a permission mode is set, hence SDK_PERMISSION_MODE.
     }
 )
 

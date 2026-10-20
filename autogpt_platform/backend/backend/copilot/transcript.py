@@ -45,7 +45,18 @@ _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 # - summary: session summaries
 # - pr-link: PR link metadata
 STRIPPABLE_TYPES = frozenset(
-    {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
+    {
+        "progress",
+        "file-history-snapshot",
+        "queue-operation",
+        "summary",
+        "pr-link",
+        # CLI 2.1.300+ records every API request (system prompt, tool schemas,
+        # message blobs) in the session file; --resume does not need them.
+        "api-request",
+        "api-request-shape",
+        "api-request-blob",
+    }
 )
 
 

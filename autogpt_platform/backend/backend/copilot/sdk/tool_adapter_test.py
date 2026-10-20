@@ -775,6 +775,14 @@ class TestSDKDisallowedTools:
         assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
         assert tool in BLOCKED_TOOLS
 
+    @pytest.mark.parametrize("tool", ["PublishPlugin", "OfferChromeSetup"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cli_publish_and_setup_tools_are_disallowed(self, tool: str, use_e2b: bool):
+        """CLI 2.1.285+ tools: one uploads files to claude.ai, the other asks a
+        user who is not there to set up Chrome."""
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+        assert tool in BLOCKED_TOOLS
+
     def test_orchestrator_block_disallows_every_known_builtin(self):
         # The orchestrator's model gets graph MCP tools only, so its blocklist
         # must cover everything the copilot blocks *and* everything the

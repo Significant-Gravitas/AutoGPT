@@ -13,6 +13,8 @@ import os
 import re
 from urllib.parse import urlparse
 
+from claude_agent_sdk import PermissionMode
+
 from backend.copilot.config import ChatConfig
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
@@ -22,6 +24,14 @@ from backend.copilot.sdk.subscription import validate_subscription
 # A singleton would require importing service.py which causes the circular dep
 # this module was created to avoid.
 config = ChatConfig()
+
+# Claude Code 2.1.285+ starts SDK sessions in auto mode when no permission mode
+# is given and nonessential traffic is off (build_sdk_env sets it). Auto mode
+# drops the Agent/Task allow rule, sends each such call with the conversation to
+# a separate safety-classifier model call, and lets that classifier approve
+# built-ins in neither tool list. "default" is what older CLIs resolved to:
+# allowed_tools, disallowed_tools and the security hooks stay the only gate.
+SDK_PERMISSION_MODE: PermissionMode = "default"
 
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")

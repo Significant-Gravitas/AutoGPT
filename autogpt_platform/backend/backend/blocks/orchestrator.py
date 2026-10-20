@@ -26,6 +26,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.env import SDK_PERMISSION_MODE
 from backend.copilot.sdk.env import config as copilot_config
 from backend.data.dynamic_fields import (
     extract_base_field_name,
@@ -1783,6 +1784,7 @@ class OrchestratorBlock(Block):
                 mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
+                permission_mode=SDK_PERMISSION_MODE,
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,

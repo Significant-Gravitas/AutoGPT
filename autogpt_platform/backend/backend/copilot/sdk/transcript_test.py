@@ -184,6 +184,9 @@ class TestStripProgressEntries:
             {"type": "queue-operation", "subtype": "create"},
             {"type": "summary", "text": "..."},
             {"type": "pr-link", "url": "..."},
+            {"type": "api-request", "id": "r1", "params": {}},
+            {"type": "api-request-shape", "shapeHash": "s1"},
+            {"type": "api-request-blob", "hash": "b1"},
             ASST_MSG,
         ]
         result = strip_progress_entries(_make_jsonl(*entries))
