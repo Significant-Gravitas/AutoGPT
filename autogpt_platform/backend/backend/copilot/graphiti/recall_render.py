@@ -51,7 +51,12 @@ def render(fact: EntityEdge) -> str:
     text = fact_text(fact)
     if is_live(fact):
         valid_from, valid_to = fact_validity(fact)
-        return f"{text} (valid: {valid_from} — {valid_to})"
+        qualification = (
+            "Unconfirmed inference (tentative): "
+            if fact_status(fact) == MemoryStatus.tentative.value
+            else ""
+        )
+        return f"{qualification}{text} (valid: {valid_from} — {valid_to})"
     retired_at = str(fact.expired_at) if fact.expired_at else "at an unknown time"
     return f"{text} ({_retired_label(fact)} {retired_at})"
 
@@ -73,8 +78,9 @@ def fact_validity(fact: EntityEdge) -> tuple[str, str]:
 
 
 def render_episode(episode: EpisodicNode) -> str:
-    """``[created_at] body``, the body cut to ``EPISODE_DISPLAY_CHARS``."""
-    return f"[{episode.created_at}] {episode.content[:EPISODE_DISPLAY_CHARS]}"
+    """Date the statement by its reference time, falling back to ingestion time."""
+    timestamp = episode.valid_at or episode.created_at
+    return f"[{timestamp}] {episode.content[:EPISODE_DISPLAY_CHARS]}"
 
 
 def neutralise_tags(text: str) -> str:

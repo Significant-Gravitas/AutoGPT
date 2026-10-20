@@ -144,6 +144,7 @@ from ..pending_message_helpers import (
     pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
+    persist_unfolded_rows,
 )
 from ..pending_messages import (
     PendingMessage,
@@ -5273,6 +5274,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Built with the CLI options below; read after the loop to keep a paused
     # turn from auto-continuing.
     governor: TurnGovernor | None = None
+    # Results of approved cards that ran before the turn saved them; their
+    # approvals are spent, so a turn that ends first must save them itself.
+    unsaved_held: list[PendingMessage] = []
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5802,9 +5806,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         yield StreamStatus(message="Preparing conversation context…")
 
         # Answered cards first: their results ride the same fold as pending.
-        pending_messages = await resolve_answered(
-            user_id, session, cap=cap_late_tool_result
-        ) + await drain_pending_safe(session_id, log_prefix)
+        async for held_status in resolve_answered(
+            user_id, session, unsaved_held.append, cap=cap_late_tool_result
+        ):
+            yield held_status
+        pending_messages: list[PendingMessage] = [*unsaved_held]
+        pending_messages += await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
@@ -5925,6 +5932,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # untouched ensures the NEXT turn's drain doesn't double-
             # combine (re-queued pending + combined-from-this-turn) into
             # the model's context.
+            # The helper appends the rows before its first await, so from here
+            # the turn's own save, or its re-queue, carries the held results.
+            unsaved_held = []
             persisted_ok = await persist_pending_as_user_rows(
                 session,
                 None,
@@ -6596,8 +6606,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # and the user sees "Another stream is already active" on every retry.
         logger.warning("%s GeneratorExit — releasing stream lock", log_prefix)
         await lock.release()
+        await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         raise
     except BaseException as e:
+        await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
         if isinstance(e, asyncio.CancelledError):
@@ -6668,6 +6680,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     finally:
         turn_error = sys.exception()
         tool_display_bridge.reset()
+        await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
