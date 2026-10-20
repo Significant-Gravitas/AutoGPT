@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import model_validator
@@ -168,8 +169,8 @@ class NotionCreatePageBlock(Block):
                     }
                 )
             # Numbered list
-            elif line.strip() and line.strip()[0].isdigit() and ". " in line:
-                content_start = line.find(". ") + 2
+            elif numbered := re.match(r"^\s*\d+\.\s+", line):
+                content_start = numbered.end()
                 blocks.append(
                     {
                         "type": "numbered_list_item",
