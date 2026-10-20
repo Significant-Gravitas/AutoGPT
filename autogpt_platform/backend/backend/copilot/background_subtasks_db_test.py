@@ -30,7 +30,11 @@ from backend.copilot.background_execution import (
     claim_background_execution,
     finish_background_execution,
 )
-from backend.copilot.background_task import DELIVERY_SECONDS, BackgroundTask
+from backend.copilot.background_task import (
+    BACKGROUND_TIMEOUT_MESSAGE,
+    DELIVERY_SECONDS,
+    BackgroundTask,
+)
 from backend.copilot.context import set_execution_context
 from backend.copilot.executor import processor, utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -42,7 +46,7 @@ from backend.copilot.model import (
     create_chat_session,
 )
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.response_model import StreamTextDelta
+from backend.copilot.response_model import StreamError, StreamTextDelta
 from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tools.helpers import _permission_denied
 from backend.copilot.tree import (
@@ -359,6 +363,77 @@ async def test_launch_retry_and_worker_redelivery_do_not_duplicate_work(world: W
     entry = world.entry(first.child_session_id)
     assert await claim_background_execution(entry)
     assert not await claim_background_execution(entry)
+
+
+@pytest.mark.parametrize("followup", [False, True])
+async def test_duplicate_worker_leaves_the_claimed_turn_running(
+    world: World, monkeypatch: pytest.MonkeyPatch, followup: bool
+):
+    task = await world.launch()
+    session_id = task.child_session_id
+    if followup:
+        await world.finish_parent()
+        await world.finish_child(task)
+        await background_delivery.reconcile_background_subtasks()
+        session_id = task.parent_session_id
+    entry = world.entry(session_id)
+    assert await claim_background_execution(entry)
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    run_turn = AsyncMock()
+    monkeypatch.setattr(worker, "_run_turn", run_turn)
+
+    await asyncio.to_thread(worker.execute, entry, threading.Event(), MagicMock())
+
+    active = await stream_registry.get_session(session_id)
+    assert active and active.turn_id == entry.turn_id and active.status == "running"
+    assert await chat_db().get_chat_session_status(session_id) == "running"
+    run_turn.assert_not_awaited()
+
+
+@pytest.mark.parametrize("outcome", ["cancelled", "timed_out", "suppressed"])
+async def test_rejected_pickup_closes_with_its_terminal_reason(
+    world: World, monkeypatch: pytest.MonkeyPatch, outcome: str
+):
+    task = await world.launch()
+    session_id = task.child_session_id
+    if outcome == "suppressed":
+        await world.finish_parent()
+        await world.finish_child(task)
+        await background_delivery.reconcile_background_subtasks()
+        session_id = task.parent_session_id
+        await background_task_db.cancel_background_tasks(
+            world.user_id, session_id, task.launch_turn_id
+        )
+    elif outcome == "cancelled":
+        await background_task_db.cancel_background_tasks(world.user_id, session_id)
+    else:
+        await background_task_db.complete_background_task(
+            task.id, world.user_id, "timed_out"
+        )
+    entry = world.entry(session_id)
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    run_turn = AsyncMock()
+    monkeypatch.setattr(worker, "_run_turn", run_turn)
+
+    await asyncio.to_thread(worker.execute, entry, threading.Event(), MagicMock())
+
+    active = await stream_registry.get_session(session_id)
+    assert active and active.status == "failed"
+    assert await chat_db().get_chat_session_status(session_id) == "idle"
+    events: asyncio.Queue[stream_registry.StreamEntry] = asyncio.Queue()
+    await stream_registry._replay(await get_redis_async(), entry.turn_id, "0-0", events)
+    chunks = [events.get_nowait()[1] for _ in range(events.qsize())]
+    errors = [chunk.errorText for chunk in chunks if isinstance(chunk, StreamError)]
+    assert errors == [
+        (
+            BACKGROUND_TIMEOUT_MESSAGE
+            if outcome == "timed_out"
+            else stream_registry.CANCELLED_MESSAGE
+        )
+    ]
+    run_turn.assert_not_awaited()
 
 
 async def test_worker_to_durable_handoff_to_parent_reply(

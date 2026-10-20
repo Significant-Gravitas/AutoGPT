@@ -2,10 +2,12 @@
 
 from datetime import UTC, datetime
 
+from backend.copilot import stream_registry
 from backend.copilot.background_task import (
     BACKGROUND_STAGE_KEY,
     BACKGROUND_TASK_KEY,
     BACKGROUND_TIMEOUT_MESSAGE,
+    BackgroundStage,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
@@ -28,15 +30,52 @@ async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
     claimed = await background_task_db().claim_background_turn(
         task_id, entry.user_id, entry.session_id, entry.turn_id, stage
     )
-    if claimed:
-        try:
-            if background_timeout(entry) == 0:
-                raise TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
-            await readmit_turn(entry.envelope, user_id=entry.user_id)
-        except Exception as error:
-            await finish_background_execution(entry, str(error))
-            raise
-    return claimed
+    if not claimed:
+        await _close_unstarted_background_turn(entry, task_id, stage)
+        return False
+    try:
+        if background_timeout(entry) == 0:
+            raise TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
+        await readmit_turn(entry.envelope, user_id=entry.user_id)
+    except Exception as error:
+        await finish_background_execution(entry, str(error))
+        raise
+    return True
+
+
+async def _close_unstarted_background_turn(
+    entry: CoPilotExecutionEntry, task_id: str, stage: BackgroundStage
+) -> None:
+    if not entry.user_id:
+        return
+    task = await background_task_db().get_background_task(task_id, entry.user_id)
+    if task is None:
+        return
+    if stage == "child":
+        if (entry.session_id, entry.turn_id) != (
+            task.child_session_id,
+            task.child_turn_id,
+        ) or task.started_at is not None:
+            return
+        error = {
+            "cancelled": CANCELLED_MESSAGE,
+            "timed_out": BACKGROUND_TIMEOUT_MESSAGE,
+        }.get(task.outcome or "")
+    else:
+        if (entry.session_id, entry.turn_id) != (
+            task.parent_session_id,
+            task.wake_id,
+        ) or task.followup_started_at is not None:
+            return
+        error = (
+            CANCELLED_MESSAGE
+            if task.wake_suppressed or task.followup_state == "suppressed"
+            else None
+        )
+    if error:
+        await stream_registry.mark_session_completed(
+            entry.session_id, error_message=error, turn_id=entry.turn_id
+        )
 
 
 def background_timeout(entry: CoPilotExecutionEntry) -> float | None:

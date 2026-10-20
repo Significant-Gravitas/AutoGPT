@@ -465,7 +465,7 @@ class CoPilotProcessor:
 
         Thin wrapper around :meth:`_execute`. The ``try/finally`` here
         guarantees :func:`sync_fail_close_session` runs on every exit
-        path — normal completion or exception.
+        path except an explicitly rejected background pickup.
         ``mark_session_completed`` is an atomic CAS on
         ``status == "running"``, so when the async path already wrote a
         terminal state the sync call is a cheap no-op.
@@ -477,12 +477,14 @@ class CoPilotProcessor:
         )
         log.info("Starting execution")
         start_time = time.monotonic()
+        fail_close = True
         try:
-            self._execute(entry, cancel, cluster_lock, log)
+            fail_close = self._execute(entry, cancel, cluster_lock, log) is not False
         finally:
-            sync_fail_close_session(
-                entry.session_id, entry.turn_id, log, self.execution_loop
-            )
+            if fail_close:
+                sync_fail_close_session(
+                    entry.session_id, entry.turn_id, log, self.execution_loop
+                )
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -492,13 +494,14 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Submit the async turn to ``self.execution_loop`` and drive it.
 
         Handles the sync/async boundary (cancel-event checks, cluster-lock
         refresh, bounded waits) without any Redis-state cleanup logic —
-        that lives in :func:`sync_fail_close_session` which the outer
-        :meth:`execute` always invokes on exit.
+        that lives in :func:`sync_fail_close_session`. Returns False only
+        for an explicitly rejected background pickup, which must not
+        fail-close another worker's claimed turn.
         """
         task_ready: concurrent.futures.Future[asyncio.Task] = (
             concurrent.futures.Future()
@@ -572,21 +575,19 @@ class CoPilotProcessor:
         # worker does not refresh the per-session lock forever on a wedged turn.
         while True:
             try:
-                future.result(timeout=1.0)
-                return
+                return future.result(timeout=1.0)
             except concurrent.futures.CancelledError:
                 if cancel_requested or cancel.is_set():
-                    return
+                    return True
                 raise
             except concurrent.futures.TimeoutError:
                 if future.done() and not future.cancelled():
-                    future.result()
-                    return
+                    return future.result()
                 if cancel.is_set() and not cancel_requested:
                     request_cancel()
                 elif cancel_requested and cancel_started_at is not None:
                     if cancel_drain_timed_out():
-                        return
+                        return True
                     log_cancel_wait()
                 cluster_lock.refresh()
 
@@ -596,7 +597,7 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Async execution logic for a CoPilot turn, run as one Sentry
         ``copilot.turn`` transaction.
 
@@ -611,9 +612,10 @@ class CoPilotProcessor:
         """
         with turn_transaction(entry) as turn:
             if not await claim_background_execution(entry):
-                return
+                return False
             async with asyncio.timeout(background_timeout(entry)) as deadline:
                 await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
+            return True
 
     async def _run_turn(
         self,
