@@ -4982,6 +4982,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     _otel_ctx: Any = None
     # The CLI spawned ahead of the query — stopped in finally if no launch used it.
     _cli_prelaunch: CLIPrelaunch | None = None
+    warm_ctx_task: asyncio.Task[tuple[bool, str]] | None = None
     # Parent Langfuse span for the turn — created so that the
     # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
     # attach to even though it fires after the SDK-emitted spans end.
@@ -5122,18 +5123,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _legs_since = _perf_time.time()
         _perf_legs.LEG_MARKS.set(_legs)
         e2b_task = asyncio.create_task(_perf_legs.timed("e2b_leg", _setup_e2b()))
+        # do-not-merge probe A/B (#15739): every other turn awaits only the
+        # graphiti flag here and takes the warm context at the user message.
+        _decouple = _probe_decouple_turn()
+        if _decouple:
+            graphiti_flag = asyncio.create_task(is_enabled_for_user(user_id))
+            warm_ctx_task = asyncio.create_task(
+                _fetch_graphiti_context(user_id, session, message, enabled=graphiti_flag)
+            )
+            _graphiti_leg: Any = graphiti_flag
+        else:
+            _graphiti_leg = _perf_legs.timed(
+                "graphiti", _fetch_graphiti_context(user_id, session, message)
+            )
         try:
             (
                 (base_system_prompt, understanding),
-                (graphiti_enabled, warm_ctx),
+                _graphiti_result,
                 _restore,
             ) = await asyncio.gather(
                 _perf_legs.timed(
                     "sysprompt", _build_system_prompt(user_id if not has_history else None)
                 ),
-                _perf_legs.timed(
-                    "graphiti", _fetch_graphiti_context(user_id, session, message)
-                ),
+                _graphiti_leg,
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
@@ -5157,6 +5169,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             raise
         e2b_sandbox = await e2b_task
         _perf_legs.LEG_MARKS.set(None)
+        if _decouple:
+            graphiti_enabled = _graphiti_result
+            _warm_ctx_coupled = ""
+        else:
+            graphiti_enabled, _warm_ctx_coupled = _graphiti_result
+        yield StreamStatus(message=f"perf:decouple:{'on' if _decouple else 'off'}")
         yield StreamStatus(message=f"perf:e2b:{int(_perf_time.time() * 1000) % 100000000}")
         yield StreamStatus(message=_perf_legs.render(_legs, _legs_since))
 
@@ -5546,8 +5564,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Spawn the CLI now, under the turn's trace context, so it boots
         # while the query below is built (do-not-merge probe A/B, #15739:
         # every other turn on this process).
-        if _probe_prelaunch_turn():
-            _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
+        _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
         yield StreamStatus(
             message=f"perf:prelaunch:{'on' if _cli_prelaunch is not None else 'off'}"
         )
@@ -5666,6 +5683,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
                 )
+            warm_ctx = (
+                (await warm_ctx_task)[1]
+                if warm_ctx_task is not None
+                else _warm_ctx_coupled
+            )
+            yield StreamStatus(message=f"perf:warm_ready:{int(_perf_time.time() * 1000) % 100000000}")
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -6435,6 +6458,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         if _cli_prelaunch is not None:
             await _cli_prelaunch.close()
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
+            with contextlib.suppress(BaseException):
+                await warm_ctx_task
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -6933,6 +6960,8 @@ async def _fetch_graphiti_context(
     user_id: str | None,
     session: ChatSession,
     message: str | None,
+    *,
+    enabled: Any = None,
 ) -> tuple[bool, str]:
     """Check Graphiti flag and fetch warm context in one shot.
 
@@ -6943,7 +6972,7 @@ async def _fetch_graphiti_context(
     the fetch on follow-up turns (history > 1 message) and when the user
     is anonymous.
     """
-    enabled = await is_enabled_for_user(user_id)
+    enabled = await (enabled if enabled is not None else is_enabled_for_user(user_id))
     _perf_legs.mark("graphiti_flag")  # do-not-merge probe (#15739)
     if not enabled:
         return False, ""
@@ -7089,9 +7118,9 @@ def _stamp_turn_trace_id(
                 msg.stamps_pending_save = True
 
 
-_PROBE_PRELAUNCH_TURNS = itertools.count()
+_PROBE_DECOUPLE_TURNS = itertools.count()
 
 
-def _probe_prelaunch_turn() -> bool:
-    """do-not-merge probe (#15739): prelaunch on every other turn."""
-    return next(_PROBE_PRELAUNCH_TURNS) % 2 == 1
+def _probe_decouple_turn() -> bool:
+    """do-not-merge probe (#15739): warm context off the gather every other turn."""
+    return next(_PROBE_DECOUPLE_TURNS) % 2 == 1
