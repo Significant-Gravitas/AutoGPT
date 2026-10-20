@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 
 export const IntegrationsContent = () => {
-  const { integration } = useBlockMenuStore();
+  const integration = useBlockMenuStore((state) => state.integration);
 
   if (!integration) {
     return <PaginatedIntegrationList />;

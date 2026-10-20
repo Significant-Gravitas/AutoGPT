@@ -7,7 +7,15 @@ from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import get_current_envelope
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    is_google_call,
+    remember_cut_google_output,
+    remember_google_output,
+    tracing_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.trial_reads import trial_reads_fresh
@@ -23,6 +31,7 @@ from .models import (
     ApprovalRequiredResponse,
     ErrorResponse,
     NeedLoginResponse,
+    ResponseType,
     ToolResponseBase,
 )
 
@@ -32,6 +41,12 @@ if TYPE_CHECKING:
     from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
+
+# Outputs that stop a call to wait on the user (an approval card, a sign-in),
+# which is not the tool failing.
+_AWAITING_THE_USER = frozenset(
+    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+)
 
 # Persist full tool output to workspace when it exceeds this threshold.
 # Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
@@ -87,6 +102,7 @@ async def _persist_and_summarize(
     session_id: str,
     tool_call_id: str,
     digest: bool = False,
+    google_data: bool = False,
 ) -> str:
     """Persist full output to workspace and return a preview with retrieval
     instructions — a structural outline when *digest*, else a middle-out slice.
@@ -116,7 +132,10 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
-            metadata={"purpose": "tool-output"},
+            metadata={
+                "purpose": "tool-output",
+                **({GOOGLE_DATA_METADATA_KEY: True} if google_data else {}),
+            },
             overwrite=True,
         )
     except Exception:
@@ -321,6 +340,16 @@ GATE_APPROVED = "_gate_approved"
 GATE_DECIDED = "_gate_decided"
 
 
+def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
+    raw = output.output
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return False
+    return isinstance(raw, dict) and raw.get("type") in _AWAITING_THE_USER
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -418,7 +447,9 @@ class BaseTool:
         """Execute the tool with authentication check.
 
         Each call is its own Sentry ``copilot.tool`` transaction, named after
-        the tool, in the trace of the turn that made it.
+        the tool, in the trace of the turn that made it, and a PostHog
+        ``$ai_span`` in the trace of the reply (``copilot.ai_spans``): its
+        name, latency and whether it failed, never its input or output.
 
         Args:
             user_id: User ID (None for anonymous users)
@@ -432,11 +463,19 @@ class BaseTool:
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
             trial_reads_fresh(),
+            tool_span(
+                self.name,
+                user_id=user_id,
+                session_id=session.session_id,
+                tool_call_id=tool_call_id,
+            ) as outcome,
         ):
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            if not output.success and not _awaits_the_user(output):
+                outcome.is_error = True
             return output
 
     async def _execute_checked(
@@ -510,7 +549,11 @@ class BaseTool:
         # ``_execute_tool_sync`` — so there is one place to add, not two.
         # Must stay AFTER the envelope and name gates: a call the envelope refuses can
         # never run, so approving it would spend a user's decision on nothing.
-        gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
+        # The gate's model calls quote the call's arguments and result in
+        # prompts of their own, so for a Google call their traces are redacted.
+        google_call = is_google_call(kwargs)
+        with tracing_google_data(google_call):
+            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
         if gated is not None:
             return gated
         run_kwargs = kwargs
@@ -527,6 +570,8 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **run_kwargs)
+            if result.type == ResponseType.ERROR:
+                mark_tool_failed()
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = full = result.model_dump_json(exclude_none=True)
@@ -539,17 +584,26 @@ class BaseTool:
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
             if len(raw_output) > threshold and user_id and session.session_id:
                 raw_output = await _persist_and_summarize(
-                    raw_output, user_id, session.session_id, tool_call_id, digest
+                    raw_output,
+                    user_id,
+                    session.session_id,
+                    tool_call_id,
+                    digest,
+                    google_data=result.holds_google_data,
                 )
-
             output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
             )
+            # Remembered as the model gets it, previews and caps included, so
+            # the traces can redact it even where it no longer parses.
+            if result.holds_google_data and isinstance(output.output, str):
+                remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")
+            mark_tool_raised(e)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
@@ -560,9 +614,10 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
-        return await self._screen_read(
-            user_id, session, tool_call_id, kwargs, output, result.outside, full
-        )
+        with tracing_google_data(google_call or result.holds_google_data):
+            return await self._screen_read(
+                user_id, session, tool_call_id, kwargs, output, result.outside, full
+            )
 
     async def _gate(
         self,
@@ -668,7 +723,8 @@ class BaseTool:
         )
         view = model_view.get()
         if view is not None:
-            seen = view(seen, result.success)
+            whole, seen = seen, view(seen, result.success)
+            remember_cut_google_output(whole, seen)
         text, images = readable_parts(seen)
         stub = await screen_read(
             self.name,

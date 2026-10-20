@@ -58,12 +58,7 @@ export function OpenDecisionsCard({
                 {experts.find((expert) => expert.id === proposal.expert_id)
                   ?.name ?? "Otto"}
               </Text>
-              <Text
-                variant="small"
-                as="p"
-                unmask={false}
-                className="text-zinc-600"
-              >
+              <Text variant="small" as="p" className="text-zinc-600">
                 {proposal.summary || proposal.description} —{" "}
                 {proposal.state_reason}
               </Text>
