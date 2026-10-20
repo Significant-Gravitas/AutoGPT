@@ -1,4 +1,5 @@
 import io
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -15,6 +16,7 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     format_pending_as_user_message,
 )
+from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _make_truncating_wrapper,
     cap_late_tool_result,
@@ -22,6 +24,7 @@ from backend.copilot.sdk.tool_adapter import (
     set_execution_context,
 )
 from backend.copilot.tool_image import HeldImage, ToolImage, prepare_image
+from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ToolResponseBase
 from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -50,6 +53,37 @@ def image():
     output = io.BytesIO()
     Image.effect_noise((512, 512), 100).convert("RGB").save(output, format="PNG")
     return prepare_image(output.getvalue())
+
+
+async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, image):
+    session = _session()
+    call = held.HeldCall(
+        review_id="review-1",
+        tool_name="read_workspace_file",
+        tool_call_id="call-image",
+        args={"file_id": "f"},
+    )
+    tool = AsyncMock(spec=BaseTool)
+    tool.execute.return_value = StreamToolOutputAvailable(
+        toolCallId=call.tool_call_id,
+        output={"created_at": datetime(2026, 1, 1, tzinfo=UTC), "pages": 1},
+    ).with_image(image)
+    consume = AsyncMock(return_value=True)
+    monkeypatch.setattr(held.review_store, "consume", consume)
+
+    outcome, output = await held._run("user-1", session, call, tool)
+
+    assert outcome == "approved"
+    released = HeldImage.model_validate_json(output)
+    assert released.image == image
+    assert json.loads(released.text) == {
+        "created_at": "2026-01-01 00:00:00+00:00",
+        "pages": 1,
+    }
+    tool.execute.assert_awaited_once_with(
+        "user-1", session, call.tool_call_id, file_id="f"
+    )
+    consume.assert_awaited_once_with(call.review_id, "user-1")
 
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])

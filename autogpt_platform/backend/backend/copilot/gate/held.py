@@ -618,7 +618,7 @@ async def _run(
         text = (
             result.output
             if isinstance(result.output, str)
-            else json.dumps(result.output)
+            else json.dumps(result.output, default=str)
         )
         return "approved", HeldImage(text=text, image=result.image).model_dump_json()
     if isinstance(result.output, str):
