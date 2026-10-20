@@ -214,6 +214,7 @@ interface CopilotUIState {
   completedSessionIDs: Set<string>;
   addCompletedSession: (id: string) => void;
   clearCompletedSession: (id: string) => void;
+  clearCompletedSessions: (ids: string[]) => void;
   clearAllCompletedSessions: () => void;
 
   isNotificationsEnabled: boolean;
@@ -356,6 +357,13 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set((state) => {
       const next = new Set(state.completedSessionIDs);
       next.delete(id);
+      persistCompletedSessions(next);
+      return { completedSessionIDs: next };
+    }),
+  clearCompletedSessions: (ids) =>
+    set((state) => {
+      const next = new Set(state.completedSessionIDs);
+      for (const id of ids) next.delete(id);
       persistCompletedSessions(next);
       return { completedSessionIDs: next };
     }),

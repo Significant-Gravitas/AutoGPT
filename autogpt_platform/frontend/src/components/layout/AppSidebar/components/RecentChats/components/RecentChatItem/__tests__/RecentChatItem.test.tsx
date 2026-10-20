@@ -33,6 +33,7 @@ function makeProps(
     isExporting: false,
     isDeleting: false,
     chatPinningEnabled: false,
+    isFinished: false,
     onPin: vi.fn(),
     onRename: vi.fn(),
     onExport: vi.fn(),
@@ -75,6 +76,28 @@ describe("RecentChatItem — display", () => {
       }),
     );
     expect(screen.getByAltText("Discord")).toBeDefined();
+  });
+});
+
+describe("RecentChatItem — finished indicator", () => {
+  it("shows a checkmark when the chat finished since it was last opened", () => {
+    renderItem(makeProps({ isFinished: true }));
+    expect(screen.getByLabelText("Finished")).toBeDefined();
+  });
+
+  it("shows no checkmark otherwise", () => {
+    renderItem(makeProps());
+    expect(screen.queryByLabelText("Finished")).toBeNull();
+  });
+
+  it("shows the running spinner instead while the chat is running again", () => {
+    renderItem(
+      makeProps({
+        isFinished: true,
+        session: { ...baseSession, is_processing: true },
+      }),
+    );
+    expect(screen.queryByLabelText("Finished")).toBeNull();
   });
 });
 

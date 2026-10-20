@@ -97,6 +97,48 @@ describe("RecentChats — grouped list", () => {
   });
 });
 
+describe("RecentChats — finished chats", () => {
+  afterEach(() => {
+    useCopilotUIStore.setState({ completedSessionIDs: new Set() });
+  });
+
+  it("marks chats that finished since they were last opened", async () => {
+    const sessions = [
+      makeSession({ id: "done", title: "Finished chat", updated_at: TODAY }),
+      makeSession({ id: "seen", title: "Seen chat", updated_at: TODAY }),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    );
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["done"]) });
+    renderRecentChats();
+
+    const finished = (await screen.findByText("Finished chat")).closest("li")!;
+    const seen = screen.getByText("Seen chat").closest("li")!;
+    expect(within(finished).getByLabelText("Finished")).toBeDefined();
+    expect(within(seen).queryByLabelText("Finished")).toBeNull();
+  });
+
+  it("marks every chat as read at once", async () => {
+    const sessions = [
+      makeSession({ id: "a", title: "Chat A", updated_at: TODAY }),
+      makeSession({ id: "b", title: "Chat B", updated_at: YESTERDAY }),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    );
+    useCopilotUIStore.setState({ completedSessionIDs: new Set(["a", "b"]) });
+    renderRecentChats();
+
+    expect(await screen.findByText("2 new replies")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /mark all as read/i }));
+
+    expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    expect(screen.queryByLabelText("Finished")).toBeNull();
+    expect(screen.queryByText("2 new replies")).toBeNull();
+  });
+});
+
 describe("RecentChats — pinned split", () => {
   const pinnedAndDated = [
     makeSession({
