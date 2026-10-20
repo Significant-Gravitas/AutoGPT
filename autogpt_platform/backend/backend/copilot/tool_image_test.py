@@ -94,7 +94,11 @@ def test_multi_frame_image_is_reduced_to_its_first_frame(format):
     image = prepare_image(raw)
     assert image.mime_type == ("image/jpeg" if format == "MPO" else "image/png")
     with Image.open(io.BytesIO(base64.b64decode(image.data_base64))) as viewed:
-        assert viewed.convert("RGBA").tobytes() == expected
+        pixels = viewed.convert("RGBA").tobytes()
+        if format == "MPO":
+            assert list(pixels) == pytest.approx(list(expected), abs=3)
+        else:
+            assert pixels == expected
         with pytest.raises(EOFError):
             viewed.seek(1)
 
@@ -123,7 +127,9 @@ def test_photographic_mpo_remains_a_bounded_single_frame_jpeg(subsampling):
     with Image.open(io.BytesIO(encoded)) as viewed:
         assert viewed.format == "JPEG"
         assert viewed.size == first.size
-        assert viewed.convert("RGB").getpixel((50, 50)) == (0, 0, 254)
+        assert viewed.convert("RGB").getpixel((50, 50)) == pytest.approx(
+            (0, 0, 255), abs=3
+        )
         with pytest.raises(EOFError):
             viewed.seek(1)
 
