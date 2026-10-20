@@ -79,12 +79,20 @@ fi
 	exit 1
 }
 
-bootstrap_docs=(docs/platform/installer.md autogpt_platform/installer/install.sh)
-if grep -En 'curl[^`]*\|[^`]*bash|install\.(bat|ps1)|Invoke-WebRequest' "${bootstrap_docs[@]}"; then
+bootstrap_docs=(
+	docs/platform/installer.md
+	autogpt_platform/installer/install.sh
+	autogpt_platform/installer/install.ps1
+	autogpt_platform/installer/install.bat
+)
+if grep -En 'curl[^`]*\|[^`]*bash|Invoke-WebRequest|Invoke-RestMethod|Invoke-Expression|(^|[[:space:];("])(iwr|irm|iex)[[:space:]]|\|[[:space:]]*iex' "${bootstrap_docs[@]}"; then
 	printf 'unsafe or stale installer bootstrap remains in public docs\n' >&2
 	exit 1
 fi
-grep -Fq -- "--proto '=https' --proto-redir '=https' --tlsv1.2" autogpt_platform/installer/install.sh
+for bootstrap in docs/platform/installer.md autogpt_platform/installer/install.sh autogpt_platform/installer/install.ps1; do
+	grep -Fq -- "--proto '=https' --proto-redir '=https' --tlsv1.2" "$bootstrap"
+done
+grep -Fq -- '--proto =https --proto-redir =https --tlsv1.2' autogpt_platform/installer/install.bat
 
 latest_output="$(bash "$installer" --resolve-only)"
 assert_contains 'Selected release -> latest -> docker.io/significantgravitas/autogpt:latest' "$latest_output"

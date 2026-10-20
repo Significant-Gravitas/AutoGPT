@@ -44,8 +44,8 @@ export function PlanOffer({
             ? "A full daily and weekly allowance once payment goes through"
             : "Experts for content, sales and research, with Otto coordinating",
           freshUsage
-            ? "Your chats, agents and files stay where they are"
-            : "Agents that keep working in the background on a schedule",
+            ? "Your chats, workflows and files stay where they are"
+            : "Workflows that keep working in the background on a schedule",
         ]
       : [
           usageMultiplier
@@ -77,7 +77,7 @@ export function PlanOffer({
         </div>
         {amount && (
           <div className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl" unmask={!freshUsage}>
+            <Text variant="h4" className="!text-2xl">
               {amount}
             </Text>
             <Text variant="small" className="!text-zinc-500">
@@ -105,7 +105,6 @@ export function PlanOffer({
         className="w-full"
         onClick={onUpgrade}
         disabled={disabled}
-        unmask={!freshUsage}
         rightIcon={<Icon icon={ArrowRight02Icon} size={16} />}
       >
         {actionLabel ??

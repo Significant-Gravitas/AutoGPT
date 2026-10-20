@@ -30,6 +30,13 @@ def stub_narrative(monkeypatch):
     return mock
 
 
+@pytest.fixture(autouse=True)
+def paid_user(monkeypatch):
+    mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(generate_module, "is_user_paywalled", mock)
+    return mock
+
+
 def make_expert(id="exp-1", name="Ana", avatar="https://a/x.png", workflows=None):
     # Build a minimal backend.api.features.experts.models.Expert
     from backend.api.features.experts.models import Expert
@@ -280,6 +287,22 @@ async def test_generate_skips_when_flag_off(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_skips_a_paywalled_user_before_reading_anything(
+    monkeypatch, paid_user
+):
+    paid_user.return_value = True
+    monkeypatch.setattr(
+        generate_module, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    db = MagicMock()
+    monkeypatch.setattr(generate_module, "user_db", lambda: db)
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "paywalled"}
+    paid_user.assert_awaited_once_with("user-1")
+    db.get_user_by_id.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_generate_reports_an_unevaluated_flag_separately(monkeypatch):
     """A flag read that FAILED yields False, same as a real "off". Only the
     latter may unregister the cron, so the two must not share a reason."""
@@ -299,6 +322,26 @@ def funnel(monkeypatch):
     mock = MagicMock()
     monkeypatch.setattr(generate_module, "emit_funnel_event", mock)
     return mock
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_a_banned_owner_before_any_work(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    monkeypatch.setattr(
+        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
+    monkeypatch.setattr(generate, "is_user_banned", AsyncMock(return_value=True))
+    get_user = AsyncMock()
+    monkeypatch.setattr(generate, "user_db", lambda: MagicMock(get_user_by_id=get_user))
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    # Not "flag_disabled": the cron stays registered for if the ban is lifted.
+    assert result == {"status": "skipped", "reason": "banned"}
+    get_user.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -431,6 +474,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "content": render_briefing_markdown(expected_content),
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
+        "title": "Morning briefing — 2026-08-07",
     }
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
 
@@ -1062,7 +1106,7 @@ async def test_unavailable_narrative_attribution_still_delivers_template(
         lambda: MagicMock(get_usage_activation_state=lookup),
     )
     provider = AsyncMock()
-    monkeypatch.setattr(narrative, "structured_completion", provider)
+    monkeypatch.setattr(narrative, "structured_complete", provider)
 
     result = await generate_module.generate_and_deliver_briefing("user-1")
 

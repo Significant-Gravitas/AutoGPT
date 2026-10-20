@@ -179,12 +179,11 @@ class TestSonnet5Rates:
             prompt_tokens=1_000_000,
             completion_tokens=1_000_000,
         )
-        # Intro rates in litellm today: 1M x $2 + 1M x $10 = $12 — the
-        # Opus fallback would charge $90. The catalog deliberately bills
-        # sticker ($3/$15); this asserts the vendored litellm value, so
-        # when the intro window ends (2026-08-31) and a rate refresh
-        # brings sticker rates, update this to 18.0 — that change is
-        # expected, not a mispricing.
+        # Anthropic's list rates: 1M x $2 + 1M x $10 = $12 — the Opus
+        # fallback would charge $90. The scheduled rise to $3/$15 was
+        # cancelled, so $12 stays right; the catalog's Sonnet 5 credits
+        # are set against $3/$15, but credits are the platform's billing
+        # rate, not Anthropic's.
         assert cost == 12.0
 
 
@@ -206,7 +205,7 @@ class TestSonnet5_5Rates:
         assert cost == 12.0
         assert "falling back" not in caplog.text
 
-    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.7), ("1h", 4.2)])
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.6), ("1h", 4.1)])
     def test_sonnet_5_5_cache_rates(self, cache_ttl, expected_cost):
         cost = compute_anthropic_cost_usd(
             model="claude-sonnet-5-5",
@@ -245,3 +244,32 @@ class TestOpus5Rates:
             cache_ttl=cache_ttl,
         )
         assert cost == expected_cost
+
+
+class TestHaiku5_5Rates:
+    """Haiku 5.5 is the default title/classifier model: a rate-card refresh that
+    drops its key must fail here, not silently bill at the Opus 4.1 fallback."""
+
+    def test_haiku_5_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-haiku-5-5") == 128000
+
+    def test_haiku_5_5_billed_at_published_rates_without_fallback(self, caplog):
+        cost = compute_anthropic_cost_usd(
+            model="claude-haiku-5-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        assert cost == pytest.approx(0.6)
+        assert "falling back" not in caplog.text
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 0.135), ("1h", 0.21)])
+    def test_haiku_5_5_cache_rates(self, cache_ttl, expected_cost):
+        cost = compute_anthropic_cost_usd(
+            model="claude-haiku-5-5",
+            prompt_tokens=2_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_creation_tokens=1_000_000,
+            cache_ttl=cache_ttl,
+        )
+        assert cost == pytest.approx(expected_cost)

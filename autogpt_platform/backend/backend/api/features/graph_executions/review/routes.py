@@ -3,13 +3,22 @@ import logging
 from typing import Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Query, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
+from backend.copilot.gate.held import answered_cards as held_answered_cards
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
+from backend.copilot.gate.workflow import (
+    close_step_cards,
+    finish_step_cards,
+    is_step_card,
+    step_of,
+    step_rule_keys,
+)
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -184,7 +193,25 @@ async def list_pending_reviews_for_chat_session(
     return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
-@router.post("/action", response_model=ReviewResponse)
+@router.get(
+    "/session/{chat_session_id}/answered",
+    summary="Get Answered Reviews Waiting to Run for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+)
+async def list_answered_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """The chat's answered cards whose calls have not run yet, oldest first, so
+    its box still shows them as answered, with Close and continue, after a reload."""
+    return await held_answered_cards(user_id, chat_session_id)
+
+
+@router.post(
+    "/action",
+    response_model=ReviewResponse,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def process_review_action(
     request: ReviewRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -225,6 +252,16 @@ async def process_review_action(
 
     graph_exec_id, chat_session_id = next(iter(scopes))
 
+    # A run still running would finish its pass with nothing waiting, the step
+    # unrun; a queued or ended run is safe to answer.
+    for review in reviews_map.values():
+        step = step_of(review)
+        if step is not None and await _running(user_id, step.graph_exec_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This workflow is still running other steps. Answer once it pauses.",
+            )
+
     # Validate execution status for graph executions; a chat has none
     if graph_exec_id is not None:
         graph_exec_meta = await get_graph_execution_meta(
@@ -263,10 +300,10 @@ async def process_review_action(
         auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
     # Read before the answer lands: a turn it wakes claims the held calls.
+    ruled = [r.node_exec_id for r in request.reviews if r.chat_rule]
     chat_rule_keys = (
-        await held_subject_keys(
-            chat_session_id, [r.node_exec_id for r in request.reviews if r.chat_rule]
-        )
+        await held_subject_keys(chat_session_id, ruled)
+        | step_rule_keys(reviews_map[node_exec_id] for node_exec_id in ruled)
         if chat_session_id is not None
         else {}
     )
@@ -366,49 +403,51 @@ async def process_review_action(
             {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
         )
 
-    # A held call finishes on its own: the answer starts the chat's next turn.
+    # A held call finishes on its own: an answer starts the chat's next turn, or
+    # from the chat's own queue, its last answer does.
+    awaiting_other_cards = False
     if chat_session_id is not None and updated_reviews:
-        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
+        # A workflow step's card answers the step's own row; its run resumes
+        # below, so the card never wakes the chat.
+        finished = await finish_step_cards(user_id, updated_reviews.values())
+        for run in {step.graph_exec_id: step for step in finished.answered}.values():
+            meta = await get_graph_execution_meta(
+                user_id=user_id, execution_id=run.graph_exec_id
+            )
+            if (
+                meta is not None
+                and meta.status in (ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE)
+                and not await has_pending_reviews_for_graph_exec(run.graph_exec_id)
+            ):
+                await resume_reviewed_execution(
+                    user_id, run.graph_exec_id, run.graph_id, run.graph_version
+                )
+        awaiting_other_cards = not await wake_for_held_calls(
+            user_id,
+            chat_session_id,
+            [r for r in updated_reviews.values() if not is_step_card(r)],
+            until_last=request.wait_for_other_cards,
+        )
+        if finished.failed:
+            # Each card is kept, so answering it again finishes the job.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The answer could not reach its workflow step. Try again.",
+            )
 
     # Resume graph execution only for real graph executions; a chat is resumed
     # by the LLM calling resume_capability with the review_id
     if graph_exec_id is not None and updated_reviews:
-        still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
-
-        if not still_has_pending:
+        await close_step_cards(user_id, updated_reviews)
+        if not await has_pending_reviews_for_graph_exec(graph_exec_id):
             first_review = next(iter(updated_reviews.values()))
             assert first_review.graph_id and first_review.graph_version is not None
-
-            try:
-                user = await get_user_by_id(user_id)
-                settings = await get_graph_settings(
-                    user_id=user_id,
-                    graph_id=first_review.graph_id,
-                    graph_version=first_review.graph_version,
-                )
-
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
-
-                workspace = await get_or_create_workspace(user_id)
-
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
-                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-
-                await add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=user_id,
-                    graph_exec_id=graph_exec_id,
-                    execution_context=execution_context,
-                )
-                logger.info(f"Resumed execution {graph_exec_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
+            await resume_reviewed_execution(
+                user_id,
+                graph_exec_id,
+                first_review.graph_id,
+                first_review.graph_version,
+            )
 
     # Build error message if auto-approvals failed
     error_message = None
@@ -423,4 +462,56 @@ async def process_review_action(
         rejected_count=rejected_count,
         failed_count=auto_approval_failed_count,
         error=error_message,
+        awaiting_other_cards=awaiting_other_cards,
     )
+
+
+@router.post(
+    "/session/{chat_session_id}/continue",
+    summary="Continue Chat With Answered Reviews",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
+async def continue_with_answered_reviews(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    """Start the chat's turn with the cards answered so far; the rest stay open
+    and the turn is told how many still wait."""
+    await wake_for_held_calls(user_id, chat_session_id)
+
+
+async def _running(user_id: str, graph_exec_id: str) -> bool:
+    meta = await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
+    return meta is not None and meta.status == ExecutionStatus.RUNNING
+
+
+async def resume_reviewed_execution(
+    user_id: str, graph_exec_id: str, graph_id: str, graph_version: int
+) -> None:
+    """Re-queue a run whose reviews are all answered; its paused steps re-run
+    and find their answers."""
+    try:
+        user = await get_user_by_id(user_id)
+        settings = await get_graph_settings(
+            user_id=user_id, graph_id=graph_id, graph_version=graph_version
+        )
+        user_timezone = (
+            user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+        )
+        workspace = await get_or_create_workspace(user_id)
+        execution_context = ExecutionContext(
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            user_timezone=user_timezone,
+            workspace_id=workspace.id,
+        )
+        await add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            execution_context=execution_context,
+        )
+        logger.info(f"Resumed execution {graph_exec_id}")
+    except Exception as e:
+        logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")

@@ -76,6 +76,7 @@ class TestApplyBuildingModeRestart:
         suffix: str = "\n\n<building_guide>GUIDE</building_guide>",
         prior_emitted: bool = False,
         thinking_reprompted: bool = False,
+        provider_supplement: str = "",
         delegation_supplement: str = "",
         oversight_supplement: str = "",
         team_building_supplement: str = "",
@@ -104,6 +105,7 @@ class TestApplyBuildingModeRestart:
             state=state,
             sdk_options=sdk_options,
             base_system_prompt="BASE",
+            provider_supplement=provider_supplement,
             delegation_supplement=delegation_supplement,
             oversight_supplement=oversight_supplement,
             team_building_supplement=team_building_supplement,
@@ -131,9 +133,19 @@ class TestApplyBuildingModeRestart:
         assert "building mode" in status.message.lower()
 
     @pytest.mark.asyncio
+    async def test_the_continuation_gets_no_warm_context_block(self, mocker):
+        """The continuation is not the turn's query: a transient retry after
+        the restart resends it as it is, with no follow-up warm context
+        appended to it (``_resend_with_fresh_warm_context``)."""
+        _, state, _, _ = await self._run(mocker)
+
+        assert state.warm_context_base is None
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "section",
         [
+            "provider_supplement",
             "delegation_supplement",
             "oversight_supplement",
             "team_building_supplement",

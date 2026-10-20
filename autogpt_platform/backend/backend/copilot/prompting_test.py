@@ -36,6 +36,15 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
+            0
+        ]
+        assert "`read_tool_result`" in guidance
+        assert "`Read`" not in guidance
+
 
 class TestComputerNote:
     """A plain chat on E2B is told it has a screen; an expert session is told
@@ -162,6 +171,14 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 
 class TestGraphitiMemoryScope:
+    @pytest.mark.parametrize("role", ["autopilot", "expert"])
+    def test_supplement_keeps_tentative_memories_unconfirmed(self, role):
+        assert (
+            "Treat any memory marked tentative as an unconfirmed inference: "
+            "state that uncertainty before mentioning it, "
+            "and do not strengthen it or add details."
+        ) in prompting.get_graphiti_supplement(role)
+
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement("autopilot")
 
@@ -413,6 +430,7 @@ class TestAssembleSystemPrompt:
     def _assemble(self, **overrides):
         sections = dict(
             engine_supplement="ENGINE",
+            provider_supplement="PROVIDER",
             delegation_supplement="DELEGATION",
             oversight_supplement="OVERSIGHT",
             team_building_supplement="TEAMBUILD",
@@ -431,6 +449,7 @@ class TestAssembleSystemPrompt:
         order = [
             "BASE",
             "ENGINE",
+            "PROVIDER",
             "DELEGATION",
             "OVERSIGHT",
             "TEAMBUILD",
@@ -448,7 +467,8 @@ class TestAssembleSystemPrompt:
     def test_dropping_the_charter_reproduces_the_pre_split_order(self):
         # The order this PR inherited, with the charter's slot empty.
         assert self._assemble(role_charter="") == (
-            "BASEENGINEDELEGATIONOVERSIGHTTEAMBUILDPLATFORMMEMORYAUTOMODEBUILDERIDENTITY"
+            "BASEENGINEPROVIDERDELEGATIONOVERSIGHTTEAMBUILDPLATFORMMEMORYAUTOMODEBUILDER"
+            "IDENTITY"
         )
 
 
@@ -480,6 +500,7 @@ class TestReplyStyle:
             engine_supplement=prompting.get_sdk_supplement(
                 use_e2b=False, expert_session=True
             ),
+            provider_supplement="",
             delegation_supplement=prompting.get_delegation_supplement("expert"),
             oversight_supplement="",
             team_building_supplement="",
@@ -521,3 +542,57 @@ def _hired_expert() -> Expert:
         is_archived=False,
         workflows=[],
     )
+
+
+class TestConnectedAccountNotes:
+    """What the model is told about connected accounts: that they are
+    placeholders behind the swap proxy, and which a restricted run may use."""
+
+    @pytest.fixture(autouse=True)
+    def fresh_supplements(self):
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+        yield
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+
+    def test_behind_the_proxy_the_sandbox_notes_say_where_placeholders_work(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value="p:1080"):
+            text = prompting.get_sdk_supplement(use_e2b=True)
+        assert "hsurr:" in text
+        assert "`GH_TOKEN`/`GITHUB_TOKEN` (GitHub): github.com, api.github.com" in text
+
+    def test_without_the_proxy_nothing_is_said(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value=None):
+            assert "hsurr:" not in prompting.get_sdk_supplement(use_e2b=True)
+
+    def test_an_unrestricted_run_gets_no_ceiling_note(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        assert prompting.get_provider_ceiling_supplement(None) == ""
+        assert prompting.get_provider_ceiling_supplement(CopilotPermissions()) == ""
+
+    def test_a_run_allowed_some_accounts_is_told_which(self):
+        """The branch that names them: unreachable while GitHub is the only
+        provider in the table, so pinned here with a stubbed ceiling."""
+        from unittest.mock import patch
+
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.permissions.allowed_providers", return_value=("github",)
+        ):
+            note = prompting.get_provider_ceiling_supplement(CopilotPermissions())
+        assert "only these of the user's connected accounts: GitHub" in note
+
+    def test_a_restricted_run_is_told_what_it_may_use(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        none = prompting.get_provider_ceiling_supplement(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        assert "none of the user's connected accounts" in none

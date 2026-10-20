@@ -76,6 +76,7 @@ function ChatHostBody({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -106,6 +107,8 @@ function ChatHostBody({
           usageFailure={platformLimitFailure}
           onDismissUsage={dismissAfterProviderChange}
           usageRefresh={usageRefresh}
+          usage={usage}
+          chatAuthProvider={chatLlmAuthProvider}
           messages={messages}
           status={status}
           error={error}
@@ -150,6 +153,7 @@ function ChatHostBody({
         failure={platformLimitFailure}
         sessionId={sessionId}
         onDismiss={dismissRateLimit}
+        onSendNow={onSend}
       />
       <ProviderLimitDialog
         failure={providerLimit}

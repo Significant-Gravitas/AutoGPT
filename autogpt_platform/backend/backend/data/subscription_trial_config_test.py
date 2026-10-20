@@ -10,6 +10,8 @@ from ldclient.integrations.test_data import TestData
 from pydantic import ValidationError
 
 from backend.data import subscription_trial_config as trials
+from backend.util import feature_flag
+from backend.util.settings import FeatureFlagBackend
 
 
 @contextmanager
@@ -300,7 +302,13 @@ async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
     try:
         with patch.object(
             trials, "is_feature_enabled", AsyncMock(return_value=True)
-        ), patch("backend.util.feature_flag.ldclient.get", return_value=client), patch(
+        ), patch.object(
+            feature_flag.settings.config,
+            "feature_flag_backend",
+            FeatureFlagBackend.LAUNCHDARKLY,
+        ), patch(
+            "backend.util.feature_flag.ldclient.get", return_value=client
+        ), patch(
             "backend.util.feature_flag._fetch_user_context_status",
             AsyncMock(
                 return_value=(Context.builder("user-1").kind("user").build(), True)

@@ -2,6 +2,7 @@ import React from "react";
 import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { getUsageExperience } from "@/services/usageExperience/helpers";
 import {
   act,
   render,
@@ -205,6 +206,22 @@ const baseProps = {
   historicalDurations: new Map<string, number>(),
 };
 
+// A platform chat whose daily budget is out and resets: the composer offers
+// Send at reset in place of the paused notice.
+const sendAtResetProps = {
+  chatAuthProvider: "platform",
+  usage: {
+    budget: {
+      state: "exhausted" as const,
+      window: "daily" as const,
+      resetsAt: new Date("2026-10-16T00:00:00Z"),
+      percentUsed: 100,
+    },
+    usage: undefined,
+    experience: getUsageExperience(),
+  },
+};
+
 describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
@@ -286,6 +303,38 @@ describe("ChatContainer", () => {
     fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
     mockIsUsageLimitReached.mockReturnValue(true);
     rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't pop the usage tooltip open when a turn starts after Send at reset hid it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    const { rerender } = render(<ChatContainer {...atReset} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    // A running turn ends Send at reset while the limit still holds.
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't reopen a usage tooltip Send at reset closed once a turn starts", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    rerender(<ChatContainer {...atReset} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 

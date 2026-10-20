@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -273,15 +273,15 @@ describe("TurnPausedCard — what it says and offers", () => {
     [
       "a budget with no plan behind it, which never refills",
       pause({ reason: "weekly", resets_at: null }),
-      "Paused · out of AutoPilot budget",
+      "Paused · out of budget",
       "Otto saved its progress above.",
       ["Upgrade"],
     ],
     [
       "a turn refused on a budget that never refills",
       pause({ reason: "weekly", resets_at: null, started: false }),
-      "Not started · out of AutoPilot budget",
-      "Otto didn't start this because you're out of AutoPilot budget.",
+      "Not started · out of budget",
+      "Otto didn't start this because you're out of budget.",
       ["Upgrade"],
     ],
     [
@@ -337,7 +337,7 @@ describe("TurnPausedCard — what it says and offers", () => {
     const calls = backend({ offers: [PLATFORM, CHATGPT] });
     renderCard(pause({ reason: "weekly", resets_at: null }));
     const card = await screen.findByRole("region", {
-      name: "Paused · out of AutoPilot budget",
+      name: "Paused · out of budget",
     });
 
     await waitFor(() =>
@@ -461,6 +461,29 @@ describe("TurnPausedCard — Keep going", () => {
       }),
     );
     expect(onBackendTurn).not.toHaveBeenCalled();
+  });
+
+  it("points to the plans when picking up needs one", async () => {
+    backend();
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", () =>
+        HttpResponse.json(
+          { detail: "Choose a plan to keep using AutoPilot" },
+          { status: 402 },
+        ),
+      ),
+    );
+    renderCard(pause({ reason: "task", resets_at: null }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep going" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't pick this back up",
+        description: "Choose a plan to keep going.",
+        variant: "destructive",
+      }),
+    );
   });
 
   it("turns into the budget pause when the account ran out meanwhile", async () => {
@@ -673,6 +696,41 @@ describe("TurnPausedCard — Continue on ChatGPT", () => {
       { llm_auth_provider: "codex", llm_credential_id: "cred-1" },
     ]);
     expect(calls.continued).toEqual([{ model: "standard" }]);
+  });
+
+  it("spins on the button that was clicked while the task is picked up", async () => {
+    backend({ offers: [PLATFORM, CHATGPT] });
+    let pickUps = 0;
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", async () => {
+        pickUps += 1;
+        await delay("infinite");
+        return HttpResponse.json({});
+      }),
+    );
+    // The budget is back, so Keep going sits beside Continue on ChatGPT.
+    renderCard(
+      pause({ resets_at: new Date(2026, 9, 11, 20, 0).toISOString() }),
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue on ChatGPT" }),
+    );
+
+    // Past the switch, the pick-up itself is running.
+    await waitFor(() => expect(pickUps).toBe(1));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Continue on ChatGPT" })
+          .querySelector(".animate-spin"),
+      ).not.toBeNull(),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Keep going" })
+        .querySelector(".animate-spin"),
+    ).toBeNull();
   });
 
   it("never offers Microsoft 365 Copilot, which runs no tools, nor a locked ChatGPT", async () => {

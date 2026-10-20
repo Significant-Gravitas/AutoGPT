@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot import pending_messages as pm_module
+from backend.copilot.gate.held import HeldResult
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -245,6 +246,22 @@ def test_pending_message_metadata_survives_json() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_long_held_result_requeued_into_the_buffer_drains_whole(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A rolled-back save re-queues held results here; one past a typed
+    follow-up's 32,000 characters must still drain, as its action already ran."""
+    result = HeldResult(content="x" * 40_000, metadata={"held_call": {"r": "1"}})
+    await push_pending_message("sess-held", result)
+
+    drained = await drain_pending_messages("sess-held")
+
+    assert len(drained) == 1
+    assert isinstance(drained[0], HeldResult)
+    assert drained[0].content == result.content
+
+
+@pytest.mark.asyncio
 async def test_push_and_drain_preserves_order(fake_redis: _FakeRedis) -> None:
     for i in range(3):
         await push_pending_message("sess2", PendingMessage(content=f"msg {i}"))
@@ -376,6 +393,15 @@ def test_format_followup_single_message() -> None:
     assert "<user_follow_up>" in out
     assert "</user_follow_up>" in out
     assert "Message 1:\nhello" in out
+
+
+def test_format_followup_escapes_the_tags_a_message_quotes() -> None:
+    out = format_pending_as_followup(
+        [PendingMessage(content="keep <user_follow_up> and </user_follow_up> rows")]
+    )
+    assert out.count("<user_follow_up>") == 1
+    assert out.count("</user_follow_up>") == 1
+    assert "keep &lt;user_follow_up&gt; and &lt;/user_follow_up&gt; rows" in out
 
 
 def test_format_followup_total_cap_drops_overflow() -> None:

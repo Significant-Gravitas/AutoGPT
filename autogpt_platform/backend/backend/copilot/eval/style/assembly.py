@@ -166,6 +166,7 @@ def chat_system_prompt(expert: Expert | None) -> str:
         engine_supplement=get_sdk_supplement(
             use_e2b=True, expert_session=expert is not None
         ),
+        provider_supplement="",
         delegation_supplement=(
             get_delegation_supplement(role) if DELEGATION_ENABLED else ""
         ),

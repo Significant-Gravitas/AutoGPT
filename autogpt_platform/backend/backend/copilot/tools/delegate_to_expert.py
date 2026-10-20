@@ -12,7 +12,7 @@ backs every other copilot turn, so the delegated work:
 - speaks and acts as the target expert (``<expert_identity>`` is rebuilt from
   the target's Soul by the normal per-turn path),
 - reads and writes the *target's* memory namespace
-  (:func:`derive_memory_group_id` keys on the session's ``expert_id``),
+  (the session's ``expert_id`` selects its ``MemoryScope``),
 - attributes the agent runs it starts to the *target's* weekly budget (only
   graph executions accrue weekly spend; the delegated conversation's own LLM
   cost does not), which is why a paused/archived teammate is refused here,
@@ -36,6 +36,7 @@ from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     child_session_origin,
@@ -305,6 +306,11 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
+                # Decided here, from the expert row already in hand, so the
+                # thread cannot pick up a looser default written in between.
+                inherited_autopilot_mode=child_autopilot_mode(
+                    session, target.autopilot_mode
+                ),
             )
             return new_session.session_id
 
