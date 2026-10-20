@@ -28,13 +28,9 @@ export function RunRow({ item, isHidden = false }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          {/* Agent names and run summaries are user data: leave them masked in
-              session replays rather than taking Text's static-copy default. */}
-          <Text
-            variant="body-medium"
-            unmask={false}
-            className="truncate text-zinc-900"
-          >
+          {/* Agent names and run summaries are user data: never opt them into
+              unmasking in session replays. */}
+          <Text variant="body-medium" className="truncate text-zinc-900">
             {item.agent_name}
           </Text>
           {isFailed ? (
@@ -44,11 +40,7 @@ export function RunRow({ item, isHidden = false }: Props) {
           ) : null}
         </div>
         {text ? (
-          <Text
-            variant="body"
-            unmask={false}
-            className="line-clamp-2 text-zinc-500"
-          >
+          <Text variant="body" className="line-clamp-2 text-zinc-500">
             {/* Attribution matters once more than one agent reports:
                 mirrors the thread markdown's "**{agent}**: {summary}". */}
             {attribution ? (

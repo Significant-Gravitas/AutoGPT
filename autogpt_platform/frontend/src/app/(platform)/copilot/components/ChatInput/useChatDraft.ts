@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 const subscribers = new Map<string, Set<(value: string) => void>>();
-// Each draft as last set on this page, for a reader that doesn't follow it
-// while browser storage is unavailable.
+// Drafts browser storage refused, for a reader that doesn't follow the draft.
+// A draft leaves once storage takes a later write of it.
 const written = new Map<string, string>();
 
 function readDraft(key: string | null) {
@@ -17,12 +17,13 @@ function readDraft(key: string | null) {
 
 function writeDraft(key: string | null, value: string) {
   if (!key || typeof window === "undefined") return;
-  written.set(key, value);
   try {
     if (value) sessionStorage.setItem(key, value);
     else sessionStorage.removeItem(key);
+    written.delete(key);
   } catch {
     /* Keep the in-memory draft when browser storage is unavailable. */
+    written.set(key, value);
   }
   subscribers.get(key)?.forEach((receive) => receive(value));
 }

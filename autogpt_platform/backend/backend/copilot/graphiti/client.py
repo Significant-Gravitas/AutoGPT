@@ -231,7 +231,7 @@ def _build_graphiti(
     # Runs concurrent boolean-classifier prompts (one per candidate
     # edge) and uses log-probabilities to rank. Costs one small call per
     # candidate (up to 2 * context_max_facts) on the reranker model
-    # (gpt-4.1-mini by default) per session-start search. The Compat subclass
+    # (gpt-6-luna by default) per session-start search. The Compat subclass
     # fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
     if cross_encoder is None:
@@ -300,14 +300,13 @@ def _new_graphiti_client(group_id: str):
     (``falkordb_connect.new_falkordb_client``) and each OpenAI client loads
     its TLS roots, hundreds of milliseconds between them. Made off the loop,
     the driver schedules no index build, which its default skips anyway."""
-    from graphiti_core.llm_client import OpenAIClient
-
     from .falkordb_connect import new_falkordb_client
     from .falkordb_driver import AutoGPTFalkorDriver
+    from .llm_client import GraphitiOpenAIClient
 
     driver = AutoGPTFalkorDriver(falkor_db=new_falkordb_client(), database=group_id)
     return _build_graphiti(
-        group_id, OpenAIClient(config=_build_llm_config()), graph_driver=driver
+        group_id, GraphitiOpenAIClient(config=_build_llm_config()), graph_driver=driver
     )
 
 
@@ -382,14 +381,14 @@ async def make_flex_graphiti_client(group_id: str):
     from .flex_client import FlexOpenAIClient
 
     if not chat_cfg.transport.supports_flex_tier:
-        from graphiti_core.llm_client import OpenAIClient
+        from .llm_client import GraphitiOpenAIClient
 
         logger.info(
             "Graphiti community rebuild: flex tier not available on "
             "transport=%s; falling back to sync OpenAIClient.",
             chat_cfg.transport.name,
         )
-        llm_client = OpenAIClient(config=_build_llm_config())
+        llm_client = GraphitiOpenAIClient(config=_build_llm_config())
     else:
         llm_client = FlexOpenAIClient(config=_build_llm_config())
     return _build_graphiti(

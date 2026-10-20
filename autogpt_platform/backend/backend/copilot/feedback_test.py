@@ -129,6 +129,32 @@ async def test_impersonated_rating_is_marked(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("langfuse_score")
+async def test_a_rating_names_the_trace_of_the_turn_that_wrote_the_reply(
+    mocker: pytest_mock.MockerFixture, reply: PrismaChatMessage
+) -> None:
+    reply.traceId = "turn-1"
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate()
+
+    assert capture.call_args.args[2]["$ai_trace_id"] == "turn-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reply", "langfuse_score")
+async def test_a_reply_with_no_recorded_trace_sends_no_trace_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Replies written before the column existed attach to the chat only."""
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate()
+
+    assert "$ai_trace_id" not in capture.call_args.args[2]
+
+
+@pytest.mark.asyncio
 @pytest.mark.usefixtures("reply")
 async def test_posthog_failure_keeps_the_rating_and_the_langfuse_score(
     mocker: pytest_mock.MockerFixture, langfuse_score: AsyncMock

@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { isKey } from "@/lib/keyboard";
 import { downloadRecording } from "../../voice/downloadRecording";
+import { isTouchDevice } from "@/lib/platform";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -269,12 +270,10 @@ export function useVoiceRecording({
     }
   }, [error, toast]);
 
+  // Not on a phone: there focus opens the keyboard over the thread.
   useEffect(() => {
-    if (!isTranscribing && inputId) {
-      const inputElement = document.getElementById(inputId);
-      if (inputElement) {
-        inputElement.focus();
-      }
+    if (!isTranscribing && inputId && !isTouchDevice()) {
+      document.getElementById(inputId)?.focus();
     }
   }, [isTranscribing, inputId]);
 

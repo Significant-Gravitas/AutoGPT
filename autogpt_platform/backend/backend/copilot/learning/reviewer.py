@@ -17,7 +17,7 @@ from backend.copilot.dream.llm import (
     StructuredCompletion,
     structured_completion,
 )
-from backend.copilot.dream.model_pricing import compute_cost_usd
+from backend.copilot.price_card import compute_cost_usd, price_for
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools.skills import ParsedSkill
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
@@ -65,9 +65,10 @@ async def record_review_cost(
     were already paid for; the ledger row still records the token counts.
     """
     cost = usage.cost_usd
-    if cost is None:
+    price = price_for(usage.model) if cost is None else None
+    if price is not None:
         cost = compute_cost_usd(
-            model=usage.model,
+            price=price,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             cache_read_tokens=usage.cache_read_tokens,

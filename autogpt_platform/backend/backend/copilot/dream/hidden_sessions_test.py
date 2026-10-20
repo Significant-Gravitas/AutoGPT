@@ -73,7 +73,7 @@ class TestEpisodeSessionIds:
         named, the parser must still find their session in them."""
         payloads: list[dict] = []
 
-        async def enqueue(_user_id: str, _group_id: str, payload: dict) -> bool:
+        async def enqueue(_scope: object, payload: dict) -> bool:
             payloads.append(payload)
             return True
 

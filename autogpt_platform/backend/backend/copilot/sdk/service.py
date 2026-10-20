@@ -54,17 +54,22 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.graphiti.context import CONTEXT_TAG_NAME, fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.codex_compat_gateway import (
+    CodexAnthropicGateway,
+    gateway_for_lease,
+)
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
     read_cli_session_usage,
@@ -111,6 +116,7 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
@@ -140,12 +146,14 @@ from ..pending_messages import (
 )
 from ..permissions import (
     CopilotPermissions,
+    allowed_providers,
     apply_tool_permissions,
     denied_tool_names,
 )
 from ..prompting import (
     approval_mode_supplement,
     get_chat_platform_supplement,
+    get_provider_ceiling_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -201,7 +209,11 @@ from ..tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
+from ..tools.e2b_sandbox import (
+    forget_turn_ceiling,
+    get_or_create_sandbox,
+    pause_sandbox_direct,
+)
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
@@ -1994,6 +2006,7 @@ async def _apply_building_mode_restart(
     session_id: str,
     message_id: str,
     log_prefix: str,
+    provider_supplement: str = "",
 ) -> StreamStatus:
     """Reconfigure *state* to relaunch the attempt with the guide in the
     system prompt, returning the status event to yield.
@@ -2032,6 +2045,7 @@ async def _apply_building_mode_restart(
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
+        + provider_supplement
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -2265,45 +2279,61 @@ def _setup_langfuse_otel() -> None:
 
     To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
     `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
+
+    Every run is passed through the Google data redaction before it is
+    exported; if that cannot be installed, the SDK is left untraced.
     """
     if not _is_langfuse_configured():
         return
 
+    # Ours to take back if the setup fails, so LangSmith does not trace
+    # without the redaction.
+    set_here: list[str] = []
     try:
         settings = Settings()
         pk = settings.secrets.langfuse_public_key
         sk = settings.secrets.langfuse_secret_key
         host = settings.secrets.langfuse_host
+        tracing_env = settings.secrets.langfuse_tracing_environment
 
         # OTEL exporter config — these are only set if not already present,
-        # so explicit env-var overrides always win.
+        # so explicit env-var overrides always win. The LangSmith client
+        # reads its OTEL mode as the redaction builds it, so these go first.
         creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
-        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
-        os.environ.setdefault("LANGSMITH_TRACING", "true")
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
-        )
-        os.environ.setdefault(
-            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
-            "autogpt-copilot-traces",
-        )
-
-        # Set the Langfuse environment via OTEL resource attributes so the
-        # Langfuse server maps it to the first-class environment field.
-        tracing_env = settings.secrets.langfuse_tracing_environment
-        os.environ.setdefault(
-            "OTEL_RESOURCE_ATTRIBUTES",
-            f"langfuse.environment={tracing_env}",
+        set_here = _set_env_defaults(
+            {
+                "LANGSMITH_OTEL_ENABLED": "true",
+                "LANGSMITH_OTEL_ONLY": "true",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": f"{host}/api/public/otel",
+                "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Basic {creds}",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER": (
+                    "autogpt-copilot-traces"
+                ),
+                # The Langfuse server maps this to its first-class
+                # environment field.
+                "OTEL_RESOURCE_ATTRIBUTES": f"langfuse.environment={tracing_env}",
+            }
         )
 
+        install_trace_redaction()
+        # Switched on only once every run it traces is redacted.
+        set_here += _set_env_defaults({"LANGSMITH_TRACING": "true"})
         configure_claude_agent_sdk(tags=["sdk"])
         logger.info(
             "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
         )
     except Exception:
+        for key in set_here:
+            os.environ.pop(key, None)
         logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
+
+
+def _set_env_defaults(defaults: dict[str, str]) -> list[str]:
+    """Set each variable not already set; return the ones this set."""
+    added = [key for key in defaults if key not in os.environ]
+    for key in added:
+        os.environ[key] = defaults[key]
+    return added
 
 
 _setup_langfuse_otel()
@@ -3355,7 +3385,9 @@ def _expect_pre_query_compaction(
             return _NO_COMPACTION
         if target_tokens is not None and target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
             return _NO_COMPACTION
-        source = prior_messages if prior_messages is not None else prior
+        source = visible_to_model(
+            prior_messages if prior_messages is not None else prior
+        )
         return _will_compact(source, model)
     if transcript_msg_count <= 0:
         # ``use_resume`` with no covered rows compresses nothing.
@@ -3369,14 +3401,14 @@ def _expect_pre_query_compaction(
             for m in prior
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
-        return _will_compact(window_gap, model)
+        return _will_compact(visible_to_model(window_gap), model)
     if transcript_msg_count < session_msg_ceiling - 1:
         if transcript_msg_count > len(prior):
             return _NO_COMPACTION
         if prior[transcript_msg_count - 1].role != "assistant":
             # Misaligned watermark — _build_query_message skips the gap.
             return _NO_COMPACTION
-        return _will_compact(prior[transcript_msg_count:], model)
+        return _will_compact(visible_to_model(prior[transcript_msg_count:]), model)
     # Scenario A: --resume covers the full context; nothing is compressed.
     return _NO_COMPACTION
 
@@ -3724,7 +3756,9 @@ async def _build_query_message(
                         window_start_seq,
                         e,
                     )
-            gap = hole + window_gap
+            # Rows posted for the user only drop out here, after the
+            # sequence slicing above has counted them.
+            gap = visible_to_model(hole + window_gap)
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
@@ -3771,7 +3805,7 @@ async def _build_query_message(
                     msg_count,
                 )
                 return current_message, compaction_stats
-            gap = prior[transcript_msg_count:]
+            gap = visible_to_model(prior[transcript_msg_count:])
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
@@ -3830,7 +3864,9 @@ async def _build_query_message(
             )
             return current_message, compaction_stats
 
-        source = prior_messages if prior_messages is not None else prior
+        source = visible_to_model(
+            prior_messages if prior_messages is not None else prior
+        )
         logger.warning(
             "[SDK] [%s] No --resume for %d-message session — compressing context "
             "(source=%s, target_tokens=%s)",
@@ -4735,7 +4771,10 @@ async def _seed_transcript(
         return "", transcript_covers_prefix, transcript_msg_count
 
     _prior = session.messages[: msg_ceiling - 1]
-    _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
+    # The returned watermark still counts the rows hidden from the model.
+    _comp, _, _ = await _compress_messages(
+        visible_to_model(_prior), _SEED_TARGET_TOKENS
+    )
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
 
@@ -5427,6 +5466,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
                     expert_id=owner_expert_id,
                     user_id=user_id,
+                    providers=allowed_providers(permissions),
                 )
                 # Publish the live box before the gather returns: if a sibling
                 # setup leg fails, the finally below still pauses it and
@@ -5439,6 +5479,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     e2b_err,
                     exc_info=True,
                 )
+                await forget_turn_ceiling(session_id, owner_expert_id)
                 return None
 
             return sandbox
@@ -5513,11 +5554,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # calls into a gate that asks about *this* turn.
         session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
+        # Empty unless the run's permissions restrict connected accounts.
+        provider_supplement = get_provider_ceiling_supplement(permissions)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(
                 use_e2b=use_e2b, expert_session=bool(session.expert_id)
             )
+            + provider_supplement
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
@@ -5631,18 +5675,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, CodexCredentialLease):
-                codex_gateway = CodexAnthropicGateway(
-                    agent_session=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
-            else:
-                codex_gateway = CodexAnthropicGateway(
-                    credential_lease=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
+            codex_gateway = gateway_for_lease(
+                credential_lease, model=sdk_model, effort=codex_effort
+            )
             await codex_gateway.start()
             fallback_model = None
         else:
@@ -5682,15 +5717,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             step_checkin=config.sdk_step_checkin,
         )
 
-        security_hooks = create_security_hooks(
-            user_id,
-            sdk_cwd=sdk_cwd,
-            max_subtasks=config.claude_agent_max_subtasks,
-            on_compact=compaction.on_compact,
-            tool_display_bridge=tool_display_bridge,
-            governor=governor,
-        )
-
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
                 permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
@@ -5704,6 +5730,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if kickoff_hidden:
             kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
             allowed = [n for n in allowed if n not in kickoff_hidden_mcp]
+
+        security_hooks = create_security_hooks(
+            user_id,
+            sdk_cwd=sdk_cwd,
+            max_subtasks=config.claude_agent_max_subtasks,
+            on_compact=compaction.on_compact,
+            tool_display_bridge=tool_display_bridge,
+            governor=governor,
+            builtin_tool_spans=config.posthog_builtin_tool_spans,
+            allowed_tools=allowed,
+        )
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
@@ -6425,6 +6462,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state=state,
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
+                    provider_supplement=provider_supplement,
                     delegation_supplement=delegation_supplement,
                     oversight_supplement=oversight_supplement,
                     team_building_supplement=team_building_supplement,
@@ -6951,6 +6989,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 start_index=pre_turn_message_count,
                 trace_id=langfuse_trace_id,
             )
+            stamp_turn_trace_id(session.messages, pre_turn_message_count)
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
             stamp_segment(

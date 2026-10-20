@@ -3,6 +3,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import { environment } from "@/services/environment";
 import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
@@ -129,9 +130,11 @@ export function AccountMenuNewLayout({
                       <li>
                         <AccountMenuActivityRow />
                       </li>
-                      <li>
-                        <AccountMenuFeedbackRow />
-                      </li>
+                      {environment.isCloud() && (
+                        <li>
+                          <AccountMenuFeedbackRow />
+                        </li>
+                      )}
                     </>
                   )}
                 </ul>
