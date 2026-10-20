@@ -6,7 +6,6 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
-
 import { isInternalToolOutput } from "../ContextPanel/components/FilesTab/helpers";
 import type { SessionFile } from "../ContextPanel/components/FilesTab/useSessionFiles";
 
