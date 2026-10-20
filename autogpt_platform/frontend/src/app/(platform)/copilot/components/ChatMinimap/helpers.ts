@@ -16,16 +16,40 @@ const BODY_CHARS = 220;
 export function toMinimapEntries(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): MinimapEntry[] {
-  return messages
-    .filter((message) => message.role === "user" && !isHeldCallRow(message))
-    .map((message) => {
-      const [title, body] = splitPreview(messageText(message));
-      return {
-        id: message.id,
-        title: title || "Your message",
-        body,
-      };
-    });
+  return messages.filter(isMinimapRow).map((message) => {
+    const [title, body] = splitPreview(messageText(message));
+    return {
+      id: message.id,
+      title: title || "Your message",
+      body,
+    };
+  });
+}
+
+/** True when both lists hold the same ticks: the same user messages, by id
+ *  and text, in the same order. A streamed flush only grows the reply, so the
+ *  rail need not render for it. */
+export function haveSameMinimapRows(
+  a: UIMessage<unknown, UIDataTypes, UITools>[],
+  b: UIMessage<unknown, UIDataTypes, UITools>[],
+): boolean {
+  if (a === b) return true;
+  const left = a.filter(isMinimapRow);
+  const right = b.filter(isMinimapRow);
+  if (left.length !== right.length) return false;
+  return left.every((message, i) => {
+    const other = right[i];
+    return (
+      message === other ||
+      (message.id === other.id && messageText(message) === messageText(other))
+    );
+  });
+}
+
+function isMinimapRow(
+  message: UIMessage<unknown, UIDataTypes, UITools>,
+): boolean {
+  return message.role === "user" && !isHeldCallRow(message);
 }
 
 function messageText(

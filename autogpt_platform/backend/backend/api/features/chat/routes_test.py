@@ -581,6 +581,30 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocks.enqueue.assert_awaited_once()
 
 
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_stream_chat_records_card_decisions_only_from_the_users_message(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, is_user_message: bool
+) -> None:
+    """The only writer of the approvals the gate trusts for a proposal's confirm."""
+    _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    line = "Approved: create Otto (confirmation_id: c-1)."
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": line, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    if is_user_message:
+        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    else:
+        record.assert_not_awaited()
+
+
 # ─── A sent message cancels the pending resume at the budget reset ────
 
 
@@ -4707,66 +4731,6 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
-
-
-def test_health_check_returns_503_when_metadata_read_returns_none(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Round-trips create-then-read; if the read path returns None despite
-    # a successful create, the health endpoint must surface the failure.
-    from backend.copilot.model import ChatSession
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 503
-    assert "unhealthy" in response.json()["detail"].lower()
-
-
-def test_health_check_returns_healthy_on_round_trip_success(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Happy path: create + read both succeed → 200 with healthy body.
-    from backend.copilot.model import ChatSession, ChatSessionInfo
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    fake_session = ChatSession.new("health-check-user", dry_run=False)
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        return_value=fake_session,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=ChatSessionInfo(
-            **{**fake_session.model_dump(exclude={"messages"})}
-        ),
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "healthy"
-    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:

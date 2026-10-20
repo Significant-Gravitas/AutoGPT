@@ -8,6 +8,8 @@ import {
   type CookiebotConsent,
 } from "./cookiebot";
 
+// "monitoring" gates Sentry session replay only. Error monitoring is part of
+// running the service (legitimate interest), so it needs no consent.
 export type ConsentCategory = "analytics" | "monitoring" | "advertising";
 export type ConsentState = Readonly<Record<ConsentCategory, boolean>>;
 

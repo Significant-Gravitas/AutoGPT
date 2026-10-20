@@ -24,6 +24,7 @@ import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+from prisma.models import AuthUser as PrismaAuthUser
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
@@ -31,6 +32,7 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
 
 from backend.api.rest_api import app
+from backend.data.user import is_user_banned
 
 keysmith = APIKeySmith()
 
@@ -920,6 +922,92 @@ async def test_refresh_token_creates_new_tokens(
     )
     assert new_db_access is not None
     assert new_db_access.revokedAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_banned_owners_tokens_neither_refresh_nor_introspect_active(
+    client: httpx.AsyncClient,
+    test_user: str,
+    test_oauth_app: dict,
+    real_ban_lookup,
+):
+    """The external API refuses them anyway; the app hears it here too, and
+    the refresh token survives for when the ban is lifted."""
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "banned_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    tokens = (
+        await client.post(
+            "/api/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "code": auth_code,
+                "redirect_uri": test_oauth_app["redirect_uri"],
+                "client_id": test_oauth_app["client_id"],
+                "client_secret": test_oauth_app["client_secret"],
+                "code_verifier": verifier,
+            },
+        )
+    ).json()
+    app_credentials = {
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+    }
+
+    await PrismaAuthUser.prisma().create(
+        data={
+            "id": test_user,
+            "name": "Banned",
+            "email": f"banned-{test_user}@example.com",
+            "banned": True,
+        }
+    )
+    is_user_banned.cache_delete(test_user)
+    try:
+        refresh = await client.post(
+            "/api/oauth/token",
+            json={
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                **app_credentials,
+            },
+        )
+        introspected = [
+            (
+                await client.post(
+                    "/api/oauth/introspect",
+                    json={"token": tokens[kind], **app_credentials},
+                )
+            ).json()
+            for kind in ("access_token", "refresh_token")
+        ]
+    finally:
+        await PrismaAuthUser.prisma().delete(where={"id": test_user})
+        is_user_banned.cache_delete(test_user)
+
+    assert refresh.status_code == 400
+    assert [result["active"] for result in introspected] == [False, False]
+    refresh_hash = hashlib.sha256(tokens["refresh_token"].encode()).hexdigest()
+    stored = await PrismaOAuthRefreshToken.prisma().find_unique(
+        where={"token": refresh_hash}
+    )
+    assert stored is not None and stored.revokedAt is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

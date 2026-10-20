@@ -228,6 +228,11 @@ class ChatMessage(BaseModel):
     # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
+    # PostHog trace of the turn that wrote this assistant or reasoning row
+    # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
+    # rating of the reply carries. Internal and persisted like the above.
+    trace_id: str | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -296,6 +301,7 @@ class ChatMessage(BaseModel):
             ),
             llm_credential_id=prisma_message.llmCredentialId,
             langfuse_trace_id=prisma_message.langfuseTraceId,
+            trace_id=prisma_message.traceId,
         )
 
 
@@ -1172,6 +1178,7 @@ async def _save_session_to_db(
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
                     "langfuse_trace_id": msg.langfuse_trace_id,
+                    "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
             )
@@ -1226,6 +1233,7 @@ async def _save_session_to_db(
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
                 langfuse_trace_id=msg.langfuse_trace_id,
+                trace_id=msg.trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1417,7 +1425,7 @@ async def create_chat_session(
             is off, like the per-thread override.
         inherited_autopilot_mode: The mode a delegated thread must start on,
             already decided by the caller from the parent chat and the
-            target expert (``gate.policy.child_autopilot_mode``). Stored
+            target expert (``gate.child_autopilot_mode``). Stored
             as-is: it is a constraint rather than a pick, so the flag does
             not drop it and the expert is not read a second time.
 
