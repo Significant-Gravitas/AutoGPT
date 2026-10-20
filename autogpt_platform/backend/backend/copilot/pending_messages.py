@@ -392,7 +392,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for payload in decoded:
         try:
-            messages.append(PendingMessage.model_validate(json.loads(payload)))
+            messages.append(_from_buffer(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
@@ -407,6 +407,17 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             session_id,
         )
     return messages
+
+
+def _from_buffer(data: Any) -> PendingMessage:
+    # Deferred: the gate's held result is built on this module's message.
+    from backend.copilot.gate.held import HeldResult
+
+    # A held call's result, re-queued by a save that rolled back, keeps the
+    # larger cap it was built with; the action behind it has already run.
+    if isinstance(data, dict) and HeldResult.carried_by(data):
+        return HeldResult.model_validate(data)
+    return PendingMessage.model_validate(data)
 
 
 async def peek_pending_count(session_id: str) -> int:

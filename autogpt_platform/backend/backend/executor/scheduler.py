@@ -42,6 +42,7 @@ from backend.api.features.onboarding_dump.retention import (
     purge_expired_recordings,
 )
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -381,6 +382,14 @@ async def _execute_graph(**kwargs):
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+def execute_held_wake(user_id: str, session_id: str):
+    """Start the turn that carries a chat's answered cards."""
+    # Deferred: the gate package imports this module (``gate/references.py``).
+    from backend.copilot.gate.held import wake
+
+    run_async(wake(user_id, session_id))
 
 
 def execute_copilot_turn(**kwargs):
@@ -2841,6 +2850,15 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Load the block registry before serving. Otherwise the first add-schedule
+        # loads it inside graph validation, and the scheduler freezes meanwhile.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -4671,6 +4689,23 @@ class Scheduler(AppService):
         )
         return result.model_dump(mode="json")
 
+    @expose
+    def schedule_held_wake(
+        self, user_id: str, session_id: str, delay_seconds: float
+    ) -> None:
+        """Wake the chat's answered cards in *delay_seconds*. Keyed by chat, so
+        each later answer moves the one job, and stored, so it runs after a
+        restart however late."""
+        self.scheduler.add_job(
+            execute_held_wake,
+            kwargs={"user_id": user_id, "session_id": session_id},
+            trigger="date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=delay_seconds),
+            id=f"held_wake_{session_id}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+        )
+
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
     # The ``schedule_immediate_*`` methods schedule the matching
@@ -4872,3 +4907,4 @@ class SchedulerClient(AppServiceClient):
     schedule_immediate_community_rebuild = endpoint_to_async(
         Scheduler.schedule_immediate_community_rebuild
     )
+    schedule_held_wake = endpoint_to_async(Scheduler.schedule_held_wake)

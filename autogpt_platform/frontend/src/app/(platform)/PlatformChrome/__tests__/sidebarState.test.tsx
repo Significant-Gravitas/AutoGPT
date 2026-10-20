@@ -25,7 +25,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
-    showNewLayout: true,
+    showAppSidebar: true,
     isBuilderRoute: pathname.startsWith("/build"),
   }),
 }));

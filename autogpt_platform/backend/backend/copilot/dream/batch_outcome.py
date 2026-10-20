@@ -240,6 +240,9 @@ def _applied_result(
         proposal_count=_stat_count(apply_stats, "proposal_count"),
         demotion_count=_stat_count(apply_stats, "demotion_count"),
         entity_invalidation_count=_stat_count(apply_stats, "entity_invalidation_count"),
+        dropped_forgotten=_stat_count(apply_stats, "dropped_forgotten"),
+        pending_writes=_stat_count(apply_stats, "pending_writes"),
+        failed_writes=_stat_count(apply_stats, "failed_writes"),
         dream_session_id=raw_session_id if isinstance(raw_session_id, str) else None,
         ingestion_drain_status=ingestion_drain_status,
         operations=_stat_snapshot(apply_stats),
@@ -255,15 +258,15 @@ def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
     with it, so the counts here are the clamped *attempted* ops — annotated
     so the admin UI doesn't present them as confirmed apply results."""
     note = (
-        "[finalized after duplicate delivery — counts reflect attempted "
-        "operations; writes landed with the original delivery] "
+        "[finalized after duplicate delivery — writes and proposals were "
+        "queued by the original delivery, counted pending; demotion counts "
+        "reflect attempted operations] "
     )
     return DreamPassResult(
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        consolidated_count=len(ops.writes),
-        proposal_count=len(ops.proposals),
+        pending_writes=len(ops.writes) + len(ops.proposals),
         demotion_count=len(ops.demotions),
         entity_invalidation_count=len(ops.entity_invalidations),
         # Batch apply never drains in-line by design; the first

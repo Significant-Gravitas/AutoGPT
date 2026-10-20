@@ -59,6 +59,9 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    dropped_forgotten: int = 0
+    pending_writes: int = 0
+    failed_writes: int = 0
     summary_for_user: str = ""
     dream_session_id: str | None = None
     ingestion_drain_status: IngestionDrainStatus = IngestionDrainStatus.drained

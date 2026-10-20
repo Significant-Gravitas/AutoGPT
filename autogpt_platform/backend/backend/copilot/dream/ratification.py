@@ -171,6 +171,9 @@ async def _process_edge(
       * hits >= 1                 → promote to ``status='active'``
       * hits == 0 and past grace  → supersede with ``reason='unratified'``
       * hits == 0 within grace    → no-op (still earning its keep)
+
+    Both writes apply only while the edge is still an unexpired tentative
+    one: a user's forget that lands after the listing is never overwritten.
     """
     edge_uuid = edge.get("uuid")
     if not edge_uuid:
@@ -180,7 +183,7 @@ async def _process_edge(
     hits = await _get_hit_count(scope, edge_uuid)
 
     if hits >= 1:
-        promoted = await _promote_edge(driver, edge_uuid)
+        promoted = await _promote_if_tentative(driver, edge_uuid)
         if promoted:
             result.ratified_count += 1
         return
@@ -202,6 +205,7 @@ async def _process_edge(
         new_status="superseded",
         user_id=scope.owner_user_id,
         group_id=scope.group_id,
+        expected_status="tentative",
     )
     if succeeded:
         result.superseded_count += 1
@@ -228,26 +232,6 @@ async def _list_tentative_edges(
     result = await driver.execute_query(query)
     records = result[0] if result else []
     return [{"uuid": r["uuid"], "created_at": r["created_at"]} for r in records]
-
-
-async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
-    """Flip a tentative edge to ``status='active'`` with a ratified_at stamp.
-
-    Returns True iff Cypher actually touched a row. Sub-10ms per spec §5.
-
-    The ratified_at timestamp is generated in Python because FalkorDB
-    does not implement Cypher's no-arg ``datetime()`` function.
-    """
-    query = """
-    MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
-    SET e.status = 'active', e.ratified_at = $now
-    RETURN e.uuid AS uuid
-    """
-    result = await driver.execute_query(
-        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
-    )
-    records = result[0] if result else []
-    return bool(records)
 
 
 async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
@@ -318,16 +302,20 @@ async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
 
 
 async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
-    """``_promote_edge`` with a ``status='tentative'`` guard.
+    """Flip a still-tentative, unexpired edge to ``status='active'`` with a
+    ``ratified_at`` stamp; True iff Cypher touched a row.
 
-    Distinct from ``_promote_edge`` because the hit-hook fires on
-    EVERY retrieved edge, including already-active ones — we don't
-    want to overwrite an active edge's ``ratified_at`` with a fresh
-    timestamp on every retrieval. The guard makes the call idempotent.
+    The one promotion write, for the hit hook and the nightly sweep alike.
+    The guard makes a repeat hit on an active edge a no-op (its first
+    ``ratified_at`` stays) and keeps a forget that lands between the sweep's
+    listing and this write: a retracted or forgotten edge is never made
+    active again.
+    ``now`` comes from Python: FalkorDB has no no-arg ``datetime()``.
     """
     query = """
     MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
     WHERE e.status = 'tentative' AND e.expired_at IS NULL
+      AND e.forgotten_at IS NULL
     SET e.status = 'active', e.ratified_at = $now
     RETURN e.uuid AS uuid
     """
