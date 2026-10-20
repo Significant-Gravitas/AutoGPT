@@ -6,7 +6,7 @@ import json
 import warnings
 from typing import Any, Literal, Protocol, Self, cast
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, JpegImagePlugin, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 from backend.util.truncate import truncate
@@ -104,10 +104,7 @@ def prepare_image(raw: bytes) -> ToolImage:
                     image.format in {"MPO", "GIF", "WEBP", "PNG"}
                     and cast(_AnimatedImage, image).is_animated
                 ):
-                    first_frame = io.BytesIO()
-                    image.convert("RGBA").save(first_frame, format="PNG")
-                    raw = first_frame.getvalue()
-                    mime = "image/png"
+                    raw, mime = _encode_first_frame(image)
     except (
         UnidentifiedImageError,
         OSError,
@@ -123,6 +120,22 @@ def prepare_image(raw: bytes) -> ToolImage:
     return ToolImage.model_validate(
         {"mime_type": mime, "data_base64": base64.b64encode(raw).decode("ascii")}
     )
+
+
+def _encode_first_frame(image: Image.Image) -> tuple[bytes, str]:
+    output = io.BytesIO()
+    if image.format == "MPO":
+        jpeg = cast(JpegImagePlugin.JpegImageFile, image)
+        jpeg.save(
+            output,
+            format="JPEG",
+            qtables=jpeg.quantization,
+            subsampling=JpegImagePlugin.get_sampling(jpeg),
+            optimize=True,
+        )
+        return output.getvalue(), "image/jpeg"
+    image.convert("RGBA").save(output, format="PNG")
+    return output.getvalue(), "image/png"
 
 
 def parse_held_image(output: str | dict[str, Any]) -> HeldImage | None:

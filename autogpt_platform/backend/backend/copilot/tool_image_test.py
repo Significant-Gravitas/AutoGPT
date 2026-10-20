@@ -92,9 +92,38 @@ def test_multi_frame_image_is_reduced_to_its_first_frame(format):
     with Image.open(io.BytesIO(raw)) as original:
         expected = original.convert("RGBA").tobytes()
     image = prepare_image(raw)
-    assert image.mime_type == "image/png"
+    assert image.mime_type == ("image/jpeg" if format == "MPO" else "image/png")
     with Image.open(io.BytesIO(base64.b64decode(image.data_base64))) as viewed:
         assert viewed.convert("RGBA").tobytes() == expected
+        with pytest.raises(EOFError):
+            viewed.seek(1)
+
+
+@pytest.mark.parametrize("subsampling", [0, 2])
+def test_photographic_mpo_remains_a_bounded_single_frame_jpeg(subsampling):
+    first = Image.frombytes(
+        "RGB", (1400, 1200), random.Random(0).randbytes(1400 * 1200 * 3)
+    )
+    first.paste("blue", (0, 0, 100, 100))
+    output = io.BytesIO()
+    first.save(
+        output,
+        format="MPO",
+        quality=85,
+        subsampling=subsampling,
+        save_all=True,
+        append_images=[Image.new("RGB", (20, 20), "red")],
+    )
+    raw = output.getvalue()
+    assert len(raw) < MAX_IMAGE_BYTES
+    image = prepare_image(raw)
+    encoded = base64.b64decode(image.data_base64)
+    assert image.mime_type == "image/jpeg"
+    assert len(encoded) < MAX_IMAGE_BYTES
+    with Image.open(io.BytesIO(encoded)) as viewed:
+        assert viewed.format == "JPEG"
+        assert viewed.size == first.size
+        assert viewed.convert("RGB").getpixel((50, 50)) == (0, 0, 254)
         with pytest.raises(EOFError):
             viewed.seek(1)
 
