@@ -163,6 +163,7 @@ async def test_consumed_followups_are_exported_as_ordered_user_messages(
         assert json.loads(attrs["langfuse.observation.input"]) == [
             {"role": "user", "content": message.content}
         ]
+        assert attrs["langfuse.observation.metadata.source"] == "PostToolUse"
         assert attrs["langfuse.observation.metadata.message_id"] == message.id
         assert attrs["langfuse.observation.metadata.enqueued_at"] == str(
             message.enqueued_at
@@ -214,10 +215,15 @@ async def test_persistence_failure_does_not_hide_consumed_message_from_trace(
     pending_redis.lpop.return_value = [message.model_dump_json()]
     pending_redis.rpush.side_effect = ConnectionError("persist queue unavailable")
     with client.start_as_current_span(name="copilot-sdk-turn"):
-        result = await _post_tool_use()
+        result = await pending_messages.drain_and_format_for_injection(
+            "test-session", log_prefix="[TEST]", source="between-rounds"
+        )
     client.flush()
     assert message.content in str(result)
     event = next(span for span in exported if span.name == "copilot-user-follow-up")
+    assert (
+        _attributes(event)["langfuse.observation.metadata.source"] == "between-rounds"
+    )
     assert json.loads(_attributes(event)["langfuse.observation.input"]) == [
         {"role": "user", "content": message.content}
     ]

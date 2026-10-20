@@ -592,6 +592,7 @@ async def drain_and_format_for_injection(
     session_id: str,
     *,
     log_prefix: str,
+    source: str,
     tool_use_id: str | None = None,
     tool_name: str | None = None,
 ) -> str:
@@ -628,7 +629,9 @@ async def drain_and_format_for_injection(
     )
     await stash_pending_for_persist(session_id, pending)
     followup = format_pending_as_followup(pending)
-    record_injected_messages(pending, tool_use_id=tool_use_id, tool_name=tool_name)
+    record_injected_messages(
+        pending, source=source, tool_use_id=tool_use_id, tool_name=tool_name
+    )
     return followup
 
 

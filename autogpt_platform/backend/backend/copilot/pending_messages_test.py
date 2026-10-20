@@ -675,7 +675,9 @@ async def test_drain_and_format_for_injection_happy_path(
     AND are stashed on the persist queue for UI row hand-off."""
     await push_pending_message("sess-share", PendingMessage(content="do X also"))
 
-    result = await drain_and_format_for_injection("sess-share", log_prefix="[TEST]")
+    result = await drain_and_format_for_injection(
+        "sess-share", log_prefix="[TEST]", source="test"
+    )
 
     assert "<user_follow_up>" in result
     assert "do X also" in result
@@ -691,7 +693,12 @@ async def test_drain_and_format_for_injection_happy_path(
 async def test_drain_and_format_for_injection_empty_returns_empty(
     fake_redis: _FakeRedis,
 ) -> None:
-    assert await drain_and_format_for_injection("sess-empty", log_prefix="[TEST]") == ""
+    assert (
+        await drain_and_format_for_injection(
+            "sess-empty", log_prefix="[TEST]", source="test"
+        )
+        == ""
+    )
 
 
 @pytest.mark.asyncio
@@ -705,13 +712,19 @@ async def test_drain_and_format_for_injection_swallows_redis_error(
 
     # Must NOT raise — broken Redis becomes "nothing to inject".
     assert (
-        await drain_and_format_for_injection("sess-broken", log_prefix="[TEST]") == ""
+        await drain_and_format_for_injection(
+            "sess-broken", log_prefix="[TEST]", source="test"
+        )
+        == ""
     )
 
 
 @pytest.mark.asyncio
 async def test_drain_and_format_for_injection_missing_session_id() -> None:
-    assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
+    assert (
+        await drain_and_format_for_injection("", log_prefix="[TEST]", source="test")
+        == ""
+    )
 
 
 # ── Cluster-slot colocation regression ───────────────────────────────

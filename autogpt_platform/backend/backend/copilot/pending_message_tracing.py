@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 def record_injected_messages(
     messages: list["PendingMessage"],
     *,
+    source: str,
     tool_use_id: str | None,
     tool_name: str | None,
 ) -> None:
@@ -25,7 +26,7 @@ def record_injected_messages(
                 name="copilot-user-follow-up",
                 input=[{"role": "user", "content": message.content}],
                 metadata={
-                    "source": "PostToolUse",
+                    "source": source,
                     "message_id": message.id,
                     "enqueued_at": message.enqueued_at,
                     "tool_use_id": tool_use_id,
