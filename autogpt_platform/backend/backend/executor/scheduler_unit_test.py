@@ -37,6 +37,8 @@ from backend.executor.scheduler import (
     _MAX_EXPERT_LOOKUP_RETRIES,
     _MAX_LIMITS_RETRIES,
     _MAX_PLAN_LOOKUP_RETRIES,
+    _MAX_USAGE_WAITS,
+    _USAGE_WAIT_SPREAD_SECONDS,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -110,6 +112,15 @@ def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
     monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.check_rate_limit", gate.check_rate_limit)
     monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.has_codex_access", gate.has_codex_access)
     return gate
+
+
+@pytest.fixture(autouse=True)
+def post_notice(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """The note a skipped run posts into its chat. Patched for every test so
+    none reaches the DatabaseManager, whose client retries for minutes."""
+    post = AsyncMock(return_value=True)
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.post_notice", post)
+    return post
 
 
 # ---------------------------------------------------------------------------
@@ -2772,9 +2783,9 @@ _HOURLY = {"run_at": None, "cron": "9 * * * *"}
     ("refuse", "timing", "dropped", "budget"),
     [
         (_paywalled, _ONE_SHOT, [("routine-1", "sched-1")], None),
-        (_over_a_cap, _ONE_SHOT, [("routine-1", "sched-1")], None),
-        (_limits_unreadable, _ONE_SHOT, [], "limits"),
-        (_lookup_fails, _ONE_SHOT, [], "plan_lookup"),
+        (_over_a_cap, _ONE_SHOT, [], "usage_wait_count"),
+        (_limits_unreadable, _ONE_SHOT, [], "limits_retry_count"),
+        (_lookup_fails, _ONE_SHOT, [], "plan_lookup_retry_count"),
         (_paywalled, _HOURLY, [], None),
         (_limits_unreadable, _HOURLY, [], None),
         (_lookup_fails, _HOURLY, [], None),
@@ -2793,8 +2804,9 @@ async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
     owner_gate, refuse, timing, dropped, budget
 ):
     """APScheduler drops a one-shot once it fires. An outage (unreadable limits
-    or plan) is ours, so the one-shot comes back in a few minutes; otherwise,
-    left on, it would read as pending for a time that has passed."""
+    or plan) is ours, so the one-shot comes back in a few minutes, and a used-up
+    limit has a reset to wait for; otherwise, left on, it would read as pending
+    for a time that has passed."""
     refuse(owner_gate)
     scheduler_client = AsyncMock()
     routine = ExpertRoutine(
@@ -2824,7 +2836,177 @@ async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
     if budget is not None:
         assert retry.call_args.kwargs["routine_id"] == "routine-1"
         assert retry.call_args.kwargs["routine_schedule_id"] == "sched-1"
-        assert retry.call_args.kwargs[f"{budget}_retry_count"] == 1
+        assert retry.call_args.kwargs[budget] == 1
+
+
+def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
+    gate.check_rate_limit.side_effect = RateLimitExceeded("daily", resets_at)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("window", ["daily", "weekly"])
+async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
+    owner_gate, post_notice, window
+):
+    """Nick (2026-10-10): once usage comes back, the run should happen. A
+    one-shot is moved to the reset, spread over a few minutes, and its chat is
+    told when it will run."""
+    resets_at = datetime.now(tz=timezone.utc).replace(microsecond=0) + timedelta(
+        hours=3
+    )
+    owner_gate.check_rate_limit.side_effect = RateLimitExceeded(window, resets_at)
+    scheduler_client = AsyncMock()
+    with patch(
+        f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client
+    ):
+        mocks = await _fire(_args(run_at=_ONE_SHOT["run_at"]))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    kwargs = scheduler_client.add_copilot_turn_schedule.call_args.kwargs
+    assert resets_at <= kwargs["run_at"]
+    assert kwargs["run_at"] < resets_at + timedelta(seconds=_USAGE_WAIT_SPREAD_SECONDS)
+    assert kwargs["usage_wait_count"] == 1
+    notice = post_notice.call_args.args[0]
+    assert notice.body.startswith("“check CI” will run when the limit resets")
+
+
+@pytest.mark.asyncio
+async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
+    owner_gate, post_notice
+):
+    _over_the_daily_limit(
+        owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
+    )
+    scheduler_client = AsyncMock()
+    store = MagicMock(get_routine=AsyncMock(return_value=None))
+    store.mark_routine_unscheduled = AsyncMock()
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _fire(_args(routine_id="routine-1", usage_wait_count=_MAX_USAGE_WAITS))
+
+    scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
+    assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+
+
+async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:
+    """Fire *args* into its existing chat, with the dispatch mocked."""
+    mocks = {"schedule_turn": AsyncMock()}
+    session = MagicMock(session_id=args.session_id, expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", mocks["schedule_turn"]),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    return mocks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
+)
+@pytest.mark.parametrize(
+    ("refuse", "provider", "reason"),
+    [
+        (_paywalled, "platform", "no_plan"),
+        (_over_a_cap, "platform", "usage"),
+        (_lost_codex, "codex", "codex_access"),
+    ],
+    ids=["paywalled", "over-a-cap", "lost-codex"],
+)
+async def test_a_skipped_run_tells_its_chat_why(
+    owner_gate, post_notice, refuse, provider, reason, session_id
+):
+    """SECRT-2879: skipping without a word is what left the trial account's
+    owner with 33 missing runs a day and nothing to say why."""
+    refuse(owner_gate)
+    await _fire_hourly(session_id, provider)
+
+    post_notice.assert_awaited_once()
+    notice = post_notice.call_args.args[0]
+    kwargs = post_notice.call_args.kwargs
+    assert notice.reason == reason
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["schedule_key"] == "sched-1"
+    assert kwargs["title"] == "check CI"
+    # A fresh-chat schedule has no chat yet; the note goes to its fallback.
+    assert kwargs["session_id"] == session_id
+    assert kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refuse", [_limits_unreadable, _lookup_fails], ids=["brown-out", "lookup-fails"]
+)
+async def test_a_run_skipped_by_our_outage_tells_nobody(
+    owner_gate, post_notice, refuse
+):
+    refuse(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    post_notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("timing", "outcome"),
+    [
+        ({"run_at": None, "cron": "9 * * * *"}, "the schedule stays registered"),
+        ({}, "the one-shot is dropped"),
+    ],
+    ids=["recurring", "one-shot"],
+)
+async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
+    post_notice, timing, outcome, caplog
+):
+    """Nothing new starts for a banned account: a recurring schedule stays for
+    when the ban is lifted, a one-shot is dropped as a paywalled one is, and
+    nothing is posted into its chats."""
+    with (
+        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        mocks = await _fire(_args(**timing))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    post_notice.assert_not_awaited()
+    assert "owner is banned" in caplog.text
+    assert outcome in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_routine_is_named_by_its_title_and_keyed_by_its_id(
+    owner_gate, post_notice
+):
+    _paywalled(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1", title="Morning briefing", prompt="Brief me.", enabled=True
+    )
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        await _fire(_args(routine_id="routine-1", run_at=None, cron="0 6 * * *"))
+
+    kwargs = post_notice.call_args.kwargs
+    assert kwargs["schedule_key"] == "routine-1"
+    assert kwargs["title"] == "Morning briefing"
+
+
+@pytest.mark.asyncio
+async def test_a_note_that_cannot_be_posted_does_not_fail_the_tick(
+    owner_gate, post_notice, caplog
+):
+    _paywalled(owner_gate)
+    post_notice.side_effect = RuntimeError("database manager down")
+
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        mocks = await _fire(_args(run_at=None, cron="9 * * * *"))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    assert "Could not tell the owner why scheduled copilot turn sched-1" in caplog.text
+    assert "the schedule stays registered" in caplog.text
 
 
 @pytest.mark.asyncio

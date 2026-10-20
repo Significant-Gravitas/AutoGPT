@@ -21539,6 +21539,11 @@
             "title": "Limits Retry Count",
             "default": 0
           },
+          "usage_wait_count": {
+            "type": "integer",
+            "title": "Usage Wait Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
