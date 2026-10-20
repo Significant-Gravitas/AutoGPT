@@ -128,9 +128,9 @@ def skip_notice(
     crons: list[str] | None = None,
 ) -> ScheduledChatNotice | None:
     """What to tell the owner about a run *refusal* stopped, or None when
-    there is nothing for them to do (an outage on our side). Times are in
-    *user_timezone*, the one the schedule was made in, else UTC. *crons* are
-    the schedule's, for offering to run it less often."""
+    there is nothing for them to do (a banned account, or an outage on our
+    side). Times are in *user_timezone*, the one the schedule was made in, else
+    UTC. *crons* are the schedule's, for offering to run it less often."""
     if refusal.kind == "usage" and refusal.window in ("daily", "weekly"):
         notice = _usage_notice(
             refusal, title=title, run=run, user_timezone=user_timezone

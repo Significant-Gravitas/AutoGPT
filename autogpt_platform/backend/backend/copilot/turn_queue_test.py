@@ -1002,6 +1002,23 @@ async def test_dispatch_leaves_queued_when_user_paywalled() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["platform", "codex", "microsoft_365_copilot"])
+async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
+    """The scheduler and the queue both ask here, and a ban outranks the
+    route: a ChatGPT or Microsoft 365 turn costs us nothing but still runs."""
+    with (
+        patch.object(turn_queue, "is_user_banned", new=AsyncMock(return_value=True)),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+    ):
+        refusal = await turn_queue.turn_refusal("u1", route)
+
+    assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
+
+
+@pytest.mark.asyncio
 async def test_codex_dispatch_skips_platform_billing_gates() -> None:
     head = _queued_row()
     head.metadata.llm_auth_provider = "codex"

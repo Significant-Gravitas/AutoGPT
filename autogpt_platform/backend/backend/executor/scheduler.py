@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import uuid
@@ -103,6 +104,7 @@ from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
+from backend.data.user import is_user_banned
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
@@ -133,6 +135,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
@@ -354,6 +357,9 @@ async def _execute_graph(**kwargs):
         # Expected while the owner has no subscription: skip quietly. The
         # schedule stays registered so it resumes on its own once they
         # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserBannedError as e:
+        # Kept registered, so the schedule resumes if the ban is lifted.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -1566,6 +1572,19 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
+    # A banned owner's crons stay registered and resume if the ban is lifted.
+    try:
+        banned = run_async(
+            is_user_banned(scope.owner_user_id),
+            timeout=bridge_timeout(),
+            cancel_on_timeout=True,
+        )
+    except Exception:
+        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        return False
+    if banned:
+        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+        return False
     try:
         return run_async(
             memory_scope_may_fire(scope, _expert_scope_status),
@@ -2777,9 +2796,15 @@ class Scheduler(AppService):
     _schedule_index: ScheduleIndex | None = None
     _schedule_index_ready: bool = False
     _schedule_index_failure_version: int = 0
+    _throwaway_dir: tempfile.TemporaryDirectory | None = None
 
-    def __init__(self, register_system_tasks: bool = True):
+    def __init__(
+        self, register_system_tasks: bool = True, throwaway_jobstores: bool = False
+    ):
         self.register_system_tasks = register_system_tasks
+        # Test servers: jobs a real scheduler saved in the platform database
+        # must not run in them, and their tests' schedules must not land there.
+        self.throwaway_jobstores = throwaway_jobstores
 
     @classmethod
     def get_port(cls) -> int:
@@ -2818,7 +2843,7 @@ class Scheduler(AppService):
         )
         _event_loop_thread.start()
 
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        db_schema, db_url = self._jobstore_database()
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
@@ -3087,6 +3112,16 @@ class Scheduler(AppService):
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
+    def _jobstore_database(self) -> tuple[str | None, str]:
+        """Schema and URL of the jobstores and schedule index: the platform
+        database, or a SQLite file of this process's own, removed at cleanup."""
+        if not self.throwaway_jobstores:
+            return _extract_schema_from_url(os.getenv("DIRECT_URL"))
+        self._throwaway_dir = tempfile.TemporaryDirectory(
+            prefix="scheduler-jobstores-", ignore_cleanup_errors=True
+        )
+        return None, f"sqlite:///{self._throwaway_dir.name}/jobs.sqlite"
+
     def _register_idle_credential_sweep(self) -> None:
         """Keep an existing daily job's overdue run or explicit pause intact."""
         job_id = "refresh_near_expiry_credentials"
@@ -3145,6 +3180,11 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        # Explicitly: a forked service process ends in os._exit, which skips the
+        # directory's own finalizer.
+        if self._throwaway_dir is not None:
+            self._throwaway_dir.cleanup()
 
         super().cleanup()
 
