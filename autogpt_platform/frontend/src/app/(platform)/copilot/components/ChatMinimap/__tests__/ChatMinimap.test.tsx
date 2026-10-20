@@ -82,6 +82,33 @@ describe("ChatMinimap", () => {
 
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
   });
+
+  it("hands a message whose row is not mounted to the transcript", () => {
+    const onJumpToUnmounted = vi.fn();
+    render(
+      <div>
+        <ChatMinimap
+          messages={MESSAGES}
+          onJumpToUnmounted={onJumpToUnmounted}
+        />
+        <div data-message-id="m1">Plan my week</div>
+      </div>,
+    );
+    const scrollIntoView = vi.fn();
+    document
+      .querySelectorAll("[data-message-id]")
+      .forEach(
+        (el) => ((el as HTMLElement).scrollIntoView = scrollIntoView as never),
+      );
+
+    fireEvent.click(screen.getByLabelText("Jump to: Now the budget"));
+    expect(onJumpToUnmounted).toHaveBeenCalledWith("m3");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Jump to: Plan my week"));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(onJumpToUnmounted).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("ChatMinimap renders", () => {
