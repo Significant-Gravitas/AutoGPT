@@ -3818,28 +3818,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/health": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Health Check",
-        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
-        "operationId": "getV2HealthCheck",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Getv2Healthcheck"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/model-tiers": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -14717,6 +14695,78 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups/paused": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List scheduled chats paused after failing the same way",
+        "description": "A paused job drops out of the follow-ups list above, so the chats a\nfailure streak paused are listed here, each once however many fire times\nit has, with why and what Resume takes.",
+        "operationId": "listPausedScheduledChats",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PausedScheduledChat"
+                  },
+                  "type": "array",
+                  "title": "Response Listpausedscheduledchats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/resume": {
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Resume a scheduled chat paused after failing the same way",
+        "operationId": "resumeScheduledChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeScheduledChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -21559,6 +21609,11 @@
           "limits_retry_count": {
             "type": "integer",
             "title": "Limits Retry Count",
+            "default": 0
+          },
+          "usage_wait_count": {
+            "type": "integer",
+            "title": "Usage Wait Count",
             "default": 0
           },
           "user_timezone": {
@@ -29343,6 +29398,40 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
+      "PausedScheduledChat": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "reason": { "type": "string", "title": "Reason" },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "summary": { "type": "string", "title": "Summary" },
+          "paused_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paused At"
+          },
+          "routine": { "type": "boolean", "title": "Routine", "default": false }
+        },
+        "type": "object",
+        "required": [
+          "schedule_key",
+          "title",
+          "session_id",
+          "reason",
+          "provider",
+          "summary",
+          "paused_at"
+        ],
+        "title": "PausedScheduledChat",
+        "description": "A scheduled chat its failure streak paused, as the lists show it."
+      },
       "PeekPendingMessagesResponse": {
         "properties": {
           "messages": {
@@ -31147,6 +31236,12 @@
         "type": "object",
         "required": ["version_id"],
         "title": "RestoreVersionRequest"
+      },
+      "ResumeScheduledChatResponse": {
+        "properties": { "resumed": { "type": "boolean", "title": "Resumed" } },
+        "type": "object",
+        "required": ["resumed"],
+        "title": "ResumeScheduledChatResponse"
       },
       "ReviewItem": {
         "properties": {

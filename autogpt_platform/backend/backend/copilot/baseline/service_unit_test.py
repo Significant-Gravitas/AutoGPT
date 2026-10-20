@@ -3199,3 +3199,32 @@ class TestBaselineToolExecutorForwardsDisabledGroups:
         )
 
         assert kwargs["disabled_tools"] == frozenset({"run_agent"})
+
+
+class TestStampPostHogTrace:
+    def test_every_save_of_the_turns_rows_stamps_its_posthog_trace_first(self):
+        """A rating of the reply names its PostHog trace from this stamp
+        (``ai_spans.stamp_turn_trace_id``): the mid-turn flush, the error
+        marker and the end-of-turn save each stamp before they persist."""
+        import inspect
+
+        from backend.copilot.baseline.service import stream_chat_completion_baseline
+
+        src = inspect.getsource(stream_chat_completion_baseline)
+        pairs = [
+            (
+                "stamp_turn_trace_id(current_session.messages, turn_start)",
+                "current_session = await persist_session_safe(",
+            ),
+            (
+                "stamp_turn_trace_id(_failed_session.messages, turn_start)",
+                "await upsert_chat_session(_failed_session)",
+            ),
+            (
+                "stamp_turn_trace_id(session.messages, turn_start)",
+                "            await upsert_chat_session(session)\n",
+            ),
+        ]
+        for stamp, save in pairs:
+            stamped_at = src.index(stamp)
+            assert stamped_at < src.index(save, stamped_at)

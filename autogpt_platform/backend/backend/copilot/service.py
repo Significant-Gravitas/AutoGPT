@@ -36,6 +36,7 @@ from .config import ChatConfig, CopilotLLMModel
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
+from .google_data_redaction import install_langfuse_mask
 from .llm_attribution import openrouter_attribution
 from .model import (
     ChatMessage,
@@ -435,6 +436,16 @@ def _is_langfuse_configured() -> bool:
     return bool(
         settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
     )
+
+
+# Before anything asks for a Langfuse client: the SDK keeps the first one's
+# settings, and this one's mask keeps Google data out of the traces.
+if _is_langfuse_configured():
+    try:
+        install_langfuse_mask()
+    except Exception:
+        # The SDK path checks again and runs untraced; this is the alarm.
+        logger.exception("Langfuse traces are not masked for Google data")
 
 
 async def _fetch_langfuse_prompt() -> str | None:

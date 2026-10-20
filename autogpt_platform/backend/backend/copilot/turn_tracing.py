@@ -5,6 +5,10 @@ continues the trace of whatever dispatched it: the chat request, a parent
 turn's tool, a graph node. Each tool call the turn makes is a ``copilot.tool``
 transaction of its own in that trace, so a long autopilot turn stays under the
 SDK's span limit however many tools it runs.
+
+A turn that reached its engine also ends as an entry in PostHog's LLM
+analytics: the ``$ai_trace`` of a reply, or the ``$ai_span`` of a subtask in
+its reply's trace (see ``copilot.ai_spans``).
 """
 
 import time
@@ -14,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from sentry_sdk.tracing import Span
 
+from backend.copilot import ai_spans
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamReasoningDelta,
@@ -42,9 +47,13 @@ class TurnTrace:
         self._first_token_seen = False
         self._chunks = 0
         self._tool_calls = 0
+        self.engine: str | None = None
+        self.outcome = "completed"
+        self.error_code: str | None = None
 
     def engine_started(self, engine: str) -> None:
         """Setup is done and the turn is handed to ``engine``."""
+        self.engine = engine
         self.span.set_tag("copilot.engine", engine)
         tracing.set_timing("copilot.turn.setup_ms", self._elapsed_ms(), span=self.span)
 
@@ -59,14 +68,22 @@ class TurnTrace:
                 "copilot.turn.ttft_ms", self._elapsed_ms(), span=self.span
             )
 
-    def set_outcome(self, error_message: str | None, cancelled_message: str) -> None:
-        """Tag how the turn ended, given the error it reports to the user."""
+    def set_outcome(
+        self,
+        error_message: str | None,
+        cancelled_message: str,
+        error_code: str | None = None,
+    ) -> None:
+        """Tag how the turn ended, given the error it reports to the user
+        and the code it reports with it."""
         if not error_message:
             outcome, status = "completed", "ok"
         elif error_message == cancelled_message:
             outcome, status = "cancelled", "cancelled"
         else:
             outcome, status = "failed", "internal_error"
+        self.outcome = outcome
+        self.error_code = error_code
         self.span.set_tag("copilot.turn.outcome", outcome)
         tracing.set_status(status, span=self.span)
 
@@ -77,6 +94,21 @@ class TurnTrace:
         tracing.set_data("copilot.turn.chunk_count", self._chunks, span=self.span)
         tracing.set_data(
             "copilot.turn.tool_call_count", self._tool_calls, span=self.span
+        )
+
+    def report_to_posthog(self, entry: "CoPilotExecutionEntry") -> None:
+        """Send the turn's end to PostHog's LLM analytics. A turn that never
+        reached its engine made no model or tool calls, so it sends none."""
+        if self.engine is None:
+            return
+        ai_spans.capture_turn(
+            entry,
+            latency_seconds=self._elapsed_ms() / 1000,
+            outcome=self.outcome,
+            error_code=self.error_code,
+            engine=self.engine,
+            origin=_origin(entry),
+            tool_call_count=self._tool_calls,
         )
 
     def _elapsed_ms(self) -> float:
@@ -117,6 +149,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
             yield turn
         finally:
             turn.close()
+            turn.report_to_posthog(entry)
 
 
 def _origin(entry: "CoPilotExecutionEntry") -> str:

@@ -409,6 +409,8 @@ async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():
     assert result.error == "pinned_credential_unusable"
     assert "'Work'" in result.message
     assert "did not switch" in result.message
+    # What a scheduled chat's failure streak keys on and Reconnect opens.
+    assert result.details == {"provider": "github"}
 
 
 async def test_a_pin_for_one_host_is_not_blamed_for_a_step_on_another():

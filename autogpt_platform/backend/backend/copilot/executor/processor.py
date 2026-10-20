@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Callable, cast
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.copilot import stream_registry
+from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
@@ -269,13 +270,18 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
 
 
 async def _refuse_turn(
-    entry: CoPilotExecutionEntry, session: "ChatSession", pause: TurnPause
+    entry: CoPilotExecutionEntry,
+    session: "ChatSession",
+    pause: TurnPause,
+    scheduled_watch: ScheduledTurnWatch | None,
 ) -> None:
     """End a turn the allowance can't cover without running it.
 
     The chat keeps the turn's message, as a turn that ran would, followed by
     a not-started marker; the live stream carries the same pause part the
-    engines end a landed turn with.
+    engines end a landed turn with. A scheduled turn's watch sees it too, so
+    its streak counts the run as not run rather than as one that tried
+    nothing.
     """
     maybe_append_user_message(
         session, entry.message or None, entry.is_user_message, entry.message_metadata
@@ -288,6 +294,8 @@ async def _refuse_turn(
         await stream_registry.publish_chunk(
             entry.turn_id, chunk, session_id=entry.session_id
         )
+        if scheduled_watch is not None:
+            scheduled_watch.observe(chunk)
 
 
 def execute_copilot_turn(
@@ -686,7 +694,7 @@ class CoPilotProcessor:
                     return
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
-                    await _refuse_turn(entry, session, pause)
+                    await _refuse_turn(entry, session, pause, scheduled_watch)
                     return
                 if credit_turn is not None:
                     log.info(
@@ -849,7 +857,9 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
-            set_turn_trace_id(entry.turn_id)
+            # A subtask's calls join the trace of the reply it works for.
+            set_turn_trace_id(trace_id_for(entry))
+            set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
             raw_stream = stream_fn(
@@ -944,7 +954,9 @@ class CoPilotProcessor:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
                 # After the release, which can still fail the turn.
-                turn.set_outcome(error_msg, stream_registry.CANCELLED_MESSAGE)
+                turn.set_outcome(
+                    error_msg, stream_registry.CANCELLED_MESSAGE, error_code
+                )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
                 try:
@@ -957,9 +969,18 @@ class CoPilotProcessor:
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
                 finally:
-                    await cost_context_stack.aclose()
-                    # A browser turn leaves a Chromium tree on this pod that
-                    # nothing else ever stops; state is already persisted, so
-                    # the next turn restores it wherever it lands.
-                    if await close_browser_daemon(entry.session_id):
-                        log.info("Browser daemon teardown attempted for this turn")
+                    try:
+                        # After the turn is marked done, so the owner never
+                        # waits on it: counts the run toward its schedule's
+                        # failure streak. It can be cancelled while it waits,
+                        # so the cleanups below still run.
+                        if scheduled_watch is not None:
+                            await scheduled_watch.record(error_msg)
+                    finally:
+                        await cost_context_stack.aclose()
+                        # A browser turn leaves a Chromium tree on this pod
+                        # that nothing else ever stops; state is already
+                        # persisted, so the next turn restores it wherever it
+                        # lands.
+                        if await close_browser_daemon(entry.session_id):
+                            log.info("Browser daemon teardown attempted for this turn")

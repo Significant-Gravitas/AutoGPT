@@ -9,7 +9,7 @@
 import logging
 import time
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -22,9 +22,11 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
+from backend.copilot.llm_attribution import turn_trace_id
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -273,6 +275,10 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    # A scheduled chat its owner set up, or a chat's own turn resumed or
+    # sent at its budget reset. Both alert; only a scheduled chat has a
+    # failure streak to count toward.
+    purpose: Literal["followup", "resume", "send"] = "followup"
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -802,8 +808,15 @@ async def _admitted_turn_envelope(
     if spawner is None:
         envelope = root_envelope(turn_id, session_id=session_id)
     else:
+        # Same rule as the Sentry trace: a child derived from the caller's
+        # context joins the caller's PostHog trace, under its running tool.
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        ).model_copy(
+            update={
+                "ai_trace_id": turn_trace_id(),
+                "ai_parent_span_id": current_span_id(),
+            }
         )
     await admit_turn(envelope, user_id=user_id)
     return envelope
