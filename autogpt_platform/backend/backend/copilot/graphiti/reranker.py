@@ -24,11 +24,24 @@ from openai.types.chat import (
 
 from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
 
+from .config import graphiti_config
 from .models import DEFAULT_LLM_MODEL, is_luna_model
 
 logger = logging.getLogger(__name__)
 
 _PROBE_RANKS = itertools.count()
+_PROBE_ARMS = ("or20", "or1w", "direct1w", "mini1w")
+_probe_direct: openai.AsyncOpenAI | None = None
+
+
+def _probe_direct_client() -> openai.AsyncOpenAI:
+    """OpenAI directly, with the key the embedder already uses."""
+    global _probe_direct
+    if _probe_direct is None:
+        _probe_direct = openai.AsyncOpenAI(
+            api_key=graphiti_config.resolve_embedder_api_key()
+        )
+    return _probe_direct
 
 MIN_COMPLETION_TOKENS = 16
 
@@ -40,6 +53,21 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
 
     async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
         model = self.config.model or DEFAULT_MODEL
+        # do-not-merge probe (#15739): successive pairs of ranks rotate through
+        # graphiti's default cap of 20 at a time, one wave (#15492's cap), one
+        # wave sent to OpenAI directly, and one wave on GPT-4.1 mini.
+        arm = _PROBE_ARMS[(next(_PROBE_RANKS) // 2) % len(_PROBE_ARMS)]
+        client = self.client
+        if arm == "direct1w":
+            client = _probe_direct_client()
+            model = model.removeprefix("openai/")
+        elif arm == "mini1w":
+            model = "openai/gpt-4.1-mini"
+        cap = None if arm == "or20" else max(1, min(len(passages), 64))
+        _perf_legs.note("rr_arm", arm)
+        _perf_legs.note("rr_model", model)
+        _perf_legs.note("rr_passages", len(passages))
+        _perf_legs.note("rr_cap", cap or SEMAPHORE_LIMIT)
         options: dict[str, Any] = (
             {"reasoning_effort": "none", "max_completion_tokens": MIN_COMPLETION_TOKENS}
             if is_luna_model(model)
@@ -72,14 +100,6 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             ]
             for passage in passages
         ]
-        # do-not-merge probe (#15739): every other pair of ranks runs as one
-        # wave (#15492's cap) instead of graphiti's default of 20 at a time,
-        # and each classifier call's start and duration is recorded.
-        one_wave = (next(_PROBE_RANKS) // 2) % 2 == 1
-        cap = max(1, min(len(passages), 64)) if one_wave else None
-        _perf_legs.note("rr_passages", len(passages))
-        _perf_legs.note("rr_cap", cap or SEMAPHORE_LIMIT)
-
         async def _probe_call(call):
             started = time.time()
             try:
@@ -96,7 +116,7 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             responses = await semaphore_gather(
                 *[
                     _probe_call(
-                        self.client.chat.completions.create(
+                        client.chat.completions.create(
                             model=model,
                             messages=openai_messages,
                             temperature=0,
