@@ -2,8 +2,10 @@
 
 import logging
 from datetime import UTC, datetime
+from typing import NoReturn
 
 from prisma import Prisma
+from prisma.models import TransferRequest
 from prisma.types import TransferRequestWhereInput
 
 from backend.data.db import prisma, transaction
@@ -178,12 +180,10 @@ async def execute_transfer(
     user_id: str,
     org_id: str,
 ) -> TransferResponse:
-    """Execute an approved transfer -- move the resource to the target org.
+    """Atomically execute a transfer approved by both organizations.
 
-    Requires both source and target approvals, and the caller's active org
-    must be a party to the transfer — TRANSFER_RESOURCES is granted to every
-    personal-org owner, so without this check any authenticated user could
-    execute an approved transfer between two unrelated orgs.
+    The caller's active org must be a party, since TRANSFER_RESOURCES alone
+    is granted to every personal-org owner.
     """
     tr = await prisma.transferrequest.find_unique(where={"id": transfer_id})
     if tr is None:
@@ -203,72 +203,11 @@ async def execute_transfer(
     if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot execute a transfer with status '{tr.status}'")
 
-    # Move, status claim, audit rows and competing-transfer cleanup commit
-    # together or not at all (#15267).
     try:
         async with transaction() as tx:
-            # Ownership can change between create and execute: another
-            # approved transfer of the same resource may have run (#15271).
-            try:
-                await _validate_resource_ownership(
-                    tr.resourceType, tr.resourceId, tr.sourceOrganizationId, db=tx
-                )
-            except ValueError as e:
-                raise _SourceNoLongerOwnsResource() from e
-
-            # Scoped to the source org, so a move that races another
-            # transfer's move matches nothing instead of stealing the resource.
-            # It runs first so the resource row lock is taken before any
-            # TransferRequest row lock, keeping competing executes deadlock-free.
-            moved = await _move_resource(
-                resource_type=tr.resourceType,
-                resource_id=tr.resourceId,
-                source_org_id=tr.sourceOrganizationId,
-                target_org_id=tr.targetOrganizationId,
-                db=tx,
-            )
-            if moved == 0:
-                raise _SourceNoLongerOwnsResource()
-
-            # Conditional claim: only one concurrent execute can complete it,
-            # and only while it is open and approved by both sides.
-            claimed = await tx.transferrequest.update_many(
-                where={
-                    "id": transfer_id,
-                    "status": {"not_in": _TERMINAL_STATUSES},
-                    "sourceApprovedByUserId": {"not": None},
-                    "targetApprovedByUserId": {"not": None},
-                },
-                data={"status": "COMPLETED", "completedAt": datetime.now(UTC)},
-            )
-            if claimed == 0:
-                raise ValueError("Transfer is no longer open for execution")
-
-            await _create_audit_logs(transfer=tr, actor_user_id=user_id, db=tx)
-
-            # Any other open transfer of this resource names the old owner as
-            # its source and can no longer be executed; close it out.
-            await tx.transferrequest.update_many(
-                where={
-                    "id": {"not": transfer_id},
-                    "resourceType": tr.resourceType,
-                    "resourceId": tr.resourceId,
-                    "status": {"in": _OPEN_STATUSES},
-                },
-                data={"status": "REJECTED"},
-            )
+            await _execute_in_transaction(tx, tr, user_id)
     except _SourceNoLongerOwnsResource:
-        rejected = await prisma.transferrequest.update_many(
-            where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
-            data={"status": "REJECTED"},
-        )
-        if rejected == 0:
-            # A concurrent execute of this same transfer won the move.
-            raise ValueError("Transfer is no longer open for execution")
-        raise ValueError(
-            "Resource was deleted or no longer belongs to the source "
-            "organization; the transfer has been rejected"
-        )
+        await _reject_stale_transfer(transfer_id)
 
     updated = await prisma.transferrequest.find_unique_or_raise(
         where={"id": transfer_id}
@@ -279,6 +218,80 @@ async def execute_transfer(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+async def _execute_in_transaction(
+    tx: Prisma, transfer: TransferRequest, user_id: str
+) -> None:
+    """Move, complete, audit and close competing requests in the caller's transaction.
+
+    Lock the resource before any TransferRequest row to serialize competing executes.
+    """
+    try:
+        await _validate_resource_ownership(
+            transfer.resourceType,
+            transfer.resourceId,
+            transfer.sourceOrganizationId,
+            db=tx,
+        )
+    except ValueError as e:
+        raise _SourceNoLongerOwnsResource() from e
+
+    moved = await _move_resource(
+        resource_type=transfer.resourceType,
+        resource_id=transfer.resourceId,
+        source_org_id=transfer.sourceOrganizationId,
+        target_org_id=transfer.targetOrganizationId,
+        db=tx,
+    )
+    if moved == 0:
+        raise _SourceNoLongerOwnsResource()
+
+    await _claim_completion(tx, transfer.id)
+    await _create_audit_logs(transfer=transfer, actor_user_id=user_id, db=tx)
+    await _reject_competing_transfers(tx, transfer)
+
+
+async def _claim_completion(tx: Prisma, transfer_id: str) -> None:
+    """Claim an open, fully approved request after its resource has been locked."""
+    claimed = await tx.transferrequest.update_many(
+        where={
+            "id": transfer_id,
+            "status": {"not_in": _TERMINAL_STATUSES},
+            "sourceApprovedByUserId": {"not": None},
+            "targetApprovedByUserId": {"not": None},
+        },
+        data={"status": "COMPLETED", "completedAt": datetime.now(UTC)},
+    )
+    if claimed == 0:
+        raise ValueError("Transfer is no longer open for execution")
+
+
+async def _reject_competing_transfers(tx: Prisma, transfer: TransferRequest) -> None:
+    """Close other open requests whose source can no longer transfer this resource."""
+    await tx.transferrequest.update_many(
+        where={
+            "id": {"not": transfer.id},
+            "resourceType": transfer.resourceType,
+            "resourceId": transfer.resourceId,
+            "status": {"in": _OPEN_STATUSES},
+        },
+        data={"status": "REJECTED"},
+    )
+
+
+async def _reject_stale_transfer(transfer_id: str) -> NoReturn:
+    """Reject after rollback without overwriting a concurrent terminal state."""
+    rejected = await prisma.transferrequest.update_many(
+        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
+        data={"status": "REJECTED"},
+    )
+    if rejected == 0:
+        raise ValueError("Transfer is no longer open for execution")
+    raise ValueError(
+        "Resource was deleted or no longer belongs to the source "
+        "organization; the transfer has been rejected"
+    )
 
 
 async def _validate_resource_ownership(
