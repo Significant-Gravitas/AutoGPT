@@ -147,6 +147,10 @@ class ScheduledTurnWatch:
         Never raises, and bounded: it runs in the turn's cleanup, after the
         turn has been marked done.
         """
+        if self._origin.purpose != "followup":
+            # A chat's own turn, resumed or sent at its budget reset: the
+            # chat is the user's, not a schedule that can be paused.
+            return
         outcome = self.outcome(turn_error)
         schedule_key = self._origin.routine_id or self._origin.schedule_id
         if outcome.neutral or schedule_key is None or self._entry.user_id is None:
