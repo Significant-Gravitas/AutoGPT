@@ -952,6 +952,9 @@ class CoPilotProcessor:
         except BaseException as e:
             # Handle all exceptions (including CancelledError) with appropriate logging
             if isinstance(e, asyncio.CancelledError):
+                if deadline is not None and deadline.expired():
+                    log.info("Background turn reached its deadline")
+                    return
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE
             else:

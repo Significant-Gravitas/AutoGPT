@@ -41,7 +41,7 @@ async def test_worker_enforces_the_saved_deadline_even_during_silent_work():
     )
     cancelled = asyncio.Event()
 
-    async def silent_work(*_args):
+    async def silent_work(*_args, **_kwargs):
         try:
             await asyncio.sleep(0.3)
             pytest.fail("The worker ran beyond the saved deadline")
@@ -53,10 +53,24 @@ async def test_worker_enforces_the_saved_deadline_even_during_silent_work():
             "backend.copilot.executor.processor.claim_background_execution",
             AsyncMock(return_value=True),
         ),
-        patch.object(CoPilotProcessor, "_run_turn", silent_work),
-        pytest.raises(TimeoutError),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            silent_work,
+        ),
+        patch(
+            "backend.copilot.executor.processor.finish_background_execution",
+            AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.close_browser_daemon",
+            AsyncMock(return_value=False),
+        ),
     ):
-        await CoPilotProcessor()._execute_async(
+        assert await CoPilotProcessor()._execute_async(
             entry,
             threading.Event(),
             MagicMock(),

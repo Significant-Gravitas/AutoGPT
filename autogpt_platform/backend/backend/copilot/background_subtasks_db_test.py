@@ -4,6 +4,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import AsyncIterator
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -299,15 +300,27 @@ async def test_worker_timeout_does_not_depend_on_the_database_clock(
     monkeypatch.setattr(
         processor, "close_browser_daemon", AsyncMock(return_value=False)
     )
-    with pytest.raises(TimeoutError):
-        await processor.CoPilotProcessor()._execute_async(
-            entry,
-            threading.Event(),
-            MagicMock(),
-            CoPilotLogMetadata(logging.getLogger("background-timeout-test")),
-        )
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    with (
+        pytest.raises(TimeoutError, match=BACKGROUND_TIMEOUT_MESSAGE)
+        if expired_before_pickup
+        else nullcontext()
+    ):
+        await asyncio.to_thread(worker.execute, entry, threading.Event(), MagicMock())
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == "timed_out"
+    active = await stream_registry.get_session(task.child_session_id)
+    assert active and active.status == "failed"
+    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
+    events: asyncio.Queue[stream_registry.StreamEntry] = asyncio.Queue()
+    await stream_registry._replay(
+        await get_redis_async(), task.child_turn_id, "0-0", events
+    )
+    chunks = [events.get_nowait()[1] for _ in range(events.qsize())]
+    assert [c.errorText for c in chunks if isinstance(c, StreamError)] == [
+        BACKGROUND_TIMEOUT_MESSAGE
+    ]
 
 
 async def test_child_stop_reports_cancellation_and_parent_stop_suppresses_wake(

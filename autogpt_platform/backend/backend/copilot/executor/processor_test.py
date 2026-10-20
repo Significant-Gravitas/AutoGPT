@@ -21,6 +21,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.copilot.ai_spans import current_span_id
+from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -1453,9 +1454,12 @@ class TestSyncFailCloseSession:
     ``execution_loop`` (cross-thread submit) and must swallow Redis
     failures so a transient outage doesn't propagate out of the finally."""
 
-    def test_background_deadline_leaves_sync_wait_and_closes_session(
-        self, exec_loop
+    @pytest.mark.parametrize("failure", ["deadline", "cancel", "work", "cleanup"])
+    def test_background_deadline_is_acknowledged_but_execution_errors_are_rejected(
+        self, exec_loop, failure: str
     ) -> None:
+        from backend.copilot.executor.manager import CoPilotExecutor
+
         proc = CoPilotProcessor()
         proc.execution_loop = exec_loop
         entry = _make_entry().model_copy(
@@ -1464,7 +1468,7 @@ class TestSyncFailCloseSession:
                 "envelope": TurnEnvelope(
                     tree_id="tree",
                     depth=1,
-                    deadline_at=datetime.now(UTC) + timedelta(milliseconds=25),
+                    deadline_at=datetime.now(UTC) + timedelta(seconds=5),
                 ),
             }
         )
@@ -1473,8 +1477,16 @@ class TestSyncFailCloseSession:
             "The worker polled a completed deadline error instead of exiting"
         )
         mark_completed = AsyncMock()
+        finish_background = AsyncMock()
+        error = TimeoutError(f"{failure} request timed out")
+        cancel = threading.Event()
 
-        async def silent_work(*_args):
+        async def work(*_args):
+            if failure == "work":
+                raise error
+            if failure == "cancel":
+                cancel.set()
+                raise asyncio.CancelledError
             await asyncio.sleep(0.3)
             pytest.fail("The background deadline did not stop the turn")
 
@@ -1483,18 +1495,78 @@ class TestSyncFailCloseSession:
                 "backend.copilot.executor.processor.claim_background_execution",
                 AsyncMock(return_value=True),
             ),
-            patch.object(proc, "_run_turn", silent_work),
+            patch(
+                "backend.copilot.executor.processor.background_timeout",
+                return_value=0.025,
+            ),
+            patch("backend.copilot.model.get_chat_session", work),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.publish_chunk",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.executor.processor.finish_background_execution",
+                finish_background,
+            ),
+            patch(
+                "backend.copilot.executor.processor.close_browser_daemon",
+                AsyncMock(
+                    return_value=False,
+                    side_effect=error if failure == "cleanup" else None,
+                ),
+            ),
             patch(
                 "backend.copilot.executor.processor.stream_registry.mark_session_completed",
                 mark_completed,
             ),
-            pytest.raises(TimeoutError),
+            concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool,
         ):
-            proc.execute(entry, threading.Event(), cluster_lock)
+            future = pool.submit(proc.execute, entry, cancel, cluster_lock)
+            exception = future.exception(timeout=5)
+
+        if failure in ("deadline", "cancel"):
+            assert exception is None
+        else:
+            assert isinstance(exception, TimeoutError)
+            assert str(exception) == str(error)
+        reason = str(error) if failure == "work" else BACKGROUND_TIMEOUT_MESSAGE
+        if failure == "cancel":
+            reason = "Operation cancelled"
+        finish_background.assert_awaited_once_with(entry, reason)
+        assert mark_completed.await_args_list[0].kwargs["error_message"] == reason
+        assert mark_completed.await_args_list[0].kwargs["turn_id"] == entry.turn_id
 
         cluster_lock.refresh.assert_not_called()
-        mark_completed.assert_awaited_once()
-        assert mark_completed.await_args.kwargs["turn_id"] == entry.turn_id
+        manager = CoPilotExecutor()
+        manager._executor = MagicMock()
+        manager._executor.submit.return_value = future
+        cluster_lock.try_acquire.return_value = manager.executor_id
+        channel = MagicMock()
+        channel.connection.add_callback_threadsafe.side_effect = (
+            lambda callback: callback()
+        )
+        with (
+            patch(
+                "backend.copilot.executor.manager.ClusterLock",
+                return_value=cluster_lock,
+            ),
+            patch("backend.copilot.executor.manager.redis.get_redis"),
+            patch("backend.copilot.executor.manager._maybe_dispatch_engine_switch"),
+        ):
+            manager._handle_run_message(
+                channel,
+                MagicMock(delivery_tag=42),
+                MagicMock(),
+                entry.model_dump_json().encode(),
+            )
+        if failure in ("deadline", "cancel"):
+            channel.basic_ack.assert_called_once_with(42)
+            channel.basic_nack.assert_not_called()
+        else:
+            channel.basic_nack.assert_called_once_with(42, requeue=False)
+            channel.basic_ack.assert_not_called()
+        cluster_lock.release.assert_called_once()
+        assert manager.active_tasks == {}
 
     def test_invokes_mark_session_completed_with_shutdown_message(
         self, exec_loop
