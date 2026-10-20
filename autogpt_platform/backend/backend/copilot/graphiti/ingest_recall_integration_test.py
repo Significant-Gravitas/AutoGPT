@@ -71,7 +71,7 @@ _KEPT_NOTE = "Carol mentioned it during the Monday stand-up."
 async def ingest_worker_cleanup(mocker: MockerFixture) -> AsyncIterator[None]:
     """No dream registration on a first write; no idle worker left behind."""
     mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
+        "backend.copilot.graphiti.ingest.ensure_scope_scheduled",
         AsyncMock(return_value=None),
     )
     yield
