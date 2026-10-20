@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -234,7 +235,7 @@ class TestExecuteAsyncScheduledTurnContext:
 
     @staticmethod
     async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
-        from backend.copilot.context import is_unattended_turn
+        from backend.copilot.context import get_current_turn_id, is_unattended_turn
         from backend.copilot.credential_selection import turn_credential_pins
 
         seen: dict = {}
@@ -244,6 +245,8 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
             seen["trace_id"] = turn_trace_id()
+            seen["span_id"] = current_span_id()
+            seen["turn_id"] = get_current_turn_id()
             return MagicMock()
 
         with (
@@ -291,6 +294,8 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {"exa": pin},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
+            "turn_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -302,6 +307,8 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {},
             "impersonated": False,
             "trace_id": "turn-1",
+            "span_id": "turn-1",
+            "turn_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -320,6 +327,27 @@ class TestExecuteAsyncScheduledTurnContext:
         seen = await self._seen_by_the_turn(entry)
 
         assert seen["trace_id"] == "turn-42"
+
+    @pytest.mark.asyncio
+    async def test_a_subtask_joins_the_trace_of_the_reply_it_works_for(
+        self,
+    ) -> None:
+        """Its model and tool calls group with the reply at its tree's root,
+        and its tool calls nest under the subtask's own span."""
+        entry = _make_entry().model_copy(
+            update={
+                "turn_id": "child-turn",
+                "envelope": TurnEnvelope(
+                    tree_id="root-turn", depth=1, ai_trace_id="root-turn"
+                ),
+            }
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["trace_id"] == "root-turn"
+        assert seen["span_id"] == "child-turn"
+        assert seen["turn_id"] == "child-turn"
 
 
 class TestExecuteAsyncAclose:

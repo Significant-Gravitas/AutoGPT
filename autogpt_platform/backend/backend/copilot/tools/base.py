@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -23,6 +24,7 @@ from .models import (
     ApprovalRequiredResponse,
     ErrorResponse,
     NeedLoginResponse,
+    ResponseType,
     ToolResponseBase,
 )
 
@@ -32,6 +34,12 @@ if TYPE_CHECKING:
     from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
+
+# Outputs that stop a call to wait on the user (an approval card, a sign-in),
+# which is not the tool failing.
+_AWAITING_THE_USER = frozenset(
+    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+)
 
 # Persist full tool output to workspace when it exceeds this threshold.
 # Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
@@ -321,6 +329,16 @@ GATE_APPROVED = "_gate_approved"
 GATE_DECIDED = "_gate_decided"
 
 
+def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
+    raw = output.output
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return False
+    return isinstance(raw, dict) and raw.get("type") in _AWAITING_THE_USER
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -418,7 +436,9 @@ class BaseTool:
         """Execute the tool with authentication check.
 
         Each call is its own Sentry ``copilot.tool`` transaction, named after
-        the tool, in the trace of the turn that made it.
+        the tool, in the trace of the turn that made it, and a PostHog
+        ``$ai_span`` in the trace of the reply (``copilot.ai_spans``): its
+        name, latency and whether it failed, never its input or output.
 
         Args:
             user_id: User ID (None for anonymous users)
@@ -432,11 +452,19 @@ class BaseTool:
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
             tool_call_context(tool_call_id),
+            tool_span(
+                self.name,
+                user_id=user_id,
+                session_id=session.session_id,
+                tool_call_id=tool_call_id,
+            ) as outcome,
         ):
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            if not output.success and not _awaits_the_user(output):
+                outcome.is_error = True
             return output
 
     async def _execute_checked(
@@ -527,6 +555,8 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **run_kwargs)
+            if result.type == ResponseType.ERROR:
+                mark_tool_failed()
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = full = result.model_dump_json(exclude_none=True)
@@ -550,6 +580,7 @@ class BaseTool:
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")
+            mark_tool_raised(e)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,

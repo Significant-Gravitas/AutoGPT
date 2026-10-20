@@ -36,7 +36,7 @@ from backend.copilot.background_task import (
     DELIVERY_SECONDS,
     BackgroundTask,
 )
-from backend.copilot.context import set_execution_context
+from backend.copilot.context import set_current_turn_id, set_execution_context
 from backend.copilot.executor import processor, utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 from backend.copilot.llm_attribution import set_turn_trace_id
@@ -75,12 +75,16 @@ class World(BaseModel):
     published: AsyncMock
 
     async def launch(
-        self, call_id: str = "launch", permissions: CopilotPermissions | None = None
+        self,
+        call_id: str = "launch",
+        permissions: CopilotPermissions | None = None,
+        trace_id: str | None = None,
     ) -> BackgroundTask:
         set_execution_context(
             self.user_id, self.parent, permissions=permissions, envelope=self.envelope
         )
-        set_turn_trace_id(self.envelope.tree_id)
+        set_turn_trace_id(trace_id or self.envelope.tree_id)
+        set_current_turn_id(self.envelope.tree_id)
         with tool_call_context(call_id):
             response = await background_subtasks.start_background_subtask(
                 self.user_id, self.parent, "Find the answer"
@@ -149,6 +153,16 @@ async def test_completion_waits_for_a_busy_parent(world: World):
     await world.finish_parent()
     await background_delivery.reconcile_background_subtasks()
     assert world.entry(world.parent.session_id).turn_id == task.wake_id
+
+
+async def test_shared_trace_does_not_change_the_launching_turn(world: World):
+    task = await world.launch(trace_id="spawning-turn-trace")
+    assert task.launch_turn_id == world.envelope.tree_id
+    await background_delivery.cancel_background_subtasks(
+        world.user_id, world.parent.session_id, world.envelope.tree_id
+    )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.wake_suppressed and stored.outcome == "cancelled"
 
 
 @pytest.mark.parametrize("blocks_exclude", [False, True])

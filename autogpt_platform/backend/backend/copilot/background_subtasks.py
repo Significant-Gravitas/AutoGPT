@@ -12,13 +12,17 @@ from backend.copilot.background_task import (
     operation_id,
     task_metadata,
 )
-from backend.copilot.context import get_current_envelope, get_current_permissions
+from backend.copilot.context import (
+    get_current_envelope,
+    get_current_permissions,
+    get_current_turn_id,
+)
 from backend.copilot.credential_selection import (
     CredentialPin,
     selected_credentials,
     turn_credential_pins,
 )
-from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     ChatSession,
     _get_session_lock,
@@ -52,7 +56,7 @@ async def start_background_subtask(
     envelope, call_id, turn_id = (
         get_current_envelope(),
         current_tool_call_id(),
-        turn_trace_id(),
+        get_current_turn_id(),
     )
     if envelope is None or not call_id or not turn_id:
         raise TreeRefusal(
