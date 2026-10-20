@@ -372,7 +372,10 @@ async def callback(
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
         valid_state = await _verify_callback_state(user_id, state_token, provider)
-        return await _complete_codex_login(user_id, code, valid_state)
+        connected = await _complete_codex_login(user_id, code, valid_state)
+        # As every other connect: the fix for a chat paused on it.
+        resume_after_reconnect_in_background(user_id, provider.value)
+        return connected
 
     failure_class: product_analytics.OAuthExchangeFailureClass = "invalid_state"
     # Everything secret we send the provider, in case its error echoes it back.
