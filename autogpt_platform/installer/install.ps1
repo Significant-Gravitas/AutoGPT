@@ -326,6 +326,9 @@ function New-PrivateSecurity([switch]$Directory) {
 	}
 	$security.SetAccessRuleProtection($true, $false)
 	$identity = New-Object System.Security.Principal.SecurityIdentifier $UserSid
+	# An elevated run would otherwise leave Administrators as the owner on
+	# Windows Server, and a later standard-user rerun would refuse the state.
+	$security.SetOwner($identity)
 	$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
 		$identity,
 		[System.Security.AccessControl.FileSystemRights]::FullControl,
@@ -374,7 +377,8 @@ function Initialize-InstallDirectory {
 		try {
 			New-PrivateDirectory $current
 		} catch {
-			Die "Install directory changed during setup; refusing to reuse it: $current"
+			if (Test-PathEntry $current) { Die "Install directory changed during setup; refusing to reuse it: $current" }
+			Die "Could not create the install directory ${current}: $($_.Exception.Message)"
 		}
 		$created = $true
 	}

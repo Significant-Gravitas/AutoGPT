@@ -547,6 +547,11 @@ try {
 	if ((Get-RunCall) -cnotmatch '--label com\.agpt\.installer\.env-sha256=[0-9a-f]{64}') { throw "run call has no env-sha256 label:`n$(Get-RunCall)" }
 	Assert-PrivateAcl $defaultDir
 	foreach ($name in 'autogpt.env', 'install-id', 'install-state') { Assert-PrivateAcl (Join-Path $defaultDir $name) }
+	# The user owns the state even after an elevated run, so a standard-user rerun accepts it.
+	foreach ($path in @($defaultDir) + @('autogpt.env', 'install-id', 'install-state' | ForEach-Object { Join-Path $defaultDir $_ })) {
+		$owner = (Get-Acl -LiteralPath $path).GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+		if ($owner -ne $userSid) { throw "$path is owned by $owner, not the current user" }
+	}
 	if ([System.IO.File]::ReadAllText((Join-Path $defaultDir 'autogpt.env')) -cne "# Private runtime configuration for the AutoGPT appliance.`nAUTOGPT_PUBLIC_URL=http://localhost:3000`n") {
 		throw 'autogpt.env does not have the expected LF-terminated contents'
 	}
