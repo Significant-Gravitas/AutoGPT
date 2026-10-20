@@ -1452,12 +1452,12 @@ def _provider_refusal(graph: GraphModel, session_id: str) -> ErrorResponse | Non
     names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
     return ErrorResponse(
         message=(
-            f"Agent '{graph.name}' acts with the user's {names} account, which "
+            f"Workflow '{graph.name}' acts with the user's {names} account, which "
             "this run is not permitted to use. Tell the user it is outside what "
             "this run was allowed to do."
         ),
         session_id=session_id,
-    )
+    ).from_outside(graph.name)
 
 
 # One lookup for the run and for the gate: were they two, a drift between
