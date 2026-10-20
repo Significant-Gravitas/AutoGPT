@@ -82,6 +82,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args
 from pydantic import BaseModel, PrivateAttr
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -614,7 +615,7 @@ def allowed_providers(
 def _denied(permissions: CopilotPermissions, infos: Iterable[Any]) -> list[str]:
     """The providers named by credential field specs *infos* that
     *permissions* keeps from the run, of those the ceiling covers."""
-    named = {str(getattr(p, "value", p)) for info in infos for p in info.provider}
+    named = {ProviderName(p).value for info in infos for p in info.provider}
     return sorted(
         p
         for p in named

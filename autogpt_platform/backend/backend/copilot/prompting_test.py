@@ -375,6 +375,19 @@ class TestConnectedAccountNotes:
         assert prompting.get_provider_ceiling_supplement(None) == ""
         assert prompting.get_provider_ceiling_supplement(CopilotPermissions()) == ""
 
+    def test_a_run_allowed_some_accounts_is_told_which(self):
+        """The branch that names them: unreachable while GitHub is the only
+        provider in the table, so pinned here with a stubbed ceiling."""
+        from unittest.mock import patch
+
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.permissions.allowed_providers", return_value=("github",)
+        ):
+            note = prompting.get_provider_ceiling_supplement(CopilotPermissions())
+        assert "only these of the user's connected accounts: GitHub" in note
+
     def test_a_restricted_run_is_told_what_it_may_use(self):
         from backend.copilot.permissions import CopilotPermissions
 
