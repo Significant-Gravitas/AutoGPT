@@ -1,15 +1,22 @@
-import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
+import { betterAuth, type BetterAuthOptions } from "better-auth";
+import {
+  APIError,
+  createAuthMiddleware,
+  getIp,
+  isAPIError,
+} from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
+import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP } from "./ip-email-cap";
+import { recordAuthIp } from "./ip-log";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -92,6 +99,24 @@ function hasPlatformUser(userId: string) {
   return platformUserExists(authDbPool, userId);
 }
 
+// Better Auth hands database hooks the endpoint context, or null outside one.
+type HookContext = {
+  path?: string;
+  headers?: Headers;
+  request?: Request;
+  context?: { options: BetterAuthOptions };
+} | null;
+
+// An admin creating an account (or acting as one) is not that account signing
+// up or in from the admin's IP.
+const ADMIN_CREATE_USER_PATH = "/admin/create-user";
+
+function getRequestIp(ctx: HookContext) {
+  const headers = ctx?.headers ?? ctx?.request?.headers;
+  if (!headers || !ctx?.context) return null;
+  return getIp(headers, ctx.context.options);
+}
+
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
@@ -141,10 +166,7 @@ export const auth = betterAuth({
         // a user row. Existing users and the SQL data-migration bypass it.
         // The thrown message is phrased so the frontend `isWaitlistError()`
         // maps it to the existing "not allowed" modal.
-        before: async (
-          user: { email: string },
-          ctx: { path?: string } | null,
-        ) => {
+        before: async (user: { email: string }, ctx: HookContext) => {
           assertTeamEmailUsesGoogle(user.email, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
@@ -152,15 +174,35 @@ export const auth = betterAuth({
               message: decision.reason ?? "Signups are not allowed.",
             });
           }
+          // IP and email-domain blocks from /admin/users (access-blocks.ts).
+          if (ctx?.path === ADMIN_CREATE_USER_PATH) return;
+          await assertSignUpAllowed(authDbPool, {
+            email: user.email,
+            ipAddress: getRequestIp(ctx),
+          });
         },
         // Writes the platform `User` row (see provision-platform-user.ts). An
         // unverified identity gets it from /auth/callback?method=email instead.
-        after: async (user: {
-          id: string;
-          email: string;
-          name: string;
-          emailVerified?: boolean | null;
-        }) => {
+        // Also logs the sign-up IP for /admin/users (ip-log.ts).
+        after: async (
+          user: {
+            id: string;
+            email: string;
+            name: string;
+            emailVerified?: boolean | null;
+          },
+          ctx: HookContext,
+        ) => {
+          if (ctx?.path !== ADMIN_CREATE_USER_PATH) {
+            await recordAuthIp(authDbPool, {
+              userId: user.id,
+              kind: "SIGN_UP",
+              ipAddress: getRequestIp(ctx),
+              userAgent: (ctx?.headers ?? ctx?.request?.headers)?.get(
+                "user-agent",
+              ),
+            });
+          }
           if (isAwaitingEmailVerification(user, requireEmailVerification)) {
             return;
           }
@@ -183,6 +225,37 @@ export const auth = betterAuth({
               });
             });
           await mirrorVerifiedEmailToPlatformUser(authDbPool, user);
+        },
+      },
+    },
+    // Every sign-in method ends in a session, so this is where an IP block
+    // refuses it and where its IP is logged. An impersonation session carries
+    // the admin's IP, so it is neither.
+    session: {
+      create: {
+        before: async (
+          session: {
+            ipAddress?: string | null;
+            impersonatedBy?: string | null;
+          },
+          ctx: HookContext,
+        ) => {
+          if (!ctx || session.impersonatedBy) return;
+          await assertSignInAllowed(authDbPool, session.ipAddress || null);
+        },
+        after: async (session: {
+          userId: string;
+          ipAddress?: string | null;
+          userAgent?: string | null;
+          impersonatedBy?: string | null;
+        }) => {
+          if (session.impersonatedBy) return;
+          await recordAuthIp(authDbPool, {
+            userId: session.userId,
+            kind: "SIGN_IN",
+            ipAddress: session.ipAddress,
+            userAgent: session.userAgent,
+          });
         },
       },
     },
