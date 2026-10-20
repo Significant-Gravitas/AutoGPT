@@ -10,6 +10,7 @@ hidden from the model.
 
 from backend.copilot.scheduled_chats.notices import (
     BILLING_PATH,
+    INTEGRATIONS_PATH,
     NoticeAction,
     NoticeLink,
     NoticeReconnect,
@@ -49,17 +50,29 @@ def paused_notice(
     when the schedule could not be paused, so it is still firing."""
     name = provider_name(failure.provider)
     runs = f"Its last {failures} runs"
-    if failure.kind == "connection":
+    if failure.kind == "connection" and failure.provider:
         headline = f"“{title}” can't use {name}"
         cause = (
             f"{runs} failed because the {name} connection is missing or was " "refused."
         )
         fix = "Reconnect it and the chat starts again." if paused else "Reconnect it."
-    elif failure.kind == "chat_link":
-        headline = f"“{title}” can't post to {name}"
+    elif failure.kind == "connection":
+        # Its tool didn't say which account: the owner finds it in Settings,
+        # and reconnecting there resumes nothing by itself.
+        headline = f"“{title}” can't use one of its connections"
         cause = (
-            f"{runs} couldn't post, because no {name} server or chat is linked "
-            "to your account."
+            f"{runs} failed because a connection it needs is missing or was refused."
+        )
+        fix = (
+            "Reconnect it in Settings, then resume."
+            if paused
+            else "Reconnect it in Settings."
+        )
+    elif failure.kind == "chat_link":
+        headline = f"“{title}” can't post to {_platform(failure)}"
+        cause = (
+            f"{runs} couldn't post, because {_no_link(failure)} is linked to "
+            "your account."
         )
         fix = "Link one, then resume." if paused else "Link one."
     elif failure.kind == "budget":
@@ -104,17 +117,23 @@ def failing_notice(
     """The schedule keeps running: the rest of what it does still works."""
     name = provider_name(failure.provider)
     runs = f"The last {failures} runs"
-    if failure.kind == "connection":
+    if failure.kind == "connection" and failure.provider:
         headline = f"“{title}” can't use {name}"
         body = (
             f"{runs} went ahead without {name}, because the connection is "
             "missing or was refused. Reconnect it to bring it back."
         )
-    elif failure.kind == "chat_link":
-        headline = f"“{title}” can't post to {name}"
+    elif failure.kind == "connection":
+        headline = f"“{title}” can't use one of its connections"
         body = (
-            f"{runs} went ahead without posting, because no {name} server or "
-            "chat is linked to your account."
+            f"{runs} went ahead without a connection they need, which is "
+            "missing or was refused. Reconnect it in Settings to bring it back."
+        )
+    elif failure.kind == "chat_link":
+        headline = f"“{title}” can't post to {_platform(failure)}"
+        body = (
+            f"{runs} went ahead without posting, because {_no_link(failure)} "
+            "is linked to your account."
         )
     else:
         headline = f"“{title}” keeps failing at one step"
@@ -130,11 +149,12 @@ def failing_notice(
 
 def pause_summary(failure: RunFailure) -> str:
     """Why a scheduled chat is paused, in a few words, for the lists."""
-    name = provider_name(failure.provider)
+    if failure.kind == "connection" and failure.provider:
+        return f"Paused: can't use {provider_name(failure.provider)}"
     if failure.kind == "connection":
-        return f"Paused: can't use {name}"
+        return "Paused: can't use one of its connections"
     if failure.kind == "chat_link":
-        return f"Paused: can't post to {name}"
+        return f"Paused: can't post to {_platform(failure)}"
     if failure.key == "turn:max_turns_exhausted":
         return "Paused: keeps hitting its step limit"
     if failure.kind == "budget":
@@ -156,8 +176,20 @@ def _fixes(failure: RunFailure) -> list[NoticeAction]:
     if failure.kind == "connection" and failure.provider:
         label = f"Reconnect {provider_name(failure.provider)}"
         return [NoticeReconnect(label=label, provider=failure.provider)]
+    if failure.kind == "connection":
+        return [NoticeLink(label="Open settings", href=INTEGRATIONS_PATH)]
     if failure.kind == "chat_link":
         return [NoticeLink(label="Open bot settings", href=BOTS_PATH)]
     if failure.key == "turn:max_budget_exhausted":
         return [NoticeLink(label="Upgrade", href=BILLING_PATH)]
     return []
+
+
+def _platform(failure: RunFailure) -> str:
+    return provider_name(failure.provider) if failure.provider else "a chat platform"
+
+
+def _no_link(failure: RunFailure) -> str:
+    if failure.provider:
+        return f"no {provider_name(failure.provider)} server or chat"
+    return "no server or chat"
