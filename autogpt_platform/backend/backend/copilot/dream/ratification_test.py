@@ -30,17 +30,16 @@ def _make_driver(records_for_list: list[dict], records_for_promote=None):
     """Build a MagicMock driver whose execute_query returns the rows we want.
 
     The ratification module issues two Cypher shapes:
+      * the PROMOTE query (SET ratified_at)   → return ``records_for_promote``
       * the LIST query (status='tentative')   → return ``records_for_list``
-      * the PROMOTE query (SET status=active) → return ``records_for_promote``
 
-    We dispatch by inspecting the first arg of execute_query.
+    We dispatch by inspecting the first arg of execute_query; the promote
+    query is checked first because its guard also names 'tentative'.
     """
     driver = MagicMock()
     driver.close = AsyncMock(return_value=None)
 
     async def fake_execute(query: str, **kwargs):
-        if "status = 'tentative'" in query:
-            return (list(records_for_list), None, None)
         if "ratified_at" in query:
             # Promote query — default to one-row response unless caller said otherwise.
             rows = (
@@ -49,6 +48,8 @@ def _make_driver(records_for_list: list[dict], records_for_promote=None):
                 else [{"uuid": kwargs.get("uuid")}]
             )
             return (list(rows), None, None)
+        if "status = 'tentative'" in query:
+            return (list(records_for_list), None, None)
         return ([], None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
@@ -170,6 +171,33 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
     assert call.args[1] == ["edge-stale"]
     assert call.kwargs["reason"] == "unratified"
     assert call.kwargs["new_status"] == "superseded"
+    # Only while it is still an unexpired tentative edge: a forget that
+    # landed after the listing is not overwritten.
+    assert call.kwargs["expected_status"] == "tentative"
+
+
+@pytest.mark.asyncio
+async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
+    mocker, fake_redis, stub_mark_superseded
+):
+    """Hits say promote, but the user retracted the edge after the sweep
+    listed it: the guarded write matches nothing, so the retraction stays."""
+    edge = {"uuid": "edge-forgotten", "created_at": _hours_ago(2)}
+    driver = _make_driver(records_for_list=[edge], records_for_promote=[])
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    fake_redis.hits["edge-forgotten"] = 2
+
+    result = await run_ratification_pass("u-raced")
+
+    assert result.ratified_count == 0
+    [promote] = [
+        call
+        for call in driver.execute_query.await_args_list
+        if "ratified_at" in call.args[0]
+    ]
+    assert "WHERE e.status = 'tentative' AND e.expired_at IS NULL" in promote.args[0]
+    assert "AND e.forgotten_at IS NULL" in promote.args[0]
+    stub_mark_superseded.assert_not_awaited()
 
 
 @pytest.mark.asyncio

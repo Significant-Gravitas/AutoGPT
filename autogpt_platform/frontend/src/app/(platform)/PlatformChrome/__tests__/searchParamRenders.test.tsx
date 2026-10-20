@@ -20,9 +20,13 @@ import { usePlatformChrome } from "../usePlatformChrome";
 // search-param write reaches the components exactly as it does in the app.
 vi.mock("next/navigation", async () => vi.importActual("next/navigation"));
 
-vi.mock("@/services/feature-flags/flag-source", () => ({
-  useFlagSource: () => ({ value: true, resolved: true }),
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => true };
+});
 
 interface URLState {
   pathname: string;

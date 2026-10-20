@@ -1,11 +1,13 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   ArrowUpRight01Icon,
   Cancel01Icon,
-  SparklesIcon,
+  NewsIcon,
 } from "@hugeicons/core-free-icons";
 import { useChangelog } from "./useChangelog";
 
@@ -45,57 +47,55 @@ export function ChangelogPopup() {
       role="dialog"
       aria-label="What's new"
     >
-      <div className="overflow-hidden rounded-xl border border-border bg-background shadow-2xl shadow-black/10">
-        <div className="flex items-center justify-between bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Icon icon={SparklesIcon} className="h-4 w-4 text-white/90" />
-            <Text
-              variant="body-medium"
-              as="span"
-              className="text-sm font-semibold text-white"
-            >
-              What&apos;s New
+      <div className="rounded-2xl border border-border bg-background p-5 shadow-lg">
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground">
+            <Icon icon={NewsIcon} size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Text variant="body-medium" className="text-foreground">
+              What&apos;s new
+            </Text>
+            <Text variant="small" className="text-muted-foreground">
+              {latestEntry.dateRange}
             </Text>
           </div>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            withTooltip={false}
             onClick={dismiss}
-            className="rounded-md p-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            className="-mr-1 -mt-1 text-muted-foreground hover:text-foreground"
             aria-label="Dismiss changelog"
           >
-            <Icon icon={Cancel01Icon} className="h-4 w-4" />
-          </button>
+            <Icon icon={Cancel01Icon} size={16} />
+          </Button>
         </div>
 
-        <div className="px-5 py-4">
-          <Text variant="body" className="text-xs text-muted-foreground">
-            {latestEntry.dateRange}
-          </Text>
-          <ul className="mt-2 space-y-1">
-            {highlights.map((item) => (
-              <li key={item} className="flex gap-2">
-                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
-                <Text
-                  variant="body"
-                  as="span"
-                  className="text-sm leading-snug text-foreground"
-                >
-                  {item}
-                </Text>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ul className="my-4 space-y-1.5">
+          {highlights.map((item) => (
+            <li key={item} className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground"
+              />
+              <Text variant="body" className="text-foreground">
+                {item}
+              </Text>
+            </li>
+          ))}
+        </ul>
 
-        <div className="flex justify-end border-t border-border bg-secondary/50 px-5 py-2.5">
-          <a
+        <div className="border-t border-border pt-3">
+          <Link
             href={latestEntry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent/80"
+            isExternal
+            className="inline-flex items-center gap-1.5 text-foreground"
           >
             View changelog
-            <Icon icon={ArrowUpRight01Icon} className="h-3 w-3" />
-          </a>
+            <Icon icon={ArrowUpRight01Icon} size={16} />
+          </Link>
         </div>
       </div>
     </div>

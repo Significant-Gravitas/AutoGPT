@@ -1,7 +1,4 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
-import { MobileNavBar } from "@/components/layout/Navbar/components/MobileNavbar/MobileNavBar";
-import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { http, HttpResponse } from "msw";
 import { userEvent, within } from "storybook/test";
@@ -53,42 +50,5 @@ export const LatestRelease: Story = {
       { timeout: 5000 },
     );
     await userEvent.hover(popup);
-  },
-};
-
-export const ProfileMenu: Story = {
-  render: function Render() {
-    return (
-      <div className="flex min-h-[32rem] justify-end">
-        <div>
-          <AccountMenu
-            userName="Alex"
-            userEmail="alex@example.com"
-            menuItemGroups={getAccountMenuItems()}
-          />
-        </div>
-      </div>
-    );
-  },
-  play: async ({ canvasElement }) => {
-    await userEvent.click(
-      within(canvasElement).getByRole("button", { name: "Open profile menu" }),
-    );
-  },
-};
-
-export const MobileMenu: Story = {
-  render: function Render() {
-    return (
-      <div className="flex min-h-[32rem] justify-end">
-        <div>
-          <MobileNavBar
-            userName="Alex"
-            userEmail="alex@example.com"
-            menuItemGroups={getAccountMenuItems()}
-          />
-        </div>
-      </div>
-    );
   },
 };

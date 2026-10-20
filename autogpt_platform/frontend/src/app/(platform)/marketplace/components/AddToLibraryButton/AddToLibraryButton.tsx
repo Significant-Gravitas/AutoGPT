@@ -135,10 +135,7 @@ export function AddToLibraryButton({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      analytics.sendDatafastEvent("add_to_library", {
-        name: data.name,
-        id: data.id,
-      });
+      analytics.sendDatafastEvent("add_to_library", { id: data.id });
 
       const addedToast = toast({
         title: `Workflow ${agentName} added to your library.`,
