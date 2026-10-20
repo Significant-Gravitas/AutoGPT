@@ -26,7 +26,7 @@ export function BlockRow({ block }: Props) {
     block.expires_at.getTime() - Date.now() < HOUR_MS;
 
   return (
-    <li className="grid grid-cols-1 gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_minmax(0,11rem)_8.5rem_minmax(0,11rem)_auto] lg:items-center">
+    <li className="grid grid-cols-1 gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,9rem)_8rem_minmax(0,10rem)_auto] lg:items-center">
       <div className="flex min-w-0 items-center gap-2">
         <Icon
           icon={isIp ? GlobeIcon : MailAtSign01Icon}

@@ -35,8 +35,8 @@ export function IpRow({ ip, ownIp }: Props) {
   const hiddenEvents = ip.event_count - ip.events.length;
 
   return (
-    <li className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-2">
+    <li className="flex min-w-0 flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <Button
           variant="icon"
           size="icon-xs"
