@@ -9,6 +9,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEntry,
     GraphExecutionMeta,
+    NodeExecutionEntry,
 )
 from backend.data.model import GraphExecutionStats
 from backend.executor.manager import (
@@ -332,8 +333,6 @@ def test_nested_credit_failure_marker_respects_cancellation_precedence(
 
 
 def _queued_node(node_exec_id: str, status: ExecutionStatus):
-    from backend.data.execution import NodeExecutionEntry
-
     entry = NodeExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -382,7 +381,8 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
     completed_future.result.return_value = None
 
     def complete_coroutine(coroutine, _loop):
-        if hasattr(coroutine, "close"):
+        # The stubbed on_node_execution returns None rather than a coroutine.
+        if coroutine is not None:
             coroutine.close()
         return completed_future
 
@@ -402,7 +402,7 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
         patch("backend.executor.manager.billing.charge_usage", charge_usage),
         patch(
             "backend.executor.manager.billing.redispatch_reconcile_baseline",
-            side_effect=lambda node_exec: {"review": 3, "running": 5}[
+            side_effect=lambda node_exec: {"review": 3, "running": None}[
                 node_exec.node_exec_id
             ],
         ),
@@ -425,6 +425,6 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
     # Reconciliation of a re-dispatched row settles against what its first
     # dispatch left billed; charged rows settle against the new charge.
     assert by_id["review"].pre_flight_charge == 3
-    assert by_id["running"].pre_flight_charge == 5
+    assert by_id["running"].pre_flight_charge is None
     assert by_id["terminated"].pre_flight_charge == 7
     assert by_id["queued"].pre_flight_charge == 7
