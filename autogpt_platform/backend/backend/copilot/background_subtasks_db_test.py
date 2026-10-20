@@ -870,14 +870,21 @@ async def test_busy_parent_past_delivery_window_gets_one_notice_when_idle(world:
 
 
 @pytest.mark.parametrize(
-    "state", ["queued", "running", "running_with_pending", "orphaned_with_pending"]
+    "state",
+    [
+        "queued",
+        "queued_with_pending",
+        "running",
+        "running_with_pending",
+        "orphaned_with_pending",
+    ],
 )
 async def test_expired_followup_is_recovered_once(
     world: World,
     monkeypatch: pytest.MonkeyPatch,
     state: str,
 ):
-    running = state != "queued"
+    running = not state.startswith("queued")
     task = await world.launch()
     await world.finish_child(task)
     await world.finish_parent()
@@ -920,7 +927,9 @@ async def test_expired_followup_is_recovered_once(
         await background_delivery.reconcile_background_subtasks()
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "finished"
-    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == (
+        "queued" if state == "queued_with_pending" else "idle"
+    )
     messages = await DbMessage.prisma().find_many(
         where={"sessionId": world.parent.session_id}
     )

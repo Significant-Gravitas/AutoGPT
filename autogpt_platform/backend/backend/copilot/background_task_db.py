@@ -271,18 +271,18 @@ async def get_background_followup_envelope(
     )
     if parent is None or not _matches(parent, task):
         return None
-    where: ChatMessageWhereInput = {"sessionId": parent.id, "role": "user"}
-    if parent.chatStatus != "queued":
-        if (
-            _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
-            != task.wake_id
-        ):
-            return None
-        where["id"] = task.wake_id
-    message = await ChatMessage.prisma().find_first(
-        where=where, order={"sequence": "desc"}
-    )
-    if message is None or message.id != task.wake_id:
+    where: ChatMessageWhereInput = {
+        "id": task.wake_id,
+        "sessionId": parent.id,
+        "role": "user",
+    }
+    if parent.chatStatus != "queued" and (
+        _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+        != task.wake_id
+    ):
+        return None
+    message = await ChatMessage.prisma().find_first(where=where)
+    if message is None:
         return None
     return TurnEnvelope.model_validate(
         _parse_json_field(message.metadata, default={}).get("envelope")
