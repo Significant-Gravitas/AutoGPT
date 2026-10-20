@@ -15,15 +15,6 @@ import { CopilotPage } from "../CopilotPage";
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
   ChatContainer: () => <div data-testid="chat-container" />,
 }));
-vi.mock("../components/ChatSidebar/ChatSidebar", () => ({
-  ChatSidebar: () => <div data-testid="chat-sidebar" />,
-}));
-vi.mock("../components/MobileDrawer/MobileDrawer", () => ({
-  MobileDrawer: () => null,
-}));
-vi.mock("../components/MobileHeader/MobileHeader", () => ({
-  MobileHeader: () => null,
-}));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
 }));
