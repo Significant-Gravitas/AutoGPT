@@ -259,6 +259,10 @@ async def test_the_turns_hook_carries_its_governor_and_allowed_tools(
     kwargs = turn._mocks[f"{_SVC}.create_security_hooks"].call_args.kwargs
     assert isinstance(kwargs["governor"], TurnGovernor)
     assert kwargs["allowed_tools"] == turn._mocks[f"{_SVC}.get_copilot_tool_names"]()
+    assert (
+        kwargs["builtin_tool_spans"]
+        == turn._mocks[f"{_SVC}.config"].posthog_builtin_tool_spans
+    )
 
 
 def test_a_trial_limited_by_the_task_cap_gets_no_headroom():

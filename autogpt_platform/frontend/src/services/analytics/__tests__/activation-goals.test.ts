@@ -15,22 +15,20 @@ beforeEach(() => {
 });
 
 describe("activation goals", () => {
-  it("reports a human agent run with its surface", () => {
-    trackAgentRunGoal({ id: "graph-1", name: "Daily digest" }, "builder");
+  it("reports a human agent run with its surface and no workflow name", () => {
+    trackAgentRunGoal("graph-1", "builder");
 
     expect(sendDatafastEvent).toHaveBeenCalledWith("run_agent", {
       id: "graph-1",
-      name: "Daily digest",
       surface: "builder",
     });
   });
 
-  it("reports a new schedule and tolerates a missing agent name", () => {
-    trackScheduleCreatedGoal({ id: "graph-2", name: null }, "library");
+  it("reports a new schedule with its surface and no workflow name", () => {
+    trackScheduleCreatedGoal("graph-2", "library");
 
     expect(sendDatafastEvent).toHaveBeenCalledWith("schedule_agent", {
       id: "graph-2",
-      name: "",
       surface: "library",
     });
   });
@@ -40,6 +38,6 @@ describe("activation goals", () => {
       throw new Error("tag exploded");
     });
 
-    expect(() => trackAgentRunGoal({ id: "graph-3" }, "rerun")).not.toThrow();
+    expect(() => trackAgentRunGoal("graph-3", "rerun")).not.toThrow();
   });
 });
