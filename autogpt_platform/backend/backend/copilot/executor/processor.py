@@ -15,6 +15,8 @@ import uuid
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
+
 from backend.copilot import stream_registry
 from backend.copilot.background_execution import (
     background_timeout,
@@ -54,6 +56,7 @@ from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_tracing import TurnTrace, turn_transaction
 from backend.data.model import OAuth2Credentials
+from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -628,6 +631,15 @@ class CoPilotProcessor:
 
         try:
             from backend.copilot.model import get_chat_session
+
+            # Every copilot turn starts here, whatever queued it.
+            if entry.user_id and await is_user_banned(entry.user_id):
+                log.info("Turn not started: the account is banned")
+                error_msg = ACCOUNT_BANNED_DETAIL["message"]
+                error_code = ACCOUNT_BANNED_DETAIL["code"]
+                # A refused account is not a failed schedule worth alerting on.
+                scheduled_watch = None
+                return
 
             # Executor picked the turn up — replace the route's "Message
             # received…" status while feature-flag resolution and service

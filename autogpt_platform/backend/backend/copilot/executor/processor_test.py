@@ -27,7 +27,11 @@ from backend.copilot.executor.processor import (
     _wait_for_expert_setup,
     sync_fail_close_session,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -789,6 +793,44 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
     assert stream_fn.call_args.kwargs["team_id"] == "entry-team"
+
+
+@pytest.mark.asyncio
+async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
+    """Every copilot turn reaches the executor, whatever queued it: schedules,
+    the AutoPilot block, approval wakes, sub-sessions and chat bots."""
+    entry = _make_entry().model_copy(
+        update={"scheduled": ScheduledTurnOrigin(schedule_id="sched-1")}
+    )
+    get_session = AsyncMock()
+    mark_completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.is_user_banned",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.model.get_chat_session", new=get_session),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mark_completed,
+        ),
+        patch(
+            "backend.copilot.executor.scheduled_turn_alert.sentry_sdk.capture_message"
+        ) as alert,
+    ):
+        await CoPilotProcessor()._execute_async(
+            entry, threading.Event(), MagicMock(), _make_log()
+        )
+
+    get_session.assert_not_awaited()
+    mark_completed.assert_awaited_once_with(
+        "sess-1",
+        error_message="This account has been banned.",
+        error_code="account_banned",
+        turn_id="turn-1",
+    )
+    alert.assert_not_called()
 
 
 @pytest.mark.asyncio

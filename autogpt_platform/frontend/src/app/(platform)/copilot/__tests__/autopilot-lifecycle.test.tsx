@@ -13,6 +13,7 @@ import {
   clickStop,
   renderHost,
   resetChatRuntimes,
+  sessionHandler,
   STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
@@ -67,6 +68,89 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     streamPath.runtime = path === "stream runtime";
   });
 
+  it("receives a background follow-up after the original reply without sending again", async () => {
+    const pending = [
+      {
+        role: "user",
+        content: "Research this in the background.",
+        sequence: 0,
+      },
+      {
+        role: "assistant",
+        content: null,
+        sequence: 1,
+        tool_calls: [
+          {
+            id: "background-call",
+            type: "function",
+            function: {
+              name: "run_sub_session",
+              arguments: '{"background":true}',
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        tool_call_id: "background-call",
+        sequence: 2,
+        content: JSON.stringify({
+          type: "sub_session_status",
+          status: "queued",
+          background_task_id: "background-task",
+          background_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      },
+      {
+        role: "assistant",
+        content: "I will return with the result.",
+        sequence: 3,
+      },
+    ];
+    let sends = 0;
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        () => {
+          sends += 1;
+          return HttpResponse.error();
+        },
+      ),
+    );
+    renderHost({ sessionOverride: { messages: pending } });
+    await screen.findByText("I will return with the result.");
+    server.use(
+      sessionHandler({
+        messages: [
+          ...pending,
+          {
+            role: "user",
+            content: "Internal follow-up prompt",
+            sequence: 4,
+            metadata: {
+              background_task_notice: "background-task",
+              background_task_stage: "followup",
+              display_content:
+                "Background subtask completed. Otto is following up.",
+            },
+          },
+          {
+            role: "assistant",
+            content: "The background result is 42.",
+            sequence: 5,
+          },
+        ],
+      }),
+    );
+    expect(
+      await screen.findByText("The background result is 42.", undefined, {
+        timeout: 6000,
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText("Internal follow-up prompt")).toBeNull();
+    expect(sends).toBe(0);
+  }, 10_000);
+
   describe("Otto streaming — submit / stop lifecycle", () => {
     it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {
       server.use(
@@ -83,15 +167,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await typeAndSend("hi");
 
-      expect(
-        await screen.findByRole("button", { name: /stop/i }),
-      ).toBeDefined();
+      expect(await screen.findByRole("button", { name: "Stop" })).toBeDefined();
 
       expect(
         await screen.findByText("Hi.", undefined, { timeout: 5000 }),
       ).toBeDefined();
       await waitFor(() => {
-        expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       });
     });
 
