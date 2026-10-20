@@ -15,6 +15,7 @@ import random
 import re
 import shutil
 import sys
+import itertools  # do-not-merge probe (#15739)
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
@@ -4490,9 +4491,13 @@ async def _run_stream_attempt(
         )
         state.usage.start_cli_session(baseline)
     transport = state.prelaunch.claim(state.options) if state.prelaunch else None
+    yield StreamStatus(message=f"perf:launch:{_probe_ms()}")  # do-not-merge probe
     sdk_client = ClaudeSDKClient(options=state.options, transport=transport)
     client = await sdk_client.__aenter__()
     try:
+        yield StreamStatus(
+            message=f"perf:cli_connect:{_probe_ms()}"
+        )  # do-not-merge probe
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
             "query_len=%d, attached_files=%d, image_blocks=%d",
@@ -5876,7 +5881,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The CLI's options are final and the query isn't built yet: spawn it
         # now, under the turn's trace context, so it boots while the query is
         # assembled instead of after (``CLIPrelaunch``).
-        _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
+        # do-not-merge probe A/B (#15739): prelaunch on every other turn.
+        _cli_prelaunch = (
+            await CLIPrelaunch.start(sdk_options, log_prefix)
+            if _probe_prelaunch_turn()
+            else None
+        )
+        yield StreamStatus(
+            message=f"perf:prelaunch:{'on' if _cli_prelaunch is not None else 'off'}"
+        )
 
         current_message = message or ""
         if not current_message and session.messages:
@@ -6165,8 +6178,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # (``_resend_with_fresh_warm_context``), which rebuilds from the query
         # as it is here, before the block.
         warm_context_base = query_message
+        yield StreamStatus(  # do-not-merge probe (#15739)
+            message=f"perf:join_start:{'pending' if pending_warm_ctx is not None else 'none'}"
+        )
+        _probe_join_t0 = time.monotonic()
         query_message = await append_warm_context(
             warm_context_base, was_compacted=was_compacted, pending=pending_warm_ctx
+        )
+        _probe_join = (
+            "used"
+            if query_message != warm_context_base
+            else ("skipped" if pending_warm_ctx is not None else "none")
+        )
+        yield StreamStatus(  # do-not-merge probe (#15739)
+            message=f"perf:join_end:{_probe_join}:{int((time.monotonic() - _probe_join_t0) * 1000)}"
         )
 
         # When running without --resume and no prior transcript in storage,
@@ -7466,3 +7491,16 @@ def _stamp_turn_trace_id(
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True
+
+
+_PROBE_PRELAUNCH_TURNS = itertools.count()
+
+
+def _probe_prelaunch_turn() -> bool:
+    """do-not-merge probe (#15739): the CLI prelaunch on every other turn."""
+    return next(_PROBE_PRELAUNCH_TURNS) % 2 == 0
+
+
+def _probe_ms() -> int:
+    """do-not-merge probe (#15739): server clock for perf statuses."""
+    return int(time.time() * 1000) % 100000000
