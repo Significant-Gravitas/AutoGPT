@@ -20,6 +20,7 @@ from backend.util.feature_flag import Flag
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
     "backend.copilot.rate_limit.is_user_paywalled",
+    "backend.api.features.chat.routes.is_user_paywalled",
     "backend.executor.utils.is_user_paywalled",
     "backend.api.features.integrations.router.is_user_paywalled",
     "backend.copilot.gate.workflow.is_user_paywalled",
