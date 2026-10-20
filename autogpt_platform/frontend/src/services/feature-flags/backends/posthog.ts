@@ -18,8 +18,8 @@ export function usePostHogFlag(key: string): FlagSourceResult {
       resolution.evaluatedKeys.has(key));
 
   // Only a complete response makes an omitted mature flag authoritatively off.
-  if (resolution.resolved && enabled === undefined && mature) {
-    return { value: false, resolved: resolution.omissionsResolved };
+  if (resolution.omissionsResolved && enabled === undefined && mature) {
+    return { value: false, resolved: true };
   }
 
   // An explicit off wins over a payload, as on the backend.

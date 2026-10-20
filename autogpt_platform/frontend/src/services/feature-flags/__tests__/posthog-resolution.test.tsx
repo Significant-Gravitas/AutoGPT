@@ -240,18 +240,34 @@ describe("real PostHog SDK resolution", () => {
     expect(committed).not.toContainEqual({ enabled: false, answered: true });
   });
 
-  it("does not call a flag omitted by a partial evaluation authoritative", () => {
+  it.each([
+    { flags: {}, errorsWhileComputingFlags: true },
+    { featureFlags: {}, errorsWhileComputingFlags: true },
+    { flags: {} },
+  ])("uses the mature fallback for an uncertain omission: %j", (response) => {
+    vi.useFakeTimers();
     const client = createClient();
-    client.featureFlags.receivedFeatureFlags(
-      { flags: {}, errorsWhileComputingFlags: true },
-      false,
+    client.featureFlags.receivedFeatureFlags(response, false);
+
+    const { result } = renderHook(
+      () => ({
+        status: useFlagStatus(Flag.HIRE_EXPERTS),
+        value: useGetFlag(Flag.HIRE_EXPERTS),
+      }),
+      { wrapper: withClient(client) },
     );
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
-      wrapper: withClient(client),
+    expect(result.current).toEqual({
+      status: { enabled: true, ready: false, answered: false },
+      value: true,
     });
 
-    expect(result.current.answered).toBe(false);
+    act(() => vi.advanceTimersByTime(5000));
+
+    expect(result.current).toEqual({
+      status: { enabled: true, ready: true, answered: false },
+      value: true,
+    });
   });
 
   it.each([false, true])(

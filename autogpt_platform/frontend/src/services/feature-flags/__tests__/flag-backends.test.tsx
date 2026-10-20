@@ -183,14 +183,14 @@ describe("posthog backend", () => {
     expect(result.current.answered).toBe(false);
   });
 
-  it("keeps an omitted flag off without treating it as an authoritative answer", async () => {
+  it("uses the fallback for an omission without a complete answer", async () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(undefined);
 
     const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
     expect(result.current).toEqual({
-      enabled: false,
+      enabled: true,
       ready: false,
       answered: false,
     });
