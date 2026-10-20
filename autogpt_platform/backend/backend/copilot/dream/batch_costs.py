@@ -105,8 +105,7 @@ async def _log_phase_cost(
     row: dict[str, Any],
     phase_models: dict[str, str],
 ) -> None:
-    if row.get("error") and row["error"] != "max_tokens":
-        # Truncation still consumes billable tokens; provider failures do not.
+    if row.get("error"):
         return
     phase_model = phase_models.get(phase)
     if not phase_model:

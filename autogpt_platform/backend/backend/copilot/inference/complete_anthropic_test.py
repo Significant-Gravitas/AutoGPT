@@ -68,8 +68,11 @@ class TestAnthropicToolPath:
         assert (result.usage.input_tokens, result.usage.cache_read_tokens) == (12, 3)
 
     @pytest.mark.asyncio
-    async def test_opus_5_5_gets_auto_and_the_prompt_asks_for_the_call(self):
-        """Opus 5.5 answers a forced ``tool_choice`` with a 400, so the tool
+    @pytest.mark.parametrize("model", ["claude-opus-5-5", "claude-sonnet-5-5"])
+    async def test_restricted_model_gets_auto_and_the_prompt_asks_for_the_call(
+        self, model
+    ):
+        """Opus and Sonnet 5.5 answer a forced ``tool_choice`` with a 400, so the tool
         goes out under ``auto``, and both its description and the last user
         turn ask for one call with the complete result."""
         call_provider = AsyncMock(return_value=tool_response(ONE_FACT))
@@ -77,7 +80,7 @@ class TestAnthropicToolPath:
             CALL_PROVIDER, call_provider
         ):
             result = await structured_complete(
-                sync_ctx("anthropic", "claude-opus-5-5"),
+                sync_ctx("anthropic", model),
                 [
                     {"role": "system", "content": "you consolidate facts"},
                     {"role": "user", "content": "give me a fact"},
@@ -88,7 +91,7 @@ class TestAnthropicToolPath:
         assert result.value.facts[0].content == "x"
         kwargs = call_provider.call_args.kwargs
         tool_name = output_tool_name(SampleOutput)
-        assert kwargs["model"] == "claude-opus-5-5"
+        assert kwargs["model"] == model
         assert kwargs["tool_choice"] == auto_tool_choice()
         # The sync description asks for one complete call in either mode.
         assert "call this once" in kwargs["tools"][0]["description"]

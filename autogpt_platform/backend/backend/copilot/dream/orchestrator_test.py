@@ -1074,19 +1074,41 @@ async def test_the_pass_usage_totals_the_priced_phases(mocker):
 
 
 @pytest.mark.asyncio
-async def test_partial_failure_still_charges_completed_phases(mocker):
-    """If recombine errors after consolidate succeeded, we must still
-    bill for the consolidate tokens — we already paid the provider."""
+@pytest.mark.parametrize("failed_phase", ["consolidate", "recombine", "sanitize"])
+@pytest.mark.parametrize(
+    "error", ["max_tokens", "invalid output shape", "provider error"]
+)
+async def test_partial_failure_still_charges_completed_phases(
+    mocker, failed_phase, error
+):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
-    consolidated = ConsolidationOutput(facts=[])
+    phases = ["consolidate", "recombine", "sanitize"]
+    completed = phases.index(failed_phase)
+    failure_usage = InferenceUsage(
+        model="claude-sonnet-5-5",
+        input_tokens=1001,
+        output_tokens=203,
+        cache_read_tokens=3007,
+        cache_creation_tokens=509,
+        cost_usd=0.0056052,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    failure = InferenceError(error, usage=failure_usage)
     mocker.patch.object(
         orchestrator_mod,
         "structured_complete",
-        AsyncMock(side_effect=[_wrap(consolidated), InferenceError("recombine boom")]),
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+            ][:completed]
+            + [failure]
+        ),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
     charge_spy = _charge_spy()
@@ -1095,9 +1117,13 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is not None
-    assert result.error.startswith("recombine:")
-    assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
-    assert charge_spy.await_args.args[0].job.phase == "consolidate"
+    assert result.error.startswith(f"{failed_phase}:")
+    assert error in result.error
+    assert charge_spy.await_count == completed
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == (
+        phases[:completed]
+    )
+    assert failure.usage == failure_usage
     apply_mock.assert_not_awaited()
 
 
@@ -1118,11 +1144,7 @@ def _tracing_failures(seen: list[InferenceUsage | None]):
 
 
 @pytest.mark.asyncio
-async def test_a_phase_whose_answer_did_not_parse_is_still_billed(mocker):
-    """The provider billed the answer it sent back even though it did not
-    parse: one cost row with its tokens, priced like any phase, the trace
-    shows the attempt, and the pass fails at that phase as before, with the
-    attempt in its usage."""
+async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
@@ -1154,21 +1176,12 @@ async def test_a_phase_whose_answer_did_not_parse_is_still_billed(mocker):
     assert result.error is not None
     assert result.error.startswith("consolidate: LLM JSON did not match")
     apply_mock.assert_not_awaited()
-    persist.assert_awaited_once()
-    row = persist.await_args.kwargs
-    assert (row["prompt_tokens"], row["completion_tokens"]) == (1_000_000, 100_000)
-    # Sonnet 5's catalog card: $2 in, $10 out per Mtok.
-    assert row["cost_usd"] == pytest.approx(3.0)
-    assert row["block_name_override"] == "copilot:dream:consolidate"
-    assert row["graph_exec_id_override"] == result.pass_id
-    assert row["expert_id"] == "expert-1"
+    persist.assert_not_awaited()
     (seen,) = traced
-    assert seen is not None and seen.cost_usd == pytest.approx(3.0)
+    assert seen == billed
     assert result.usage is not None
-    assert [(p.phase, p.input_tokens) for p in result.usage.phases] == [
-        ("consolidate", 1_000_000)
-    ]
-    assert result.usage.total_cost_usd == pytest.approx(3.0)
+    assert result.usage.phases == []
+    assert result.usage.total_cost_usd == 0
 
 
 @pytest.mark.asyncio
@@ -1201,7 +1214,7 @@ async def test_a_phase_that_got_no_answer_records_nothing(mocker):
 
 
 @pytest.mark.asyncio
-async def test_a_later_phase_that_did_not_parse_is_charged_after_the_completed_one(
+async def test_a_later_failed_phase_leaves_only_the_completed_phase_charged(
     mocker,
 ):
     mocker.patch.object(
@@ -1234,11 +1247,9 @@ async def test_a_later_phase_that_did_not_parse_is_charged_after_the_completed_o
     assert result.error.startswith("recombine:")
     assert [c.args[0].job.phase for c in charge_spy.await_args_list] == [
         "consolidate",
-        "recombine",
     ]
-    assert charge_spy.await_args.args[1] == billed
     assert result.usage is not None
-    assert [p.phase for p in result.usage.phases] == ["consolidate", "recombine"]
+    assert [p.phase for p in result.usage.phases] == ["consolidate"]
 
 
 # ---------------------------------------------------------------------------
@@ -2500,10 +2511,9 @@ def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
     "answer, failure, error",
     [
         ("parsed", "trial_cost", "trial cost database unavailable"),
-        ("failed_parse", "trial_cost", "trial cost database unavailable"),
         ("parsed", "cost_log", "cost log scheduling failed after the charge"),
     ],
-    ids=["trial_cost", "failed_parse_trial_cost", "cost_log"],
+    ids=["trial_cost", "cost_log"],
 )
 async def test_a_charge_that_fails_keeps_every_billed_phases_usage(
     mocker, fake_dream_db, phase, answer, failure, error
@@ -2539,6 +2549,35 @@ async def test_a_charge_that_fails_keeps_every_billed_phases_usage(
     row = fake_dream_db.rows[result.pass_id]
     assert row["status"] is DreamPassStatus.ERRORED
     assert row["usage"] == result.usage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", _PHASES)
+async def test_failed_inference_is_absorbed_in_ledger_and_durable_pass(
+    mocker, fake_dream_db, phase
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=_answers_until(phase, "failed_parse")),
+    )
+    charges = _fail_the_charge(mocker, phase, "trial_cost")
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    completed = _PHASES.index(phase)
+    assert result.error == f"{phase}: answer did not parse"
+    assert charges.await_count == completed
+    apply_mock.assert_not_awaited()
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == list(_PHASES[:completed])
+    assert result.usage.total_input_tokens == 100 * completed
+    assert result.usage.total_cost_usd == pytest.approx(0.001 * completed)
+    assert fake_dream_db.rows[result.pass_id]["usage"] == result.usage
 
 
 def _ends(mocker, ending: str) -> None:
@@ -2725,7 +2764,7 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
 
     result = await asyncio.wait_for(nightly_batch_mod.run_nightly_batch_submit("u"), 10)
 
-    ratification.assert_awaited_once_with("u")
+    ratification.assert_awaited_once_with("u", expert_id=None)
     assert result.dream is not None and result.dream.error is None
 
 

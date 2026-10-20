@@ -34,11 +34,14 @@ def test_each_landed_phase_is_priced_on_its_own_model_at_the_batch_discount():
     assert usage.discount_applied == 0.5
 
 
-def test_errored_phases_and_phases_without_a_model_are_left_out():
+@pytest.mark.parametrize(
+    "error", ["provider down", "max_tokens", "invalid output shape"]
+)
+def test_errored_phases_and_phases_without_a_model_are_left_out(error):
     usage = batch_pass_usage(
         {
             "consolidate": _landed(),
-            "recombine": _landed(error="provider down"),
+            "recombine": _landed(error=error),
             "sanitize": _landed(),
         },
         {"consolidate": "claude-sonnet-5", "recombine": "claude-opus-5-5"},

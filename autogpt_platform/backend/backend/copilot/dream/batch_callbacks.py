@@ -281,6 +281,7 @@ async def _landed_output(
         payload = parse_json_with_prose_fallback(row.content)
         output = PHASE_RESPONSE_MODELS[phase].model_validate(payload)
     except (InferenceError, ValidationError) as exc:
+        row.error = f"invalid output shape — {type(exc).__name__}"
         await write_phase_to_state(pass_id=bp.pass_id, phase=phase, row=row)
         await fail_pass(bp, f"{phase}: invalid output shape — {type(exc).__name__}")
         return None

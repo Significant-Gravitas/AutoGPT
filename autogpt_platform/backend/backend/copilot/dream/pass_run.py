@@ -24,8 +24,6 @@ class DreamPassRun(BaseModel):
     started_at: datetime
     monotonic_start: float
     execution_path: ExecutionPath
-    # Every phase billed so far, in order, a failed phase whose answer came
-    # back included.
     phases: list[PhaseUsage] = Field(default_factory=list)
 
     @classmethod
@@ -47,8 +45,7 @@ class DreamPassRun(BaseModel):
 
     def failure(self, error: str) -> DreamPassResult:
         """The pass failed. On the sync route it still carries the usage of
-        the phases billed before the error: billing charges for tokens we
-        already paid for. The batch route's phases bill at the provider and
+        the phases completed before the error. The batch route's phases bill at the provider and
         reach the callbacks, never this side (a batch submitted before the
         failure still runs), so its usage here is unknown."""
         if self.execution_path == "anthropic_batch":

@@ -496,7 +496,7 @@ async def test_a_turn_refused_at_pickup_is_refused_not_completed():
     assert result.response_text == ""
     assert result.refusal == (
         "Not started: out of this week's budget. "
-        "The AutoPilot budget resets 2026-10-19 00:00 UTC."
+        "The account's budget resets 2026-10-19 00:00 UTC."
     )
 
 
@@ -509,7 +509,7 @@ async def test_a_refusal_with_nothing_to_wait_for_says_so():
     assert outcome == "refused"
     assert result.refusal == (
         "Not started: the trial allowance is used up. "
-        "The AutoPilot budget doesn't reset on its own."
+        "The account's budget doesn't reset on its own."
     )
 
 

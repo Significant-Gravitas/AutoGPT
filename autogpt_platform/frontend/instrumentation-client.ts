@@ -8,6 +8,10 @@ import {
   isFromBot,
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { setupSessionReplay } from "@/lib/session-replay";
@@ -32,6 +36,10 @@ Sentry.init({
   // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: CLIENT_IGNORE_ERRORS,
 
+  // Errors are reported without consent (legitimate interest), so they carry
+  // the user id only: no email, and Sentry is told not to infer the IP address.
+  sendDefaultPii: false,
+
   // Next's handled RSC fetch fallback reaches us only through console capture
   // and falls back to a full navigation, so it is noise (BUILDER-3QB).
   // Crawlers render our pages too; what breaks for them is not a user's bug.
@@ -40,14 +48,19 @@ Sentry.init({
   // Some browsers inject a script that logs every cross-origin iframe it may
   // not read (BUILDER-943).
   beforeSend(event) {
+    stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
     return isNextRSCNavigationFallback(event) ? null : event;
   },
   beforeSendTransaction(event) {
-    return isFromBot(navigator.userAgent) ? null : event;
+    return isFromBot(navigator.userAgent)
+      ? null
+      : stripSpanPII(stripUserPII(event));
   },
+  beforeSendSpan: stripSpanDataPII,
+  beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
   integrations: [
@@ -92,12 +105,12 @@ Sentry.init({
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
-  // Set profilesSampleRate to 1.0 to profile every transaction.
-  // Since profilesSampleRate is relative to tracesSampleRate,
-  // the final profiling rate can be computed as tracesSampleRate * profilesSampleRate
-  // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
-  // result in 25% of transactions being profiled (0.5*0.5=0.25)
-  profilesSampleRate: 1.0,
+  // Profiling samples the main thread every 10 ms for as long as a transaction
+  // lasts (up to 30 s a page load), so profiling every transaction slowed every
+  // session down. It is relative to tracesSampleRate, so with every transaction
+  // traced, 1 in 10 is profiled. Traces stay at 100%: the backend's
+  // traces_sampler follows the browser's decision for the requests it receives.
+  profilesSampleRate: 0.1,
   enableLogs: true,
 });
 
