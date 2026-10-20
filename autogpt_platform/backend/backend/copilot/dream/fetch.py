@@ -26,6 +26,7 @@ from backend.copilot.graphiti.recall import (
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.hidden_rows import visible_to_model
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatMessage, ChatSessionInfo
 from backend.data.db_accessors import chat_db
@@ -323,7 +324,7 @@ async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
             session_id=sid, limit=20, user_id=user_id
         )
         if paginated is not None:
-            messages = list(paginated.messages)
+            messages = visible_to_model(paginated.messages)
     except Exception:
         logger.debug(
             "Failed to fetch messages for session %s — body left empty",

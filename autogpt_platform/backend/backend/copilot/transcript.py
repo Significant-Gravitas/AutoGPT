@@ -29,6 +29,7 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .hidden_rows import visible_to_model
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
 from .model import ChatMessage
@@ -1076,11 +1077,10 @@ async def extract_context_messages(
       preserving structured ``tool_calls``.
 
     Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.  Messages read from the database come without the
-    first-turn memory block an older session stored in its first message
-    (``without_stored_first_turn_memory``).
+    transcript is available.  Excludes ``role="reasoning"`` rows, and rows
+    posted for the user only (``hidden_rows``).  The current user turn at
+    ``session_messages[-1]`` is excluded — callers append it themselves.
+    Database messages are stripped of legacy first-turn memory blocks.
     """
     # Drop reasoning rows — their content lives in transcript paths,
     # not the public turn list.  Queue lifecycle is tracked on the
@@ -1092,10 +1092,10 @@ async def extract_context_messages(
     prior = session_messages[:-1]
 
     if download is None:
-        return prior
+        return visible_to_model(prior)
     transcript_msgs = _parse_transcript_to_messages(download)
     if transcript_msgs is None:
-        return prior
+        return visible_to_model(prior)
 
     gap = detect_gap(download, session_messages)
     hole: list[ChatMessage] = []
@@ -1103,7 +1103,8 @@ async def extract_context_messages(
         hole = await fill_hole_between_transcript_and_gap(
             session_id, download.message_count, gap
         )
-    return transcript_msgs + hole + gap
+    # After the watermark slicing above, which counts hidden rows too.
+    return transcript_msgs + visible_to_model(hole + gap)
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

@@ -60,7 +60,7 @@ from backend.copilot.legacy_first_turn_memory_test_data import (
     master_warm,
     session_file,
 )
-from backend.copilot.llm_attribution import set_turn_impersonated
+from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
 from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
@@ -1261,6 +1261,7 @@ class TestBaselineCostExtraction:
             ),
         ):
             set_turn_impersonated(True)
+            set_turn_trace_id("turn-1")
             try:
                 await _baseline_llm_caller(
                     messages=[{"role": "user", "content": "hi"}],
@@ -1269,6 +1270,7 @@ class TestBaselineCostExtraction:
                 )
             finally:
                 set_turn_impersonated(False)
+                set_turn_trace_id(None)
 
         assert create_mock.await_args is not None
         extra_body = create_mock.await_args.kwargs["extra_body"]
@@ -1278,6 +1280,7 @@ class TestBaselineCostExtraction:
             "generation_name": "copilot-baseline",
             "environment": attribution_settings.config.app_env.value,
             "impersonated": True,
+            "trace_id": "turn-1",
         }
 
     @pytest.mark.asyncio
@@ -3938,3 +3941,32 @@ class TestBaselineFirstTurnWarmContextIsEphemeral:
         )
 
         assert "violet-913" in turn.model_input()
+
+
+class TestStampPostHogTrace:
+    def test_every_save_of_the_turns_rows_stamps_its_posthog_trace_first(self):
+        """A rating of the reply names its PostHog trace from this stamp
+        (``ai_spans.stamp_turn_trace_id``): the mid-turn flush, the error
+        marker and the end-of-turn save each stamp before they persist."""
+        import inspect
+
+        from backend.copilot.baseline.service import stream_chat_completion_baseline
+
+        src = inspect.getsource(stream_chat_completion_baseline)
+        pairs = [
+            (
+                "stamp_turn_trace_id(current_session.messages, turn_start)",
+                "current_session = await persist_session_safe(",
+            ),
+            (
+                "stamp_turn_trace_id(_failed_session.messages, turn_start)",
+                "await upsert_chat_session(_failed_session)",
+            ),
+            (
+                "stamp_turn_trace_id(session.messages, turn_start)",
+                "            await upsert_chat_session(session)\n",
+            ),
+        ]
+        for stamp, save in pairs:
+            stamped_at = src.index(stamp)
+            assert stamped_at < src.index(save, stamped_at)

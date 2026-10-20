@@ -181,3 +181,36 @@ async def test_session_row_preserves_typed_creation_time(mocker):
     row = await fetch_mod._session_row(session, "u")
     assert row.created_at == started
     assert row.body == "user: something the user said"
+
+
+@pytest.mark.asyncio
+async def test_a_note_for_the_user_is_not_dreamt_about(mocker):
+    """A skipped-run card is the platform talking to the user; a dream would
+    store "usage limit reached" as a fact about them."""
+    session = SimpleNamespace(
+        session_id="session-1",
+        title="Briefing",
+        started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    page = SimpleNamespace(
+        messages=[
+            ChatMessage(role="user", content="brief me"),
+            ChatMessage(
+                role="assistant",
+                content="Skipped: daily usage limit reached",
+                metadata={"hidden_from_model": True},
+            ),
+            ChatMessage(role="assistant", content="here is your brief"),
+        ]
+    )
+    database = SimpleNamespace(
+        get_user_chat_sessions=AsyncMock(return_value=[session]),
+        get_chat_messages_paginated=AsyncMock(return_value=page),
+    )
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+
+    rows = await fetch_mod._fetch_recent_sessions(
+        MemoryScope.for_user("user-1"), datetime.now(timezone.utc), 10
+    )
+
+    assert rows[0].body == "user: brief me\nassistant: here is your brief"

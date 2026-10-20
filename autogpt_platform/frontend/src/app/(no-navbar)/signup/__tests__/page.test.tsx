@@ -98,6 +98,7 @@ describe("SignupPage", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   test("shows existing user feedback from signup action", async () => {
@@ -474,6 +475,38 @@ describe("SignupPage", () => {
     expect(capture.mock.calls).toEqual([
       ["marketing_opted_out", { surface: "signup" }],
     ]);
+  });
+
+  test("leaves no timer pending once it unmounts after a signup attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await screen.findByText("User with this email already exists");
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("leaves no timer pending when it unmounts before a signup attempt settles", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let settle: (result: unknown) => void = () => {};
+    mockSignupAction.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+    unmount();
+    settle({ success: false, error: "user_already_exists" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   test("does not link to the demo tour", () => {

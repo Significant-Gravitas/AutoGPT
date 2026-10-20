@@ -5,7 +5,6 @@ import {
   getGetV1GetNotificationPreferencesMockHandler,
   getGetV1GetUserTimezoneMockHandler,
   getPostV1UpdateNotificationPreferencesMockHandler,
-  getPostV1UpdateUserEmailMockHandler,
   getPostV1UpdateUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
@@ -107,7 +106,6 @@ function setupBaseHandlers(
     getGetV1GetUserTimezoneMockHandler({
       timezone: options.timezone ?? "Asia/Kolkata",
     }),
-    getPostV1UpdateUserEmailMockHandler({}),
     getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
     getPostV1UpdateUserTimezoneMockHandler({
       timezone: "Europe/London",
@@ -198,7 +196,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -293,7 +290,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -353,7 +349,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };
@@ -398,7 +393,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };

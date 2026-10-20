@@ -6,9 +6,15 @@ import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 
 export const IntegrationBlocks = () => {
-  const { integration, setIntegration } = useBlockMenuStore();
+  const { integration, setIntegration } = useBlockMenuStore(
+    useShallow((state) => ({
+      integration: state.integration,
+      setIntegration: state.setIntegration,
+    })),
+  );
   const {
     allBlocks,
     status,

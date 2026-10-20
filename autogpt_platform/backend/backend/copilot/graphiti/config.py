@@ -13,6 +13,8 @@ from pydantic_settings import (
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+from .models import DEFAULT_LLM_MODEL
+
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -20,8 +22,8 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 # local transport. Pinned as module constants so the field defaults and
 # the validator can't drift — same pattern as
 # ``copilot/config.py::_DEFAULT_TITLE_MODEL`` etc.
-_DEFAULT_LLM_MODEL = "gpt-4.1-mini"
-_DEFAULT_RERANKER_MODEL = "gpt-4.1-mini"
+_DEFAULT_LLM_MODEL = DEFAULT_LLM_MODEL
+_DEFAULT_RERANKER_MODEL = DEFAULT_LLM_MODEL
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
@@ -127,7 +129,7 @@ class GraphitiConfig(BaseSettings):
     # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
     # OpenAIRerankerClient runs concurrent boolean-classifier prompts
     # (one prompt per candidate; log-probabilities decide the score).
-    # This config defaults the classifier to gpt-4.1-mini — the same
+    # This config defaults the classifier to gpt-6-luna — the same
     # cloud slug as ``llm_model`` — so the reranker can ship with no
     # env config, at the cost of up to 2 * context_max_facts classifier
     # calls per session start.
@@ -331,10 +333,10 @@ class GraphitiConfig(BaseSettings):
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
-        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
+        - ``llm_model`` (``gpt-6-luna``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-mini``) → same Ornith slug.
+        - ``reranker_model`` (``gpt-6-luna``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →
@@ -345,7 +347,8 @@ class GraphitiConfig(BaseSettings):
 
         Operator overrides (custom slugs like ``qwen3:8b`` or
         ``hf.co/...``) pass through untouched — only the literal cloud
-        defaults trigger rewriting. Lazy-imports ``chat_cfg`` to avoid
+        defaults and the legacy ``gpt-4.1-mini`` default trigger rewriting.
+        Lazy-imports ``chat_cfg`` to avoid
         the ``copilot.sdk.env`` ↔ ``util/clients`` cycle dev's PR
         established.
         """
@@ -363,9 +366,9 @@ class GraphitiConfig(BaseSettings):
         if chat_cfg.transport.name != "local":
             return self
 
-        if self.llm_model == _DEFAULT_LLM_MODEL:
+        if self.llm_model in (_DEFAULT_LLM_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "llm_model", _LOCAL_LLM_MODEL)
-        if self.reranker_model == _DEFAULT_RERANKER_MODEL:
+        if self.reranker_model in (_DEFAULT_RERANKER_MODEL, "gpt-4.1-mini"):
             object.__setattr__(self, "reranker_model", _LOCAL_RERANKER_MODEL)
         if self.embedder_model == _DEFAULT_EMBEDDER_MODEL:
             object.__setattr__(self, "embedder_model", _LOCAL_EMBEDDER_MODEL)
