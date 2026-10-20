@@ -170,8 +170,10 @@ export function stripLogUserPII(log: SentryLog): SentryLog {
 }
 
 // Transactions carry their root span's attributes in the trace context and
-// every child span's in its own data, and beforeSendTransaction is the last
-// place to take the visitor's IP address, email and name out of either.
+// every child span's in its own data; an error raised inside a span carries
+// that span's attributes in its trace context too. beforeSend and
+// beforeSendTransaction are the last places to take the visitor's IP
+// address, email and name out of them.
 export function stripSpanPII<T extends Event>(event: T): T {
   const trace = event.contexts?.trace;
   if (trace?.data) trace.data = withoutPrivateAttributes(trace.data);

@@ -35,7 +35,7 @@ Sentry.init({
   // No email or IP address reaches Sentry; the user id is enough.
   sendDefaultPii: false,
   beforeSend(event) {
-    return stripUserPII(stripRequestCredentials(event));
+    return stripSpanPII(stripUserPII(stripRequestCredentials(event)));
   },
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)

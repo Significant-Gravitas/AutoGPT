@@ -180,6 +180,37 @@ describe.each([
     }
   });
 
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await load();
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "http.client_ip": "203.0.113.7",
+              "client.address": "203.0.113.7",
+              "http.request.header.x_forwarded_for": "203.0.113.7",
+              "user.email": "ada@example.com",
+              "user.id": "user-1",
+              "http.route": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/library",
+    });
+  });
+
   it("sends transactions whose spans carry no IP address, email or name", async () => {
     await load();
 

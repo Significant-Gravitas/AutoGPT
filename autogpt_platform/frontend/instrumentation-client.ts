@@ -48,7 +48,7 @@ Sentry.init({
   // Some browsers inject a script that logs every cross-origin iframe it may
   // not read (BUILDER-943).
   beforeSend(event) {
-    stripUserPII(event);
+    stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
