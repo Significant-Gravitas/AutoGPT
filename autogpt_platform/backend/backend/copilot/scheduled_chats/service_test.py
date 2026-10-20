@@ -608,6 +608,32 @@ async def _alert(user_id: str) -> AlertCondition | None:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_resumed_as_its_pause_raises_the_alert_is_left_without_one(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """The owner resumes from the paused list between the pause's row and its
+    alert: the resume's withdrawal finds nothing yet, and the alert must not
+    outlive the pause."""
+    raise_paused = service.alerts.raise_paused
+    user_id, session_id = await _owner()
+
+    async def resumed_first(*args, **kwargs):
+        assert await resume_scheduled_chat(user_id, "sched-1")
+        await raise_paused(*args, **kwargs)
+
+    mocker.patch.object(service.alerts, "raise_paused", new=resumed_first)
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_pause_raises_the_alert_and_resume_resolves_it(
     server: SpinTestServer, scheduler: MagicMock
 ):

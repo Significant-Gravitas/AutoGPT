@@ -128,16 +128,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         # any pause it raises: both are this chat's one alert.
         await resolve_alert(run.user_id, run.schedule_key)
     if paused:
-        await alerts.raise_paused(
-            run.user_id,
-            run.schedule_key,
-            alerts.paused_cause(
-                streak.failure,
-                title=title,
-                failures=streak.failures,
-                session_id=run.session_id,
-            ),
-        )
+        await _raise_paused(run, row, streak, title)
     notice = _notice(step, streak, paused=paused, told=told, title=title, row=row)
     if notice is not None:
         await _tell(run, row, notice, told=told)
@@ -360,6 +351,28 @@ async def _save(
     except UniqueViolationError:
         # The paused row the delete left in place.
         return None
+
+
+async def _raise_paused(
+    run: ScheduledRun, row: ScheduledChatStreak, streak: Streak, title: str
+) -> None:
+    """Raise the chat's pause alert. A resume can land between the pause's row
+    and this, its own withdrawal before the alert existed, so the alert stays
+    only if the row is still paused once it is raised."""
+    await alerts.raise_paused(
+        run.user_id,
+        run.schedule_key,
+        alerts.paused_cause(
+            streak.failure,
+            title=title,
+            failures=streak.failures,
+            session_id=run.session_id,
+        ),
+    )
+    if not await ScheduledChatStreak.prisma().count(
+        where={"id": row.id, "NOT": [{"pausedAt": None}]}
+    ):
+        await resolve_alert(run.user_id, run.schedule_key)
 
 
 async def _drop(row: ScheduledChatStreak, *, saw_pause: bool) -> bool:
