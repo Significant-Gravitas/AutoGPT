@@ -77,6 +77,15 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
 
+    mocker.patch.object(chat_routes, "cancel_background_subtasks", new=AsyncMock())
+    mocker.patch.object(
+        chat_routes,
+        "background_task_db",
+        return_value=MagicMock(
+            cancel_queued_background_followup=AsyncMock(return_value=False)
+        ),
+    )
+
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(
@@ -1176,6 +1185,24 @@ def _reserve_client_message(claims: _ClaimRedis, user_id: str) -> None:
     )
     key = pending_messages_module._client_message_key("sess-1", scoped_id)
     claims.values[key] = "reserved:first-copy"
+
+
+def test_stream_chat_lost_slot_is_retryable_without_accepting_the_message(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.turn_queue.SessionNotIdle("sess-1")
+    request = {"message": "hello", "message_id": "client-click-id"}
+
+    response = client.post("/sessions/sess-1/stream", json=request)
+
+    assert response.status_code == 409
+    assert "send this message again" in response.json()["detail"]
+    assert not mocks.claims.values
+    mocks.enqueue.side_effect = None
+    retry = client.post("/sessions/sess-1/stream", json=request)
+    assert retry.status_code == 200
+    assert list(mocks.claims.values.values()) == ["accepted"]
 
 
 def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
@@ -3756,9 +3783,9 @@ def test_cancel_session_releases_orphan_running(
             )
         ),
     )
-    mock_release = AsyncMock()
+    mock_release = AsyncMock(return_value=True)
     mocker.patch(
-        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        "backend.api.features.chat.routes.cancel_orphaned_background_subtasks",
         new=mock_release,
     )
 
@@ -3768,7 +3795,7 @@ def test_cancel_session_releases_orphan_running(
     data = response.json()
     assert data["cancelled"] is True
     assert data["reason"] == "orphan_released"
-    mock_release.assert_awaited_once()
+    mock_release.assert_awaited_once_with(TEST_USER_ID, "sess-1", stale)
 
 
 def test_cancel_session_skips_orphan_release_within_race_window(

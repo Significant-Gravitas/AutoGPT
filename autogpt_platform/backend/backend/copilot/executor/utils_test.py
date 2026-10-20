@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.active_turns import SessionNotIdle
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
@@ -423,16 +424,15 @@ async def test_schedule_chat_turn_needing_a_fresh_slot_dispatches_when_admitted(
 
 
 @pytest.mark.asyncio
-async def test_schedule_chat_turn_still_saves_and_dispatches_on_a_refreshed_slot():
-    # /stream doesn't ask for a fresh slot; its behaviour is unchanged.
+async def test_schedule_chat_turn_refuses_a_lost_slot_before_saving_a_new_message():
     with _scheduling(admitted=False) as (append, dispatch):
-        turn_id = await utils.schedule_chat_turn(
-            session_id="s1", user_id="u1", message="and the totals"
-        )
+        with pytest.raises(SessionNotIdle):
+            await utils.schedule_chat_turn(
+                session_id="s1", user_id="u1", message="and the totals"
+            )
 
-    assert turn_id is not None
-    append.assert_awaited_once()
-    dispatch.assert_awaited_once()
+    append.assert_not_awaited()
+    dispatch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -503,6 +503,13 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
             new=AsyncMock(return_value=root_envelope("t1")),
         ),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
         patch(
             "backend.util.clients.get_async_copilot_queue",
             new=AsyncMock(return_value=queue),
@@ -524,8 +531,11 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_schedule_turn_hands_impersonation_to_the_turn() -> None:
-    slot = MagicMock(admitted=True)
+@pytest.mark.parametrize("user_id", ["u1", None])
+async def test_schedule_turn_hands_impersonation_to_the_turn(
+    user_id: str | None,
+) -> None:
+    slot = MagicMock(admitted=bool(user_id))
 
     @asynccontextmanager
     async def acquire(*_args, **_kwargs):
@@ -541,13 +551,13 @@ async def test_schedule_turn_hands_impersonation_to_the_turn() -> None:
         patch.object(utils, "dispatch_turn", new=dispatch),
     ):
         await utils.schedule_turn(
-            session_id="s1", user_id="u1", turn_id="t1", message="hi"
+            session_id="s1", user_id=user_id, turn_id="t1", message="hi"
         )
         assert dispatch.await_args.kwargs["impersonated"] is False
 
         await utils.schedule_turn(
             session_id="s1",
-            user_id="u1",
+            user_id=user_id,
             turn_id="t2",
             message="hi",
             impersonated=True,

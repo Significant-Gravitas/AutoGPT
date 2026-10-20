@@ -561,6 +561,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("answer_kind", ["typed", "approval", "background"])
 @pytest.mark.parametrize(
     (
         "expert_id",
@@ -584,6 +585,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 )
 async def test_promoted_turn_tracking_preserves_session_attribution(
     tracked_message: MagicMock,
+    answer_kind: str,
     expert_id: str | None,
     origin: str,
     source_platform: str | None,
@@ -600,7 +602,17 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
     head.metadata.origin = origin
     head.metadata.source_platform = source_platform
     head.metadata.llm_auth_provider = "codex"
-    pending = _pyd_message(role=role)
+    metadata = {}
+    if answer_kind == "approval":
+        metadata = {"envelope": _CHILD, "held_calls_answered": True}
+    elif answer_kind == "background":
+        metadata = {
+            "envelope": _CHILD,
+            "background_task_id": "task",
+            "background_task_stage": "followup",
+            "turn_id": "wake",
+        }
+    pending = _pyd_message(role=role, metadata=metadata)
     db = MagicMock()
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     db.update_chat_session_status = AsyncMock(return_value=True)
@@ -625,7 +637,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
         else:
             assert await turn_queue.dispatch_next_for_user("u1") is claim
 
-    if expected_event:
+    if expected_event and answer_kind != "background":
         tracked_message.assert_called_once_with(
             user_id="u1",
             session_id="s1",
@@ -789,15 +801,79 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         ),
         # A tree that closed while it waited: no "your answer is kept" note.
         ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "turn_id": "wake",
+                "envelope": _CHILD,
+            },
+            "This tree has closed.",
+            "This tree has closed.",
+            False,
+        ),
+        (
+            {held._WAKE_KEY: True, "envelope": _CHILD},
+            "This tree has closed.",
+            f"This tree has closed. {turn_queue.WAKE_LATER}",
+            False,
+        ),
+        (
+            {"background_task_id": "task", "background_task_stage": "followup"},
+            None,
+            "Otto couldn't start this background work because its saved limits are unavailable.",
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": None,
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        ({held._WAKE_KEY: True}, None, turn_queue.UNRECORDED_WAKE, False),
     ],
     ids=[
         "envelope-unreadable",
         "envelope-unreadable-tree-known",
         "permissions-unreadable",
         "tree-refused",
+        "background-followup-tree-refused",
+        "approval-tree-refused",
+        "background-limits-unreadable",
+        "background-child-envelope-invalid",
+        "background-child-envelope-null",
+        "background-followup-envelope-invalid",
+        "approval-limits-unreadable",
     ],
 )
-async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
+async def test_a_refused_queued_turn_closes_and_returns_any_child_node(
     stored: dict, refusal: str | None, reason: str, released: bool
 ) -> None:
     head = _queued_row()
@@ -828,14 +904,16 @@ async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is False
 
-    assert posted.await_args.args[1].content == reason
-    db.update_chat_session_status.assert_awaited_once_with(
-        session_id="s1", expect_status="running", status="idle"
-    )
     if released:
         release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
     else:
         release.assert_not_awaited()
+    assert posted.await_args.args[1].content == reason
+    if refusal is None:
+        dispatched.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="idle"
+    )
 
 
 @pytest.mark.asyncio

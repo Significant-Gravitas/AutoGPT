@@ -69,7 +69,9 @@ _RESEND = (
 def is_answer_row(message: "ChatMessage") -> bool:
     """A user row the gate wrote for an answered card, not something the user typed."""
     return bool(message.metadata) and (
-        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+        _WAKE_KEY in message.metadata
+        or _RESULT_KEY in message.metadata
+        or message.metadata.get("background_task_stage") == "followup"
     )
 
 

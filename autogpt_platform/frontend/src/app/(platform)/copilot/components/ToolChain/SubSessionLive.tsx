@@ -24,10 +24,17 @@ import { asObject, str } from "./resultHelpers";
 import { RowIcon } from "./RowIcon";
 import { SwapText } from "./SwapText";
 import { getCatalogLabel } from "./toolCatalog";
+import {
+  getBackgroundOutcome,
+  isSessionLive,
+  isSessionPending,
+} from "./subSessionStatus";
 
 interface Props {
   subSessionId: string;
   active: boolean;
+  background?: boolean;
+  backgroundExpiresAt?: string | null;
 }
 
 const POLL_MS = 3000;
@@ -50,10 +57,17 @@ interface LiveStep {
  *  ``running`` forever, so liveness comes from the polled session itself —
  *  once it goes idle, polling stops and the last state stays up as the
  *  delegate's final answer. */
-export function SubSessionLive({ subSessionId, active }: Props) {
+export function SubSessionLive({
+  subSessionId,
+  active,
+  background = false,
+  backgroundExpiresAt,
+}: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
+    backgroundExpiresAt,
+    background,
   );
   if (!active) return null;
 
@@ -85,15 +99,29 @@ export function SubSessionLive({ subSessionId, active }: Props) {
  *  nothing at all: a failed fetch, and the poll cap expiring while the run
  *  is still live. Both stop the polling, so both have to be visible —
  *  otherwise a dead card is indistinguishable from a working one. */
-function useLiveSubSession(subSessionId: string, active: boolean) {
+function useLiveSubSession(
+  subSessionId: string,
+  active: boolean,
+  backgroundExpiresAt?: string | null,
+  background = false,
+) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
       if (!active) return;
-      const timer = setTimeout(() => setIsCapped(true), POLL_CAP_MS);
+      const expiresAt = backgroundExpiresAt
+        ? Date.parse(backgroundExpiresAt)
+        : NaN;
+      setIsCapped(false);
+      const timer = setTimeout(
+        () => setIsCapped(true),
+        Number.isFinite(expiresAt)
+          ? Math.max(0, expiresAt - Date.now())
+          : POLL_CAP_MS,
+      );
       return () => clearTimeout(timer);
     },
-    [active],
+    [active, backgroundExpiresAt],
   );
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
@@ -102,7 +130,9 @@ function useLiveSubSession(subSessionId: string, active: boolean) {
         if (query.state.status === "error" || isCapped) return false;
         const raw = query.state.data;
         const polled = raw && raw.status === 200 ? raw.data : null;
-        return !polled || isSessionLive(polled) ? POLL_MS : false;
+        return !polled || isSessionPending(polled, background)
+          ? POLL_MS
+          : false;
       },
       select: (res) => (res.status === 200 ? res.data : null),
     },
@@ -113,7 +143,7 @@ function useLiveSubSession(subSessionId: string, active: boolean) {
     isError,
     // A capped poll on a finished session is not "paused" — the last
     // snapshot IS the final answer, so there is nothing left to watch.
-    isPaused: isCapped && (!session || isSessionLive(session)),
+    isPaused: isCapped && (!session || isSessionPending(session, background)),
   };
 }
 
@@ -374,11 +404,15 @@ function useDelegatedSessionId(expertId: string | null) {
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
+  background = false,
+  backgroundExpiresAt?: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId ?? "",
     stale && !!subSessionId,
+    backgroundExpiresAt,
+    background,
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
@@ -386,13 +420,16 @@ export function useSubSessionEffectiveStatus(
   // dead poll has to show up in the pill or it reads as fact.
   if (isError || isPaused) return "unknown";
   if (!session) return status;
+  if (background) {
+    const outcome = getBackgroundOutcome(session);
+    if (outcome) {
+      return outcome === "timed_out" ? "timed out" : outcome;
+    }
+    return ["running", "queued"].includes(session.chat_status ?? "")
+      ? session.chat_status
+      : status;
+  }
   return isSessionLive(session) ? status : "completed";
-}
-
-function isSessionLive(session: SessionDetailResponse): boolean {
-  if (session.active_stream) return true;
-  const status = session.chat_status?.toLowerCase();
-  return status === "running" || status === "queued";
 }
 
 function parseArguments(rawArguments: unknown): unknown {

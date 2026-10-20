@@ -468,6 +468,8 @@ class SubSessionStatusResponse(ToolResponseBase):
     """
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    background_task_id: str | None = None
+    background_expires_at: str | None = None
     status: Literal[
         "running", "completed", "cancelled", "error", "queued", "transferred"
     ] = Field(

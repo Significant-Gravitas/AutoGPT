@@ -55,6 +55,13 @@ redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
 return 1
 """
 
+_HASH_COMPARE_DELETE_LUA = """
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
+end
+return redis.call('DEL', KEYS[1])
+"""
+
 # Push to a capped list only when a hash field currently matches the expected
 # value. Returns the new list length, or -1 when the guard fails.
 #
@@ -453,6 +460,16 @@ async def hash_compare_and_set(
     result = await cast(
         "Any",
         redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+    )
+    return int(result) == 1
+
+
+async def hash_compare_and_delete(
+    redis: AsyncRedisClient, key: str, field: str, *, expected: str
+) -> bool:
+    """Delete a hash atomically only while the named field still identifies its owner."""
+    result = await cast(
+        "Any", redis.eval(_HASH_COMPARE_DELETE_LUA, 1, key, field, expected)
     )
     return int(result) == 1
 

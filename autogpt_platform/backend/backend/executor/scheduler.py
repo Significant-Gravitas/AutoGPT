@@ -42,7 +42,7 @@ from backend.api.features.onboarding_dump.retention import (
     purge_expired_recordings,
 )
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
-from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
     AtResetKind,
@@ -51,6 +51,7 @@ from backend.copilot.at_reset import (
     load_at_reset_chat,
 )
 from backend.copilot.at_reset_lock import at_reset_job_lock
+from backend.copilot.background_delivery import reconcile_background_subtasks
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
@@ -251,6 +252,11 @@ def reconcile_schedule_index():
         logger.warning("Schedule index reconcile skipped: scheduler not running")
         return
     _scheduler_instance._reconcile_schedule_index()
+
+
+def deliver_background_subtasks() -> None:
+    """Keep max_instances guarding the sweep until reconciliation finishes."""
+    run_async(reconcile_background_subtasks(), timeout=None)
 
 
 @func_retry
@@ -728,14 +734,14 @@ async def _execute_copilot_turn(**kwargs):
         )
         if args.run_at is not None:
             await _reschedule_one_shot_after_expert_unavailable(args)
-    except ConcurrentTurnLimitError as e:
-        # User is at their per-user concurrency cap. For cron schedules the
+    except (ConcurrentTurnLimitError, SessionNotIdle) as e:
+        # The user's cap or a busy chat prevented admission. For cron schedules the
         # next tick retries automatically; for one-shot (run_at) schedules
         # APScheduler removes the job after fire regardless of our error,
         # so re-schedule a copy 5 min out to give the slot time to free.
         logger.warning(
             f"Scheduled copilot turn for session {_session_id_label(args)} "
-            f"hit concurrency cap; cron={args.cron is not None}: {e}"
+            f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
         )
         if args.run_at is not None:
             await _reschedule_one_shot_after_cap(args)
@@ -917,7 +923,7 @@ _NOTICE_TIMEOUT_SECONDS = 10
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
     await _reschedule_one_shot(
         args,
-        reason="concurrency cap",
+        reason="unavailable turn slot",
         name_suffix="cap-retry",
         retry_kind="cap",
     )
@@ -3073,6 +3079,17 @@ class Scheduler(AppService):
                 hours=24,
                 replace_existing=True,
                 max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            self.scheduler.add_job(
+                deliver_background_subtasks,
+                id="deliver_background_subtasks",
+                trigger="interval",
+                seconds=5,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

@@ -7,6 +7,8 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { backgroundNotice } from "./backgroundSubtasks";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -35,24 +37,6 @@ interface SessionChatMessage {
   duration_ms: number | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-}
-
-// Assistant rows the backend posts on its own, outside any turn: a run-post
-// WorkCard, or the note a skipped scheduled chat leaves. Each is its own bubble
-// so it never reads as part of a neighbouring reply.
-const STANDALONE_METADATA_KINDS = new Set([
-  "expert_run",
-  "scheduled_chat_notice",
-]);
-
-function getStandaloneBubbleMetadata(
-  metadata: unknown,
-): Record<string, unknown> | null {
-  if (!metadata || typeof metadata !== "object") return null;
-  const kind = (metadata as Record<string, unknown>).kind;
-  return typeof kind === "string" && STANDALONE_METADATA_KINDS.has(kind)
-    ? (metadata as Record<string, unknown>)
-    : null;
 }
 
 function coerceSessionChatMessages(
@@ -450,10 +434,11 @@ export function convertChatSessionMessagesToUiMessages(
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
     // UIMessage as the text that follows.
+    const notice = backgroundNotice(msg.metadata);
     const uiRole: "user" | "assistant" =
-      msg.role === "reasoning" ? "assistant" : msg.role;
+      msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(msg, {
+    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
       toolOutputsByCallId,
       fileUrlBuilder,
       unanswered: options?.isComplete ? "completed" : "input-available",
@@ -483,6 +468,7 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !notice &&
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&

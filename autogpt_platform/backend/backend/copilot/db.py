@@ -1493,11 +1493,34 @@ async def admit_chat_session_turn(
             return "full"
         # Conditional: a transition outside this lock (a cancel) may have
         # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+        # A newly admitted slot must not inherit a previous turn's cleanup identity.
+        updated = await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession"
+            SET "chatStatus"='running', "updatedAt"=CURRENT_TIMESTAMP,
+                metadata=COALESCE(metadata,'{{}}'::jsonb)-'_active_turn_id'
+            WHERE id=$1 AND "userId"=$2
+              AND "chatStatus"=$3::{schema_prefix}"ChatSessionStatus" """,
+            session_id,
+            user_id,
+            expect_status,
+            client=tx,
         )
     return "admitted" if updated else "busy"
+
+
+async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
+    """Persist the dispatched turn's identity independently of Redis stream TTLs."""
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" SET metadata=
+            COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
+            "updatedAt"=CURRENT_TIMESTAMP
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running' """,
+            session_id,
+            user_id,
+            turn_id,
+        )
+    )
 
 
 async def update_chat_session_status(

@@ -699,7 +699,9 @@ model ChatSession {
   // timestamp (every transition touches the row).
   chatStatus ChatSessionStatus @default(idle)
 
-  Messages ChatMessage[]
+  Messages           ChatMessage[]
+  BackgroundChildren ChatBackgroundTask[] @relation("BackgroundParent")
+  BackgroundTask     ChatBackgroundTask?  @relation("BackgroundChild")
 
   // Expert this session is scoped to; null = plain Autopilot session.
   // Sessions keep expertId for history when the expert is archived (soft delete).
@@ -780,6 +782,30 @@ model ChatLinkedShare {
   @@unique([sessionId, executionId])
   @@index([sessionId])
   @@index([executionId])
+}
+
+model ChatBackgroundTask {
+  id                String      @id
+  userId            String
+  parentSessionId   String
+  Parent            ChatSession @relation("BackgroundParent", fields: [parentSessionId], references: [id], onDelete: Cascade)
+  childSessionId    String      @unique
+  Child             ChatSession @relation("BackgroundChild", fields: [childSessionId], references: [id], onDelete: Cascade)
+  launchTurnId      String
+  childTurnId       String      @unique
+  context           Json
+  deadline          DateTime
+  outcome           String?
+  result            String?
+  startedAt         DateTime?
+  followupStartedAt DateTime?
+  followupState     String      @default("waiting")
+  wakeSuppressed    Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+
+  @@index([followupState, updatedAt])
+  @@index([userId, parentSessionId, launchTurnId])
 }
 
 model ChatMessage {

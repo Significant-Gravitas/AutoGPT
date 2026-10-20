@@ -31,6 +31,10 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
+from backend.copilot.background_delivery import (
+    cancel_background_subtasks,
+    cancel_orphaned_background_subtasks,
+)
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -176,6 +180,7 @@ from backend.copilot.transports import (
 from backend.copilot.trial_reads import sharing_trial_reads
 from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.db_accessors import background_task_db
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
@@ -314,7 +319,9 @@ async def _validate_and_get_writable_session(
 _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
 
 
-async def _try_release_orphan_running(session_id: str, user_id: str) -> bool:
+async def _try_release_orphan_running(
+    session_id: str, user_id: str, *, cancel_background: bool = False
+) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
     older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
     ``acquire_turn_slot``→``create_session`` race window).  Returns
@@ -333,6 +340,10 @@ async def _try_release_orphan_running(session_id: str, user_id: str) -> bool:
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
     if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
         return False
+    if cancel_background:
+        return await cancel_orphaned_background_subtasks(
+            user_id, session_id, updated_at
+        )
     await active_turns.release_turn_slot(user_id, session_id)
     return True
 
@@ -1690,8 +1701,14 @@ async def cancel_session_task(
     # block the cancel itself, so we swallow and log.
     await _clear_pending_best_effort(session_id)
 
+    await cancel_background_subtasks(user_id, session_id)
+
     # Queued sessions: just flip back to idle.  The user clicked X
     # before any compute was spent; no executor involvement needed.
+    if await background_task_db().cancel_queued_background_followup(
+        user_id, session_id
+    ):
+        return CancelSessionResponse(cancelled=True, reason="dequeued")
     if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
         return CancelSessionResponse(cancelled=True, reason="dequeued")
 
@@ -1708,10 +1725,13 @@ async def cancel_session_task(
         #     orphaning the executor work in the opposite direction.
         # Gate the cleanup on session age so a fresh admit isn't stomped.
         # Anything older than the threshold is the real orphan.
-        if await _try_release_orphan_running(session_id, user_id):
+        if await _try_release_orphan_running(
+            session_id, user_id, cancel_background=True
+        ):
             return CancelSessionResponse(cancelled=True, reason="orphan_released")
         return CancelSessionResponse(cancelled=True, reason="no_active_session")
 
+    await cancel_background_subtasks(user_id, session_id, active_session.turn_id)
     await enqueue_cancel_task(session_id)
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 
@@ -2086,6 +2106,13 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
+    except turn_queue.SessionNotIdle as exc:
+        await release_client_message_claim()
+        raise HTTPException(
+            status_code=409,
+            detail="Another reply started while this message was being sent. "
+            "Please send this message again.",
+        ) from exc
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
             raise HTTPException(status_code=429, detail=str(exc)) from exc

@@ -19,10 +19,16 @@ from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
+from backend.copilot.background_execution import (
+    background_timeout,
+    claim_background_execution,
+    finish_background_execution,
+)
+from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
-from backend.copilot.context import set_turn_unattended
+from backend.copilot.context import set_current_turn_id, set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
 from backend.copilot.credit_billing import (
     CreditBilledTurn,
@@ -467,7 +473,7 @@ class CoPilotProcessor:
 
         Thin wrapper around :meth:`_execute`. The ``try/finally`` here
         guarantees :func:`sync_fail_close_session` runs on every exit
-        path — normal completion or exception.
+        path except an explicitly rejected background pickup.
         ``mark_session_completed`` is an atomic CAS on
         ``status == "running"``, so when the async path already wrote a
         terminal state the sync call is a cheap no-op.
@@ -479,12 +485,14 @@ class CoPilotProcessor:
         )
         log.info("Starting execution")
         start_time = time.monotonic()
+        fail_close = True
         try:
-            self._execute(entry, cancel, cluster_lock, log)
+            fail_close = self._execute(entry, cancel, cluster_lock, log) is not False
         finally:
-            sync_fail_close_session(
-                entry.session_id, entry.turn_id, log, self.execution_loop
-            )
+            if fail_close:
+                sync_fail_close_session(
+                    entry.session_id, entry.turn_id, log, self.execution_loop
+                )
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -494,13 +502,14 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Submit the async turn to ``self.execution_loop`` and drive it.
 
         Handles the sync/async boundary (cancel-event checks, cluster-lock
         refresh, bounded waits) without any Redis-state cleanup logic —
-        that lives in :func:`sync_fail_close_session` which the outer
-        :meth:`execute` always invokes on exit.
+        that lives in :func:`sync_fail_close_session`. Returns False only
+        for an explicitly rejected background pickup, which must not
+        fail-close another worker's claimed turn.
         """
         task_ready: concurrent.futures.Future[asyncio.Task] = (
             concurrent.futures.Future()
@@ -574,18 +583,19 @@ class CoPilotProcessor:
         # worker does not refresh the per-session lock forever on a wedged turn.
         while True:
             try:
-                future.result(timeout=1.0)
-                return
+                return future.result(timeout=1.0)
             except concurrent.futures.CancelledError:
                 if cancel_requested or cancel.is_set():
-                    return
+                    return True
                 raise
             except concurrent.futures.TimeoutError:
+                if future.done() and not future.cancelled():
+                    return future.result()
                 if cancel.is_set() and not cancel_requested:
                     request_cancel()
                 elif cancel_requested and cancel_started_at is not None:
                     if cancel_drain_timed_out():
-                        return
+                        return True
                     log_cancel_wait()
                 cluster_lock.refresh()
 
@@ -595,7 +605,7 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Async execution logic for a CoPilot turn, run as one Sentry
         ``copilot.turn`` transaction.
 
@@ -609,7 +619,11 @@ class CoPilotProcessor:
             log: Structured logger
         """
         with turn_transaction(entry) as turn:
-            await self._run_turn(entry, cancel, cluster_lock, log, turn)
+            if not await claim_background_execution(entry):
+                return False
+            async with asyncio.timeout(background_timeout(entry)) as deadline:
+                await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
+            return True
 
     async def _run_turn(
         self,
@@ -618,6 +632,7 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
         turn: TurnTrace,
+        deadline: asyncio.Timeout | None = None,
     ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -695,6 +710,11 @@ class CoPilotProcessor:
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause, scheduled_watch)
+                    if (entry.message_metadata or {}).get("background_task_id"):
+                        # The finally block persists this as the subtask's failure.
+                        error_msg = (
+                            "Background work could not start within its usage limits."
+                        )
                     return
                 if credit_turn is not None:
                     log.info(
@@ -857,6 +877,7 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
+            set_current_turn_id(entry.turn_id)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
             set_turn_span(entry.turn_id)
@@ -931,6 +952,9 @@ class CoPilotProcessor:
         except BaseException as e:
             # Handle all exceptions (including CancelledError) with appropriate logging
             if isinstance(e, asyncio.CancelledError):
+                if deadline is not None and deadline.expired():
+                    log.info("Background turn reached its deadline")
+                    return
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE
             else:
@@ -938,8 +962,13 @@ class CoPilotProcessor:
                 log.error(f"Turn failed: {error_msg}")
             raise
         finally:
-            # If no exception but user cancelled, still mark as cancelled
-            if not error_msg and cancel.is_set():
+            # Work has ended; its deadline must not interrupt outcome/usage persistence.
+            if deadline is not None and not deadline.expired():
+                deadline.reschedule(None)
+            # Keep the monotonic deadline distinct from a user's Stop.
+            if deadline is not None and deadline.expired():
+                error_msg = BACKGROUND_TIMEOUT_MESSAGE
+            elif not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
             try:
                 if credential_lease is not None:
@@ -959,6 +988,10 @@ class CoPilotProcessor:
                 )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
+                try:
+                    await finish_background_execution(entry, error_msg)
+                except Exception as finish_err:
+                    log.error(f"Failed to save background completion: {finish_err}")
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,

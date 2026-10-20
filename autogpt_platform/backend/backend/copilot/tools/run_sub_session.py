@@ -26,9 +26,12 @@ other turn.
 import json
 import logging
 import time
+from datetime import timedelta
 from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
+from backend.copilot.background_subtasks import start_background_subtask
+from backend.copilot.background_task import DELIVERY_SECONDS, FOLLOWUP_SECONDS
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -44,7 +47,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.copilot.tree import SpawnRequest
+from backend.copilot.tree import SpawnRequest, TreeRefusal
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -83,11 +86,8 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh child session. Runs on the copilot "
-            "executor queue — survives tab-close AND worker restarts. Waits "
-            f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
-            "If not done, returns status=running + sub_session_id — poll via "
-            "tool:get_sub_session_result."
+            "Run a durable subtask. Foreground waits; "
+            "poll tool:get_sub_session_result if still running."
         )
 
     @property
@@ -97,20 +97,20 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the child session to execute.",
+                    "description": "Task to run.",
                     "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
-                    "description": "Optional context prepended to the prompt.",
+                    "description": "Context prepended to prompt.",
                     "default": "",
                     "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue or queue into a prior sub; empty = new. "
-                        "Cheaper when the follow-up builds on what it read."
+                        "Prior subtask to continue/queue; empty = new. "
+                        "Reuse for related work."
                     ),
                     "default": "",
                     "title": "Continues",
@@ -119,12 +119,22 @@ class RunSubSessionTool(BaseTool):
                 "wait_for_result": {
                     "type": "integer",
                     "description": (
-                        "Seconds to wait inline. 0 = return immediately. "
-                        f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
+                        "Inline wait in seconds; 0 returns immediately. "
+                        f"Max {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
                     "title": "Waits up to",
                     "format": "seconds",
+                },
+                "background": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Only if the user asks for background work: fresh subtask, "
+                        "10-minute deadline, then one budgeted summary here without tools. "
+                        "Returns immediately; no polling."
+                    ),
+                    "title": "Run in background",
                 },
             },
             "required": ["prompt"],
@@ -139,6 +149,7 @@ class RunSubSessionTool(BaseTool):
         system_context: str = "",
         sub_autopilot_session_id: str = "",
         wait_for_result: int = 60,
+        background: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not prompt.strip():
@@ -150,6 +161,48 @@ class RunSubSessionTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
+            ).from_outside()
+
+        if background:
+            if sub_autopilot_session_id.strip():
+                return ErrorResponse(
+                    message="Background subtasks must start a fresh conversation."
+                )
+            background_prompt = (
+                f"{system_context.strip()}\n\n{prompt}"
+                if system_context.strip()
+                else prompt
+            )
+            try:
+                task = await start_background_subtask(
+                    user_id, session, background_prompt
+                )
+            except TreeRefusal as refused:
+                return ErrorResponse(message=refused.message).from_outside()
+            return SubSessionStatusResponse(
+                session_id=session.session_id,
+                status=(
+                    "queued"
+                    if task.outcome is None
+                    else (
+                        "completed"
+                        if task.outcome == "completed"
+                        else "cancelled" if task.outcome == "cancelled" else "error"
+                    )
+                ),
+                sub_session_id=task.child_session_id,
+                sub_autopilot_session_id=task.child_session_id,
+                sub_autopilot_session_link=_sub_session_link(task.child_session_id),
+                background_task_id=task.id,
+                background_expires_at=(
+                    task.deadline
+                    + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
+                ).isoformat(),
+                message=(
+                    "Subtask accepted in the background. You can finish this reply now. "
+                    "Otto will follow up here within the original budget. "
+                    "Use the subtask's Stop control to cancel it. No polling is needed."
+                ),
             ).from_outside()
 
         # Resolve the sub's ChatSession id — either resume an owned one or

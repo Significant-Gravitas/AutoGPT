@@ -38,12 +38,14 @@ from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import (
+    SessionNotIdle,
     TurnSlot,
     count_running_turns,
     get_delegated_turn_limit,
     get_running_turn_limit,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.db import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -97,6 +99,9 @@ UNRECORDED_WAKE = (
     "The approved action could not be resumed: what it was allowed to do was "
     f"not recorded. {WAKE_LATER}"
 )
+UNREADABLE_BACKGROUND = (
+    "Otto couldn't start this background work because its saved limits are unavailable."
+)
 
 
 async def count_queued_turns(user_id: str) -> int:
@@ -125,11 +130,6 @@ async def list_queued_sessions(user_id: str):
     return await chat_db().list_chat_sessions_by_status(
         user_id=user_id, status=CHAT_STATUS_QUEUED
     )
-
-
-class SessionNotIdle(Exception):
-    """The session already has a turn queued or running, so a spawned child
-    cannot be queued into it."""
 
 
 class InflightCapExceeded(Exception):
@@ -319,7 +319,9 @@ async def _flip(db: Any, session_id: str, user_id: str) -> bool:
     )
 
 
-async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
+async def cancel_queued_turn(
+    *, user_id: str, session_id: str, expected_turn_id: str | None = None
+) -> bool:
     """Flip the user's session from ``"queued"`` → ``"idle"``.  A queued child
     gets a closing row saying it was cancelled, which its waiter reads, and its
     node goes back to its tree.  Returns True iff the CAS matched AND the
@@ -332,6 +334,11 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
         async with _get_session_lock(session_id):
             # Read before the flip: once idle, a new message can become the latest.
             pending = await db.get_latest_user_message_in_session(session_id)
+            if expected_turn_id is not None and (
+                pending is None
+                or (pending.metadata or {}).get("turn_id") != expected_turn_id
+            ):
+                return False
             if not await db.update_chat_session_status(
                 session_id=session_id,
                 expect_status=CHAT_STATUS_QUEUED,
@@ -345,7 +352,8 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 f"cancelled before it started, spawned={spawned}"
             )
             if spawned and pending is not None:
-                child = _child_node(pending.metadata or {})
+                if not (pending.metadata or {}).get("background_task_id"):
+                    child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
     finally:
@@ -449,6 +457,7 @@ async def _promote_head(user_id: str) -> bool | None:
     # The admitted envelope of a queued child, whose node a refusal gives back.
     child: TurnEnvelope | None = None
     spawned = False
+    background = False
     try:
         # Find the pending user message in this session (the most recent
         # user-role row with no following assistant rows — i.e. the one
@@ -488,13 +497,17 @@ async def _promote_head(user_id: str) -> bool | None:
         metadata = pending.metadata or {}
         queued_envelope = _stored_envelope(metadata)
         spawned = _is_spawned(pending)
+        background = bool(metadata.get("background_task_id"))
+        if background and queued_envelope is None:
+            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND)
+            return None
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
             await _refuse_queued_turn(
                 head, UNREADABLE_SPAWN, release=_child_node(metadata)
             )
             return None
-        child = queued_envelope if spawned else None
+        child = queued_envelope if spawned and not background else None
         if (
             is_answer_row(pending)
             and queued_envelope is None
@@ -505,7 +518,7 @@ async def _promote_head(user_id: str) -> bool | None:
             await _refuse_queued_turn(head, UNRECORDED_WAKE)
             return None
 
-        turn_id = str(uuid.uuid4())
+        turn_id = str(metadata["turn_id"]) if background else str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -542,6 +555,16 @@ async def _promote_head(user_id: str) -> bool | None:
                 impersonated=metadata.get("impersonated") is True,
                 tool_call_id=metadata.get("tool_call_id") or "chat_stream",
                 tool_name=metadata.get("tool_name") or "chat",
+                message_metadata=metadata if background else None,
+                unattended=background,
+                credential_pins=(
+                    {
+                        key: CredentialPin.model_validate(value)
+                        for key, value in metadata.get("credential_pins", {}).items()
+                    }
+                    if background
+                    else None
+                ),
                 # A typed message is a root, as the chat route makes it, not the
                 # child of the turn this hook runs in; a wake or a child brings its own.
                 envelope=queued_envelope,
@@ -551,7 +574,11 @@ async def _promote_head(user_id: str) -> bool | None:
         # Only a stored envelope is re-checked here; a root is never refused.
         await _refuse_queued_turn(
             head,
-            refused.message if spawned else f"{refused.message} {WAKE_LATER}",
+            (
+                refused.message
+                if spawned or background
+                else f"{refused.message} {WAKE_LATER}"
+            ),
             release=child,
         )
         return None
@@ -586,7 +613,7 @@ async def _promote_head(user_id: str) -> bool | None:
         f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
     )
 
-    if pending.role == "user" and pending.content and not spawned:
+    if pending.role == "user" and pending.content and not spawned and not background:
         try:
             track_user_message(
                 user_id=user_id,

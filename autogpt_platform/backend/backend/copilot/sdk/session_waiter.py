@@ -26,7 +26,7 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
-from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
 from backend.copilot.llm_attribution import is_turn_impersonated
@@ -42,7 +42,7 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_pause import TurnPause
-from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
+from backend.copilot.turn_queue import queued_turn_refusal
 from backend.data.db_accessors import chat_db
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
@@ -251,7 +251,32 @@ async def run_copilot_turn_via_queue(
         await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
     ):
         return "refused", SessionResult(refusal=_ALREADY_WAITING)
-    if await is_turn_in_flight(session_id):
+    # Same per-user concurrent-turn cap as the HTTP chat route via the
+    # shared ``schedule_turn`` helper — without this a graph spawning N
+    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
+    # out unbounded copilot turns past the user's cap.
+    turn_id = str(uuid.uuid4())
+    delegated = session.metadata.delegated_by_session_id is not None
+    try:
+        if await is_turn_in_flight(session_id):
+            raise SessionNotIdle(session_id)
+        await schedule_turn(
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=message,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+            permissions=permissions,
+            spawn=spawn,
+            message_metadata=message_metadata,
+            delegated=delegated,
+            # A child of an impersonated turn is the admin's work too.
+            impersonated=is_turn_impersonated(),
+        )
+    except SessionNotIdle:
         if not allow_queue:
             return "refused", SessionResult(
                 refusal=(
@@ -290,30 +315,6 @@ async def run_copilot_turn_via_queue(
         observed.queued = True
         observed.pending_buffer_length = state.buffer_length
         return outcome, observed
-
-    # Same per-user concurrent-turn cap as the HTTP chat route via the
-    # shared ``schedule_turn`` helper — without this a graph spawning N
-    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
-    # out unbounded copilot turns past the user's cap.
-    turn_id = str(uuid.uuid4())
-    delegated = session.metadata.delegated_by_session_id is not None
-    try:
-        await schedule_turn(
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=message,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            permissions=permissions,
-            spawn=spawn,
-            message_metadata=message_metadata,
-            delegated=delegated,
-            # A child of an impersonated turn is the admin's work too.
-            impersonated=is_turn_impersonated(),
-        )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:

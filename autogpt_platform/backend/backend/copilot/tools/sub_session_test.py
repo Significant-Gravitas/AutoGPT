@@ -73,6 +73,10 @@ def mock_queue(monkeypatch):
     enqueue_turn = AsyncMock()
     enqueue_cancel = AsyncMock()
     create_session = AsyncMock()
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.cancel_background_subtasks",
+        AsyncMock(),
+    )
 
     # run_sub_session reaches enqueue_copilot_turn / create_session via
     # session_waiter.run_copilot_turn_via_queue → schedule_turn → dispatch_turn.
@@ -90,6 +94,10 @@ def mock_queue(monkeypatch):
     monkeypatch.setattr(
         "backend.copilot.stream_registry.create_session",
         create_session,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.executor.utils.chat_db",
+        lambda: MagicMock(record_chat_session_turn=AsyncMock(return_value=True)),
     )
     return {
         "enqueue_turn": enqueue_turn,
