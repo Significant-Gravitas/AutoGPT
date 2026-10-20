@@ -7,7 +7,7 @@ connection" as if it were their own limit.
 """
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -18,7 +18,11 @@ from backend.copilot.baseline import service
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
-from backend.copilot.response_model import StreamError, StreamProviderFailure
+from backend.copilot.response_model import (
+    StreamError,
+    StreamProviderFailure,
+    StreamStatus,
+)
 
 _OPENROUTER_402_BODY = {
     "message": "Insufficient credits. This account never purchased credits. "
@@ -39,6 +43,11 @@ def _openrouter_402() -> openai.APIStatusError:
     )
 
 
+async def _no_answered_cards(*_: object, **__: object) -> AsyncIterator[StreamStatus]:
+    return
+    yield
+
+
 @pytest.fixture
 def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     persisted: list[ChatSession] = []
@@ -56,7 +65,6 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     )
     for name, value in {
         "drain_pending_safe": [],
-        "resolve_answered": [],
         "drain_pending_messages": [],
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
@@ -71,6 +79,7 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
         "persist_and_record_usage": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))
+    monkeypatch.setattr(service, "resolve_answered", _no_answered_cards)
     monkeypatch.setattr(service, "_get_main_client", MagicMock())
     monkeypatch.setattr(service, "upsert_chat_session", AsyncMock(side_effect=save))
     monkeypatch.setattr(

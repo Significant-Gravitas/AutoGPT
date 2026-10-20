@@ -16,10 +16,10 @@ timezone and only rewrites the job when it actually differs — re-adding an
 existing cron would reset a pending ``next_run_time`` and drop that day's
 briefing.
 
-**Hot-path cost.** This helper runs on every chat turn. The LaunchDarkly
-gate runs first (in-process cached), then the Redis marker short-circuits
-the rest. Only the first call after the marker expires pays for the
-timezone lookup (a DB read) and the scheduler RPC.
+**Hot-path cost.** This helper runs on every chat turn. A Redis marker read
+short-circuits the common case before any timezone lookup or scheduler RPC.
+Without a marker, it resolves the timezone (a DB read), registers the cron,
+and writes the marker.
 
 Failures are logged at WARN and swallowed — ``ensure_morning_briefing_scheduled``
 is fired via ``asyncio.create_task`` from the hot chat-stream request path

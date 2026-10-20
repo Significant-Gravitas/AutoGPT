@@ -171,6 +171,7 @@ async def test_a_pass_registers_what_the_row_records_and_reads_no_flag(
     _lose_every_cron(env)
     flags = AsyncMock(return_value=(False, True))
     monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flags)
+    monkeypatch.setattr(scope_reconcile, "evaluate_feature_flag", flags, raising=False)
 
     report = await env.reconcile()
 

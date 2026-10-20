@@ -153,12 +153,16 @@ describe("Marketplace ExpertsSection", () => {
 
   test("shows experts to signed-in users without a rollout flag", async () => {
     let templatesRequested = false;
+    let expertsRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {
         templatesRequested = true;
         return [mariaTemplate];
       }),
-      getListExpertsMockHandler([]),
+      getListExpertsMockHandler(() => {
+        expertsRequested = true;
+        return [];
+      }),
     );
 
     render(<MainMarkeplacePage />);
@@ -169,6 +173,7 @@ describe("Marketplace ExpertsSection", () => {
     ).toBeDefined();
     expect(await screen.findByRole("link", { name: /Maria/ })).toBeDefined();
     expect(templatesRequested).toBe(true);
+    await waitFor(() => expect(expertsRequested).toBe(true));
   });
 
   test("keeps the raise-your-own door open when no templates exist", async () => {

@@ -205,7 +205,6 @@ async def get_graph_execution(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    # Apply feature flags to filter out disabled features
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id

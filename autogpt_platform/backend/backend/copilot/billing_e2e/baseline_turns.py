@@ -7,6 +7,7 @@ copilot's tools, which answer the provider's tool call with a canned result.
 """
 
 import uuid
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -56,7 +57,7 @@ class BaselineTurns:
             "build_skills_update_notice": AsyncMock(return_value=None),
             "inject_user_context": AsyncMock(return_value=None),
             "clear_pending_question": AsyncMock(),
-            "resolve_answered": AsyncMock(return_value=[]),
+            "resolve_answered": _no_answered_cards,
             "build_turn_budget_block": AsyncMock(return_value=""),
             "_fetch_graphiti_context": AsyncMock(return_value=""),
             "_enqueue_graphiti_turn": AsyncMock(),
@@ -87,3 +88,8 @@ async def _answer_tool(*, tool_call_id: str, **_: Any) -> StreamToolOutputAvaila
     return StreamToolOutputAvailable(
         toolCallId=tool_call_id, toolName=TOOL_NAME, output="The fact is 42."
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

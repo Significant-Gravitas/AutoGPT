@@ -1031,6 +1031,11 @@ def _make_sdk_patches(
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
         (
+            f"{_SVC}._fetch_graphiti_context",
+            {"new": AsyncMock(side_effect=lambda user_id, *_: (bool(user_id), ""))},
+        ),
+        (f"{_SVC}._enqueue_graphiti_turn", {"new_callable": AsyncMock}),
+        (
             f"{_SVC}.download_transcript",
             dict(
                 new_callable=AsyncMock,

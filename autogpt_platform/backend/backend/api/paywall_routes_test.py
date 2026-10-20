@@ -217,6 +217,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/execution/{graph_exec_id}",
     "GET /api/review/pending",
     "GET /api/review/session/{chat_session_id}",
+    "GET /api/review/session/{chat_session_id}/answered",
     "GET /api/schedules",
     "GET /api/schedules/followups",
     "GET /api/schedules/followups/paused",
