@@ -6,15 +6,13 @@ probabilities supply relevance scores. Unusable responses score zero.
 
 from __future__ import annotations
 
-import itertools
 import logging
-import time
 from typing import Any
 
 import numpy as np
 import openai
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
-from graphiti_core.helpers import SEMAPHORE_LIMIT, semaphore_gather
+from graphiti_core.helpers import semaphore_gather
 from graphiti_core.llm_client import LLMConfig, RateLimitError
 from openai.types.chat import (
     ChatCompletionMessageParam,
@@ -22,26 +20,9 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
-from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
-
-from .config import graphiti_config
 from .models import DEFAULT_LLM_MODEL, is_luna_model
 
 logger = logging.getLogger(__name__)
-
-_PROBE_RANKS = itertools.count()
-_PROBE_ARMS = ("or20", "or1w", "direct1w", "mini1w")
-_probe_direct: openai.AsyncOpenAI | None = None
-
-
-def _probe_direct_client() -> openai.AsyncOpenAI:
-    """OpenAI directly, with the key the embedder already uses."""
-    global _probe_direct
-    if _probe_direct is None:
-        _probe_direct = openai.AsyncOpenAI(
-            api_key=graphiti_config.resolve_embedder_api_key()
-        )
-    return _probe_direct
 
 MIN_COMPLETION_TOKENS = 16
 
@@ -53,21 +34,6 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
 
     async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
         model = self.config.model or DEFAULT_MODEL
-        # do-not-merge probe (#15739): successive pairs of ranks rotate through
-        # graphiti's default cap of 20 at a time, one wave (#15492's cap), one
-        # wave sent to OpenAI directly, and one wave on GPT-4.1 mini.
-        arm = _PROBE_ARMS[(next(_PROBE_RANKS) // 2) % len(_PROBE_ARMS)]
-        client = self.client
-        if arm == "direct1w":
-            client = _probe_direct_client()
-            model = model.removeprefix("openai/")
-        elif arm == "mini1w":
-            model = "openai/gpt-4.1-mini"
-        cap = None if arm == "or20" else max(1, min(len(passages), 64))
-        _perf_legs.note("rr_arm", arm)
-        _perf_legs.note("rr_model", model)
-        _perf_legs.note("rr_passages", len(passages))
-        _perf_legs.note("rr_cap", cap or SEMAPHORE_LIMIT)
         options: dict[str, Any] = (
             {"reasoning_effort": "none", "max_completion_tokens": MIN_COMPLETION_TOKENS}
             if is_luna_model(model)
@@ -100,34 +66,19 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             ]
             for passage in passages
         ]
-        async def _probe_call(call):
-            started = time.time()
-            try:
-                response = await call
-                provider = (getattr(response, "model_extra", None) or {}).get(
-                    "provider"
-                )
-                _perf_legs.note_in_set("rr_provider", str(provider))
-                return response
-            finally:
-                _perf_legs.call_span("rr", started)
-
         try:
             responses = await semaphore_gather(
                 *[
-                    _probe_call(
-                        client.chat.completions.create(
-                            model=model,
-                            messages=openai_messages,
-                            temperature=0,
-                            logprobs=True,
-                            top_logprobs=2,
-                            **options,
-                        )
+                    self.client.chat.completions.create(
+                        model=model,
+                        messages=openai_messages,
+                        temperature=0,
+                        logprobs=True,
+                        top_logprobs=2,
+                        **options,
                     )
                     for openai_messages in openai_messages_list
-                ],
-                max_coroutines=cap,
+                ]
             )
 
             responses_top_logprobs = [

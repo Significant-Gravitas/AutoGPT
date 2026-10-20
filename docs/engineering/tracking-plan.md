@@ -165,10 +165,13 @@ require `surface = tour`. The signup CTA uses `free-trial` in cloud mode and
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
 the same properties and nothing identifying in them: `/tour` is public and
-pre-signup, so they land on the visitor's anonymous id. `/tour` sends the
-DataFast goals without consent (SECRT-2713), but the PostHog events wait for
-analytics consent like every browser event, so the two funnels count
-differently.
+pre-signup, so they land on the visitor's anonymous id. Both need analytics
+consent, on `/tour` like everywhere else, but they still count differently:
+PostHog holds an event until the visitor's answer arrives, while DataFast drops
+any event fired before consent is known. So the DataFast tour funnel misses
+mount-time steps (`tour_start`, the first `tour_scenario_start`) on a first
+visit where the answer arrives only after the page loads; `tour_start` is
+retried on the next tour visit in that session.
 
 ## Onboarding and activation
 

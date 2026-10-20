@@ -43,6 +43,13 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceScope,
+    InferenceUsage,
+)
+from backend.copilot.inference.routing import anthropic_batch_route
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.copilot.usage_activation import UsageActivationUnavailable
 
@@ -53,14 +60,15 @@ from .batch_submit import (
     read_lock_token,
     submit_phase,
 )
-from .billing import priced_phase_usage, record_phase_cost
-from .llm import DreamLLMError, parse_json_with_prose_fallback
+from .billing import record_phase_cost
+from .llm import parse_json_with_prose_fallback
 from .locks import release_dream_lock
+from .phase_jobs import PHASE_TIERS, phase_job
 from .schemas import (
     DreamOperations,
     DreamOperationsSnapshot,
+    DreamPhase,
     IngestionDrainStatus,
-    PhaseUsage,
 )
 
 if TYPE_CHECKING:
@@ -73,8 +81,6 @@ logger = logging.getLogger(__name__)
 
 
 NAMESPACE = "dream_pass"
-
-DreamPhase = Literal["consolidate", "recombine", "sanitize"]
 
 NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
     "consolidate": "recombine",
@@ -202,12 +208,14 @@ async def _finalize_stuck_duplicate(
             existing.state,
         )
         # The first delivery's per-edge outcomes (and dream session id)
-        # died with it, so the counts here are the clamped *attempted*
-        # ops — annotate the summary so the admin UI doesn't present
-        # them as confirmed apply results.
+        # died with it: the writes and proposals it queued are counted
+        # pending, none written, and the demotion counts are the clamped
+        # *attempted* ops — annotate the summary so the admin UI doesn't
+        # present them as confirmed apply results.
         note = (
-            "[finalized after duplicate delivery — counts reflect attempted "
-            "operations; writes landed with the original delivery] "
+            "[finalized after duplicate delivery — writes and proposals were "
+            "queued by the original delivery, counted pending; demotion counts "
+            "reflect attempted operations] "
         )
         await mark_complete(
             kind="dream_pass",
@@ -216,8 +224,7 @@ async def _finalize_stuck_duplicate(
                 user_id=user_id,
                 pass_id=pass_id,
                 execution_path="anthropic_batch",
-                consolidated_count=len(ops.writes),
-                proposal_count=len(ops.proposals),
+                pending_writes=len(ops.writes) + len(ops.proposals),
                 demotion_count=len(ops.demotions),
                 entity_invalidation_count=len(ops.entity_invalidations),
                 # Batch apply never drains in-line by design; the first
@@ -510,7 +517,7 @@ async def _handle_phase_result(
     try:
         payload = parse_json_with_prose_fallback(row.content)
         PHASE_RESPONSE_MODELS[phase].model_validate(payload)
-    except (DreamLLMError, ValidationError) as exc:
+    except (InferenceError, ValidationError) as exc:
         row.error = f"invalid output shape — {type(exc).__name__}"
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
@@ -792,7 +799,11 @@ async def _finalize_complete(
             user_id=user_id, pass_id=pass_id, job_id=job_id, ops=ops
         )
         await _log_all_phase_costs(
-            user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
+            user_id=user_id,
+            expert_id=expert_id,
+            pass_id=pass_id,
+            state=state,
+            phase_models=phase_models,
         )
         await _release_lock(user_id, pass_id, expert_id)
         await _best_effort_cleanup(pass_id)
@@ -814,6 +825,7 @@ async def _finalize_complete(
             pass_id,
             ops,
             known_fact_uuids=input_bundle.known_fact_uuids,
+            known_episode_uuids=input_bundle.known_episode_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -836,7 +848,11 @@ async def _finalize_complete(
     # regardless); the Redis dedup gate inside ``_log_all_phase_costs``
     # keeps it at-most-once across both paths and any batch re-dispatch.
     await _log_all_phase_costs(
-        user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
+        user_id=user_id,
+        expert_id=expert_id,
+        pass_id=pass_id,
+        state=state,
+        phase_models=phase_models,
     )
 
     if job_id:
@@ -881,6 +897,9 @@ async def _finalize_complete(
                 proposal_count=_count("proposal_count"),
                 demotion_count=_count("demotion_count"),
                 entity_invalidation_count=_count("entity_invalidation_count"),
+                dropped_forgotten=_count("dropped_forgotten"),
+                pending_writes=_count("pending_writes"),
+                failed_writes=_count("failed_writes"),
                 dream_session_id=session_id,
                 ingestion_drain_status=ingestion_drain_status,
                 operations=snapshot,
@@ -930,6 +949,7 @@ async def _fail_pass(
     if state:
         await _log_all_phase_costs(
             user_id=user_id,
+            expert_id=expert_id,
             pass_id=pass_id,
             state=state,
             phase_models=phase_models,
@@ -988,11 +1008,12 @@ async def _claim_costs_logged_gate(pass_id: str) -> bool:
 async def _log_all_phase_costs(
     *,
     user_id: str,
+    expert_id: str | None,
     pass_id: str,
     state: dict[str, dict[str, Any]],
     phase_models: dict[str, str],
 ) -> None:
-    """One PlatformCostLog row per phase, tagged ``anthropic_batch``.
+    """One PlatformCostLog row per phase, on the ``anthropic_batch`` route.
 
     Idempotent via a Redis SETNX gate keyed on ``pass_id``: if the
     BatchExecutor crashes between charging and removing the pending
@@ -1002,10 +1023,11 @@ async def _log_all_phase_costs(
     whatever phases landed (matches the documented "partial pass
     charges for completed phases" semantic in ``dream/billing.py``).
 
-    Each phase is priced by ``billing.priced_phase_usage`` from its
-    model's catalog price card (``backend/copilot/price_card.py``), the
-    card the sync path falls back to as well: Anthropic's additive cache
-    buckets, less the batch path's half-price discount.
+    Each phase is recorded through ``billing.record_phase_cost`` like a
+    sync phase, attributed to the pass's expert, and priced from its
+    model's catalog price card (``backend/copilot/price_card.py``):
+    Anthropic's additive cache buckets, less the batch path's half-price
+    discount.
 
     No-ops on per-phase failure — apply already wrote the user-facing
     memory operations; a cost-log blip shouldn't take that down.
@@ -1017,40 +1039,50 @@ async def _log_all_phase_costs(
         )
         return
 
-    for phase, row in state.items():
+    for phase in PHASE_TIERS:
+        row = state.get(phase)
+        if row is None:
+            continue
         try:
-            if row.get("error"):
-                continue
-            phase_model = phase_models.get(phase)
-            if not phase_model:
-                logger.warning(
-                    "No model recorded for pass=%s phase=%s — skipping cost log",
-                    pass_id,
-                    phase,
-                )
-                continue
-            input_tokens = int(row.get("input_tokens") or 0)
-            output_tokens = int(row.get("output_tokens") or 0)
-            cache_read_tokens = int(row.get("cache_read_tokens") or 0)
-            cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
-            usage = PhaseUsage(
-                phase=phase,  # type: ignore[arg-type]
-                model=phase_model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_creation_tokens=cache_creation_tokens,
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=priced_phase_usage(usage, "anthropic_batch"),
-                execution_path="anthropic_batch",
-            )
+            scope = InferenceScope(user_id=user_id, expert_id=expert_id)
+            await _log_phase_cost(scope, pass_id, phase, row, phase_models)
         except Exception:
             logger.exception(
                 "Failed to log batch cost for pass=%s phase=%s", pass_id, phase
             )
+
+
+async def _log_phase_cost(
+    scope: InferenceScope,
+    pass_id: str,
+    phase: DreamPhase,
+    row: dict[str, Any],
+    phase_models: dict[str, str],
+) -> None:
+    if row.get("error"):
+        return
+    phase_model = phase_models.get(phase)
+    if not phase_model:
+        logger.warning(
+            "No model recorded for pass=%s phase=%s — skipping cost log",
+            pass_id,
+            phase,
+        )
+        return
+    ctx = InferenceContext(
+        scope=scope,
+        job=phase_job(phase, pass_id, timeout_seconds=None, pinned_model=phase_model),
+        route=anthropic_batch_route(phase_model),
+    )
+    usage = InferenceUsage(
+        model=phase_model,
+        input_tokens=int(row.get("input_tokens") or 0),
+        output_tokens=int(row.get("output_tokens") or 0),
+        cache_read_tokens=int(row.get("cache_read_tokens") or 0),
+        cache_creation_tokens=int(row.get("cache_creation_tokens") or 0),
+        payer=ctx.route.payer,
+    )
+    await record_phase_cost(ctx, usage)
 
 
 # ---------------------------------------------------------------------------

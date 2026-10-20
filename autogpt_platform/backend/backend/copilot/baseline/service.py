@@ -56,6 +56,8 @@ from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_marker import mark_injected_memory_block
+from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
@@ -83,13 +85,14 @@ from backend.copilot.pending_message_helpers import (
     drained_rows_entry,
     persist_pending_as_user_rows,
     persist_session_safe,
+    persist_unfolded_rows,
 )
 from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.permissions import denied_tool_names
+from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     approval_mode_supplement,
@@ -97,6 +100,7 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_provider_ceiling_supplement,
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
@@ -149,6 +153,7 @@ from backend.copilot.tools import (
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
+    forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
@@ -221,6 +226,16 @@ def _pause_uncounted_box(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+def _pause_counted_box(sandbox: Any, session_id: str, expert_id: str | None) -> None:
+    """Pause the box at a counted turn's end, fire-and-forget; an expert's box
+    stays running while another of its turns is active."""
+    task = asyncio.create_task(
+        pause_sandbox_direct(sandbox, session_id, expert_id=expert_id)
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 # Hint appended on the last tool round so the model wraps up with a summary
@@ -576,6 +591,45 @@ class _BaselineStreamState:
         # rows to render the Reasoning collapse after the AI SDK's
         # stream-end hydrate swaps in the DB-backed message list.
         self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
+
+
+async def _refresh_follow_up_warm_context(
+    warm_ctx: str | None,
+    *,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    is_user_message: bool,
+    pre_drain_msg_count: int,
+    message: str | None,
+) -> str | None:
+    """Fill in warm context on a follow-up user turn (SECRT-2378).
+
+    Returns the refreshed block, or ``warm_ctx`` UNCHANGED whenever the
+    refresh yields nothing — fall back, never overwrite. Called after the
+    pending fold, so the query is the combined message (a queued substantive
+    request paired with a short "ok" must still drive recall), and scoped by
+    ``expert_id`` to the same graph the first turn read.
+
+    Diverges from the SDK's ``_append_follow_up_warm_context`` in two
+    respects. The baseline compactor doesn't surface ``was_compacted``, so
+    there is no ``force=True`` and a trivially short post-compaction turn
+    skips recall here. And the refresh starts here, after the fold, with
+    nothing to overlap, so the join grace (``join_refresh``,
+    ``warm_context_refresh_join_grace_ms``) is its whole budget: a refresh
+    still running then is cancelled and the turn goes on without it.
+    Documented debt; SDK is the production engine. The block is appended to
+    the model's input only, never to the transcript.
+    """
+    if not (graphiti_enabled and user_id and is_user_message):
+        return warm_ctx
+    if pre_drain_msg_count <= 1:
+        return warm_ctx
+    pending = start_refresh(user_id, message, expert_id=expert_id)
+    if pending is None:
+        return warm_ctx
+    refreshed = await join_refresh(pending)
+    return refreshed if refreshed else warm_ctx
 
 
 def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
@@ -1899,6 +1953,7 @@ async def stream_chat_completion_baseline(
                 volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
                 expert_id=session.expert_id,
                 user_id=user_id,
+                providers=allowed_providers(permissions),
                 # Counted just before the try/finally that releases it, below:
                 # everything between here and there can still fail or be
                 # stopped, and a count with no release keeps the expert's box
@@ -1907,6 +1962,7 @@ async def stream_chat_completion_baseline(
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+            await forget_turn_ceiling(session_id, session.expert_id)
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
@@ -2008,6 +2064,8 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        # Empty unless the run's permissions restrict connected accounts.
+        + get_provider_ceiling_supplement(permissions)
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -2026,6 +2084,8 @@ async def stream_chat_completion_baseline(
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         warm_ctx = await _fetch_graphiti_context(user_id, session, message)
+    # NOTE: the follow-up-turn refresh (SECRT-2378) runs after the pending
+    # drain — see ``_refresh_follow_up_warm_context`` below for why.
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
@@ -2177,6 +2237,16 @@ async def stream_chat_completion_baseline(
                 msg["content"] = budget_status + str(msg.get("content") or "")
                 break
 
+    warm_ctx = await _refresh_follow_up_warm_context(
+        warm_ctx,
+        graphiti_enabled=graphiti_enabled,
+        user_id=user_id,
+        expert_id=session.expert_id,
+        is_user_message=is_user_message,
+        pre_drain_msg_count=_pre_drain_msg_count,
+        message=message,
+    )
+
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
@@ -2188,7 +2258,9 @@ async def stream_chat_completion_baseline(
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
-                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                    msg["content"] = (
+                        f"{existing}\n\n{mark_injected_memory_block(warm_ctx)}"
+                    )
                 break
         # Do NOT append warm_ctx to user_message_for_transcript — it would
         # persist stale temporal context into the transcript for future turns.
@@ -2385,10 +2457,31 @@ async def stream_chat_completion_baseline(
 
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
-    held_results = await resolve_answered(user_id, session)
-    if held_results and await persist_pending_as_user_rows(
-        session, transcript_builder, held_results, log_prefix="[Baseline]"
-    ):
+    unsaved_held: list[PendingMessage] = []
+    held_results: list[PendingMessage] = []
+    try:
+        async for held_status in resolve_answered(
+            user_id, session, unsaved_held.append
+        ):
+            yield held_status
+        held_results = [*unsaved_held]
+        # The helper appends the rows before its first await, so from here the
+        # session carries them.
+        unsaved_held.clear()
+        folded = bool(held_results) and await persist_pending_as_user_rows(
+            session, transcript_builder, held_results, log_prefix="[Baseline]"
+        )
+    except BaseException:
+        # Stopped before the finally below: save what already ran, its approval
+        # spent, and end the counted turn on the box.
+        await persist_unfolded_rows(session, unsaved_held, log_prefix="[Baseline]")
+        if held_results:
+            # Cut inside the fold's own save: its rows are on the session only.
+            await persist_session_safe(session, "[Baseline]")
+        if e2b_sandbox is not None:
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
+    if folded:
         opening_entries.append(drained_rows_entry(held_results))
         openai_messages.extend(
             format_pending_as_user_message(pm) for pm in held_results
@@ -2812,13 +2905,7 @@ async def stream_chat_completion_baseline(
         # cleanup below. An expert's box is left running while another of
         # its turns is still active.
         if e2b_sandbox is not None:
-            pause_task = asyncio.create_task(
-                pause_sandbox_direct(
-                    e2b_sandbox, session_id, expert_id=session.expert_id
-                )
-            )
-            _background_tasks.add(pause_task)
-            pause_task.add_done_callback(_background_tasks.discard)
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.

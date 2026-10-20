@@ -63,7 +63,7 @@ describe("server backend", () => {
     const { result } = renderHook(
       () => ({
         hire: useFlagStatus(Flag.HIRE_EXPERTS),
-        search: useFlagStatus(Flag.CHAT_SEARCH),
+        progressBar: useFlagStatus(Flag.TASK_PROGRESS_BAR),
       }),
       { wrapper: withQueryClient() },
     );
@@ -71,7 +71,7 @@ describe("server backend", () => {
     await waitFor(() => expect(result.current.hire.answered).toBe(true));
     expect(result.current.hire.enabled).toBe(true);
     // A gated route must keep waiting rather than 404 on a flag the vendor never answered.
-    expect(result.current.search).toMatchObject({
+    expect(result.current.progressBar).toMatchObject({
       enabled: false,
       answered: false,
     });
@@ -80,7 +80,7 @@ describe("server backend", () => {
   it("answers every flag with its default when the server has no vendor", async () => {
     serveFlags({ flags: {}, configured: false });
 
-    const { result } = renderHook(() => useFlagStatus(Flag.CHAT_SEARCH), {
+    const { result } = renderHook(() => useFlagStatus(Flag.TASK_PROGRESS_BAR), {
       wrapper: withQueryClient(),
     });
 

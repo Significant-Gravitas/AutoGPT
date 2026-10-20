@@ -71,6 +71,7 @@ box through the E2B API if the cache is ever lost.
 
 import asyncio
 import contextlib
+import json
 import logging
 import math
 import time
@@ -103,6 +104,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     forget_sandbox,
     proxy_address,
+    recorded_providers,
 )
 from backend.util.e2b_template import (
     SUPERSEDED_TEMPLATES,
@@ -117,6 +119,20 @@ logger = logging.getLogger(__name__)
 _SANDBOX_KEY_PREFIX = "copilot:e2b:sandbox:"
 _EXPERT_KEY_PREFIX = "copilot:e2b:expert:"
 _CREATING_SENTINEL = "creating"
+
+
+class _KeepCeiling:
+    """No ceiling given: keep the one the box already has."""
+
+    def __repr__(self) -> str:
+        return "KEEP_CEILING"
+
+
+# A re-pin from outside a turn (turning the screen on from the UI) or by a
+# tool that has no ceiling of its own at hand (``start_desktop``) must not
+# widen what the turn that pinned the box last allowed.
+KEEP_CEILING = _KeepCeiling()
+Ceiling = tuple[str, ...] | None | _KeepCeiling
 
 # E2B sandbox metadata that lets an owner find its box without Redis.
 METADATA_OWNER = "autogpt_owner"
@@ -201,9 +217,21 @@ _ACQUIRE_TURN_SCRIPT = (
 # the key.  One script, so a turn that starts between the DECR and the DEL
 # can never have its count wiped.
 _RELEASE_TURN_SCRIPT = (
+    'redis.call("hdel", KEYS[2], ARGV[1]) '
     'local n = redis.call("decr", KEYS[1]) '
     'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
     "return n"
+)
+
+# The provider ceiling each session last pinned an expert's box with, and
+# when; a pin keeps only what all of them allow.  Recorded and read in one
+# script at the pin itself, so two turns pinning at once see each other even
+# before either is counted.  A turn's release removes its own session's entry
+# and no other, and an entry older than any turn can run is ignored.
+_PIN_CEILING_SCRIPT = (
+    'redis.call("hset", KEYS[1], ARGV[1], ARGV[2]) '
+    'redis.call("expire", KEYS[1], ARGV[3]) '
+    'return redis.call("hvals", KEYS[1])'
 )
 
 # One more reconnect attempt before a transient error surfaces: a box that
@@ -269,9 +297,14 @@ class SandboxOwner(BaseModel):
         """
         return f"{self.key()}:stream"
 
-    def egress_owner(self, user_id: str | None) -> EgressOwner:
-        """Who the egress proxy sees this box as (``backend.util.e2b_network``)."""
-        return EgressOwner(kind=self.kind, id=self.id, user_id=user_id)
+    def egress_owner(
+        self, user_id: str | None, providers: tuple[str, ...] | None = None
+    ) -> EgressOwner:
+        """Who the egress proxy sees this box as (``backend.util.e2b_network``),
+        and which of the user's providers it may use (``None``: every one)."""
+        return EgressOwner(
+            kind=self.kind, id=self.id, user_id=user_id, providers=providers
+        )
 
     def display_lock_key(self) -> str:
         """Redis key held by whoever is turning the screen on right now."""
@@ -325,6 +358,7 @@ async def connect_owned(
     *,
     timeout: int | None = None,
     user_id: str | None = None,
+    providers: "Ceiling" = KEEP_CEILING,
     pin_egress: bool = True,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id* only if E2B says it belongs to *owner*.
@@ -339,7 +373,8 @@ async def connect_owned(
     id must be refused without ever waking someone else's box.  *timeout*
     is that limit for the owner's box (a resumed box would otherwise get the
     SDK's default).  A connect that will run work re-pins the box's egress
-    (``backend.util.e2b_network``) for *user_id*; one that only pauses or
+    (``backend.util.e2b_network``) for *user_id*, limited to *providers*
+    (by default the ceiling the box already has); one that only pauses or
     kills passes ``pin_egress=False``.
     """
     info = await _owned_info(sandbox_id, owner, api_key)
@@ -350,6 +385,7 @@ async def connect_owned(
         api_key,
         timeout=timeout,
         user_id=user_id,
+        providers=providers,
         pin_egress=pin_egress,
     )
 
@@ -374,9 +410,20 @@ async def _connect_pinned(
     *,
     timeout: int | None,
     user_id: str | None,
+    providers: "Ceiling" = KEEP_CEILING,
     pin_egress: bool,
+    session_id: str | None = None,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id*, which *info* already showed to be *owner*'s."""
+
+    async def ceiling_at_pin(egress_owner: EgressOwner) -> EgressOwner:
+        # Under the box's rotation lock: concurrent pins see each other's.
+        if isinstance(providers, _KeepCeiling):
+            ceiling = await recorded_providers(sandbox_id)
+        else:
+            ceiling = await _shared_ceiling(owner, providers, sandbox_id, session_id)
+        return egress_owner.model_copy(update={"providers": ceiling})
+
     stamped = info.metadata or {}
     # Whose credentials the proxy may swap in is the box's own record too,
     # not the caller's word: processes of the user it was created for may
@@ -394,14 +441,74 @@ async def _connect_pinned(
     sandbox = await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
-        owner.egress_owner(swap_user_id),
+        owner.egress_owner(swap_user_id, ()),
         apply_network=pin_egress,
+        owner_at_pin=ceiling_at_pin,
         api_key=api_key,
         timeout=timeout,
     )
     if pin_egress and swap_user_id is not None:
         await _keep_grants(sandbox_id)
     return sandbox
+
+
+async def _shared_ceiling(
+    owner: SandboxOwner,
+    providers: tuple[str, ...] | None,
+    sandbox_id: str | None,
+    session_id: str | None,
+) -> tuple[str, ...] | None:
+    """The ceiling a turn of *session_id* pins *owner*'s box with.
+
+    Turns share an expert's box and its egress, so a pin keeps only what every
+    live session's ceiling allows: a turn may narrow another's, never lift it.
+    A plain session's box is its own.  If the record cannot be used, the box's
+    current ceiling narrows it instead.
+    """
+    if not owner.is_expert:
+        return providers
+    now = time.time()
+    try:
+        redis = await get_redis_async()
+        pinned = await redis.eval(
+            _PIN_CEILING_SCRIPT,
+            1,
+            _pin_ceilings_key(owner),
+            session_id or "",
+            json.dumps(
+                {"providers": list(providers) if providers is not None else None}
+                | {"at": now}
+            ),
+            _ACTIVE_TURN_TTL,
+        )
+        ceiling = providers
+        for raw in pinned:
+            entry = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+            if entry["at"] < now - _ACTIVE_TURN_TTL:
+                continue  # A turn that ended without releasing.
+            other = entry["providers"]
+            ceiling = _narrowest(ceiling, None if other is None else tuple(other))
+        return ceiling
+    except Exception:
+        logger.warning(
+            "[E2B] Could not record the ceiling for %s; narrowing by the box's",
+            owner,
+            exc_info=True,
+        )
+        if sandbox_id is None:
+            return providers
+        return _narrowest(providers, await recorded_providers(sandbox_id))
+
+
+def _narrowest(
+    a: tuple[str, ...] | None, b: tuple[str, ...] | None
+) -> tuple[str, ...] | None:
+    """The providers both ceilings allow; ``None`` is every provider."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return tuple(p for p in a if p in b)
 
 
 async def _keep_grants(sandbox_id: str) -> None:
@@ -519,7 +626,9 @@ async def _try_reconnect(
     *,
     timeout: int | None = None,
     user_id: str | None = None,
+    providers: "Ceiling" = KEEP_CEILING,
     template: str | None = None,
+    session_id: str | None = None,
 ) -> "AsyncSandbox | None":
     """Reconnect to the owner's box, or ``None`` if it is gone.
 
@@ -549,7 +658,9 @@ async def _try_reconnect(
             api_key,
             timeout=timeout,
             user_id=user_id,
+            providers=providers,
             pin_egress=True,
+            session_id=session_id,
         )
     except SandboxNotOwnedError as exc:
         logger.warning("[E2B] Refusing reconnect: %s", exc)
@@ -659,6 +770,24 @@ def _active_turns_key(owner: SandboxOwner) -> str:
     return f"{owner.key()}:active"
 
 
+async def forget_turn_ceiling(session_id: str, expert_id: str | None) -> None:
+    """Drop the ceiling a turn of *session_id* recorded on its expert's box,
+    for a turn whose box never came up: its release will not run, and the
+    entry would hold every other session's pin down until it expires."""
+    owner = SandboxOwner.for_session(session_id, expert_id)
+    if not owner.is_expert:
+        return
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.hdel(_pin_ceilings_key(owner), session_id)
+
+
+def _pin_ceilings_key(owner: SandboxOwner) -> str:
+    # Tagged with the whole turn-counter key, so on Redis Cluster both hash to
+    # one slot: the release script touches the two together.
+    return f"{{{_active_turns_key(owner)}}}:ceilings"
+
+
 async def _acquire_turn(owner: SandboxOwner) -> None:
     """Count this turn on an expert's box so another turn's end can't pause it.
 
@@ -683,14 +812,18 @@ async def count_expert_turn(session_id: str, expert_id: str | None) -> None:
     await _acquire_turn(SandboxOwner.for_session(session_id, expert_id))
 
 
-async def _release_turn(owner: SandboxOwner) -> bool:
+async def _release_turn(owner: SandboxOwner, session_id: str | None = None) -> bool:
     """Return ``True`` when the box may be paused: no other turn is still on it."""
     if not owner.is_expert:
         return True
     try:
         redis = await get_redis_async()
         key = _active_turns_key(owner)
-        remaining = int(await redis.eval(_RELEASE_TURN_SCRIPT, 1, key))
+        remaining = int(
+            await redis.eval(
+                _RELEASE_TURN_SCRIPT, 2, key, _pin_ceilings_key(owner), session_id or ""
+            )
+        )
         if remaining <= 0:
             return True
         logger.info(
@@ -732,7 +865,9 @@ async def _placeholder_grants(
     assert egress_owner.user_id is not None  # ``swaps`` requires one
     try:
         selected = await selected_credentials(session_id) if session_id else None
-        return await placeholder_grants(egress_owner.user_id, selected=selected)
+        return await placeholder_grants(
+            egress_owner.user_id, providers=egress_owner.providers, selected=selected
+        )
     except Exception as exc:
         # Commands still get theirs; a box without them is no less safe.
         logger.warning("[E2B] No placeholder env for %s: %s", egress_owner, exc)
@@ -750,6 +885,7 @@ async def get_or_create_owner_sandbox(
     user_id: str | None = None,
     session_id: str | None = None,
     count_turn: bool = True,
+    providers: "Ceiling" = KEEP_CEILING,
 ) -> AsyncSandbox:
     """Return the owner's E2B sandbox, creating it if needed.
 
@@ -771,6 +907,11 @@ async def get_or_create_owner_sandbox(
     from outside a turn (turning its screen on from the UI), or when the
     release is not yet guaranteed to run and ``count_expert_turn`` follows.
     *user_id* / *session_id* are provenance only, stamped on a newly created box.
+    *providers* is the turn's ceiling on the user's connected accounts
+    (``permissions.allowed_providers``), recorded when the box's egress is
+    pinned; ``None`` leaves every provider usable.  Left out, a reconnect
+    keeps the ceiling the box already has, and a new box (opened from the UI,
+    outside any turn) gets every provider; a turn always passes its own.
 
     Raises :class:`SandboxLookupError` when E2B cannot say whether an expert
     already has a box: a fresh box would fork the expert's durable state.
@@ -805,7 +946,9 @@ async def get_or_create_owner_sandbox(
                     api_key,
                     timeout=timeout,
                     user_id=user_id,
+                    providers=providers,
                     template=template,
+                    session_id=session_id,
                 )
             except Exception as exc:
                 if value in retried_ids:
@@ -869,8 +1012,16 @@ async def get_or_create_owner_sandbox(
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
+            egress_owner = owner.egress_owner(
+                user_id,
+                (
+                    None
+                    if isinstance(providers, _KeepCeiling)
+                    else await _shared_ceiling(owner, providers, None, session_id)
+                ),
+            )
             box_grants = await _placeholder_grants(
-                owner.egress_owner(user_id), None if owner.is_expert else session_id
+                egress_owner, None if owner.is_expert else session_id
             )
             box_env = placeholder_env(box_grants) if box_grants else {}
             last_exc: Exception | None = None
@@ -879,7 +1030,7 @@ async def get_or_create_owner_sandbox(
                     sandbox = await asyncio.wait_for(
                         create_sandbox(
                             AsyncSandbox,
-                            owner.egress_owner(user_id),
+                            egress_owner,
                             template=template,
                             api_key=api_key,
                             timeout=timeout,
@@ -998,6 +1149,7 @@ async def get_or_create_sandbox(
     expert_id: str | None = None,
     user_id: str | None = None,
     count_turn: bool = True,
+    providers: "Ceiling" = KEEP_CEILING,
 ) -> AsyncSandbox:
     """The sandbox for this turn (the session's, or its expert's), counting the turn.
 
@@ -1014,6 +1166,7 @@ async def get_or_create_sandbox(
         user_id=user_id,
         session_id=session_id,
         count_turn=count_turn,
+        providers=providers,
     )
 
 
@@ -1089,14 +1242,14 @@ async def pause_sandbox(
     Safe to call even when no sandbox exists for the session.
     """
     owner = SandboxOwner.for_session(session_id, expert_id)
-    if not await _release_turn(owner):
+    if not await _release_turn(owner, session_id):
         return False
     revoked = False
 
     async def _pause(sandbox: AsyncSandbox) -> None:
         nonlocal revoked
         revoked = await _revoke_stream(owner, sandbox)
-        await asyncio.sleep(0)  # do-not-merge probe (#15739): leave the box running
+        await sandbox.pause()
 
     # The stop gets its own share of the budget, so a box slow to answer it
     # still leaves the connect and the pause the time they always had.
@@ -1126,11 +1279,11 @@ async def pause_sandbox_direct(
     box is deliberately left running.
     """
     owner = SandboxOwner.for_session(session_id, expert_id)
-    if not await _release_turn(owner):
+    if not await _release_turn(owner, session_id):
         return False
     revoked = await _revoke_stream(owner, sandbox)
     try:
-        await asyncio.wait_for(asyncio.sleep(0), timeout=_E2B_API_TIMEOUT_SECONDS)  # do-not-merge probe (#15739)
+        await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
         logger.info("[E2B] Paused sandbox %.12s for %s", sandbox.sandbox_id, owner)
         await forget_sandbox(sandbox.sandbox_id)
         if not revoked:
@@ -1328,7 +1481,10 @@ async def _forget_owner_state(owner: SandboxOwner) -> None:
     with contextlib.suppress(Exception):
         redis = await get_redis_async()
         await redis.delete(
-            owner.display_key(), owner.stream_key(), _active_turns_key(owner)
+            owner.display_key(),
+            owner.stream_key(),
+            _active_turns_key(owner),
+            _pin_ceilings_key(owner),
         )
 
 

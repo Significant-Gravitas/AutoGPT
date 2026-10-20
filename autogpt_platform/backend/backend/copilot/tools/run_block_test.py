@@ -7,6 +7,7 @@ import pytest
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 from .models import (
@@ -174,6 +175,46 @@ class TestRunBlockFiltering:
             _current_permissions.reset(token)
 
         assert isinstance(response, ErrorResponse)
+        assert "not permitted" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_block_acting_with_a_provider_outside_the_ceiling_is_refused(
+        self,
+    ):
+        """Denying ``github`` to the run denies its GitHub blocks too, not
+        only the sandbox's placeholders."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "11111111-2222-3333-4444-666666666666"
+        github_block = make_mock_block(block_id, "Create PR", BlockType.STANDARD)
+        github_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": MagicMock(provider=frozenset({ProviderName.GITHUB}))
+        }
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        token = _current_permissions.set(perms)
+        try:
+            with (
+                patch(
+                    "backend.copilot.tools.helpers.get_block",
+                    return_value=github_block,
+                ),
+                patch(
+                    "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                    return_value=({}, []),
+                ),
+            ):
+                response = await RunBlockTool()._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                    dry_run=False,
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(response, ErrorResponse)
+        assert "GitHub account" in response.message
         assert "not permitted" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -1786,3 +1827,218 @@ class TestSpendApproval:
             add_spend.assert_awaited_once_with("expert-1", 5)
         else:
             add_spend.assert_not_awaited()
+
+
+class TestRunBlockOptionalCredentials:
+    """An optional credentials field runs empty when the user has none to
+    offer, as the executor does; a discriminated field keeps its own rules."""
+
+    @staticmethod
+    def _block(schema: type, seen: list):
+        block = make_mock_block_with_schema(
+            block_id="optional-creds-id",
+            name="Optional Key Search",
+            input_properties={},
+            required_fields=[],
+        )
+        block.input_schema = schema
+
+        async def _execute(input_data, **kwargs):
+            seen.append(kwargs.get("credentials"))
+            yield "result", "ok"
+
+        block.execute = _execute
+        return block
+
+    @staticmethod
+    async def _run(block, available: list, input_data: dict):
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws"))
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(side_effect=lambda _u, cid, **_: available[0])
+        reviews = MagicMock()
+        reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+        users = MagicMock()
+        users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            patch("backend.copilot.tools.helpers.review_db", return_value=reviews),
+            patch("backend.copilot.tools.helpers.user_db", return_value=users),
+            patch(
+                "backend.copilot.tools.helpers.credit_db", return_value=_StubCreditDB()
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+            patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=available,
+            ),
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+        ):
+            return await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=make_session(user_id=_TEST_USER_ID),
+                block_id=block.id,
+                input_data=input_data,
+                dry_run=False,
+            )
+
+    @staticmethod
+    def _api_key():
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+
+        return APIKeyCredentials(
+            id="key-1", provider="openai", api_key=SecretStr("sk"), title="Key"
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_runs_without_a_credential_when_none_is_connected(self):
+        seen: list = []
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen), [], {"query": "q"}
+        )
+
+        assert isinstance(response, BlockOutputResponse), response
+        assert seen == [None]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_passes_a_connected_credential(self):
+        seen: list = []
+        key = self._api_key()
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen), [key], {"query": "q"}
+        )
+
+        assert isinstance(response, BlockOutputResponse), response
+        assert seen == [key]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_asks_which_key_when_several_fit(self):
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        second = self._api_key().model_copy(update={"id": "key-2"})
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen),
+            [self._api_key(), second],
+            {"query": "q"},
+        )
+
+        assert isinstance(response, SetupRequirementsResponse), response
+        assert seen == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_picker_credentials_are_still_reported_missing(self):
+        from backend.blocks.google.sheets import GoogleSheetsReadBlock
+
+        from .helpers import resolve_block_credentials
+
+        with (
+            patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+        ):
+            _, missing = await resolve_block_credentials(
+                _TEST_USER_ID, GoogleSheetsReadBlock(), {}
+            )
+
+        assert [m.id for m in missing] == ["credentials"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_optional_discriminated_field_still_asks_for_a_credential(self):
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        response = await self._run(
+            self._block(_OptionalDiscriminatedInput, seen),
+            [],
+            {"query": "q", "model": "paid-model"},
+        )
+
+        assert isinstance(response, SetupRequirementsResponse), response
+        assert seen == []
+
+    @pytest.mark.parametrize(
+        "pinned_provider, runs", [("openai", False), ("anthropic", True)]
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_schedule_pin_on_its_provider_is_never_run_around(
+        self, pinned_provider, runs
+    ):
+        """The schedule's account is gone: running without it is the switch
+        the pin exists to prevent. A pin on another provider changes nothing."""
+        from backend.copilot.credential_selection import (
+            CredentialPin,
+            set_turn_credential_pins,
+        )
+
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        set_turn_credential_pins(
+            {pinned_provider: CredentialPin(id="key-gone", title="Work key")}
+        )
+        try:
+            response = await self._run(
+                self._block(_OptionalKeyInput, seen), [], {"query": "q"}
+            )
+        finally:
+            set_turn_credential_pins(None)
+
+        if runs:
+            assert isinstance(response, BlockOutputResponse), response
+            assert seen == [None]
+        else:
+            assert isinstance(response, SetupRequirementsResponse), response
+            assert seen == []
+
+
+def _optional_schemas():
+    from typing import Literal
+
+    from backend.blocks._base import BlockSchemaInput
+    from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+    from backend.integrations.providers import ProviderName
+
+    OpenAIKey = CredentialsMetaInput[Literal[ProviderName.OPENAI], Literal["api_key"]]
+
+    class OptionalKeyInput(BlockSchemaInput):
+        query: str = SchemaField(description="Query")
+        credentials: OpenAIKey = CredentialsField(
+            description="Optional key", default=None
+        )
+
+    class OptionalDiscriminatedInput(BlockSchemaInput):
+        query: str = SchemaField(description="Query")
+        model: str = SchemaField(description="Model", default="paid-model")
+        credentials: OpenAIKey = CredentialsField(
+            description="Key for the model",
+            discriminator="model",
+            discriminator_mapping={"paid-model": ProviderName.OPENAI},
+            default=None,
+        )
+
+    return OptionalKeyInput, OptionalDiscriminatedInput
+
+
+_OptionalKeyInput, _OptionalDiscriminatedInput = _optional_schemas()

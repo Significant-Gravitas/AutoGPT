@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from backend.copilot.trial_reads import shared_usage_state_read
 from backend.data.db_accessors import pro_activation_db
 from backend.data.redis_client import get_redis_async
 
@@ -17,11 +16,8 @@ class UsageActivationUnavailable(RuntimeError):
 
 
 async def get_ready_usage_state(user_id: str) -> "UsageActivationState":
-    """The user's usage state, read once per ``trial_reads_shared()`` block."""
     try:
-        state = await shared_usage_state_read(
-            user_id, lambda: pro_activation_db().get_usage_activation_state(user_id)
-        )
+        state = await pro_activation_db().get_usage_activation_state(user_id)
     except Exception as exc:
         raise UsageActivationUnavailable("Usage activation state unavailable") from exc
     if state.user_id != user_id or not state.ready:

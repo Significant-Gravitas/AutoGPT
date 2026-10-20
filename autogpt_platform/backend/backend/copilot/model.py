@@ -1,4 +1,3 @@
-from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
 import logging
 import uuid
@@ -1106,7 +1105,6 @@ async def _save_session_to_db(
         # Existence check only — use the metadata-only fetch, no need to
         # eager-load any messages here.
         existing = await db.get_chat_session_metadata(session.session_id)
-        _pp.mark("db:exists")
 
         if not existing:
             # Create new session
@@ -1139,7 +1137,6 @@ async def _save_session_to_db(
             update_tenancy=True,
         )
     await db.update_chat_session(**update_kwargs)
-    _pp.mark("db:update")
 
     # Identify unsaved messages.  Two cases:
     #
@@ -1201,7 +1198,6 @@ async def _save_session_to_db(
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-        _pp.mark("db:insert")
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
             msg.tool_calls_pending_save = False
@@ -1302,12 +1298,10 @@ async def append_and_save_message(
         # When the lock degraded (Redis down or 2s timeout), bypass cache for
         # the idempotency check. Stale cache could let two concurrent writers
         # both see the old state, pass the check, and write the same message.
-        _pp.mark("save:lock")
         if lock_acquired:
             session = await get_chat_session(session_id)
         else:
             session = await _get_session_from_db(session_id)
-        _pp.mark("save:load_session")
         if session is None:
             raise ValueError(f"Session {session_id} not found")
 
@@ -1349,16 +1343,9 @@ async def append_and_save_message(
 
         session.messages.append(message)
         existing_message_count = await chat_db().get_next_sequence(session_id)
-        _pp.mark("save:next_sequence")
 
         try:
-            # A session with messages has its row (they reference it), so an
-            # existence check would only repeat the read the route just made.
-            await _save_session_to_db(
-                session,
-                existing_message_count,
-                skip_existence_check=existing_message_count > 0,
-            )
+            await _save_session_to_db(session, existing_message_count)
         except Exception as e:
             # Any save failure rolls back the optimistic append so the
             # in-memory ``session.messages`` stays consistent with what's
@@ -1376,7 +1363,6 @@ async def append_and_save_message(
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e
-        _pp.mark("save:to_db")
 
         try:
             await cache_chat_session(session)
@@ -1385,7 +1371,6 @@ async def append_and_save_message(
             # Invalidate the stale entry so future reads fall back to DB,
             # preventing a retry from bypassing the idempotency check above.
             await invalidate_session_cache(session_id)
-        _pp.mark("save:cache")
 
         return session
 
@@ -1594,6 +1579,98 @@ async def get_or_create_expert_kickoff_session(
         if existing is not None and existing.expert_id == expert_id:
             return existing
         raise
+
+
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted one
+    keeps the mode it started on, even if the expert's default changed since.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
+    """
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
+        or metadata.handed_off_from_expert_id
+    ):
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
 
 
 async def get_or_create_builder_session(

@@ -1,13 +1,11 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
-from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
-import contextlib
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from autogpt_libs import auth
 from fastapi import (
@@ -60,10 +58,12 @@ from backend.copilot.model import (
     AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
+    SessionIdConflictError,
     create_chat_session,
     delete_chat_session,
     get_chat_session_metadata,
     get_or_create_builder_session,
+    get_or_create_client_chat_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
     update_session_autopilot_mode,
@@ -110,7 +110,6 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
     increment_daily_reset_count,
-    is_user_paywalled,
     release_reset_lock,
     reset_daily_usage,
 )
@@ -485,6 +484,12 @@ class CreateSessionRequest(BaseModel):
     mode keyed by the authenticated user and expert. It is invalid without
     ``expert_id``.
 
+    ``session_id`` lets the client name the session up front, which makes
+    the create idempotent: a retry after a lost response adopts the session
+    the first attempt committed (409 if the id is someone else's or scoped
+    to another expert). Builder and kickoff sessions pick their own ids, so
+    it is rejected alongside them (422).
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
@@ -496,6 +501,7 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    session_id: UUID | None = None
     # The approval mode the chat starts on. Leave unset to start on the
     # expert's default (or the platform default); send only a deliberate pick.
     autopilot_mode: AutopilotMode | None = None
@@ -870,7 +876,7 @@ async def create_session(
 ) -> CreateSessionResponse:
     """Create (or get-or-create) a chat session.
 
-    Two modes, selected by the request body:
+    Four modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
       run_capability and run_agent calls to use dry-run simulation.
@@ -884,11 +890,15 @@ async def create_session(
       with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).
     - Expert kickoff: atomically create or adopt the canonical first session
       for ``(user_id, expert_id)``.
+    - Client-named: when ``session_id`` is set, a plain or expert create
+      adopts the session that id already names, so a retry after a lost
+      response never leaves an empty session behind.
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
         request: Optional request body with ``dry_run``,
-            ``builder_graph_id`` and/or ``expert_id``.
+            ``builder_graph_id``, ``expert_id``, ``expert_kickoff`` and/or
+            ``session_id``.
 
     Returns:
         CreateSessionResponse: Details of the resulting session.
@@ -898,6 +908,15 @@ async def create_session(
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
     autopilot_mode = request.autopilot_mode if request else None
+    client_session_id = (
+        str(request.session_id) if request and request.session_id else None
+    )
+
+    if client_session_id and (builder_graph_id or expert_kickoff):
+        raise HTTPException(
+            status_code=422,
+            detail="session_id cannot be combined with builder_graph_id or expert_kickoff",
+        )
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -960,16 +979,33 @@ async def create_session(
         )
     else:
         try:
-            session = await create_chat_session(
-                user_id,
-                dry_run=dry_run,
-                organization_id=ctx.org_id,
-                team_id=ctx.team_id,
-                llm_auth_provider=llm_auth_provider,
-                llm_credential_id=llm_credential_id,
-                expert_id=expert_id,
-                autopilot_mode=autopilot_mode,
-            )
+            if client_session_id:
+                session = await get_or_create_client_chat_session(
+                    user_id,
+                    client_session_id,
+                    dry_run=dry_run,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+            else:
+                session = await create_chat_session(
+                    user_id,
+                    dry_run=dry_run,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+        except SessionIdConflictError as e:
+            raise HTTPException(
+                status_code=409, detail="Session id already in use"
+            ) from e
         except experts_db.ExpertNotFoundError as e:
             raise HTTPException(status_code=404, detail="Expert not found") from e
         except experts_db.ExpertPrivateTenancyNotFoundError as e:
@@ -1771,16 +1807,6 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
-async def _read_paywall_state(user_id: str) -> None:
-    """Read what the paywall reads, so the paywall check can join the read.
-
-    The route shares those reads within the request (``sharing_trial_reads``),
-    so the check gets this read's result, or its error, when it runs.
-    """
-    with contextlib.suppress(Exception):
-        await is_user_paywalled(user_id)
-
-
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1869,8 +1895,6 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-    _rt = [("start", stream_start_time)]
-    _pp.start()
     # Wall-clock arrival time, propagated to the executor so the turn-start
     # drain can order pending messages relative to this request (pending
     # pushed BEFORE this instant were typed earlier; pending pushed AFTER
@@ -1883,31 +1907,10 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    # Reads that need only the user or the session id start beside the
-    # session's own checks; each is still awaited where its check runs.
-    paywall_reads = spawn_background_task(
-        _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
-    )
-    turn_in_flight_read = (
-        spawn_background_task(
-            is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
-        )
-        if request.is_user_message and request.message
-        else None
-    )
-    try:
-        session = await _validate_and_get_writable_session(session_id, user_id)
-    except BaseException:
-        paywall_reads.cancel()
-        if turn_in_flight_read is not None:
-            turn_in_flight_read.cancel()
-        raise
-    _rt.append(("validate", time.perf_counter()))
+    session = await _validate_and_get_writable_session(session_id, user_id)
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
-    _rt.append(("autopilot_mode", time.perf_counter()))
 
     await enforce_model_entitlement(request.model, session, user_id)
-    _rt.append(("model_entitlement", time.perf_counter()))
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as
@@ -1926,10 +1929,8 @@ async def stream_chat_post(
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
         await enforce_payment_paywall(user_id)
-        _rt.append(("paywall", time.perf_counter()))
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
-        _rt.append(("codex_access", time.perf_counter()))
 
     message = request.message
     if request.is_user_message:
@@ -1964,7 +1965,6 @@ async def stream_chat_post(
             message_id,
             session_id,
         )
-        _rt.append(("kickoff_reply", time.perf_counter()))
 
     # The kickoff owns a server-derived id and its own replay handling.
     client_message_id = None if request.expert_kickoff else message_id
@@ -1977,8 +1977,9 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
-        turn_in_flight = turn_in_flight_read is not None and await turn_in_flight_read
-        _rt.append(("in_flight", time.perf_counter()))
+        turn_in_flight = (
+            request.is_user_message and message and await is_turn_in_flight(session_id)
+        )
     except StreamRegistryUnavailable as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
@@ -2009,7 +2010,6 @@ async def stream_chat_post(
                 expert_id=session.expert_id,
                 client_message_id=client_message_id,
             )
-            _rt.append(("queue_pending", time.perf_counter()))
             return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
             if exc.status_code != 409:
@@ -2041,7 +2041,6 @@ async def stream_chat_post(
     # the shared scheduling path below.
     if user_id and is_platform_route:
         await enforce_platform_allowance(user_id)
-        _rt.append(("allowance", time.perf_counter()))
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -2056,11 +2055,9 @@ async def stream_chat_post(
             session_id=session_id,
             expert_id=session.expert_id,
         )
-        _rt.append(("attachments", time.perf_counter()))
         folders = await resolve_attachable_workspace_folders(
             user_id, request.folder_ids or [], expert_id=session.expert_id
         )
-        _rt.append(("folders", time.perf_counter()))
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files, folders)
 
@@ -2090,7 +2087,6 @@ async def stream_chat_post(
         if client_message_id is not None
         else None
     )
-    _rt.append(("claim", time.perf_counter()))
     if claim == "reserved":
         raise client_message_in_progress_error()
 
@@ -2129,7 +2125,6 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
-            _rt.append(("schedule_turn", time.perf_counter()))
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -2161,7 +2156,6 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
-            _rt.append(("enqueue", time.perf_counter()))
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
             raise HTTPException(
@@ -2198,11 +2192,6 @@ async def stream_chat_post(
             await stream_registry.publish_chunk(
                 turn_id,
                 StreamStatus(message="Message received…"),
-                session_id=session_id,
-            )
-            await stream_registry.publish_chunk(
-                turn_id,
-                StreamStatus(message="perf-route:" + ",".join(f"{_n}={int((_t - _rt[0][1]) * 1000)}" for _n, _t in sorted(_rt[1:] + _pp.take(), key=lambda _m: _m[1]))),
                 session_id=session_id,
             )
         except Exception:
@@ -2752,197 +2741,3 @@ ToolResponseUnion = (
 async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
     """Never called at runtime. Exists only so Orval generates TS types."""
     raise HTTPException(status_code=501, detail="Schema-only endpoint")
-
-
-@router.get("/_perf/db", include_in_schema=False)
-async def perf_db_probe(
-    user_id: Annotated[str, Security(auth.get_user_id)],
-) -> dict:
-    """Do-not-merge probe (#15739): what one database call costs per connection mode.
-
-    Timings in ms only; never hosts, users, passwords or rows."""
-    import os as _os
-    import socket as _socket
-    import statistics as _stats
-    import time as _time
-    import urllib.parse as _up
-
-    import psycopg2
-    from prisma import Prisma
-
-    from backend.data import db as _db
-
-    def ms(t0: float) -> float:
-        return round((_time.perf_counter() - t0) * 1000, 1)
-
-    def summary(values: list[float]) -> dict:
-        tail = values[1:] or values
-        return {"p50": _stats.median(tail), "min": min(tail), "n": len(tail)}
-
-    pooled_url = _db.DATABASE_URL
-    parts = _up.urlsplit(pooled_url)
-    query = dict(_up.parse_qsl(parts.query))
-    session_port = 5432 if parts.port == 6543 else parts.port
-    session_query = {
-        k: v
-        for k, v in query.items()
-        if k not in ("pgbouncer", "statement_cache_size")
-    }
-    session_url = _up.urlunsplit(
-        parts._replace(
-            netloc=parts.netloc.rsplit(":", 1)[0] + f":{session_port}",
-            query=_up.urlencode(session_query),
-        )
-    )
-
-    txpool_query = dict(session_query)
-    txpool_query["statement_cache_size"] = "100"
-    txpool_query["connection_limit"] = "8"
-    txpool_url = _up.urlunsplit(
-        parts._replace(
-            netloc=parts.netloc.rsplit(":", 1)[0] + ":6543",
-            query=_up.urlencode(txpool_query),
-        )
-    )
-
-    def tcp(port: int) -> dict:
-        out = []
-        for _ in range(6):
-            t0 = _time.perf_counter()
-            with _socket.create_connection((parts.hostname, port), timeout=5):
-                out.append(ms(t0))
-        return summary(out)
-
-    def pg_select1(url: str) -> dict:
-        u = _up.urlsplit(url)
-        conn = psycopg2.connect(
-            host=u.hostname,
-            port=u.port,
-            user=_up.unquote(u.username or ""),
-            password=_up.unquote(u.password or ""),
-            dbname=u.path.lstrip("/") or "postgres",
-            connect_timeout=10,
-            sslmode="require",
-        )
-        try:
-            conn.autocommit = True
-            cur = conn.cursor()
-            out = []
-            for _ in range(9):
-                t0 = _time.perf_counter()
-                cur.execute("SELECT 1")
-                cur.fetchall()
-                out.append(ms(t0))
-            return summary(out)
-        finally:
-            conn.close()
-
-    async def prisma_series(client: Prisma) -> dict:
-        async def run(fn) -> dict:
-            out = []
-            for _ in range(9):
-                t0 = _time.perf_counter()
-                await fn()
-                out.append(ms(t0))
-            return summary(out)
-
-        async def tx_one_read() -> None:
-            async with client.tx() as tx:
-                await tx.user.find_unique(where={"id": user_id})
-
-        return {
-            "raw_select1": await run(lambda: client.query_raw("SELECT 1")),
-            "find_unique": await run(
-                lambda: client.user.find_unique(where={"id": user_id})
-            ),
-            "find_with_include": await run(
-                lambda: client.user.find_unique(
-                    where={"id": user_id}, include={"ChatSessions": {"take": 1}}
-                )
-            ),
-            "noop_update": await run(
-                lambda: client.user.update_many(
-                    where={"id": "__perf_probe_no_such_user__"}, data={"name": "x"}
-                )
-            ),
-            "tx_one_read": await run(tx_one_read),
-        }
-
-    async def guarded(label: str, coro) -> object:
-        try:
-            return await coro
-        except Exception as exc:
-            return f"error: {type(exc).__name__}"
-
-    result: dict = {
-        "pooled_port": parts.port,
-        "pgbouncer": query.get("pgbouncer"),
-        "statement_cache_size": query.get("statement_cache_size"),
-        "connection_limit": query.get("connection_limit"),
-        "session_port": session_port,
-        "direct_url_set": bool(_os.environ.get("DIRECT_URL")),
-    }
-    result["tcp_pooled"] = await guarded("tcp", asyncio.to_thread(tcp, parts.port))
-    result["tcp_session"] = await guarded("tcp", asyncio.to_thread(tcp, session_port))
-    result["psycopg_pooled_select1"] = await guarded(
-        "pg", asyncio.to_thread(pg_select1, pooled_url)
-    )
-    result["psycopg_session_select1"] = await guarded(
-        "pg", asyncio.to_thread(pg_select1, session_url)
-    )
-    result["prisma_pooled"] = await guarded("prisma", prisma_series(_db.prisma))
-    async def stress(client: Prisma) -> dict:
-        """Concurrent mixed statements: named prepared statements that a
-        transaction pooler can't follow fail as duplicate or missing."""
-        errors: dict[str, int] = {}
-        done = 0
-        t0 = _time.perf_counter()
-        for _ in range(6):
-            calls = []
-            for i in range(24):
-                if i % 3 == 0:
-                    calls.append(client.user.find_unique(where={"id": user_id}))
-                elif i % 3 == 1:
-                    calls.append(
-                        client.user.find_unique(
-                            where={"id": user_id}, include={"ChatSessions": {"take": 1}}
-                        )
-                    )
-                else:
-                    calls.append(client.query_raw("SELECT 1"))
-            for res in await asyncio.gather(*calls, return_exceptions=True):
-                if isinstance(res, BaseException):
-                    key = type(res).__name__ + ": " + str(res)[:80].replace(user_id, "<u>")
-                    errors[key] = errors.get(key, 0) + 1
-                else:
-                    done += 1
-        return {"ok": done, "errors": errors, "wall_ms": ms(t0)}
-
-    txpool_client = Prisma(datasource={"url": txpool_url})
-    try:
-        await txpool_client.connect()
-        result["prisma_txpool_cached"] = await guarded(
-            "prisma", prisma_series(txpool_client)
-        )
-        result["prisma_txpool_cached_stress"] = await guarded(
-            "stress", stress(txpool_client)
-        )
-    except Exception as exc:
-        result["prisma_txpool_cached"] = f"error: {type(exc).__name__}"
-    finally:
-        if txpool_client.is_connected():
-            await txpool_client.disconnect()
-    result["prisma_current_stress"] = await guarded("stress", stress(_db.prisma))
-
-    session_client = Prisma(datasource={"url": session_url})
-    try:
-        await session_client.connect()
-        result["prisma_session"] = await guarded(
-            "prisma", prisma_series(session_client)
-        )
-    except Exception as exc:
-        result["prisma_session"] = f"error: {type(exc).__name__}"
-    finally:
-        if session_client.is_connected():
-            await session_client.disconnect()
-    return result

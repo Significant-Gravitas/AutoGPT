@@ -17,7 +17,10 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
-import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import {
+  getExecutionsMock,
+  getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
+} from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -72,6 +75,9 @@ export const mockHandlers = [
   ...getCreditsMock(),
   ...getDefaultMock(),
   ...getEmailMock(),
+  // No answers waiting to run unless a test sets them up; random rows would
+  // seed receipts into every chat's approval box.
+  getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
   ...getExpertsMock(),
   ...getFilesMock(),

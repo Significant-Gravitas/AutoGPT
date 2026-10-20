@@ -19,15 +19,12 @@ vi.mock("@/app/providers", () => ({
 vi.mock("@/components/molecules/ErrorBoundary/ErrorBoundary", () => ({
   ErrorBoundary: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@/components/molecules/TallyPoup/TallyPopup", () => ({
-  default: () => null,
-}));
 vi.mock("@/components/molecules/Toast/toaster", () => ({
   Toaster: () => null,
 }));
 vi.mock("@/services/analytics", () => ({ SetupAnalytics: () => null }));
-vi.mock("@/services/analytics/VercelAnalyticsWrapper", () => ({
-  VercelAnalyticsWrapper: () => null,
+vi.mock("@/services/analytics/VercelSpeedInsights", () => ({
+  VercelSpeedInsights: () => null,
 }));
 vi.mock("@tanstack/react-query-devtools", () => ({
   ReactQueryDevtools: () => null,

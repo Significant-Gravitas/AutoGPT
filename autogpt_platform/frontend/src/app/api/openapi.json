@@ -4000,7 +4000,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_capability and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nFour modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_capability and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n- Client-named: when ``session_id`` is set, a plain or expert create\n  adopts the session that id already names, so a retry after a lost\n  response never leaves an empty session behind.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id``, ``expert_id``, ``expert_kickoff`` and/or\n        ``session_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -14640,6 +14640,81 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}/answered": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Answered Reviews Waiting to Run for Chat Session",
+        "description": "The chat's answered cards whose calls have not run yet, oldest first, so\nits box still shows them as answered, with Close and continue, after a reload.",
+        "operationId": "getV2Get answered reviews waiting to run for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Answered Reviews Waiting To Run For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/session/{chat_session_id}/continue": {
+      "post": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Continue Chat With Answered Reviews",
+        "description": "Start the chat's turn with the cards answered so far; the rest stay open\nand the turn is told how many still wait.",
+        "operationId": "postV2Continue chat with answered reviews",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -22165,6 +22240,13 @@
             "title": "Expert Kickoff",
             "default": false
           },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "format": "uuid" },
+              { "type": "null" }
+            ],
+            "title": "Session Id"
+          },
           "autopilot_mode": {
             "anyOf": [
               {
@@ -22179,7 +22261,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\n``session_id`` lets the client name the session up front, which makes\nthe create idempotent: a retry after a lost response adopts the session\nthe first attempt committed (409 if the id is someone else's or scoped\nto another expert). Builder and kickoff sessions pick their own ids, so\nit is rejected alongside them (422).\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -23143,6 +23225,21 @@
           "entity_invalidation_count": {
             "type": "integer",
             "title": "Entity Invalidation Count",
+            "default": 0
+          },
+          "dropped_forgotten": {
+            "type": "integer",
+            "title": "Dropped Forgotten",
+            "default": 0
+          },
+          "pending_writes": {
+            "type": "integer",
+            "title": "Pending Writes",
+            "default": 0
+          },
+          "failed_writes": {
+            "type": "integer",
+            "title": "Failed Writes",
             "default": 0
           },
           "summary_for_user": {
@@ -25089,8 +25186,6 @@
           "artifacts-page",
           "chat-mode-option",
           "generic-trigger-agents",
-          "chat-search",
-          "autogpt-new-layout",
           "chat-workspace-files",
           "chat-pinning",
           "task-progress-bar",
@@ -25118,8 +25213,6 @@
           "ARTIFACTS_PAGE",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
-          "CHAT_SEARCH",
-          "AUTOGPT_NEW_LAYOUT",
           "CHAT_WORKSPACE_FILES",
           "CHAT_PINNING",
           "TASK_PROGRESS_BAR",
@@ -26046,6 +26139,10 @@
           "summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Summary"
+          },
+          "hard_deleted_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hard Deleted At"
           }
         },
         "type": "object",
@@ -26799,7 +26896,7 @@
         "type": "string",
         "enum": ["drained", "skipped", "timed_out"],
         "title": "IngestionDrainStatus",
-        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the pass's own episodes were confirmed landed in the\n    graph before the pass returned (sync path), or the pass enqueued\n    nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget; healthy by design, NOT a failure signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The reported write/proposal counts include\n    episodes still queued in-process, which are lost if the worker's pod\n    restarts. This is the only value that warrants an operator warning."
+        "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nThree distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the worker finished every one of the pass's own\n    episodes before the pass returned (sync path): each was written,\n    dropped for resting on a forget (``dropped_forgotten``), or failed\n    with a logged error; or the pass enqueued nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget, counted pending; healthy by design, NOT a failure\n    signal.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The episodes not written yet are counted pending,\n    not written; they stay queued in-process, and are lost if the\n    worker's pod restarts. This is the only value that warrants an\n    operator warning."
       },
       "InputValidationErrorResponse": {
         "properties": {
@@ -28380,7 +28477,7 @@
       },
       "MemoryForgetFailureCode": {
         "type": "string",
-        "enum": ["no_match", "query_error"],
+        "enum": ["no_match", "query_error", "cleanup_error", "busy"],
         "title": "MemoryForgetFailureCode",
         "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
@@ -31415,6 +31512,12 @@
             "type": "array",
             "title": "Reviews",
             "description": "All reviews with their approval status, data, and messages"
+          },
+          "wait_for_other_cards": {
+            "type": "boolean",
+            "title": "Wait For Other Cards",
+            "description": "Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+            "default": false
           }
         },
         "type": "object",
@@ -31443,6 +31546,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if operation failed"
+          },
+          "awaiting_other_cards": {
+            "type": "boolean",
+            "title": "Awaiting Other Cards",
+            "description": "The answers start no chat turn yet: other cards in the chat still wait",
+            "default": false
           }
         },
         "type": "object",

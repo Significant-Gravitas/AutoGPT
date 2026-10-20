@@ -13,16 +13,26 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import SubscriptionTier
 
 from backend.copilot import usage_activation_fixtures
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import (
+    InferenceError,
+    InferenceUsage,
+    RouteDecision,
+)
+from backend.copilot.inference.trace import TracedCall
+from backend.copilot.trial_cost_context import get_trial_cost_context
+from backend.data.pro_activation import UsageActivationState
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
 from . import batch_submit
+from . import billing as billing_mod
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
-from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
 from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .schemas import (
     ConsolidatedFact,
@@ -41,9 +51,31 @@ def _wrap(value, model: str = "test-model") -> StructuredCompletion:
 
     Tests that don't care about token bookkeeping use this so they can
     keep the side_effect list short. Tests that exercise the usage
-    pipeline build their own ``CompletionUsage`` with real numbers.
+    pipeline build their own ``InferenceUsage`` with real numbers.
     """
-    return StructuredCompletion(value=value, usage=CompletionUsage(model=model))
+    return StructuredCompletion(
+        value=value, usage=InferenceUsage(model=model, payer="platform_allowance")
+    )
+
+
+def _route(scope, job, *, config=None) -> RouteDecision:
+    """A fixed sync route naming the job's tier, so the phases don't read
+    the deployment's transport (``resolve_route`` has its own tests)."""
+    return RouteDecision(
+        engine="provider_sync",
+        auth_provider="platform",
+        provider="open_router",
+        model=f"{job.tier}-model",
+        payer="platform_allowance",
+        execution_path="sync_baseline",
+        cost_log_provider="open_router",
+        reason="test",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_route(mocker):
+    return mocker.patch.object(orchestrator_mod, "resolve_route", side_effect=_route)
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +85,7 @@ def force_sync_baseline(mocker):
 
     Step 5 of the plan routes dream pass to the Anthropic batch path
     when an Anthropic key is configured; these tests mock
-    ``structured_completion`` directly to exercise the sync three-phase
+    ``structured_complete`` directly to exercise the sync three-phase
     flow, so we have to override the routing decision to keep them
     valid. The batch path has its own dedicated test coverage in
     ``batch_callbacks_test.py``.
@@ -120,12 +152,17 @@ def _stub_billing(mocker):
     Redis/Supabase. Tests that exercise the budget-skip path re-patch
     ``check_dream_budget`` with a (False, reason) AsyncMock.
 
-    ``record_phase_cost`` is a no-op fire-and-forget here; the billing
+    ``record_phase_cost`` hands the usage straight back here; the billing
     seam itself has dedicated coverage in ``billing_test.py``."""
     mocker.patch.object(
         orchestrator_mod, "check_dream_budget", AsyncMock(return_value=(True, None))
     )
-    mocker.patch.object(orchestrator_mod, "record_phase_cost", AsyncMock())
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", _charge_spy())
+
+
+def _charge_spy() -> AsyncMock:
+    """``record_phase_cost`` returning the usage it was given, as priced."""
+    return AsyncMock(side_effect=lambda ctx, usage: usage)
 
 
 @pytest.fixture(autouse=True)
@@ -162,7 +199,7 @@ async def test_empty_input_returns_skipped(mocker):
     )
     structured = mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
@@ -290,7 +327,7 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -345,7 +382,7 @@ async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(consolidated),
@@ -388,7 +425,7 @@ async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
     sanitized = DreamOperations(summary_for_user="quiet night")
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -407,13 +444,13 @@ async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
 
 
 @pytest.mark.asyncio
-async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion(
+async def test_each_phase_threads_its_own_llm_timeout_into_its_job(
     mocker,
 ):
     """Recombine/sanitize got 16384-token output budgets because real
     responses exceed 8192 tokens; at real decode speeds those responses
-    outlive the shared 120s ``call_provider`` default, so each phase
-    must hand ``structured_completion`` its own wall-clock budget —
+    outlive the shared 120s ``call_provider`` default, so each phase's
+    inference job must carry its own wall-clock budget —
     otherwise the timeout kills exactly the responses the token-cap
     raise was meant to save."""
     mocker.patch.object(
@@ -434,7 +471,7 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     )
     llm_mock = mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -448,7 +485,7 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is None
-    timeouts = [call.kwargs["timeout_seconds"] for call in llm_mock.call_args_list]
+    timeouts = [call.args[0].job.timeout_seconds for call in llm_mock.call_args_list]
     assert timeouts == [
         orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS,
         orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS,
@@ -537,8 +574,8 @@ async def test_consolidate_llm_failure_surfaces_error_and_skips_apply(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
-        AsyncMock(side_effect=DreamLLMError("boom")),
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("boom")),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
@@ -581,7 +618,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(huge_sanitized)]
         ),
@@ -595,6 +632,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -635,7 +673,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -663,6 +701,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -754,7 +793,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -780,6 +819,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         ops,
         *,
         known_fact_uuids=None,
+        known_episode_uuids=None,
         lock_handle=None,
     ):
         captured["ops"] = ops
@@ -834,7 +874,7 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -864,6 +904,11 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
     assert (
         apply_mock.await_args.kwargs["known_fact_uuids"]
         == input_bundle.known_fact_uuids
+    )
+    # What an uncited write rests on (``graphiti/recall_citations.py``).
+    assert (
+        apply_mock.await_args.kwargs["known_episode_uuids"]
+        == input_bundle.known_episode_uuids
     )
 
 
@@ -897,7 +942,7 @@ async def test_budget_skip_returns_insufficient_credits_without_running_phases(m
         AsyncMock(return_value=(False, "insufficient_credits")),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
     fetch_mock = mocker.patch.object(
@@ -946,7 +991,7 @@ async def test_each_completed_phase_charges_once(mocker):
     sanitized = DreamOperations()
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -965,14 +1010,53 @@ async def test_each_completed_phase_charges_once(mocker):
             }
         ),
     )
-    charge_spy = AsyncMock()
+    charge_spy = _charge_spy()
     mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
 
-    await orchestrator_mod.execute_dream_pass("u")
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
 
     assert charge_spy.await_count == 3
-    phases_charged = [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list]
-    assert phases_charged == ["consolidate", "recombine", "sanitize"]
+    contexts = [c.args[0] for c in charge_spy.await_args_list]
+    assert [ctx.job.phase for ctx in contexts] == [
+        "consolidate",
+        "recombine",
+        "sanitize",
+    ]
+    # One scope per pass, one job per phase, correlated by the pass id, on
+    # the tier each phase has always run on.
+    assert {ctx.scope.expert_id for ctx in contexts} == {"expert-1"}
+    assert {ctx.job.correlation_id for ctx in contexts} == {result.pass_id}
+    assert [ctx.job.tier for ctx in contexts] == ["standard", "advanced", "standard"]
+    assert [ctx.route.model for ctx in contexts] == [
+        "standard-model",
+        "advanced-model",
+        "standard-model",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_pass_usage_totals_the_priced_phases(mocker):
+    """The pass's usage reads the cost each phase was charged at."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    async def priced(ctx, usage):
+        return usage.model_copy(update={"cost_usd": 0.25, "cost_source": "catalog"})
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=priced)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.usage is not None
+    assert [p.cost_usd for p in result.usage.phases] == [0.25, 0.25, 0.25]
+    assert result.usage.total_cost_usd == pytest.approx(0.75)
+    assert result.usage.discount_applied == 0.0
 
 
 @pytest.mark.asyncio
@@ -990,18 +1074,20 @@ async def test_partial_failure_still_charges_completed_phases(
     )
     phases = ["consolidate", "recombine", "sanitize"]
     completed = phases.index(failed_phase)
-    failure_usage = CompletionUsage(
+    failure_usage = InferenceUsage(
         model="claude-sonnet-5-5",
         input_tokens=1001,
         output_tokens=203,
         cache_read_tokens=3007,
         cache_creation_tokens=509,
         cost_usd=0.0056052,
+        cost_source="provider",
+        payer="platform_allowance",
     )
-    failure = DreamLLMError(error, usage=failure_usage)
+    failure = InferenceError(error, usage=failure_usage)
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -1011,7 +1097,7 @@ async def test_partial_failure_still_charges_completed_phases(
         ),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
-    charge_spy = AsyncMock()
+    charge_spy = _charge_spy()
     mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
 
     result = await orchestrator_mod.execute_dream_pass("u")
@@ -1020,11 +1106,136 @@ async def test_partial_failure_still_charges_completed_phases(
     assert result.error.startswith(f"{failed_phase}:")
     assert error in result.error
     assert charge_spy.await_count == completed
-    assert [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list] == (
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == (
         phases[:completed]
     )
     assert failure.usage == failure_usage
     apply_mock.assert_not_awaited()
+
+
+def _tracing_failures(seen: list[InferenceUsage | None]):
+    """A stand-in for ``trace`` that keeps the usage the real one would write
+    on a span closing on an error (``call.usage or exc.usage``)."""
+
+    @asynccontextmanager
+    async def fake_trace(ctx):
+        call = TracedCall(ctx=ctx)
+        try:
+            yield call
+        except InferenceError as exc:
+            seen.append(call.usage or exc.usage)
+            raise
+
+    return fake_trace
+
+
+@pytest.mark.asyncio
+async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="claude-sonnet-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("LLM JSON did not match", billed)),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+    traced: list[InferenceUsage | None] = []
+    mocker.patch.object(orchestrator_mod, "trace", _tracing_failures(traced))
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.error is not None
+    assert result.error.startswith("consolidate: LLM JSON did not match")
+    apply_mock.assert_not_awaited()
+    persist.assert_not_awaited()
+    (seen,) = traced
+    assert seen == billed
+    assert result.usage is not None
+    assert result.usage.phases == []
+    assert result.usage.total_cost_usd == 0
+
+
+@pytest.mark.asyncio
+async def test_a_phase_that_got_no_answer_records_nothing(mocker):
+    """No response came back, so nothing was billed: no cost row, and the
+    pass fails at that phase as before."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("LLM call failed: TimeoutError: ")),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert result.error.startswith("consolidate: LLM call failed")
+    persist.assert_not_awaited()
+    assert result.usage is not None and result.usage.phases == []
+
+
+@pytest.mark.asyncio
+async def test_a_later_failed_phase_leaves_only_the_completed_phase_charged(
+    mocker,
+):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="advanced-model",
+        input_tokens=90,
+        output_tokens=9,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                InferenceError("LLM returned empty content", billed),
+            ]
+        ),
+    )
+    charge_spy = _charge_spy()
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert result.error.startswith("recombine:")
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == [
+        "consolidate",
+    ]
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == ["consolidate"]
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1302,7 @@ def _stub_three_phases_and_apply(mocker) -> AsyncMock:
     Returns the apply mock so callers can assert the pass actually ran."""
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -1133,7 +1344,7 @@ async def test_marker_newer_than_all_episodes_skips_with_no_new_activity(
         ),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
@@ -1158,7 +1369,7 @@ async def test_marker_with_old_facts_and_no_episodes_skips(mocker, _stub_marker_
         AsyncMock(return_value=_input_with_episode_times()),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
 
     result = await orchestrator_mod.execute_dream_pass("u")
@@ -1296,7 +1507,7 @@ async def test_dream_authored_episode_newer_than_marker_does_not_count_as_new(
         ),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
@@ -1396,7 +1607,7 @@ async def test_episode_old_in_both_valid_at_and_created_at_skips(
         ),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
@@ -1470,8 +1681,8 @@ async def test_failed_pass_does_not_stamp_marker(mocker, _stub_marker_redis):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
-        AsyncMock(side_effect=DreamLLMError("boom")),
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("boom")),
     )
 
     result = await orchestrator_mod.execute_dream_pass("u")
@@ -1492,7 +1703,7 @@ async def test_empty_apply_stats_leave_dream_session_id_none(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -1862,6 +2073,69 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     delete_bundle.assert_awaited_once_with("p-lock-lost")
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
+
+
+@pytest.mark.asyncio
+async def test_each_phase_cost_is_charged_under_the_passs_trial_attribution(
+    mocker, usage_snapshot
+):
+    """The pass captures the trial or paid attribution before its first
+    provider call (#15208's ``attributed_usage``), and every phase's cost
+    record (``record_phase_cost``, the inference layer's ``record``) charges
+    under it: a trial user's dream lands in the trial ledger, the trial
+    converting mid-pass or not."""
+    usage_snapshot.side_effect = lambda user_id: UsageActivationState(
+        user_id=user_id,
+        tier=SubscriptionTier.TRIAL,
+        ready=True,
+        trial_id="trial-1",
+        generation="generation-1",
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    usage = InferenceUsage(
+        model="test-model",
+        input_tokens=100,
+        output_tokens=10,
+        cost_usd=0.001,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    outputs = [
+        ConsolidationOutput(
+            facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+        ),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="quiet night"),
+    ]
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[StructuredCompletion(value=o, usage=usage) for o in outputs]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+    charged_under: list[str | None] = []
+
+    async def charge(ctx, usage):
+        context = get_trial_cost_context(ctx.scope.user_id)
+        charged_under.append(context.trial_id if context else None)
+        return usage
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=charge)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert charged_under == ["trial-1", "trial-1", "trial-1"]
 
 
 usage_snapshot = usage_activation_fixtures.usage_snapshot

@@ -151,14 +151,6 @@ async def get_optional_user_id(
     return None if banned else user_id
 
 
-def _probe_mark(name: str) -> None:  # do-not-merge probe (#15739)
-    try:
-        from backend.copilot import perf_probe
-    except ImportError:
-        return
-    perf_probe.mark(name)
-
-
 async def get_unbanned_jwt_payload(
     jwt_payload: dict = fastapi.Security(get_jwt_payload),
 ) -> dict:
@@ -170,7 +162,6 @@ async def get_unbanned_jwt_payload(
     user_id = jwt_payload.get("sub")
     if user_id and await _is_banned(user_id):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
-    _probe_mark("pre_ban")
     return jwt_payload
 
 
@@ -238,7 +229,6 @@ async def get_user_id(
     # impersonation that is the admin, never the target: the claims describe
     # the admin, and provisioning the target from them would be wrong.
     await _heal_platform_user(jwt_payload)
-    _probe_mark("pre_heal")
 
     # Check for admin impersonation header
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
@@ -421,25 +411,20 @@ async def get_request_context(
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
-    org_member = None
 
     if org_id is None:
         # Fall back to the user's personal org (an org where the user is the
-        # sole owner, typically created at sign-up). The row found is the
-        # user's membership of that org, so step 3 validates it as it is
-        # rather than reading the same row again.
+        # sole owner, typically created at sign-up).
         personal_org = await prisma.orgmember.find_first(
             where={
                 "userId": user_id,
                 "isOwner": True,
                 "Org": {"isPersonal": True, "deletedAt": None},
             },
-            include={"Org": True},
             order={"createdAt": "asc"},
         )
         if personal_org is not None:
             org_id = personal_org.orgId
-            org_member = personal_org
         else:
             # Self-heal: bootstrap the personal org. Sign-up and the startup
             # backfill cover normal accounts, but users created outside
@@ -476,13 +461,12 @@ async def get_request_context(
                 )
 
     # --- 3. validate OrgMember ------------------------------------------------
-    if org_member is None:
-        org_member = await prisma.orgmember.find_unique(
-            where={
-                "orgId_userId": {"orgId": org_id, "userId": user_id},
-            },
-            include={"Org": True},
-        )
+    org_member = await prisma.orgmember.find_unique(
+        where={
+            "orgId_userId": {"orgId": org_id, "userId": user_id},
+        },
+        include={"Org": True},
+    )
     if org_member is None or org_member.status != "ACTIVE":
         raise fastapi.HTTPException(
             status_code=403,
@@ -536,7 +520,6 @@ async def get_request_context(
             is_team_billing_manager = ws_member.isBillingManager
 
     # --- 5. build context -----------------------------------------------------
-    _probe_mark("pre_ctx")
     return RequestContext(
         user_id=user_id,
         org_id=org_id,
