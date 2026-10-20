@@ -20,6 +20,7 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
   const queryClient = useQueryClient();
   const [connectProvider, setConnectProvider] = useState<string | null>(null);
   const [resumed, setResumed] = useState(false);
+  const [lessOftenOpen, setLessOftenOpen] = useState(false);
   // A resume that follows a reconnect is quiet when there was nothing to
   // resume: a chat that was only warned, never paused, answers 404.
   const quietRef = useRef(false);
@@ -85,5 +86,7 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
     resume: () => resume(),
     isResuming: isPending,
     resumed,
+    lessOftenOpen,
+    setLessOftenOpen,
   };
 }
