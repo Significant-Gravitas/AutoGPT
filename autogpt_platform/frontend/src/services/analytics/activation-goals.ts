@@ -20,15 +20,15 @@ export type ScheduleSurface = "library" | "builder";
 
 // Only the graph ID goes to DataFast: workflow names are written by people
 // and may hold personal data.
-export function trackAgentRunGoal(graphId: string, surface: AgentRunSurface) {
-  sendGoal("run_agent", { id: graphId, surface });
+export function trackAgentRunGoal(graphID: string, surface: AgentRunSurface) {
+  sendGoal("run_agent", { id: graphID, surface });
 }
 
 export function trackScheduleCreatedGoal(
-  graphId: string,
+  graphID: string,
   surface: ScheduleSurface,
 ) {
-  sendGoal("schedule_agent", { id: graphId, surface });
+  sendGoal("schedule_agent", { id: graphID, surface });
 }
 
 function sendGoal(name: string, metadata: Record<string, string>) {
