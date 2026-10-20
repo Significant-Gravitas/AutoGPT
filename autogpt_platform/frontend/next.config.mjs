@@ -8,6 +8,12 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 // `pnpm types` as their own jobs.
 const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
 
+// Read by the React Compiler coverage test too, so both cover the same files.
+export const reactCompilerSources = [
+  "/src/app/(platform)/copilot/",
+  "/src/components/ai-elements/",
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // VERCEL_ENV and VERCEL_TARGET_ENV are server-only. Mirror them into the
@@ -59,6 +65,14 @@ const nextConfig = {
     middlewareClientMaxBodySize: "256mb",
     // Limit parallel webpack workers to reduce peak memory during builds.
     cpus: 2,
+    // The React Compiler memoises components and hooks it can prove follow
+    // React's rules. Copilot only for now; every other folder builds exactly
+    // as before. Plain strings, since Turbopack only takes serialisable
+    // loader options; the compiler matches them against each file's path.
+    reactCompiler: {
+      compilationMode: "infer",
+      sources: reactCompilerSources,
+    },
   },
   // Work around cssnano "Invalid array length" bug in Next.js's bundled
   // cssnano-simple comment parser when processing very large CSS chunks.
