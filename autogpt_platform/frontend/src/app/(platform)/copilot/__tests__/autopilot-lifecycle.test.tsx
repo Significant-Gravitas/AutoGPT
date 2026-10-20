@@ -18,6 +18,7 @@ import {
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
+  type SessionOverride,
 } from "./sse-helpers";
 
 vi.mock("@/services/environment", async (importActual) => {
@@ -103,88 +104,113 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     },
   );
 
-  it("receives a background follow-up after the original reply without sending again", async () => {
-    const pending = [
-      {
-        role: "user",
-        content: "Research this in the background.",
-        sequence: 0,
-      },
-      {
-        role: "assistant",
-        content: null,
-        sequence: 1,
-        tool_calls: [
-          {
-            id: "background-call",
-            type: "function",
-            function: {
-              name: "run_sub_session",
-              arguments: '{"background":true}',
-            },
-          },
-        ],
-      },
-      {
-        role: "tool",
-        tool_call_id: "background-call",
-        sequence: 2,
-        content: JSON.stringify({
-          type: "sub_session_status",
-          status: "queued",
-          background_task_id: "background-task",
-          background_expires_at: new Date(Date.now() + 60_000).toISOString(),
-        }),
-      },
-      {
-        role: "assistant",
-        content: "I will return with the result.",
-        sequence: 3,
-      },
-    ];
-    let sends = 0;
-    server.use(
-      http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
-        () => {
-          sends += 1;
-          return HttpResponse.error();
+  it.each([null, "expert_run", "scheduled_chat_notice"])(
+    "receives a background follow-up without sending again after %s",
+    async (noticeKind) => {
+      const pending = [
+        {
+          role: "user",
+          content: "Research this in the background.",
+          sequence: 0,
         },
-      ),
-    );
-    renderHost({ sessionOverride: { messages: pending } });
-    await screen.findByText("I will return with the result.");
-    server.use(
-      sessionHandler({
-        messages: [
-          ...pending,
-          {
-            role: "user",
-            content: "Internal follow-up prompt",
-            sequence: 4,
-            metadata: {
-              background_task_notice: "background-task",
-              background_task_stage: "followup",
-              display_content:
-                "Background subtask completed. Otto is following up.",
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "background-call",
+              type: "function",
+              function: {
+                name: "run_sub_session",
+                arguments: '{"background":true}',
+              },
             },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "background-call",
+          sequence: 2,
+          content: JSON.stringify({
+            type: "sub_session_status",
+            status: "queued",
+            background_task_id: "background-task",
+            background_expires_at: new Date(Date.now() + 60_000).toISOString(),
+          }),
+        },
+        {
+          role: "assistant",
+          content: "I will return with the result.",
+          sequence: 3,
+        },
+      ];
+      let sends = 0;
+      server.use(
+        http.post(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          () => {
+            sends += 1;
+            return HttpResponse.error();
           },
-          {
-            role: "assistant",
-            content: "The background result is 42.",
-            sequence: 5,
+        ),
+      );
+      renderHost({ sessionOverride: { messages: pending } });
+      await screen.findByText("I will return with the result.");
+      const queued: NonNullable<SessionOverride["messages"]> = [
+        ...pending,
+        {
+          role: "user",
+          content: "Internal follow-up prompt",
+          sequence: 4,
+          metadata: {
+            background_task_notice: "background-task",
+            background_task_stage: "followup",
+            display_content:
+              "Background subtask completed. Otto is following up.",
           },
-        ],
-      }),
-    );
-    expect(
-      await screen.findByText("The background result is 42.", undefined, {
-        timeout: 6000,
-      }),
-    ).toBeDefined();
-    expect(screen.queryByText("Internal follow-up prompt")).toBeNull();
-    expect(sends).toBe(0);
-  }, 10_000);
+        },
+      ];
+      if (noticeKind) {
+        queued.push({
+          role: "assistant",
+          content: "An unrelated update.",
+          sequence: 5,
+          metadata: {
+            kind: noticeKind,
+            headline: "An unrelated update.",
+            body: "A scheduled run was skipped.",
+          },
+        });
+        server.use(sessionHandler({ messages: queued, chat_status: "queued" }));
+        await screen.findByText(
+          "Background subtask completed. Otto is following up.",
+          undefined,
+          { timeout: 6000 },
+        );
+      }
+      server.use(
+        sessionHandler({
+          messages: [
+            ...queued,
+            {
+              role: "assistant",
+              content: "The background result is 42.",
+              sequence: queued.length,
+            },
+          ],
+        }),
+      );
+      expect(
+        await screen.findByText("The background result is 42.", undefined, {
+          timeout: 6000,
+        }),
+      ).toBeDefined();
+      expect(screen.queryByText("Internal follow-up prompt")).toBeNull();
+      expect(sends).toBe(0);
+    },
+    15_000,
+  );
 
   describe("Otto streaming — submit / stop lifecycle", () => {
     it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {

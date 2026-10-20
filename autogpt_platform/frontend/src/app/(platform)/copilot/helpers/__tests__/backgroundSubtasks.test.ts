@@ -61,6 +61,28 @@ describe("background subtask delivery", () => {
     ).toBe(false);
   });
 
+  it.each(["expert_run", "scheduled_chat_notice"])(
+    "keeps checking when a standalone %s arrives before the follow-up",
+    (kind) => {
+      const messages = [
+        accepted,
+        wake,
+        {
+          role: "assistant",
+          content: "An unrelated update.",
+          metadata: { kind },
+        },
+      ];
+      expect(backgroundRefreshInterval(messages, now)).toBe(3000);
+      expect(
+        backgroundRefreshInterval(
+          [...messages, { role: "assistant", content: "Here is the result." }],
+          now,
+        ),
+      ).toBe(false);
+    },
+  );
+
   it("does not poll foreground chats or expired background requests", () => {
     expect(
       backgroundRefreshInterval(

@@ -8,6 +8,7 @@ import {
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
 import { backgroundNotice } from "./backgroundSubtasks";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -36,24 +37,6 @@ interface SessionChatMessage {
   duration_ms: number | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-}
-
-// Assistant rows the backend posts on its own, outside any turn: a run-post
-// WorkCard, or the note a skipped scheduled chat leaves. Each is its own bubble
-// so it never reads as part of a neighbouring reply.
-const STANDALONE_METADATA_KINDS = new Set([
-  "expert_run",
-  "scheduled_chat_notice",
-]);
-
-function getStandaloneBubbleMetadata(
-  metadata: unknown,
-): Record<string, unknown> | null {
-  if (!metadata || typeof metadata !== "object") return null;
-  const kind = (metadata as Record<string, unknown>).kind;
-  return typeof kind === "string" && STANDALONE_METADATA_KINDS.has(kind)
-    ? (metadata as Record<string, unknown>)
-    : null;
 }
 
 function coerceSessionChatMessages(

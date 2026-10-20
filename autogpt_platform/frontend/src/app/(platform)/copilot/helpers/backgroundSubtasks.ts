@@ -1,4 +1,5 @@
 import { asObject } from "../components/ToolChain/resultHelpers";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 
 export function backgroundRefreshInterval(messages: unknown, now = Date.now()) {
   if (!Array.isArray(messages)) return false;
@@ -23,7 +24,11 @@ export function backgroundRefreshInterval(messages: unknown, now = Date.now()) {
     if (typeof metadata?.background_task_notice === "string") {
       followup = metadata.background_task_notice;
     }
-    if (message.role === "assistant" && followup) {
+    if (
+      message.role === "assistant" &&
+      followup &&
+      !getStandaloneBubbleMetadata(metadata)
+    ) {
       pending.delete(followup);
       followup = null;
     }
