@@ -274,6 +274,15 @@ async def enable_routine(
         # without this the row would say PINNED and behave like FRESH. The tool
         # always supplies one; this closes the RPC path, which does not.
         raise ValueError("A PINNED routine needs the chat it should fire into.")
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -291,7 +300,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.
