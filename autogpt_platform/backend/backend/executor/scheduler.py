@@ -1250,7 +1250,7 @@ async def _dispatch_at_reset_turn(
         # It carries on the user's own chat, so under the chat's own
         # limits, as a message sent there now would be (a builder chat's).
         permissions=resolve_session_permissions(session),
-        scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id),
+        scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id, purpose=kind),
     )
     logger.info(
         f"Dispatched {kind}-at-reset turn for session {session.session_id[:12]}"
