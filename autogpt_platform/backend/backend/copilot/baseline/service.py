@@ -2397,6 +2397,7 @@ async def stream_chat_completion_baseline(
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
     unsaved_held: list[PendingMessage] = []
+    held_results: list[PendingMessage] = []
     try:
         async for held_status in resolve_answered(
             user_id, session, unsaved_held.append
@@ -2413,6 +2414,9 @@ async def stream_chat_completion_baseline(
         # Stopped before the finally below: save what already ran, its approval
         # spent, and end the counted turn on the box.
         await persist_unfolded_rows(session, unsaved_held, log_prefix="[Baseline]")
+        if held_results:
+            # Cut inside the fold's own save: its rows are on the session only.
+            await persist_session_safe(session, "[Baseline]")
         if e2b_sandbox is not None:
             _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
         raise

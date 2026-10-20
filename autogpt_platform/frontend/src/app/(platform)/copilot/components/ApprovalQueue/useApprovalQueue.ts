@@ -94,6 +94,8 @@ export function useApprovalQueue({ items, onAnswered, onContinued }: Args) {
           ...(approved && rule && scope ? { chat_rule_scope: scope } : {}),
         })),
         batch.map((item) => item.scope),
+        // This box can continue, so an answer here waits for the chat's others.
+        { waitForOtherCards: true },
       );
       ok = res.status === 200 && res.data.failed_count === 0;
       turnFollows = !(res.status === 200 && res.data.awaiting_other_cards);

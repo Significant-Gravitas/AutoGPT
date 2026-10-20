@@ -31341,6 +31341,12 @@
             "type": "array",
             "title": "Reviews",
             "description": "All reviews with their approval status, data, and messages"
+          },
+          "wait_for_other_cards": {
+            "type": "boolean",
+            "title": "Wait For Other Cards",
+            "description": "Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+            "default": false
           }
         },
         "type": "object",

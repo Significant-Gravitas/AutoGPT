@@ -1405,6 +1405,7 @@ async def test_process_review_action_per_review_auto_approve_granularity(
         ("test_graph_exec_456", None, None, False),
     ],
 )
+@pytest.mark.parametrize("wait", [True, False])
 async def test_an_answer_on_a_chat_card_wakes_that_chat(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
@@ -1414,9 +1415,10 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
     session_id: str | None,
     woken: str | None,
     started: bool,
+    wait: bool,
 ) -> None:
-    """A held call finishes on the chat's next turn once its last card is
-    answered; the page is told when the answer waits for the others."""
+    """A held call finishes on the chat's next turn, from the chat's own queue
+    once its last card is answered; the page is told when the answer waits."""
     review = sample_pending_review.model_copy(
         update={"graph_exec_id": graph_exec_id, "session_id": session_id}
     )
@@ -1439,7 +1441,10 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
 
     response = await client.post(
         "/api/review/action",
-        json={"reviews": [{"node_exec_id": "test_node_123", "approved": True}]},
+        json={
+            "reviews": [{"node_exec_id": "test_node_123", "approved": True}],
+            "wait_for_other_cards": wait,
+        },
     )
 
     assert response.status_code == 200
@@ -1447,7 +1452,7 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
         wake.assert_awaited_once()
         assert wake.await_args.args[:2] == (test_user_id, woken)
         assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
-        assert wake.await_args.kwargs == {"until_last": True}
+        assert wake.await_args.kwargs == {"until_last": wait}
         assert response.json()["awaiting_other_cards"] is not started
     else:
         wake.assert_not_called()
@@ -1693,7 +1698,10 @@ async def test_a_burst_answered_through_the_route_starts_one_turn_past_a_step_ca
             for card in cards:
                 response = await client.post(
                     "/api/review/action",
-                    json={"reviews": [{"node_exec_id": card, "approved": True}]},
+                    json={
+                        "reviews": [{"node_exec_id": card, "approved": True}],
+                        "wait_for_other_cards": True,
+                    },
                 )
                 assert response.status_code == 200
                 waits.append(response.json()["awaiting_other_cards"])
@@ -1705,3 +1713,26 @@ async def test_a_burst_answered_through_the_route_starts_one_turn_past_a_step_ca
     assert sorted(run["text"] for run in post.runs) == ["a", "b", "c"]
     step_row = await _row(step, test_user_id)
     assert step_row is not None and step_row.status == ReviewStatus.WAITING
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_answer_from_outside_the_chat_starts_its_turn_at_once(
+    client: httpx.AsyncClient, setup_test_user: str, test_user_id: str
+) -> None:
+    """/home and the Expert page cannot continue a chat, so an answer there
+    never waits for the chat's other cards."""
+    session = await _new_session(test_user_id)
+    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)):
+        answered, waiting = [await _hold(session, test_user_id, t) for t in "ab"]
+        dispatch = AsyncMock()
+        with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+            response = await client.post(
+                "/api/review/action",
+                json={"reviews": [{"node_exec_id": answered, "approved": True}]},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["awaiting_other_cards"] is False
+    dispatch.assert_awaited_once()
+    row = await _row(waiting, test_user_id)
+    assert row is not None and row.status == ReviewStatus.WAITING

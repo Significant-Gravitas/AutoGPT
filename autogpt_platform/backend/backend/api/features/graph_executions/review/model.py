@@ -248,6 +248,10 @@ class ReviewRequest(BaseModel):
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
+    wait_for_other_cards: bool = Field(
+        False,
+        description="Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+    )
 
     @model_validator(mode="after")
     def validate_review_completeness(self):

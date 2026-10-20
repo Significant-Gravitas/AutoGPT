@@ -277,8 +277,8 @@ async def test_a_sdk_turn_that_ends_early_keeps_the_results_of_calls_it_ran(stop
     [
         # The second card is not claimed yet, so it stays held.
         ("closed at the next card's status", [_RESULT.content]),
-        # The fold already handed both rows to the session.
-        ("cancelled during the fold", []),
+        # Cut inside the fold's own save: both rows are on the session only.
+        ("cancelled inside the fold's save", [_RESULT.content, _SECOND.content]),
     ],
 )
 async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
@@ -300,13 +300,13 @@ async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
         raise AssertionError("the turn was stopped before the model")
         yield
 
-    fold = AsyncMock(
-        side_effect=asyncio.CancelledError if stop.startswith("cancelled") else None,
-        return_value=True,
-    )
+    async def cut(_session: ChatSession, _log_prefix: str) -> ChatSession:
+        raise asyncio.CancelledError
+
+    fold_save = cut if stop.startswith("cancelled") else _numbered
     svc = "backend.copilot.baseline.service"
     with (
-        _baseline_patches(resolve, fold, model_loop),
+        _baseline_patches(resolve, persist_pending_as_user_rows, model_loop),
         patch.object(
             type(baseline_service.config),
             "active_e2b_api_key",
@@ -319,8 +319,9 @@ async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
         patch(f"{svc}.pause_sandbox_direct", AsyncMock()) as pause,
         patch(
             "backend.copilot.pending_message_helpers.persist_session_safe",
-            _numbered,
+            fold_save,
         ),
+        patch(f"{svc}.persist_session_safe", _numbered),
     ):
         turn = stream_chat_completion_baseline(
             session_id=session.session_id,
@@ -341,8 +342,6 @@ async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
         set_execution_context(None, None)
 
     assert _saved_results(session) == saved
-    if stop.startswith("cancelled"):
-        assert fold.await_args.args[2] == [_RESULT, _SECOND]
     pause.assert_awaited_once_with(sandbox, session.session_id, expert_id=None)
 
 

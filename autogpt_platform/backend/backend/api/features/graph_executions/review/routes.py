@@ -388,7 +388,8 @@ async def process_review_action(
             {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
         )
 
-    # A held call finishes on its own: the chat's last answer starts its next turn.
+    # A held call finishes on its own: an answer starts the chat's next turn, or
+    # from the chat's own queue, its last answer does.
     awaiting_other_cards = False
     if chat_session_id is not None and updated_reviews:
         # A workflow step's card answers the step's own row; its run resumes
@@ -410,7 +411,7 @@ async def process_review_action(
             user_id,
             chat_session_id,
             [r for r in updated_reviews.values() if not is_step_card(r)],
-            until_last=True,
+            until_last=request.wait_for_other_cards,
         )
         if finished.failed:
             # Each card is kept, so answering it again finishes the job.

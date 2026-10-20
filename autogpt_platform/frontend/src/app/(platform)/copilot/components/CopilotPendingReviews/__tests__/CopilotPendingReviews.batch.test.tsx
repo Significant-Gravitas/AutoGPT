@@ -28,6 +28,7 @@ test("answers on an idle chat follow no turn until the last card, which follows 
 
   await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
   expect(chat.answered).toEqual([[id("a")], [id("b")]]);
+  expect(chat.waited).toEqual([true, true]);
   expect(chat.continues).toBe(0);
 });
 
@@ -117,7 +118,11 @@ test("closing the review dialog with nothing answered sends nothing", async () =
 // chat's queue, and an answer says when it waits for the others.
 function serveChat(reviews: PendingHumanReviewModel[]) {
   const waiting = new Map(reviews.map((r) => [r.node_exec_id, r]));
-  const chat = { answered: [] as string[][], continues: 0 };
+  const chat = {
+    answered: [] as string[][],
+    waited: [] as (boolean | undefined)[],
+    continues: 0,
+  };
   server.use(
     http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([...waiting.values()]),
@@ -125,8 +130,10 @@ function serveChat(reviews: PendingHumanReviewModel[]) {
     http.post("*/api/review/action", async ({ request }) => {
       const body = (await request.json()) as {
         reviews: { node_exec_id: string; approved: boolean }[];
+        wait_for_other_cards?: boolean;
       };
       const ids = body.reviews.map((r) => r.node_exec_id);
+      chat.waited.push(body.wait_for_other_cards);
       ids.forEach((reviewId) => waiting.delete(reviewId));
       chat.answered.push(ids);
       return HttpResponse.json({
