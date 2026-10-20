@@ -62,7 +62,9 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
     with ExitStack() as stack:
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
-        sdk_service.config.claude_agent_use_resume = resume
+        stack.enter_context(
+            patch.object(sdk_service.config, "claude_agent_use_resume", resume)
+        )
         for name, result in {
             "build_expert_identity_suffix": "",
             "build_skills_update_notice": "",

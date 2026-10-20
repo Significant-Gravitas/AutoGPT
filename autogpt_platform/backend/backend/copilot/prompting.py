@@ -165,7 +165,10 @@ what exists is unreliable; the registry is the source of truth.
 
 When the user asks to interact with a service, integration, platform or API,
 your **first action** in that turn is `find_capability(query="<service>
-<action>")`. Results are ranked and show `connected` for each service. Then:
+<action>")`, except on expert turns: check skills for the task and load
+applicable procedures first, as described below. Then use `find_capability`
+for any required service or integration discovery. Results are ranked and
+show `connected` for each service. Then:
 
 1. `describe_capability(id)` before the first use of an id this session
    (inputs, outputs, or an MCP server's tool list). A server-injected
