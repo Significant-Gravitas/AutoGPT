@@ -12,12 +12,11 @@ from backend.data.model import (
     GraphInput,
     is_credentials_field_name,
 )
-from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
 
 
 class LibraryAgentStatus(str, Enum):
@@ -530,34 +529,6 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     )
 
 
-class PresetWebhook(pydantic.BaseModel):
-    """A trigger preset's webhook as API clients and the copilot executor see it.
-
-    Carries the ingress URL and the webhook's metadata, never its signing
-    secret or the provider's webhook id (GHSA-4m2w-qfr5-9f3v). Redacting those
-    at serialization time instead left the preset unable to validate back from
-    its own JSON, which is how it travels over the database-manager RPC.
-    """
-
-    id: str
-    user_id: str
-    provider: ProviderName
-    credentials_id: str
-    webhook_type: str
-    resource: str
-    events: list[str]
-    config: dict[str, Any] = pydantic.Field(default_factory=dict)
-    organization_id: str | None = None
-    team_id: str | None = None
-    url: str
-
-    @classmethod
-    def from_webhook(cls, webhook: "Webhook") -> "PresetWebhook":
-        return cls.model_validate(
-            webhook.model_dump(exclude={"secret", "provider_webhook_id"})
-        )
-
-
 class LibraryAgentPreset(LibraryAgentPresetCreatable):
     """Represents a preset configuration for a library agent."""
 
@@ -574,7 +545,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
     webhook_id: Optional[str] = None
-    webhook: PresetWebhook | None
+    webhook: "WebhookWithoutSecrets | None"
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
@@ -582,7 +553,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
@@ -618,7 +589,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=(
-                PresetWebhook.from_webhook(Webhook.from_db(preset.Webhook))
+                WebhookWithoutSecrets.from_db(preset.Webhook)
                 if preset.Webhook
                 else None
             ),
