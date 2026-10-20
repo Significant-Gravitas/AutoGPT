@@ -527,12 +527,6 @@ jobs:
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
-      # DIAGNOSTIC (SECRT-2966, to be reverted): host and per-container load while the tests run.
-      - name: DIAGNOSTIC - sample host and container load
-        run: |
-          nohup vmstat -t -w 1 > /tmp/diag-vmstat.log 2>&1 &
-          nohup bash -c 'while true; do echo "== $(date -u +%T.%3N)"; docker stats --no-stream --format "{{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}} io={{.BlockIO}}"; done' > /tmp/diag-dockerstats.log 2>&1 &
-
       - name: Run Playwright E2E suite
         run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
         env:
@@ -615,10 +609,7 @@ jobs:
 
       - name: Print Final Docker Compose logs
         if: always()
-        run: |
-          docker compose -f ../docker-compose.resolved.yml logs -t
-          echo "== DIAGNOSTIC vmstat"; cat /tmp/diag-vmstat.log || true
-          echo "== DIAGNOSTIC docker stats"; cat /tmp/diag-dockerstats.log || true
+        run: docker compose -f ../docker-compose.resolved.yml logs
 
       - name: Wait for Next.js build cache export
         wait: [next-build-cache-export]

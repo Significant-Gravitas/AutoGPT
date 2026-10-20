@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import orjson
@@ -1239,3 +1239,34 @@ def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
     [request] = sent
     assert "sentry-trace" not in request.headers
     assert "baggage" not in request.headers
+
+
+async def test_an_app_service_freezes_its_heap_after_its_own_startup(mocker):
+    order: list[str] = []
+    mocker.patch("backend.util.service.redis_client.get_redis_async", AsyncMock())
+    mocker.patch("backend.util.service.redis_client.disconnect_async", AsyncMock())
+    mocker.patch(
+        "backend.util.service.freeze_startup_heap", lambda: order.append("freeze")
+    )
+    app = _StartupRecordingService(order).build_fastapi_app()
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert order == ["subclass startup", "freeze"]
+
+
+class _StartupRecordingService(AppService):
+    def __init__(self, order: list[str]):
+        super().__init__()
+        self.order = order
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        async with super().lifespan(app):
+            self.order.append("subclass startup")
+            yield

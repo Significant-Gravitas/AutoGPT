@@ -41,7 +41,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.settings import Config, get_service_name
 
@@ -525,7 +525,7 @@ class AppService(BaseAppService, ABC):
     def build_fastapi_app(self) -> FastAPI:
         """The service's HTTP app: one POST route per exposed method, the
         health checks and metrics, and nothing else."""
-        app = FastAPI(lifespan=self.lifespan)
+        app = FastAPI(lifespan=self._serving_lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
@@ -560,6 +560,13 @@ class AppService(BaseAppService, ABC):
         )
         self._register_exception_handlers(app)
         return app
+
+    @asynccontextmanager
+    async def _serving_lifespan(self, app: FastAPI):
+        async with self.lifespan(app):
+            # After every subclass's startup, so its long-lived state is frozen too.
+            freeze_startup_heap()
+            yield
 
 
 # --------------------------------------------------
