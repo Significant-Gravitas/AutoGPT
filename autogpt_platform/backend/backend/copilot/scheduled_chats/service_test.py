@@ -22,7 +22,7 @@ from prisma.models import (
 
 from backend.api.features.experts import routines
 from backend.copilot import db as copilot_db
-from backend.copilot.scheduled_chats import service
+from backend.copilot.scheduled_chats import reconnect, service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.reconnect import resume_after_reconnect
 from backend.copilot.scheduled_chats.service import (
@@ -588,6 +588,33 @@ async def test_reconnecting_the_provider_resumes_what_it_paused(
         await resume_after_reconnect(user_id, "twitter")
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_paused_while_a_reconnect_reads_it_is_resumed(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The reconnect read the chat as only told, while a run still failing
+    on the old connection went on to pause it. Deleting from that stale read
+    would leave its jobs paused with nothing to list or resume them."""
+    user_id, session_id = await _owner()
+    try:
+        told = RunOutcome(failure=_DISCORD, whole_run=False)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, told))
+        read = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert read is not None and read.pausedAt is None
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+
+        await reconnect._clear(user_id, read)
+
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        assert await list_paused_scheduled_chats(user_id) == []
     finally:
         await _cleanup(user_id)
 
