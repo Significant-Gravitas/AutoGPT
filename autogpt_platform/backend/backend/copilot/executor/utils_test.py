@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.active_turns import SessionNotIdle
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
@@ -423,16 +424,15 @@ async def test_schedule_chat_turn_needing_a_fresh_slot_dispatches_when_admitted(
 
 
 @pytest.mark.asyncio
-async def test_schedule_chat_turn_still_saves_and_dispatches_on_a_refreshed_slot():
-    # /stream doesn't ask for a fresh slot; its behaviour is unchanged.
+async def test_schedule_chat_turn_refuses_a_lost_slot_before_saving_a_new_message():
     with _scheduling(admitted=False) as (append, dispatch):
-        turn_id = await utils.schedule_chat_turn(
-            session_id="s1", user_id="u1", message="and the totals"
-        )
+        with pytest.raises(SessionNotIdle):
+            await utils.schedule_chat_turn(
+                session_id="s1", user_id="u1", message="and the totals"
+            )
 
-    assert turn_id is not None
-    append.assert_awaited_once()
-    dispatch.assert_awaited_once()
+    append.assert_not_awaited()
+    dispatch.assert_not_awaited()
 
 
 @pytest.mark.asyncio

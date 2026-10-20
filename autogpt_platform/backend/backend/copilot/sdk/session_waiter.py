@@ -26,7 +26,7 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
-from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
 from backend.copilot.llm_attribution import is_turn_impersonated
@@ -42,7 +42,7 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_pause import TurnPause
-from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
+from backend.copilot.turn_queue import queued_turn_refusal
 from backend.data.db_accessors import chat_db
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event

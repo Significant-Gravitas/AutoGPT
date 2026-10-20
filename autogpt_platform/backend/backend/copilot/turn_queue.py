@@ -37,6 +37,7 @@ from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import (
+    SessionNotIdle,
     TurnSlot,
     count_running_turns,
     get_delegated_turn_limit,
@@ -125,11 +126,6 @@ async def list_queued_sessions(user_id: str):
     return await chat_db().list_chat_sessions_by_status(
         user_id=user_id, status=CHAT_STATUS_QUEUED
     )
-
-
-class SessionNotIdle(Exception):
-    """The session already has a turn queued or running, so a spawned child
-    cannot be queued into it."""
 
 
 class InflightCapExceeded(Exception):

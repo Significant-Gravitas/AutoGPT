@@ -1156,6 +1156,24 @@ def _reserve_client_message(claims: _ClaimRedis, user_id: str) -> None:
     claims.values[key] = "reserved:first-copy"
 
 
+def test_stream_chat_lost_slot_is_retryable_without_accepting_the_message(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.turn_queue.SessionNotIdle("sess-1")
+    request = {"message": "hello", "message_id": "client-click-id"}
+
+    response = client.post("/sessions/sess-1/stream", json=request)
+
+    assert response.status_code == 409
+    assert "send this message again" in response.json()["detail"]
+    assert not mocks.claims.values
+    mocks.enqueue.side_effect = None
+    retry = client.post("/sessions/sess-1/stream", json=request)
+    assert retry.status_code == 200
+    assert list(mocks.claims.values.values()) == ["accepted"]
+
+
 def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from backend.copilot.active_turns import SessionNotIdle
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
 from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
-from backend.copilot.turn_queue import SessionNotIdle
 
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,

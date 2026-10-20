@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
+    SessionNotIdle,
     TurnSlot,
     acquire_turn_slot,
     get_delegated_turn_limit,
@@ -546,7 +547,7 @@ async def schedule_turn(
     with 5 running + 10 queued can't slip a 16th task through this
     path; ``acquire_turn_slot`` only sees the running pool.
     """
-    from backend.copilot.turn_queue import SessionNotIdle, count_inflight_turns
+    from backend.copilot.turn_queue import count_inflight_turns
 
     if user_id:
         inflight_cap = get_inflight_turn_limit()
@@ -647,6 +648,8 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
+    if user_id and not slot.admitted:
+        raise SessionNotIdle(session_id)
     admitted_here = envelope is None
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
@@ -889,6 +892,8 @@ async def schedule_chat_turn(
     ``require_fresh_slot`` applies the same rule to a new message: when
     another turn already holds the session, return ``None`` before anything
     is saved. ``dedupe_content`` is passed to :func:`append_and_save_message`.
+    A new HTTP send that loses the slot raises :class:`SessionNotIdle` before
+    persistence, allowing the caller to refuse it without accepting its client ID.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -921,6 +926,8 @@ async def schedule_chat_turn(
     async with acquire_turn_slot(user_id, session_id) as slot:
         if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
+        if user_id and not slot.admitted:
+            raise SessionNotIdle(session_id)
         is_duplicate = False
         if message and not message_already_persisted:
             chat_message = ChatMessage(
