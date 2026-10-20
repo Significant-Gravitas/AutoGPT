@@ -60,6 +60,46 @@ async def test_separate_title_generation_carries_release(
     assert attributes.call_args.kwargs["metadata"] == {"release": "build-title"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["create", "enter", "exit"])
+@pytest.mark.parametrize("provider_fails", [False, True], ids=["success", "error"])
+async def test_title_and_cost_response_survive_tracing_failure(
+    monkeypatch: pytest.MonkeyPatch, failure_stage: str, provider_fails: bool
+) -> None:
+    response = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Organized Notes"))]
+    )
+    complete = AsyncMock(
+        return_value=response,
+        side_effect=RuntimeError("provider unavailable") if provider_fails else None,
+    )
+    monkeypatch.setattr(service, "call_provider_openai_compat_sync", complete)
+    monkeypatch.setattr(service, "_get_aux_client", MagicMock())
+    attributes = MagicMock()
+    failure = RuntimeError("tracing unavailable")
+    if failure_stage == "create":
+        attributes.side_effect = failure
+    elif failure_stage == "enter":
+        attributes.return_value.__enter__.side_effect = failure
+    else:
+        attributes.return_value.__exit__.side_effect = failure
+    monkeypatch.setattr(service, "propagate_attributes", attributes)
+
+    title, cost_response = await service._generate_session_title(
+        "Please organize my notes"
+    )
+
+    complete.assert_awaited_once()
+    if provider_fails:
+        assert title == "Please organize my notes"
+        assert cost_response is None
+    else:
+        assert title == "Organized Notes"
+        assert cost_response is response
+    if failure_stage == "exit":
+        attributes.return_value.__exit__.assert_called_once()
+
+
 class _EventCapture(Transport):
     def __init__(self) -> None:
         super().__init__()
