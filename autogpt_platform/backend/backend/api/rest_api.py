@@ -112,6 +112,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -195,6 +196,8 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
+
+    freeze_startup_heap()
 
     yield
 

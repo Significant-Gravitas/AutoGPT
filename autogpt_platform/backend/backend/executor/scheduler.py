@@ -42,6 +42,7 @@ from backend.api.features.onboarding_dump.retention import (
     purge_expired_recordings,
 )
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -2839,6 +2840,15 @@ class Scheduler(AppService):
 
     def run_service(self):
         load_dotenv()
+
+        # Load the block registry before serving. Otherwise the first add-schedule
+        # loads it inside graph validation, and the scheduler freezes meanwhile.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
 
         # Initialize the event loop for async jobs
         global _event_loop
