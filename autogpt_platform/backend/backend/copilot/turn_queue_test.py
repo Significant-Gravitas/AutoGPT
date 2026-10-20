@@ -801,15 +801,24 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         ),
         # A tree that closed while it waited: no "your answer is kept" note.
         ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
+        (
+            {"background_task_id": "task", "background_task_stage": "followup"},
+            None,
+            "Otto couldn't start this background work because its saved limits are unavailable.",
+            False,
+        ),
+        ({held._WAKE_KEY: True}, None, turn_queue.UNRECORDED_WAKE, False),
     ],
     ids=[
         "envelope-unreadable",
         "envelope-unreadable-tree-known",
         "permissions-unreadable",
         "tree-refused",
+        "background-limits-unreadable",
+        "approval-limits-unreadable",
     ],
 )
-async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
+async def test_a_refused_queued_turn_closes_and_returns_any_child_node(
     stored: dict, refusal: str | None, reason: str, released: bool
 ) -> None:
     head = _queued_row()
@@ -841,6 +850,8 @@ async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
         assert await turn_queue.dispatch_next_for_user("u1") is False
 
     assert posted.await_args.args[1].content == reason
+    if refusal is None:
+        dispatched.assert_not_awaited()
     db.update_chat_session_status.assert_awaited_once_with(
         session_id="s1", expect_status="running", status="idle"
     )

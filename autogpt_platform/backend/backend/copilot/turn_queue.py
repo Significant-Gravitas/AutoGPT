@@ -98,6 +98,9 @@ UNRECORDED_WAKE = (
     "The approved action could not be resumed: what it was allowed to do was "
     f"not recorded. {WAKE_LATER}"
 )
+UNREADABLE_BACKGROUND = (
+    "Otto couldn't start this background work because its saved limits are unavailable."
+)
 
 
 async def count_queued_turns(user_id: str) -> int:
@@ -503,6 +506,10 @@ async def _promote_head(user_id: str) -> bool | None:
             if spawned and not metadata.get("background_task_id")
             else None
         )
+        background = bool(metadata.get("background_task_id"))
+        if background and queued_envelope is None:
+            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND, release=child)
+            return None
         if (
             is_answer_row(pending)
             and queued_envelope is None
@@ -513,10 +520,6 @@ async def _promote_head(user_id: str) -> bool | None:
             await _refuse_queued_turn(head, UNRECORDED_WAKE)
             return None
 
-        background = bool(metadata.get("background_task_id"))
-        if background and queued_envelope is None:
-            await _refuse_queued_turn(head, UNRECORDED_WAKE, release=child)
-            return None
         turn_id = str(metadata["turn_id"]) if background else str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
