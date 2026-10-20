@@ -10,6 +10,7 @@ import {
 } from "@/app/(platform)/copilot/useSessionList";
 import { useSessionDeletion } from "@/app/(platform)/copilot/useSessionDeletion";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -71,25 +72,35 @@ export function useRecentChats() {
     },
   });
 
-  function togglePin(id: string, isPinned: boolean) {
+  // Every handler handed to the rows keeps one identity across renders, so the
+  // memoised `RecentChatItem`s only re-render when their own props change.
+  const togglePin = useStableCallback((id: string, isPinned: boolean) => {
     setSessionPinned({ sessionId: id, data: { is_pinned: !isPinned } });
-  }
+  });
 
-  function startRename(id: string, title: string | null | undefined) {
-    setEditingSessionId(id);
-    setEditingTitle(title || "");
-  }
+  const startRename = useStableCallback(
+    (id: string, title: string | null | undefined) => {
+      setEditingSessionId(id);
+      setEditingTitle(title || "");
+    },
+  );
 
-  function submitRename(id: string) {
+  const submitRename = useStableCallback((id: string) => {
     const trimmed = editingTitle.trim();
     if (trimmed) {
       renameSession({ sessionId: id, data: { title: trimmed } });
     } else {
       setEditingSessionId(null);
     }
-  }
+  });
 
-  async function exportChat(id: string, title: string | null | undefined) {
+  const cancelRename = useStableCallback(() => setEditingSessionId(null));
+
+  const stableRequestDelete = useStableCallback(requestDelete);
+
+  const exportChat = useStableCallback(handleExport);
+
+  async function handleExport(id: string, title: string | null | undefined) {
     if (exportingIds.has(id)) return;
     setExportingIds((prev) => new Set(prev).add(id));
     try {
@@ -126,14 +137,14 @@ export function useRecentChats() {
     setEditingTitle,
     startRename,
     submitRename,
-    cancelRename: () => setEditingSessionId(null),
+    cancelRename,
     exportingIds,
     exportChat,
     sharingSessionId,
     setSharingSessionId,
     sessionToDelete,
     isDeleting,
-    requestDelete,
+    requestDelete: stableRequestDelete,
     confirmDelete,
     cancelDelete,
   };

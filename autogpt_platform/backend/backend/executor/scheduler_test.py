@@ -75,7 +75,7 @@ async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestSe
     (Scheduler._get_active_jobs_cached), not just via the old in-Python
     check — and ``include_paused=True`` must still find it through the
     unfiltered ``_get_jobs_cached`` path used by pause/resume lifecycle
-    callers. Exercised against the real apscheduler_jobs table."""
+    callers. Exercised against a real SQL jobstore table."""
     await db.connect()
     test_user = await create_test_user()
     test_graph = await server.agent_server.test_create_graph(

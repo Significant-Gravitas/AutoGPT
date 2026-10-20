@@ -15,6 +15,8 @@ import uuid
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
+
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -50,6 +52,7 @@ from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_tracing import TurnTrace, turn_transaction
 from backend.data.model import OAuth2Credentials
+from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -622,6 +625,15 @@ class CoPilotProcessor:
         try:
             from backend.copilot.model import get_chat_session
 
+            # Every copilot turn starts here, whatever queued it.
+            if entry.user_id and await is_user_banned(entry.user_id):
+                log.info("Turn not started: the account is banned")
+                error_msg = ACCOUNT_BANNED_DETAIL["message"]
+                error_code = ACCOUNT_BANNED_DETAIL["code"]
+                # A refused account is not a failed schedule worth alerting on.
+                scheduled_watch = None
+                return
+
             # Executor picked the turn up — replace the route's "Message
             # received…" status while feature-flag resolution and service
             # setup run.
@@ -887,6 +899,9 @@ class CoPilotProcessor:
                         log.info("Cancel requested, breaking stream")
                         break
 
+                    # Before the StreamError break: the watch reports its code.
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
                     # the error message (stream_and_publish yields but does
                     # not publish StreamError — that's done by mark_session_completed).
@@ -894,8 +909,6 @@ class CoPilotProcessor:
                         error_msg = chunk.errorText
                         error_code = chunk.code
                         break
-                    if scheduled_watch is not None:
-                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:

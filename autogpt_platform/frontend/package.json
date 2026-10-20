@@ -19,6 +19,7 @@
     "test-ui": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:ui",
     "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
+    "test:tooltip": "playwright test --config playwright.tooltip.config.ts",
     "test:e2e": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:no-build",
     "test:e2e:no-build": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -180,6 +181,7 @@
     "storybook": "9.1.5",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
+    "vite": "7.3.1",
     "vite-tsconfig-paths": "6.0.4",
     "vitest": "4.1.0"
   },
