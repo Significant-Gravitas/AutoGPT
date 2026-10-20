@@ -81,11 +81,14 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         # nothing. One that fired after was resumed some other way.
         return
     step = advance(current, run.outcome)
-    if step.ended_notified:
-        await resolve_alert(run.user_id, run.schedule_key)
     if step.streak is None:
-        if row is not None:
-            await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+        # Withdrawn only with the streak: a pause this run didn't see stands,
+        # and so does its alert.
+        dropped = row is not None and await _drop(
+            row, saw_pause=current is not None and current.paused
+        )
+        if dropped and step.ended_notified:
+            await resolve_alert(run.user_id, run.schedule_key)
         return
     if step.streak == current:
         return
@@ -120,6 +123,10 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         # Another run of this chat paused it after this one read the streak,
         # and told the owner. That pause stands.
         return
+    if step.ended_notified:
+        # A new failure replaced the streak the owner was told about. Before
+        # any pause it raises: both are this chat's one alert.
+        await resolve_alert(run.user_id, run.schedule_key)
     if paused:
         await alerts.raise_paused(
             run.user_id,
@@ -350,6 +357,17 @@ async def _save(
     except UniqueViolationError:
         # The paused row the delete left in place.
         return None
+
+
+async def _drop(row: ScheduledChatStreak, *, saw_pause: bool) -> bool:
+    """End the streak a run read, and say whether it did. As in ``_save``, a
+    view from before a pause never ends that pause: its jobs are paused, and
+    without the row nothing lists or resumes them. Only a run that saw the
+    pause, and found the jobs firing again, ends one."""
+    where: ScheduledChatStreakWhereInput = {"id": row.id}
+    if not saw_pause:
+        where["pausedAt"] = None
+    return bool(await ScheduledChatStreak.prisma().delete_many(where=where))
 
 
 def _streak_of(row: ScheduledChatStreak | None) -> Streak | None:

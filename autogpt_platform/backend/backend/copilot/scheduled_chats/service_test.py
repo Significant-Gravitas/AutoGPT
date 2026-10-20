@@ -6,7 +6,7 @@ way the DatabaseManager writes them.
 
 import asyncio
 import logging
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -417,6 +417,34 @@ async def test_two_runs_finishing_together_keep_the_pause(
 
         assert len(await list_paused_scheduled_chats(user_id)) == 1
         assert len(await _notes(session_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_good_run_that_read_the_streak_before_the_pause_keeps_it(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """It ends the streak it read. The row another run paused since must
+    stay, or its jobs stay paused with nothing to list or resume them."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        streak_of = service._streak_of
+
+        def before_the_pause(row):
+            streak = streak_of(row)
+            return streak.model_copy(update={"paused": False}) if streak else None
+
+        with patch.object(service, "_streak_of", new=before_the_pause):
+            await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
+
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+        # And its alert: withdrawn only with the streak.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.PENDING
     finally:
         await _cleanup(user_id)
 

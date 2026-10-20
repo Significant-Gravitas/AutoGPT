@@ -7,7 +7,7 @@ from backend.copilot.scheduled_chats.failure_notices import (
     provider_name,
     resumed_notice,
 )
-from backend.copilot.scheduled_chats.notices import BILLING_PATH
+from backend.copilot.scheduled_chats.notices import BILLING_PATH, INTEGRATIONS_PATH
 from backend.copilot.scheduled_chats.outcomes import RunFailure
 
 _TWITTER = RunFailure(key="connection:twitter", kind="connection", provider="twitter")
@@ -111,6 +111,45 @@ def test_provider_names_read_as_people_write_them():
     assert provider_name("github") == "GitHub"
     assert provider_name("google_drive") == "Google Drive"
     assert provider_name(None) == "a connected service"
+
+
+def test_a_connection_its_tool_did_not_name_points_at_settings():
+    """A tool that needs several accounts doesn't say which one failed: no
+    Reconnect button to offer, and no provider to put in the sentence."""
+    unnamed = RunFailure(key="connection:run_block", kind="connection")
+
+    paused = paused_notice(unnamed, title="Briefing", failures=3, streak_id="s1")
+    failing = failing_notice(unnamed, title="Briefing", failures=3, streak_id="s1")
+
+    assert paused.headline == "Paused: “Briefing” can't use one of its connections"
+    assert paused.body == (
+        "Its last 3 runs failed because a connection it needs is missing or was "
+        "refused. Reconnect it in Settings, then resume."
+    )
+    assert _actions(paused) == [
+        {"kind": "link", "label": "Open settings", "href": INTEGRATIONS_PATH},
+        {"kind": "resume", "label": "Resume"},
+    ]
+    assert failing.body == (
+        "The last 3 runs went ahead without a connection they need, which is "
+        "missing or was refused. Reconnect it in Settings to bring it back."
+    )
+    assert _actions(failing) == [
+        {"kind": "link", "label": "Open settings", "href": INTEGRATIONS_PATH}
+    ]
+    assert pause_summary(unnamed) == "Paused: can't use one of its connections"
+
+
+def test_a_chat_platform_its_tool_did_not_name_reads_without_one():
+    unnamed = RunFailure(key="chat_link:post", kind="chat_link")
+
+    paused = paused_notice(unnamed, title="Monitor", failures=3, streak_id="s1")
+    failing = failing_notice(unnamed, title="Monitor", failures=3, streak_id="s1")
+
+    assert paused.headline == "Paused: “Monitor” can't post to a chat platform"
+    assert "because no server or chat is linked" in paused.body
+    assert "because no server or chat is linked" in failing.body
+    assert pause_summary(unnamed) == "Paused: can't post to a chat platform"
 
 
 def test_pause_summary():

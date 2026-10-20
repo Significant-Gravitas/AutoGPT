@@ -163,6 +163,24 @@ def test_tool_failure_detail_hashes_free_text_instead_of_keeping_it():
     assert "nick" not in detail.model_dump_json()
 
 
+def test_an_uncoded_error_differing_only_in_its_numbers_fails_the_same_way():
+    """Ids, times and durations change every run; the failure doesn't."""
+
+    def hashed(error: str) -> str | None:
+        detail = tool_failure_detail(
+            ErrorResponse(message="x", error=error).model_dump()
+        )
+        assert detail is not None
+        return detail.text_hash
+
+    first = hashed("Timed out after 30.2s (request 8f3a9c, 2026-10-19T08:00:00Z)")
+    again = hashed("Timed out after 31.7s (request 77b1e0, 2026-10-20T08:00:00Z)")
+    other = hashed("Connection refused (request 8f3a9c)")
+
+    assert first == again
+    assert first != other
+
+
 def test_tool_failure_detail_ignores_anything_but_an_error_payload():
     assert tool_failure_detail('{"type": "block_output"}') is None
     assert tool_failure_detail("not json") is None

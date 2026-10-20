@@ -61,7 +61,8 @@ async def unpause(user_id: str, schedule_ids: list[str]) -> None:
 
 async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:
     """Resume every job, or raise with the ones this call resumed paused
-    again. A job deleted since the pause has nothing to resume."""
+    again, the one it failed on included: a resume whose answer was lost may
+    have landed. A job deleted since the pause has nothing to resume."""
     scheduler = get_scheduler_client()
     resumed: list[str] = []
     for schedule_id in schedule_ids:
@@ -71,7 +72,9 @@ async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:
         except NotFoundError:
             continue
         except Exception:
-            await _put_back(scheduler.pause_schedule, user_id, resumed)
+            # Pausing one whose resume never landed changes nothing: it is
+            # still paused.
+            await _put_back(scheduler.pause_schedule, user_id, [*resumed, schedule_id])
             raise
 
 
