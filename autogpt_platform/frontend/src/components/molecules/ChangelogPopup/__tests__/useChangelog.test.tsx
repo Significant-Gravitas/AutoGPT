@@ -1,7 +1,7 @@
 import { server } from "@/mocks/mock-server";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGELOG_INDEX_MD_URL, STORAGE_KEY } from "../changelog-constants";
 import { useChangelog } from "../useChangelog";
@@ -23,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   server.resetHandlers();
+  vi.useRealTimers();
 });
 
 describe("useChangelog", () => {
@@ -43,17 +44,49 @@ describe("useChangelog", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("dismiss marks the latest release seen after fading out", async () => {
-    const { result } = renderHook(() => useChangelog());
+  it("does not mark a release seen if unmounted before it appears", async () => {
+    const { result, unmount } = renderHook(() => useChangelog());
     await waitFor(() => expect(result.current.latestEntry?.slug).toBe(LATEST));
 
-    act(() => result.current.pauseAutoDismiss("hover"));
-    act(() => result.current.resumeAutoDismiss("hover"));
-    act(() => result.current.dismiss());
+    expect(result.current.isVisible).toBe(false);
+    unmount();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
 
-    await waitFor(
-      () => expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST),
-      { timeout: 1500 },
-    );
+  it.each(["visible", "fading"])(
+    "does not repeat a release after unmounting while %s",
+    async (phase) => {
+      vi.useFakeTimers();
+      const { result, unmount } = renderHook(() => useChangelog());
+      await vi.waitFor(() => expect(result.current.isVisible).toBe(true), {
+        timeout: 3000,
+      });
+
+      if (phase === "fading") act(() => result.current.dismiss());
+      unmount();
+
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST);
+      const revisit = renderHook(() => useChangelog());
+      await vi.waitFor(() =>
+        expect(revisit.result.current.latestEntry?.slug).toBe(LATEST),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(revisit.result.current.isVisible).toBe(false);
+    },
+  );
+
+  it("dismiss hides the popup after fading out", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useChangelog());
+    await vi.waitFor(() => expect(result.current.isVisible).toBe(true), {
+      timeout: 3000,
+    });
+
+    act(() => result.current.dismiss());
+    expect(result.current.isFading).toBe(true);
+    expect(result.current.isVisible).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(result.current.isVisible).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(LATEST);
   });
 });

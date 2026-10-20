@@ -47,7 +47,6 @@ export function useChangelog() {
       setIsVisible(false);
       setIsFading(false);
       isDismissing.current = false;
-      if (latestEntry) markAsSeen(latestEntry.slug);
     }, 500);
   }
 
@@ -114,8 +113,10 @@ export function useChangelog() {
   }, []);
 
   useEffect(() => {
-    if (isVisible && !isFading) startAutoDismiss();
-  }, [isVisible, isFading]);
+    if (!isVisible || isFading || !latestEntry) return;
+    markAsSeen(latestEntry.slug);
+    startAutoDismiss();
+  }, [isVisible, isFading, latestEntry]);
 
   return {
     isVisible,
