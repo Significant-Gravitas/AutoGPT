@@ -3,9 +3,9 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Coroutine
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -194,6 +194,11 @@ from backend.util.settings import Settings
 settings = Settings()
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Reads a message starts before its session checks (``_start_early_read``).
+_early_reads: set[asyncio.Task[Any]] = set()
 
 config = ChatConfig()
 
@@ -1770,6 +1775,22 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+def _start_early_read(read: Coroutine[Any, Any, _T], name: str) -> asyncio.Task[_T]:
+    """Start a read the route awaits later, where its check runs."""
+    task = asyncio.create_task(read, name=name)
+    # The loop holds tasks weakly; a request that ends early never awaits this.
+    _early_reads.add(task)
+    task.add_done_callback(_finish_early_read)
+    return task
+
+
+def _finish_early_read(task: asyncio.Task[Any]) -> None:
+    _early_reads.discard(task)
+    if not task.cancelled():
+        # Retrieved, so a read nobody awaited isn't logged as an unhandled error.
+        task.exception()
+
+
 async def _read_paywall_state(user_id: str) -> None:
     """Read what the paywall reads, so the paywall check can join the read.
 
@@ -1882,11 +1903,11 @@ async def stream_chat_post(
     )
     # Reads that need only the user or the session id start beside the
     # session's own checks; each is still awaited where its check runs.
-    paywall_reads = spawn_background_task(
+    paywall_reads = _start_early_read(
         _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
     )
     turn_in_flight_read = (
-        spawn_background_task(
+        _start_early_read(
             is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
         )
         if request.is_user_message and request.message
