@@ -387,11 +387,29 @@ async def _consume_sdk_until_done(
     fires a synthetic re-prompt and invokes this again for the second
     pass — bounded to one re-prompt per turn.
     """
-    async for sdk_msg in _iter_sdk_messages(
-        client,
-        wake=ctx.compaction.hook_fired,
-        tool_display_wake=ctx.tool_display.ready if ctx.tool_display else None,
-    ):
+    async with contextlib.aclosing(
+        _iter_sdk_messages(
+            client,
+            wake=ctx.compaction.hook_fired,
+            tool_display_wake=ctx.tool_display.ready if ctx.tool_display else None,
+        )
+    ) as messages:
+        async with contextlib.aclosing(
+            _consume_sdk_messages(client, messages, ctx, state, acc, loop_state)
+        ) as responses:
+            async for response in responses:
+                yield response
+
+
+async def _consume_sdk_messages(
+    client: ClaudeSDKClient,
+    messages: AsyncIterator[Any],
+    ctx: "_StreamContext",
+    state: "_RetryState",
+    acc: "_StreamAccumulator",
+    loop_state: "_SDKLoopState",
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    async for sdk_msg in messages:
         for display in ctx.tool_display.drain() if ctx.tool_display else []:
             dispatched = _dispatch_response(
                 display, acc, ctx, state, False, ctx.log_prefix
@@ -2172,11 +2190,19 @@ async def _iter_sdk_messages(
         if isinstance(message, ResultMessage):
             # The SDK ends immediately after ResultMessage. Finish the tracing
             # wrapper before the consumer breaks on the corresponding StreamFinish.
-            await anext(msg_iter, None)
+            try:
+                await anext(msg_iter, None)
+            except Exception:
+                logger.warning(
+                    "Could not finalize SDK conversation trace", exc_info=True
+                )
         return message
 
     async def _close_messages() -> None:
-        await msg_iter.aclose()
+        try:
+            await msg_iter.aclose()
+        except Exception:
+            logger.warning("Could not close SDK message iterator", exc_info=True)
 
     try:
         while True:
@@ -2215,12 +2241,15 @@ async def _iter_sdk_messages(
                 return
     finally:
         for task in (pending_task, *wake_tasks):
-            if task is not None and not task.done():
-                task.cancel()
+            if task is not None:
+                if not task.done():
+                    task.cancel()
                 try:
                     await task
                 except (asyncio.CancelledError, StopAsyncIteration):
                     pass
+                except Exception:
+                    logger.warning("Could not stop SDK message task", exc_info=True)
         await asyncio.create_task(_close_messages(), context=fetch_context)
 
 
@@ -4291,8 +4320,11 @@ async def _run_stream_attempt(
             last_flush_time=time.monotonic(),
         )
 
-        async for ev in _consume_sdk_until_done(client, ctx, state, acc, loop_state):
-            yield ev
+        async with contextlib.aclosing(
+            _consume_sdk_until_done(client, ctx, state, acc, loop_state)
+        ) as responses:
+            async for ev in responses:
+                yield ev
 
         if (
             state.adapter.pending_thinking_only_reprompt
@@ -4345,10 +4377,11 @@ async def _run_stream_attempt(
                 _THINKING_ONLY_REPROMPT,
                 session_id=ctx.session_id,
             )
-            async for ev in _consume_sdk_until_done(
-                client, ctx, state, acc, loop_state
-            ):
-                yield ev
+            async with contextlib.aclosing(
+                _consume_sdk_until_done(client, ctx, state, acc, loop_state)
+            ) as responses:
+                async for ev in responses:
+                    yield ev
     finally:
         await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
 

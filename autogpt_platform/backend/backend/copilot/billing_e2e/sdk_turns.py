@@ -118,7 +118,7 @@ class SdkTurns:
     def _stubs(self, session: ChatSession) -> dict[str, Any]:
         return {
             "config": self._config,
-            "ClaudeSDKClient": MagicMock(side_effect=self._client),
+            "ConversationOutputClient": MagicMock(side_effect=self._client),
             "TurnGovernor": MagicMock(side_effect=self._governor),
             "AsyncClusterLock": MagicMock(side_effect=_lock),
             "_make_sdk_cwd": MagicMock(return_value=str(self._cwd)),
