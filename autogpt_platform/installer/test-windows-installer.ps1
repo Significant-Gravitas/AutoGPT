@@ -244,7 +244,7 @@ public static class FakeTool
         {
             if (Enabled("FAKE_HEALTH_INSPECT_FAIL")) return 1;
             if (format != "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}") return Fail("unexpected inspect format: " + format, 77);
-            Console.WriteLine("running healthy");
+            Console.WriteLine(Env("FAKE_HEALTH_STATUS", "running healthy"));
             return 0;
         }
         if (a0 == "logs") return 0;
@@ -634,6 +634,10 @@ try {
 
 	Clear-File $volumeState
 	Assert-FailsWith 'Could not inspect appliance container autogpt; it may have been removed' (Invoke-FakeInstall (Join-Path $root 'health-inspect-failure') @{ FAKE_HEALTH_INSPECT_FAIL = 'true' })
+	Clear-File $volumeState
+	Assert-FailsWith 'failed while starting (state=running, health=unhealthy)' (Invoke-FakeInstall (Join-Path $root 'health-unhealthy') @{ FAKE_HEALTH_STATUS = 'running unhealthy' })
+	Clear-File $volumeState
+	Assert-FailsWith 'failed while starting (state=exited, health=none)' (Invoke-FakeInstall (Join-Path $root 'health-exited') @{ FAKE_HEALTH_STATUS = 'exited' })
 
 	$driftDir = Join-Path $root 'runtime-drift'
 	New-Item -ItemType Directory -Path $driftDir | Out-Null
