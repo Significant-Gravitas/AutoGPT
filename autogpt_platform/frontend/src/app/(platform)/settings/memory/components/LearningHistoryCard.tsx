@@ -105,12 +105,7 @@ export function LearningHistoryCard({
                   {formatWhen(new Date(item.created_at).toISOString())}
                 </Text>
               </div>
-              <Text
-                variant="small"
-                as="span"
-                unmask={false}
-                className="text-zinc-600"
-              >
+              <Text variant="small" as="span" className="text-zinc-600">
                 {item.summary}
               </Text>
               <Text variant="small" as="span" className="text-zinc-500">

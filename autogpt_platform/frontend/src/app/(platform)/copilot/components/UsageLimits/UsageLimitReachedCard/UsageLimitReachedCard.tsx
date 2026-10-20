@@ -63,11 +63,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               ? budgetOutTitle(state.wait.window)
               : copy.noticeTitle}
       </Text>
-      <Text
-        variant="small"
-        unmask={!due}
-        className="mt-2 !leading-5 !text-zinc-500"
-      >
+      <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError
@@ -89,7 +85,6 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             size="small"
             onClick={state.upgrade}
             disabled={state.offer.disabled}
-            unmask={!state.experience.freshProUsage}
             rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}
           >
             {getUsageOfferAction(state.experience, state.offer)}

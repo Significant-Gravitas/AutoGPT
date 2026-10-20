@@ -1108,7 +1108,9 @@ model PushSubscription {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint String
+  // An endpoint belongs to one browser profile, so to one account at a time:
+  // subscribing moves it to whoever signed in last.
+  endpoint String @unique
   p256dh   String
   auth     String
 
@@ -1116,6 +1118,10 @@ model PushSubscription {
   failCount    Int       @default(0)
   lastFailedAt DateTime?
 
+  // Implied by the unique endpoint and kept only so a backend release that
+  // still upserts on (userId, endpoint) keeps working through a rolling
+  // deploy; it also serves per-user lookups. Safe to drop once no deployed
+  // release upserts on it.
   @@unique([userId, endpoint])
 }
 
