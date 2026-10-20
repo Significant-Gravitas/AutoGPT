@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.rate_limit import is_user_paywalled
 from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.db_accessors import (
     execution_db,
@@ -20,6 +21,7 @@ from backend.data.db_accessors import (
     user_db,
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.user import is_user_banned
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
@@ -273,6 +275,11 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         if not authoritative:
             return {"status": "skipped", "reason": "flag_unavailable"}
         return {"status": "skipped", "reason": "flag_disabled"}
+
+    if await is_user_banned(user_id):
+        return {"status": "skipped", "reason": "banned"}
+    if await is_user_paywalled(user_id):
+        return {"status": "skipped", "reason": "paywalled"}
 
     user = await user_db().get_user_by_id(user_id)
     tz_name = get_user_timezone_or_utc(user.timezone)

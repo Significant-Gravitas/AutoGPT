@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,7 @@ import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import userEvent from "@testing-library/user-event";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useCopilotUIStore } from "../../../store";
@@ -699,5 +701,45 @@ describe("ChatSidebar — rename", () => {
     await vi.waitFor(() => {
       expect(titleBodies).toEqual([{ title: "新しいチャット" }]);
     });
+  });
+});
+
+describe("ChatSidebar — copilot UI store reads", () => {
+  beforeEach(() => {
+    useCopilotUIStore.setState({
+      sessionToDelete: null,
+      completedSessionIDs: new Set(),
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    );
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  it("does not re-render while a panel resize writes its width", async () => {
+    const onRender = vi.fn();
+    render(
+      <SidebarProvider>
+        <Profiler id="chat-sidebar" onRender={onRender}>
+          <ChatSidebar />
+        </Profiler>
+      </SidebarProvider>,
+    );
+    await screen.findByText("Other chat");
+    await act(async () => {});
+    onRender.mockClear();
+
+    act(() => {
+      const store = useCopilotUIStore.getState();
+      store.setContextPanelWidth(store.contextPanelWidth + 40);
+      store.setArtifactPanelWidth(store.artifactPanelWidth + 40);
+    });
+    expect(onRender).not.toHaveBeenCalled();
+
+    act(() => useCopilotUIStore.getState().addCompletedSession("s2"));
+    expect(onRender).toHaveBeenCalled();
   });
 });

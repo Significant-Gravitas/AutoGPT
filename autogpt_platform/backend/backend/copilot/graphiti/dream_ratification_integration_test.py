@@ -19,7 +19,7 @@ Only the LLM boundary is stubbed — no API key, no network.
 
 Lives in ``graphiti/`` rather than ``dream/`` for the local conftest, which
 supplies the ``falkordb_available`` skip guard, the stubbed Graphiti client,
-and the no-op ``server`` / ``graph_cleanup`` overrides that keep this suite
+and the no-op ``server`` override that keeps this suite
 off SpinTestServer (postgres + rabbitmq). ``dream/`` has no conftest, and
 adding one would change how the existing dream unit tests run.
 
