@@ -599,6 +599,24 @@ async def test_a_broken_record_never_breaks_the_turn_cleanup(database_manager, c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("purpose", ["resume", "send"])
+async def test_a_chats_own_turn_at_its_reset_alerts_but_has_no_streak(
+    database_manager, purpose
+):
+    """A turn resumed or sent at the budget reset is the user's own chat, not
+    a schedule: it can fail unwatched, so it alerts, but there is nothing to
+    pause and no streak to count toward."""
+    entry = _entry(
+        ScheduledTurnOrigin(schedule_id=f"at-reset-{purpose}-1", purpose=purpose)
+    )
+
+    sentry = await _run_turn(entry, [_run_agent_failure()])
+
+    sentry.capture_message.assert_called_once()
+    database_manager.record_scheduled_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_cancelled_record_still_closes_the_turns_browser(database_manager):
     """Recording waits on the DatabaseManager and can be cancelled meanwhile,
     as a shutdown cancels the turn. The cleanups after it still run, or the
