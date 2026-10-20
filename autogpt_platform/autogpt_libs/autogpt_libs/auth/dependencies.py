@@ -151,6 +151,14 @@ async def get_optional_user_id(
     return None if banned else user_id
 
 
+def _probe_mark(name: str) -> None:  # do-not-merge probe (#15739)
+    try:
+        from backend.copilot import perf_probe
+    except ImportError:
+        return
+    perf_probe.mark(name)
+
+
 async def get_unbanned_jwt_payload(
     jwt_payload: dict = fastapi.Security(get_jwt_payload),
 ) -> dict:
@@ -162,6 +170,7 @@ async def get_unbanned_jwt_payload(
     user_id = jwt_payload.get("sub")
     if user_id and await _is_banned(user_id):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    _probe_mark("pre_ban")
     return jwt_payload
 
 
@@ -229,6 +238,7 @@ async def get_user_id(
     # impersonation that is the admin, never the target: the claims describe
     # the admin, and provisioning the target from them would be wrong.
     await _heal_platform_user(jwt_payload)
+    _probe_mark("pre_heal")
 
     # Check for admin impersonation header
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
@@ -526,6 +536,7 @@ async def get_request_context(
             is_team_billing_manager = ws_member.isBillingManager
 
     # --- 5. build context -----------------------------------------------------
+    _probe_mark("pre_ctx")
     return RequestContext(
         user_id=user_id,
         org_id=org_id,

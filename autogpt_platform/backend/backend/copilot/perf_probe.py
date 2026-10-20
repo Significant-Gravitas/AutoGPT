@@ -13,7 +13,9 @@ _marks: contextvars.ContextVar[list | None] = contextvars.ContextVar(
 
 
 def start() -> None:
-    _marks.set([])
+    # Kept when the request's arrival already started it (rest_api middleware).
+    if _marks.get() is None:
+        _marks.set([])
 
 
 def mark(name: str) -> None:

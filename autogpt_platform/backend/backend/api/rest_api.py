@@ -284,6 +284,22 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
 
+
+class _PerfArrival:  # do-not-merge probe (#15739): stamps a stream POST's arrival
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method") == "POST" and scope.get("path", "").endswith("/stream"):
+            from backend.copilot import perf_probe as _pp_arrival
+
+            _pp_arrival.start()
+            _pp_arrival.mark("pre_arrive")
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_PerfArrival)
+
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
 
