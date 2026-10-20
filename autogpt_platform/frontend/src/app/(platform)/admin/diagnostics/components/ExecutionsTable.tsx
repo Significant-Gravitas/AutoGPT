@@ -1,5 +1,6 @@
 "use client";
 
+import type { CheckedState } from "@radix-ui/react-checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -314,8 +315,8 @@ export function ExecutionsTable({
     }
   }, [error]);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  const handleSelectAll = (checked: CheckedState) => {
+    if (checked === true) {
       setSelectedIds(
         new Set(executions.map((e: RunningExecutionDetail) => e.execution_id)),
       );

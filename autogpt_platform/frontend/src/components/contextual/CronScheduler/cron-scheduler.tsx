@@ -229,7 +229,7 @@ export function CronScheduler({
 
         <Select
           value={frequency}
-          onValueChange={(value: CronFrequency) => setFrequency(value)}
+          onValueChange={(value) => setFrequency(value as CronFrequency)}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select frequency" />

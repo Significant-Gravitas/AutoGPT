@@ -1,4 +1,5 @@
 "use client";
+import type { CheckedState } from "@radix-ui/react-checkbox";
 import {
   Dialog,
   DialogContent,
@@ -79,14 +80,15 @@ export const APIKeysModals = () => {
                   <Checkbox
                     id={permission}
                     checked={keyState.selectedPermissions.includes(permission)}
-                    onCheckedChange={(checked: boolean) => {
+                    onCheckedChange={(checked: CheckedState) => {
                       setKeyState((prev) => ({
                         ...prev,
-                        selectedPermissions: checked
-                          ? [...prev.selectedPermissions, permission]
-                          : prev.selectedPermissions.filter(
-                              (p) => p !== permission,
-                            ),
+                        selectedPermissions:
+                          checked === true
+                            ? [...prev.selectedPermissions, permission]
+                            : prev.selectedPermissions.filter(
+                                (p) => p !== permission,
+                              ),
                       }));
                     }}
                   />

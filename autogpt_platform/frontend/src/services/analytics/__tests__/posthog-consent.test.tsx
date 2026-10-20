@@ -277,7 +277,10 @@ describe("PostHog before analytics consent", () => {
       first.distinct_id,
     );
     expect(first.$device_id).toBe(first.distinct_id);
-    expect(first.person_properties).toEqual({});
+    expect(first.person_properties).toEqual({
+      $lib: "web",
+      $lib_version: expect.any(String),
+    });
 
     seedEarlierVisit();
     await renderPostHog();

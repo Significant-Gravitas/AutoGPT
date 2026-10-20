@@ -5,8 +5,8 @@ interface Props {
 }
 
 export function useLibrarySortMenu({ setLibrarySort }: Props) {
-  const handleSortChange = (value: LibraryAgentSort) => {
-    setLibrarySort(value);
+  const handleSortChange = (value: string) => {
+    setLibrarySort(value as LibraryAgentSort);
   };
 
   const getSortLabel = (sort: LibraryAgentSort) => {

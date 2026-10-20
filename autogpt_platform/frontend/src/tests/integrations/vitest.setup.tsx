@@ -4,6 +4,7 @@ import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { toast } from "sonner";
 
 // React 18.3 only ships `cache` under the `react-server` export condition.
 // Vitest doesn't set that condition, so any module that imports `cache` from
@@ -30,5 +31,8 @@ afterEach(() => {
   // The checkout redirect is page-wide state that outlives a render; a
   // redirect left by one test would disable the next test's buttons.
   resetCheckoutRedirect();
+  // Sonner keeps toasts in module state and replays the active ones to every
+  // new Toaster, so a toast left by one test would show in the next.
+  toast.dismiss();
 });
 afterAll(() => server.close());

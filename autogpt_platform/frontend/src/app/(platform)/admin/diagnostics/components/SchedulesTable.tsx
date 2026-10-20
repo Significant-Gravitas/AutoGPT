@@ -1,5 +1,6 @@
 "use client";
 
+import type { CheckedState } from "@radix-ui/react-checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import {
@@ -129,8 +130,8 @@ export function SchedulesTable({
   const { mutateAsync: cleanupOrphanedSchedules, isPending: isDeleting } =
     usePostV2CleanupOrphanedSchedules();
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  const handleSelectAll = (checked: CheckedState) => {
+    if (checked === true) {
       setSelectedIds(
         new Set(
           schedules.map(
