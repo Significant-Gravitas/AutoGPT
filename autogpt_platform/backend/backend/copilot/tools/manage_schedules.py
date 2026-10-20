@@ -10,9 +10,8 @@ from backend.api.features.schedule_visibility import (
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.data.activity_event import ActivityEventDraft
-from backend.data.db_accessors import library_db
+from backend.data.db_accessors import library_db, scheduled_chats_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -341,9 +340,10 @@ async def _forget_streak(user_id: str, schedule_id: str) -> None:
     """A follow-up's failure streak is keyed by its schedule id: kept, a
     paused one would stay listed with a Resume, and its alert up. The schedule
     is gone either way, so a failure is logged, not answered, as the delete
-    route does."""
+    route does. The executor has no Prisma of its own, so through the
+    DatabaseManager."""
     try:
-        await forget_scheduled_chat(user_id, schedule_id)
+        await scheduled_chats_db().forget_scheduled_chat(user_id, schedule_id)
     except Exception:
         logger.warning(
             "Could not clear the failure streak of deleted schedule %s",
