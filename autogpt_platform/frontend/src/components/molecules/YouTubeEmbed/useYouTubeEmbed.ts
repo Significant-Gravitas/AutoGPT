@@ -9,7 +9,11 @@ import {
   useConsent,
   useConsentManagerStatus,
 } from "@/services/consent/useConsent";
-import { getYouTubeVideoId, getYouTubeWatchUrl } from "./helpers";
+import {
+  getYouTubeEmbedUrl,
+  getYouTubeVideoId,
+  getYouTubeWatchUrl,
+} from "./helpers";
 
 export function useYouTubeEmbed(url: string) {
   const consent = useConsent();
@@ -32,6 +36,7 @@ export function useYouTubeEmbed(url: string) {
 
   return {
     videoId,
+    embedUrl: getYouTubeEmbedUrl(url),
     watchUrl: getYouTubeWatchUrl(url),
     showPlayer: consent.advertising || loadedOnRequest,
     canLoadOnce: !hasConsentBanner && videoId !== null,

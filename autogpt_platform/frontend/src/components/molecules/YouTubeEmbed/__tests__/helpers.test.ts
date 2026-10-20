@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getYouTubeEmbedUrl,
   getYouTubeVideoId,
   getYouTubeWatchUrl,
   isYouTubeUrl,
@@ -76,5 +77,31 @@ describe("getYouTubeWatchUrl", () => {
 
   it("gives nothing for a link outside YouTube", () => {
     expect(getYouTubeWatchUrl("https://example.com/x")).toBeNull();
+  });
+});
+
+describe("start time", () => {
+  it.each([
+    [`https://youtu.be/${ID}?t=90`, 90],
+    [`https://www.youtube.com/watch?v=${ID}&t=1m30s`, 90],
+    [`https://www.youtube.com/watch?v=${ID}&t=1h2m3s`, 3723],
+    [`https://www.youtube.com/embed/${ID}?start=45`, 45],
+  ])("keeps the start of %s", (url, seconds) => {
+    expect(getYouTubeEmbedUrl(url)).toBe(
+      `https://www.youtube-nocookie.com/embed/${ID}?start=${seconds}`,
+    );
+    expect(getYouTubeWatchUrl(url)).toBe(
+      `https://www.youtube.com/watch?v=${ID}&t=${seconds}s`,
+    );
+  });
+
+  it("drops a start it can't read and every other parameter", () => {
+    const url = `https://youtu.be/${ID}?t=soon&si=tracking`;
+    expect(getYouTubeEmbedUrl(url)).toBe(
+      `https://www.youtube-nocookie.com/embed/${ID}`,
+    );
+    expect(getYouTubeWatchUrl(url)).toBe(
+      `https://www.youtube.com/watch?v=${ID}`,
+    );
   });
 });

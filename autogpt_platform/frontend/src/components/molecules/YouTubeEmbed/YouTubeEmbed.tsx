@@ -5,7 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { YoutubeIcon } from "@hugeicons/core-free-icons";
-import { getYouTubeEmbedUrl, getNoticeText } from "./helpers";
+import { getNoticeText } from "./helpers";
 import { useYouTubeEmbed } from "./useYouTubeEmbed";
 
 interface Props {
@@ -25,6 +25,7 @@ export function YouTubeEmbed({
 }: Props) {
   const {
     videoId,
+    embedUrl,
     watchUrl,
     showPlayer,
     canLoadOnce,
@@ -34,11 +35,11 @@ export function YouTubeEmbed({
     loadVideo,
   } = useYouTubeEmbed(url);
 
-  if (showPlayer && videoId) {
+  if (showPlayer && embedUrl) {
     return (
       <iframe
         className={cn("h-full w-full", className)}
-        src={getYouTubeEmbedUrl(videoId)}
+        src={embedUrl}
         title={title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
