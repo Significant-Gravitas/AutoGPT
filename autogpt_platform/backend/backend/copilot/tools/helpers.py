@@ -22,6 +22,8 @@ from backend.copilot.constants import (
 from backend.copilot.context import get_current_permissions, is_unattended_turn
 from backend.copilot.credential_selection import turn_credential_pins
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_block_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
@@ -1061,6 +1063,8 @@ async def prepare_block_for_execution(
     # Before credentials: resolving them can provision a managed profile.
     if denied := _permission_denied(block_id, block.name, session_id):
         return denied
+    if denied := _provider_denied(block, block_id, session_id):
+        return denied
 
     emit_tool_display_name(block.name)
 
@@ -1264,6 +1268,26 @@ def _permission_denied(
             f"Block '{block_name}' ({block_id}) is not permitted "
             f"by the current execution permissions. {available_hint}"
             "Use find_capability to discover blocks that are allowed."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _provider_denied(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when *block* would act with a provider's stored credential
+    the run may not use.  The run's ceiling on connected accounts covers
+    blocks too, as the sandbox's placeholders are by the swap service."""
+    denied = denied_block_providers(get_current_permissions(), block)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Block '{block.name}' ({block_id}) acts with the user's {names} "
+            "account, which this run is not permitted to use. Tell the user it "
+            "is outside what this run was allowed to do."
         ),
         session_id=session_id,
     ).from_outside()
