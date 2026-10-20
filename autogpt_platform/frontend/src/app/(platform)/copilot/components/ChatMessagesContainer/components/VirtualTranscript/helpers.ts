@@ -10,13 +10,9 @@ export interface TranscriptRow {
   rowIndex: number;
 }
 
-export type TranscriptSegment =
+type TranscriptSegment =
   | { kind: "row"; index: number }
   | { kind: "gap"; afterIndex: number; height: number };
-
-/** Rows rendered on the first pass, before the scroll element has been
- *  measured. The newest ones, because a thread opens pinned to its end. */
-export const FIRST_PASS_ROWS = 12;
 
 /** Rows kept mounted above and below the visible window. */
 export const OVERSCAN_ROWS = 6;
@@ -24,7 +20,7 @@ export const OVERSCAN_ROWS = 6;
 /** Most rows from the newest user message to the end that stay mounted
  *  wherever the user scrolls, so the live turn and `TailSpacer`'s anchor
  *  never unmount. */
-export const MAX_PINNED_TAIL_ROWS = 8;
+const MAX_PINNED_TAIL_ROWS = 8;
 
 const TEXT_BUCKETS: { maxChars: number; height: number }[] = [
   { maxChars: 200, height: 96 },
@@ -61,7 +57,7 @@ export function estimateRowHeight(message: ChatMessage): number {
 
 /** First row index that stays mounted however far the user scrolls: the
  *  newest user row, when the turn below it is short enough to pin. */
-export function pinnedTailStart(
+function pinnedTailStart(
   rows: TranscriptRow[],
   lastUserMessageID: string | null,
 ): number {
@@ -74,7 +70,7 @@ export function pinnedTailStart(
 }
 
 /** The window's row indexes plus the pinned tail, ascending and unique. */
-export function mergeRenderedIndexes(
+function mergeRenderedIndexes(
   windowIndexes: number[],
   pinnedFrom: number,
   count: number,
@@ -90,7 +86,7 @@ export function mergeRenderedIndexes(
  * rendered rows (the window and the pinned tail). Each spacer sits between two
  * flex gaps, so it is two gaps shorter than the distance it covers.
  */
-export function layoutSegments({
+function layoutSegments({
   indexes,
   measurements,
   gap,
@@ -117,7 +113,7 @@ export function layoutSegments({
 }
 
 /** Padding that stands in for the unmounted rows above and below. */
-export function listPadding({
+function listPadding({
   indexes,
   measurements,
   scrollMargin,
@@ -134,5 +130,46 @@ export function listPadding({
   return {
     top: Math.max(0, first.start - scrollMargin),
     bottom: Math.max(0, totalSize - (last.end - scrollMargin)),
+  };
+}
+
+/** The rows to mount and how to lay them out. Without a window (no
+ *  measurable viewport) every row renders with no padding. */
+export function windowLayout({
+  rows,
+  windowIndexes,
+  isWindowed,
+  lastUserMessageID,
+  measurements,
+  gap,
+  scrollMargin,
+  totalSize,
+}: {
+  rows: TranscriptRow[];
+  windowIndexes: number[];
+  isWindowed: boolean;
+  lastUserMessageID: string | null;
+  measurements: VirtualItem[];
+  gap: number;
+  scrollMargin: number;
+  totalSize: number;
+}) {
+  if (!isWindowed) {
+    const indexes = rows.map((_, index) => index);
+    return {
+      indexes,
+      segments: indexes.map((index) => ({ kind: "row" as const, index })),
+      padding: { top: 0, bottom: 0 },
+    };
+  }
+  const indexes = mergeRenderedIndexes(
+    windowIndexes,
+    pinnedTailStart(rows, lastUserMessageID),
+    rows.length,
+  );
+  return {
+    indexes,
+    segments: layoutSegments({ indexes, measurements, gap }),
+    padding: listPadding({ indexes, measurements, scrollMargin, totalSize }),
   };
 }
