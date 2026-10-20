@@ -148,7 +148,7 @@ def skip_notice(
             headline="Skipped: your ChatGPT connection isn't available",
             body=(
                 f"“{title}” didn't run: it runs on your ChatGPT plan, which "
-                f"AutoPilot can't use right now.{after}"
+                f"Otto can't use right now.{after}"
             ),
             actions=[NoticeLink(label="Open settings", href=INTEGRATIONS_PATH)],
             window_key=f"codex_access:{_iso_week(now)}",
