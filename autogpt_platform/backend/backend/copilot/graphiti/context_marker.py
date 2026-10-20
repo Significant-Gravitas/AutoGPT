@@ -39,9 +39,9 @@ INJECTED_MEMORY_MARKER = f'data-agpt-injected="{INJECTED_MEMORY_NONCE}"'
 INJECTED_MEMORY_BLOCK_RE = re.compile(
     r"(?:\n\n)?<"
     + CONTEXT_TAG_NAME
-    + r"\b[^>]*"
+    + r"\b[^<>]{0,256}?"
     + re.escape(INJECTED_MEMORY_MARKER)
-    + r"[^>]*>.*?</"
+    + r"[^<>]{0,256}>.*?</"
     + CONTEXT_TAG_NAME
     + r">",
     re.DOTALL,
