@@ -1372,6 +1372,102 @@ class TestListDiscussions:
             _list_discussions([categories], category="Ideas")
 
 
+def _graphql_via_requests(responses: list[object], **kwargs):
+    """Run list_discussions through the real `Requests` stack (only
+    aiohttp.ClientSession stubbed); return the result and (url, json) sent."""
+    import contextlib
+    import json
+
+    from backend.util import request as request_module
+
+    sent: list[tuple[str, dict | None]] = []
+    queue = list(responses)
+
+    @contextlib.asynccontextmanager
+    async def fake_request(method, url, **req_kwargs):
+        sent.append((url, copy.deepcopy(req_kwargs.get("json"))))
+        response = mock.Mock(status=200, headers={}, reason="OK")
+        response.read = mock.AsyncMock(return_value=json.dumps(queue.pop(0)).encode())
+        yield response
+
+    @contextlib.asynccontextmanager
+    async def fake_session(**session_kwargs):
+        yield mock.Mock(request=fake_request)
+
+    input_data = GithubListDiscussionsBlock.Input.model_validate(
+        {"credentials": TEST_CREDENTIALS_INPUT, "repo_url": REPO_URL, **kwargs}
+    )
+    with mock.patch.object(request_module.aiohttp, "ClientSession", fake_session):
+        result = asyncio.run(
+            GithubListDiscussionsBlock.list_discussions(TEST_CREDENTIALS, input_data)
+        )
+    return result, sent
+
+
+_NOT_FOUND = {
+    "data": {"repository": None},
+    "errors": [
+        {
+            "type": "NOT_FOUND",
+            "message": "Could not resolve to a Repository with the name 'owner/repo'.",
+        }
+    ],
+}
+
+
+class TestListDiscussionsRequests:
+    @pytest.mark.parametrize("parse", [False, True])
+    def test_converter_passes_api_urls_through(self, parse):
+        from urllib.parse import urlparse
+
+        from backend.blocks.github import _api
+
+        url = urlparse(GRAPHQL_URL) if parse else GRAPHQL_URL
+        assert _api._convert_to_api_url(url) == url
+
+    def test_posts_to_the_graphql_endpoint(self):
+        result, sent = _graphql_via_requests(
+            [_discussions_page([_discussion("a")])], num_discussions=1
+        )
+        assert [url for url, _ in sent] == [GRAPHQL_URL]
+        assert [d["title"] for d in result] == ["a"]
+
+    def test_category_lookup_posts_to_the_graphql_endpoint(self):
+        categories = {
+            "data": {
+                "repository": {
+                    "discussionCategories": {"nodes": [{"id": "DIC_1", "name": "Q&A"}]}
+                }
+            }
+        }
+        _, sent = _graphql_via_requests(
+            [categories, _discussions_page([])], category="Q&A"
+        )
+        assert [url for url, _ in sent] == [GRAPHQL_URL, GRAPHQL_URL]
+
+    @pytest.mark.parametrize("suffix", ["/", ".git"])
+    def test_repo_url_is_normalised(self, suffix):
+        _, sent = _graphql_via_requests(
+            [_discussions_page([])], repo_url=REPO_URL + suffix
+        )
+        body = sent[0][1]
+        assert body is not None
+        variables = body["variables"]
+        assert (variables["owner"], variables["repo"]) == ("owner", "repo")
+
+    def test_non_repo_url_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            _graphql_via_requests([], repo_url=f"{REPO_URL}/discussions")
+
+    def test_not_found_raises_a_clear_error(self):
+        with pytest.raises(ValueError, match="Could not resolve"):
+            _graphql_via_requests([_NOT_FOUND])
+
+    def test_not_found_on_category_lookup_raises_a_clear_error(self):
+        with pytest.raises(ValueError, match="Could not resolve"):
+            _graphql_via_requests([_NOT_FOUND], category="Q&A")
+
+
 # ── get_user tests ──
 
 
