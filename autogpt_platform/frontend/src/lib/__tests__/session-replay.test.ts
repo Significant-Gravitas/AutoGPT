@@ -6,6 +6,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
+import { redactRecordingEventURLs } from "../sentry-url-redaction";
 import { setupSessionReplay } from "../session-replay";
 
 vi.mock("@sentry/nextjs", () => ({
@@ -38,7 +39,10 @@ describe("setupSessionReplay", () => {
   it("installs replay at init when monitoring consent is already stored", () => {
     installCookiebot({ statistics: true });
 
-    expect(integrationNames(setupSessionReplay())).toEqual(["Replay"]);
+    expect(integrationNames(setupSessionReplay())).toEqual([
+      "Replay",
+      "ReplayEventURLRedaction",
+    ]);
   });
 
   it("records nothing before consent, then adds replay once it is granted", () => {
@@ -51,10 +55,13 @@ describe("setupSessionReplay", () => {
     expect(Sentry.addIntegration).not.toHaveBeenCalled();
 
     answerCookiebot({ statistics: true });
-    expect(addedIntegrationNames()).toEqual(["Replay"]);
+    expect(addedIntegrationNames()).toEqual([
+      "Replay",
+      "ReplayEventURLRedaction",
+    ]);
 
     answerCookiebot({ statistics: true, marketing: true });
-    expect(Sentry.addIntegration).toHaveBeenCalledTimes(1);
+    expect(Sentry.addIntegration).toHaveBeenCalledTimes(2);
   });
 
   it("masks all text, inputs and media unless an element opts in", () => {
@@ -66,6 +73,7 @@ describe("setupSessionReplay", () => {
       maskAllInputs: true,
       blockAllMedia: true,
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
+      beforeAddRecordingEvent: redactRecordingEventURLs,
     });
   });
 

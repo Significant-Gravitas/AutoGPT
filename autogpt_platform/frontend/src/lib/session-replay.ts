@@ -1,3 +1,7 @@
+import {
+  redactEventURLs,
+  redactRecordingEventURLs,
+} from "@/lib/sentry-url-redaction";
 import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
 import * as Sentry from "@sentry/nextjs";
 
@@ -11,8 +15,20 @@ function createReplayIntegrations() {
       maskAllInputs: true,
       blockAllMedia: true,
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
+      beforeAddRecordingEvent: redactRecordingEventURLs,
     }),
+    replayEventURLRedaction(),
   ];
+}
+
+// Replay events skip beforeSend, so their URLs are masked here instead.
+function replayEventURLRedaction() {
+  return {
+    name: "ReplayEventURLRedaction",
+    processEvent(event: Sentry.Event) {
+      return event.type === "replay_event" ? redactEventURLs(event) : event;
+    },
+  };
 }
 
 /**
