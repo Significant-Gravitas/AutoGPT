@@ -200,6 +200,9 @@ async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]
         where={"userId": user_id, "NOT": [{"pausedAt": None}]},
         order={"pausedAt": "desc"},
     )
+    if not rows:
+        # Home asks on every load; most have nothing paused.
+        return []
     routines = await ExpertRoutine.prisma().find_many(
         where={"id": {"in": [row.scheduleKey for row in rows]}, **_owned_by(user_id)}
     )
