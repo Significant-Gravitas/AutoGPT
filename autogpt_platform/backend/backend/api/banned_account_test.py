@@ -87,6 +87,12 @@ def test_an_optional_auth_route_answers_when_the_ban_is_unreadable(mocker):
     assert response.json() == {"user_id": None}
 
 
+# Closing an account bans its sign-in, so the deletion route reads the token
+# without the ban check: a repeat request for an account it already closed
+# still gets its answer (``get_user_id_allowing_closed``).
+BANNED_BY_THEIR_OWN_CLOSE = {"['POST'] /api/account/deletion"}
+
+
 def test_every_route_that_reads_a_token_refuses_a_banned_account():
     """A route that takes ``get_jwt_payload`` without one of the resolvers
     above would let a banned account through."""
@@ -96,6 +102,7 @@ def test_every_route_that_reads_a_token_refuses_a_banned_account():
         if isinstance(route, APIRoute)
         and get_jwt_payload in (calls := _dependency_calls(route.dependant))
         and get_unbanned_jwt_payload not in calls
+        and f"{sorted(route.methods)} {route.path}" not in BANNED_BY_THEIR_OWN_CLOSE
     ]
 
     assert unguarded == []

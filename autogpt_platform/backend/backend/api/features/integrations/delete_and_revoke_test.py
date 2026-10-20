@@ -255,7 +255,7 @@ def test_route_still_asks_for_confirmation_when_webhooks_are_in_use(
         "deleted": False,
         "need_confirmation": True,
         "message": "Some webhooks linked to these credentials are still in use "
-        "by an agent",
+        "by a workflow",
     }
     manager.delete.assert_not_awaited()
 
