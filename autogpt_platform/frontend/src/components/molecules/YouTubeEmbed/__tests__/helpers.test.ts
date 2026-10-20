@@ -52,6 +52,13 @@ describe("isYouTubeUrl", () => {
     expect(isYouTubeUrl("https://notyoutube.com/watch?v=x")).toBe(false);
     expect(isYouTubeUrl("https://example.com/video.mp4")).toBe(false);
   });
+
+  it("leaves YouTube image hosts to render as images", () => {
+    expect(isYouTubeUrl(`https://img.youtube.com/vi/${ID}/0.jpg`)).toBe(false);
+    expect(isYouTubeUrl(`https://i.ytimg.com/vi/${ID}/hqdefault.jpg`)).toBe(
+      false,
+    );
+  });
 });
 
 describe("getYouTubeWatchUrl", () => {

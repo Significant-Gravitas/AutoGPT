@@ -17,12 +17,21 @@ function parseHttpUrl(url: string): URL | null {
   }
 }
 
+// Pages that play a video. Image hosts (img.youtube.com, i.ytimg.com) are
+// left alone, so a thumbnail stays an image.
+const YOUTUBE_PAGE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtube-nocookie.com",
+  "www.youtube-nocookie.com",
+  "youtu.be",
+  "www.youtu.be",
+]);
+
 function isYouTubeHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (host === "youtu.be" || host === "www.youtu.be") return true;
-  return ["youtube.com", "youtube-nocookie.com"].some(
-    (domain) => host === domain || host.endsWith(`.${domain}`),
-  );
+  return YOUTUBE_PAGE_HOSTS.has(hostname.toLowerCase());
 }
 
 function parseYouTubeUrl(url: string): URL | null {

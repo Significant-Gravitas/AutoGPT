@@ -75,4 +75,13 @@ describe("YouTube links in run output", () => {
       NOCOOKIE_URL,
     );
   });
+
+  it("keeps a YouTube thumbnail in markdown as an image", () => {
+    const thumbnail = `https://img.youtube.com/vi/${VIDEO_ID}/0.jpg`;
+
+    const container = renderMarkdown(`# Demo\n\n![Thumbnail](${thumbnail})`);
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(thumbnail);
+    expect(screen.queryByRole("link", { name: "Watch on YouTube" })).toBeNull();
+  });
 });
