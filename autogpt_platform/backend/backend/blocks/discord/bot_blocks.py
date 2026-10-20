@@ -246,6 +246,8 @@ class SendDiscordMessageBlock(Block):
         server_name: str | None,
         message_content: str,
     ) -> dict:
+        if not message_content.strip():
+            raise ValueError("Message content cannot be empty or whitespace-only")
         intents = discord.Intents.default()
         intents.guilds = True  # Required for fetching guild/channel information
         client = discord.Client(intents=intents)
