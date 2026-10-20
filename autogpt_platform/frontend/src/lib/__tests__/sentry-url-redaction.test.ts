@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { getLoginRedirect } from "@/app/(no-navbar)/link/[token]/helpers";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -180,9 +181,36 @@ describe("holdsCredential", () => {
     }
   });
 
+  // The sign-in and sign-up links a token page sends a visitor out on, which
+  // carry it back in their redirect target.
+  it("holds for the sign-in and sign-up links that lead back to a token page", () => {
+    const signUpLink = "/signup?next=/link/${token}";
+    expect(
+      readFileSync(
+        join(
+          APP,
+          "(no-navbar)/link/[token]/components/NotAuthenticatedView.tsx",
+        ),
+        "utf8",
+      ),
+    ).toContain(signUpLink);
+
+    for (const url of [
+      getLoginRedirect("t-1"),
+      signUpLink.replace("${token}", "t-1"),
+      // The sign-in page passes its target on to sign-up, encoded.
+      `/signup?next=${encodeURIComponent("/link/t-1")}`,
+    ]) {
+      expect(holdsCredential(url), url).toBe(true);
+      expect(redactURL(url), url).not.toContain("t-1");
+    }
+  });
+
   it.each([
     "https://platform.agpt.co/link/t-1?platform=discord",
     "/auth/callback#access_token=a&type=recovery",
+    "/login?next=%2Freset-password%3Ftoken%3Dr-1",
+    "/auth/callback?callbackURL=%2Fshare%2Fchat%2Fs-1",
     "/x?CODE=1",
   ])("holds for %s", (url) => {
     expect(holdsCredential(url)).toBe(true);
@@ -196,6 +224,8 @@ describe("holdsCredential", () => {
     "/link/slack",
     "/link/[token]",
     "/",
+    "/login?next=%2Flibrary",
+    "/signup?next=/marketplace/skills/s-1",
   ])("does not hold for %s", (url) => {
     expect(holdsCredential(url)).toBe(false);
   });

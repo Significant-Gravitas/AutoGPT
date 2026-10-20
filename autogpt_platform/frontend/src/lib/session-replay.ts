@@ -9,6 +9,9 @@ import * as Sentry from "@sentry/nextjs";
 // How the replay was recording when it was held back for a page whose address
 // carries a credential, or "start" when it had not started yet.
 let heldBack: "start" | "session" | "buffer" | null = null;
+// The stop that held it back, which a restart waits for: it clears the
+// recording's state when it settles.
+let stopping: Promise<void> = Promise.resolve();
 
 /**
  * Session replay records the screen, so it only exists once the visitor has
@@ -39,7 +42,7 @@ export function holdReplayBackFor(href: string) {
   const mode = replay?.getRecordingMode();
   if (!replay?.getReplayId() || !mode) return;
   heldBack = mode;
-  void replay.stop();
+  stopping = replay.stop().catch(() => undefined);
 }
 
 /**
@@ -51,9 +54,16 @@ export function syncReplayWithPage(href: string) {
     holdReplayBackFor(href);
     return;
   }
+  if (heldBack) void stopping.then(resumeReplay);
+}
+
+// Runs once the stop has settled, against the address and consent as they
+// are by then.
+function resumeReplay() {
   const mode = heldBack;
+  if (!mode || holdsCredential(window.location.href)) return;
   heldBack = null;
-  if (!mode || !hasConsentFor("monitoring")) return;
+  if (!hasConsentFor("monitoring")) return;
   if (mode === "start") Sentry.addIntegration(createReplayIntegration());
   else if (mode === "session") Sentry.getReplay()?.start();
   else Sentry.getReplay()?.startBuffering();

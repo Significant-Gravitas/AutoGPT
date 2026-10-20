@@ -106,6 +106,11 @@ describe("session replay on a page whose address carries a credential", () => {
     };
   }
 
+  // A resume waits for the stop before it, so it lands on a later tick.
+  async function settled() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   function recordingReplay(mode: "session" | "buffer") {
     return {
       getReplayId: vi.fn(() => "r-1"),
@@ -157,10 +162,12 @@ describe("session replay on a page whose address carries a credential", () => {
     setupSessionReplay();
 
     syncReplayWithPage(`${location.origin}/link/t-1`);
+    await settled();
     expect(Sentry.addIntegration).not.toHaveBeenCalled();
 
     history.replaceState({}, "", "/library");
     syncReplayWithPage(location.href);
+    await settled();
     expect(addedIntegrationNames()).toEqual(["Replay"]);
   });
 
@@ -175,6 +182,7 @@ describe("session replay on a page whose address carries a credential", () => {
 
     history.replaceState({}, "", "/library");
     syncReplayWithPage(location.href);
+    await settled();
     expect(
       addedIntegrationNames().filter((name) => name === "Replay"),
     ).toHaveLength(1);
@@ -193,12 +201,14 @@ describe("session replay on a page whose address carries a credential", () => {
       // As Next calls it when the navigation starts, then once it has landed.
       holdReplayBackFor("/link/t-1");
       syncReplayWithPage(`${location.origin}/link/t-1`);
+      await settled();
       expect(replay.stop).toHaveBeenCalledTimes(1);
       expect(replay.start).not.toHaveBeenCalled();
       expect(replay.startBuffering).not.toHaveBeenCalled();
 
       holdReplayBackFor("/library");
       syncReplayWithPage(`${location.origin}/library`);
+      await settled();
       expect(replay[resume]).toHaveBeenCalledTimes(1);
       expect(replay.stop).toHaveBeenCalledTimes(1);
     },
@@ -211,6 +221,7 @@ describe("session replay on a page whose address carries a credential", () => {
 
     holdReplayBackFor("/marketplace?page=2");
     syncReplayWithPage(`${location.origin}/marketplace?page=2`);
+    await settled();
 
     expect(replay.stop).not.toHaveBeenCalled();
     expect(replay.start).not.toHaveBeenCalled();
@@ -224,6 +235,7 @@ describe("session replay on a page whose address carries a credential", () => {
     holdReplayBackFor("/link/t-1");
     answerCookiebot({ statistics: false });
     syncReplayWithPage(`${location.origin}/library`);
+    await settled();
 
     expect(replay.stop).toHaveBeenCalledTimes(1);
     expect(replay.start).not.toHaveBeenCalled();
@@ -236,8 +248,38 @@ describe("session replay on a page whose address carries a credential", () => {
 
     holdReplayBackFor("/link/t-1");
     syncReplayWithPage(`${location.origin}/library`);
+    await settled();
 
     expect(replay.stop).not.toHaveBeenCalled();
     expect(replay.startBuffering).not.toHaveBeenCalled();
+  });
+
+  it("restarts only once a slow stop has settled, on the page it lands on", async () => {
+    const { Sentry, holdReplayBackFor, syncReplayWithPage } = await load();
+    const replay = recordingReplay("session");
+    let finishStop = () => {};
+    replay.stop.mockReturnValue(
+      new Promise<undefined>((resolve) => {
+        finishStop = () => resolve(undefined);
+      }),
+    );
+    Sentry.getReplay.mockReturnValue(replay as never);
+
+    holdReplayBackFor("/link/t-1");
+    history.replaceState({}, "", "/library");
+    syncReplayWithPage(location.href);
+    await settled();
+    expect(replay.start).not.toHaveBeenCalled();
+
+    // The visitor is back on a credential page by the time the stop settles.
+    history.replaceState({}, "", "/link/t-2");
+    finishStop();
+    await settled();
+    expect(replay.start).not.toHaveBeenCalled();
+
+    history.replaceState({}, "", "/library");
+    syncReplayWithPage(location.href);
+    await settled();
+    expect(replay.start).toHaveBeenCalledTimes(1);
   });
 });

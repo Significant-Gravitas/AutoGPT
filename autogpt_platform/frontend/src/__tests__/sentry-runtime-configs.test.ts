@@ -228,6 +228,72 @@ describe.each([
     });
   });
 
+  it("masks the page a request's headers name, as headers and as span attributes", async () => {
+    await load();
+
+    const { beforeSend, beforeSendTransaction, beforeSendSpan } =
+      initMock.mock.calls[0][0];
+    const routerState = encodeURIComponent(
+      JSON.stringify(["", { children: ["link", ["token", URL_MARKER, "d"]] }]),
+    );
+    function duringANavigation() {
+      return {
+        type: "transaction",
+        transaction: "GET /library",
+        request: {
+          url: "https://platform.agpt.co/library",
+          headers: {
+            "next-url": `/link/${URL_MARKER}`,
+            "Next-Router-State-Tree": routerState,
+            "user-agent": "ua",
+          },
+        },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "http.request.header.referer": `https://platform.agpt.co/reset-password?token=${URL_MARKER}`,
+              "http.request.header.next_url": `/link/${URL_MARKER}`,
+              "http.request.header.next_router_state_tree": routerState,
+              "http.request.header.user_agent": "ua",
+              "http.route": "/library",
+            },
+          },
+        },
+      };
+    }
+
+    for (const event of [
+      beforeSend(duringANavigation(), {}),
+      beforeSendTransaction(duringANavigation()),
+    ]) {
+      expect(event.request.headers).toEqual({
+        "next-url": "/link/[REDACTED]",
+        "Next-Router-State-Tree": "[REDACTED]",
+        "user-agent": "ua",
+      });
+      expect(event.contexts.trace.data).toEqual({
+        "http.request.header.referer":
+          "https://platform.agpt.co/reset-password?token=[REDACTED]",
+        "http.request.header.next_url": "/link/[REDACTED]",
+        "http.request.header.next_router_state_tree": "[REDACTED]",
+        "http.request.header.user_agent": "ua",
+        "http.route": "/library",
+      });
+    }
+
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      data: { "http.request.header.referer": `/link/${URL_MARKER}` },
+    });
+    expect(span.data).toEqual({
+      "http.request.header.referer": "/link/[REDACTED]",
+    });
+  });
+
   it("sends no user email or IP address", async () => {
     await load();
 

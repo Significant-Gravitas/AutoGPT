@@ -26,7 +26,8 @@ export function redactURLsInText(text: string): string {
 
 /**
  * True when a page's address carries a credential: in a path segment the
- * redactor masks, or under a credential key in its query or fragment.
+ * redactor masks, under a credential key in its query or fragment, or in the
+ * address a redirect key points on to.
  */
 export function holdsCredential(url: string): boolean {
   const start = url.search(/[?#]/);
@@ -36,9 +37,15 @@ export function holdsCredential(url: string): boolean {
   return url
     .slice(start + 1)
     .split(/[?#&]/)
-    .some((pair) =>
-      CREDENTIAL_QUERY_KEYS.has(pair.split("=")[0].toLowerCase()),
-    );
+    .some((pair) => {
+      const [key, ...value] = pair.split("=");
+      const name = key.toLowerCase();
+      if (CREDENTIAL_QUERY_KEYS.has(name)) return true;
+      return (
+        REDIRECT_QUERY_KEYS.has(name) &&
+        holdsCredential(decode(value.join("=")))
+      );
+    });
 }
 
 type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
@@ -121,7 +128,10 @@ const URL_ATTRIBUTES = new Set([
 
 function redactAttributeURLs(attributes: Record<string, unknown>) {
   for (const [name, value] of Object.entries(attributes)) {
-    if (typeof value === "string" && URL_ATTRIBUTES.has(name)) {
+    if (typeof value !== "string") continue;
+    if (name.startsWith(HEADER_ATTRIBUTE_PREFIX)) {
+      attributes[name] = redactHeader(name, value);
+    } else if (URL_ATTRIBUTES.has(name)) {
       attributes[name] = redactURL(value);
     }
   }
@@ -134,11 +144,15 @@ function redactRequestURLs(request: Event["request"]) {
   if (request.query_string) request.query_string = REDACTED;
   const { headers } = request;
   if (!headers) return;
-  for (const name of Object.keys(headers)) {
-    if (name.toLowerCase() === "referer") {
-      headers[name] = redactURL(headers[name]);
-    }
+  for (const [name, value] of Object.entries(headers)) {
+    headers[name] = redactHeader(name, value);
   }
+}
+
+// Any request header is read as a URL, since the Referer and Next's next-url
+// name the page. Next's router state tree names it in a form no rule can parse.
+function redactHeader(name: string, value: string) {
+  return ROUTER_STATE_HEADER.test(name) ? REDACTED : redactURL(value);
 }
 
 // The backend's credential routes, matched anywhere (behind /api/proxy too) and
@@ -159,11 +173,29 @@ const CREDENTIAL_QUERY_KEYS = new Set([
   "refresh_token",
   "id_token",
 ]);
+// Query keys whose value is the address a page sends the visitor on to.
+const REDIRECT_QUERY_KEYS = new Set([
+  "next",
+  "callbackurl",
+  "redirect_uri",
+  "returnto",
+]);
+const HEADER_ATTRIBUTE_PREFIX = "http.request.header.";
+const ROUTER_STATE_HEADER = /next[-_]router[-_]state[-_]tree$/i;
 const QUERY_IN_TEXT = /\?\S+/g;
 const QUERY_VALUE = /=[^&]*/g;
 
 function redactQuery(query: string) {
   return query.replace(QUERY_VALUE, `=${REDACTED}`);
+}
+
+function decode(value: string) {
+  const encoded = value.replace(/\+/g, " ");
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
 }
 
 // Built from the spans, as the backend does, so overlapping matches merge.
