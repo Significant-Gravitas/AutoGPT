@@ -17,6 +17,7 @@ export { Flag };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
+// Keep mature boolean defaults aligned with backend/util/feature_flag/defaults.py.
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,

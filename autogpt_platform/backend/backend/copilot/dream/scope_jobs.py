@@ -87,6 +87,7 @@ async def register_scope_jobs(
             outcomes[job.job_id_prefix] = None
             continue
         outcome = await _register_job(scope, job, user_timezone)
+        # Keep flag_unavailable and its intent when the scheduler's flag gate skips.
         if (
             _registered(outcome)
             or outcome.get("reason") == "registration_failed"
