@@ -72,8 +72,9 @@ export function useSubscriptionTierSection() {
     ) {
       router.replace(pathname);
     }
-    // are new references each render but are stable in practice; the effect must
-    // only re-run when subscriptionStatus/pathname changes.
+    // refetch and toast are new references each render but are stable in
+    // practice; the effect must only re-run when subscriptionStatus/pathname
+    // changes.
   }, [subscriptionStatus, refetch, toast, router, pathname]);
 
   async function changeTier(tier: string) {

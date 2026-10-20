@@ -6,7 +6,7 @@
     "plugin:@tanstack/query/recommended"
   ],
   "rules": {
-    // The React Compiler rules from eslint-plugin-react-hooks 6. They warn
+    // The React Compiler rules from eslint-plugin-react-hooks 7. They warn
     // everywhere and are errors where the compiler runs (see "overrides"),
     // because a file it cannot compile there ships un-memoised, silently.
     "react-hooks/exhaustive-deps": "warn",
