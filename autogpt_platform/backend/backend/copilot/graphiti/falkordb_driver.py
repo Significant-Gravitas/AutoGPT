@@ -148,6 +148,13 @@ class AutoGPTFalkorDriver(FalkorDriver):
         self._build_indices_at_init = build_indices
         super().__init__(*args, **kwargs)
 
+    @property
+    def graph_name(self) -> str:
+        """The graph this driver reads and writes: a memory scope's
+        ``group_id``, which also names the graph's write lock
+        (``scope_lock.py``)."""
+        return self._database
+
     async def build_indices_and_constraints(self) -> None:  # type: ignore[override]
         if not self._build_indices_at_init:
             # Default path. Suppresses graphiti-core's init-time task so a
