@@ -1,6 +1,6 @@
 """Tests for Web Push subscription CRUD operations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -141,14 +141,23 @@ class TestUpsertPushSubscription:
 
     @pytest.mark.asyncio
     async def test_takes_over_another_users_endpoint_at_the_cap(self, mock_prisma):
-        # Taking over an endpoint adds none, so the cap must not keep the
-        # previous account's notifications arriving on this browser.
-        mock_prisma.find_many.return_value = [
-            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+        # Refusing the takeover would keep the previous account's
+        # notifications arriving on this browser, so the user's least
+        # recently refreshed subscription makes room and they stay at the cap.
+        existing = [
+            MagicMock(
+                id=f"row-{i}",
+                endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
+            )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
         ]
+        existing[0], existing[5] = existing[5], existing[0]
+        mock_prisma.find_many.return_value = existing
         mock_prisma.find_unique.return_value = MagicMock(userId="user-1")
-        mock_prisma.upsert.return_value = MagicMock()
+        writes: list[str] = []
+        mock_prisma.delete_many.side_effect = lambda **_: writes.append("delete")
+        mock_prisma.upsert.side_effect = lambda **_: writes.append("upsert")
 
         await push_subscription.upsert_push_subscription(
             user_id="user-2",
@@ -160,7 +169,28 @@ class TestUpsertPushSubscription:
         mock_prisma.find_unique.assert_awaited_once_with(
             where={"endpoint": "https://fcm.googleapis.com/fcm/send/sub/TAKEN"}
         )
-        mock_prisma.upsert.assert_awaited_once()
+        # Exactly one of the user's rows, the stalest, goes before the one
+        # taken over is added, so they end at the cap rather than one past it.
+        mock_prisma.delete_many.assert_awaited_once_with(where={"id": "row-0"})
+        assert writes == ["delete", "upsert"]
+
+    @pytest.mark.asyncio
+    async def test_refreshing_own_endpoint_at_the_cap_drops_nothing(self, mock_prisma):
+        mock_prisma.find_many.return_value = [
+            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/3",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        mock_prisma.find_unique.assert_not_awaited()
+        mock_prisma.delete_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_moves_the_endpoint_to_the_subscribing_user(self, mock_prisma):

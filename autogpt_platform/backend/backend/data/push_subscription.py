@@ -91,19 +91,24 @@ async def upsert_push_subscription(
         where={"userId": user_id},
     )
     # The cap stops one account registering unbounded endpoints to amplify
-    # outbound pushes. Refreshing its own endpoint, or taking over one another
-    # account registered (the same browser after switching accounts), adds no
-    # endpoint, so neither is blocked; blocking a takeover would leave the
-    # other account's notifications arriving on this browser.
-    if (
-        len(existing) >= MAX_SUBSCRIPTIONS_PER_USER
-        and not any(row.endpoint == endpoint for row in existing)
-        and await PushSubscription.prisma().find_unique(where={"endpoint": endpoint})
-        is None
+    # outbound pushes. Refreshing its own endpoint is always fine. A new
+    # endpoint past the cap is refused, but taking over one another account
+    # registered (the same browser after switching accounts) is not: refusing
+    # would leave that account's notifications arriving on this browser. That
+    # makes room instead, dropping this account's least recently refreshed
+    # subscription, the device most likely gone.
+    if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not any(
+        row.endpoint == endpoint for row in existing
     ):
-        raise ValueError(
-            f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
-        )
+        if (
+            await PushSubscription.prisma().find_unique(where={"endpoint": endpoint})
+            is None
+        ):
+            raise ValueError(
+                f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
+            )
+        stalest = min(existing, key=lambda row: row.updatedAt)
+        await PushSubscription.prisma().delete_many(where={"id": stalest.id})
     try:
         return await _claim_endpoint(user_id, endpoint, p256dh, auth, user_agent)
     except UniqueViolationError:
