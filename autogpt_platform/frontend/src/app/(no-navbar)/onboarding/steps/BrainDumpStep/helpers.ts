@@ -109,3 +109,19 @@ export function isInsufficientDump(errorCode: unknown) {
     INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)
   );
 }
+
+// The error code a failed finalize reports when the request never
+// answered at all (offline, aborted), so there is no status to stand in.
+export const FINALIZE_REQUEST_ERROR = "request_error";
+
+// Counts words exactly as the backend's quality gate does (`quality.py`):
+// whitespace-separated tokens holding at least one letter or digit, so a
+// dump's analytics read straight against the gate's 40-word pass line.
+export function countWords(text: string) {
+  return text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+}
+
+// How much was written, for analytics. What was written is never sent.
+export function dumpSize(text: string) {
+  return { chars: text.length, words: countWords(text) };
+}

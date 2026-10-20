@@ -9,6 +9,8 @@ import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
+  dumpSize,
+  FINALIZE_REQUEST_ERROR,
   isInsufficientDump,
   SILENCE_NUDGE_SECONDS,
 } from "./helpers";
@@ -196,8 +198,11 @@ export function useBrainDumpStep() {
       return;
     }
 
+    const attempt = {
+      input_mode: "voice",
+      duration_secs: Math.round(durationSecs),
+    };
     const startedAt = performance.now();
-    let finalizeLatencyMs: number;
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -205,15 +210,11 @@ export function useBrainDumpStep() {
         duration_secs: durationSecs,
         mime_type: recorder.mimeType,
       });
-      finalizeLatencyMs = Math.round(performance.now() - startedAt);
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        trackBrainDump("transcription_failed", {
-          error_code: errorCode,
-          finalize_latency_ms: finalizeLatencyMs,
-        });
+        trackFinalizeFailure(attempt, errorCode, startedAt);
         // The recording itself went through — it just didn't carry enough
         // to personalize from, so the recovery screen offers a fresh take
         // instead of a retry of this one. Nothing is cleared until the
@@ -223,16 +224,32 @@ export function useBrainDumpStep() {
         return;
       }
     } catch {
+      trackFinalizeFailure(attempt, FINALIZE_REQUEST_ERROR, startedAt);
       setScreen("failed");
       return;
     }
 
     trackBrainDump("brain_dump_completed", {
-      duration_secs: Math.round(durationSecs),
-      input_mode: "voice",
-      finalize_latency_ms: finalizeLatencyMs,
+      ...attempt,
+      finalize_latency_ms: Math.round(performance.now() - startedAt),
     });
     await completeAndAdvance(recordingId, "A");
+  }
+
+  // Every way a finalize can fail, in either mode, is this one event: the
+  // pipeline's own code, the HTTP status of a non-200, or
+  // FINALIZE_REQUEST_ERROR when the request never answered. `attempt`
+  // says which mode and how big the dump was, never what it said.
+  function trackFinalizeFailure(
+    attempt: Record<string, unknown>,
+    errorCode: unknown,
+    startedAt: number,
+  ) {
+    trackBrainDump("transcription_failed", {
+      ...attempt,
+      error_code: errorCode,
+      finalize_latency_ms: Math.round(performance.now() - startedAt),
+    });
   }
 
   // A fresh take: the current recording is stopped and thrown away — the
@@ -297,6 +314,8 @@ export function useBrainDumpStep() {
   async function submitTyped(text: string) {
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
+    const attempt = { input_mode: "typed", ...dumpSize(text) };
+    const startedAt = performance.now();
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -310,6 +329,7 @@ export function useBrainDumpStep() {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
+        trackFinalizeFailure(attempt, errorCode, startedAt);
         if (rejected) setInsufficientMode("typed");
         // The typed text stays in the composer, so "Type instead" from
         // the recovery screen reopens it with nothing lost.
@@ -317,12 +337,13 @@ export function useBrainDumpStep() {
         return;
       }
     } catch {
+      trackFinalizeFailure(attempt, FINALIZE_REQUEST_ERROR, startedAt);
       setScreen("failed");
       return;
     }
     trackBrainDump("brain_dump_completed", {
-      input_mode: "typed",
-      chars: text.length,
+      ...attempt,
+      finalize_latency_ms: Math.round(performance.now() - startedAt),
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -331,7 +352,11 @@ export function useBrainDumpStep() {
     // A skip that lands while the dump is being submitted would advance
     // the wizard a second time behind `completeAndAdvance`.
     if (isSubmittingRef.current) return;
-    trackBrainDump("brain_dump_skipped");
+    // Where they gave up, and how much they had typed by then.
+    trackBrainDump("brain_dump_skipped", {
+      screen,
+      ...dumpSize(typedText.trim()),
+    });
     const recordedId = recorder.recordingId;
     // Best effort: a failed skip-record still has to let the user
     // through — being unable to say "no thanks" would be absurd.

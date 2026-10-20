@@ -71,6 +71,8 @@ export const BrainDumpEvent = {
   CAPABILITY_CARD_VIEWED: "capability_card_viewed",
   CAPABILITY_CARDS_COMPLETED: "capability_cards_completed",
   CAPABILITY_CARDS_SKIPPED: "capability_cards_skipped",
+  // Despite the name, any failed or rejected finalize, typed as well as
+  // spoken; `input_mode` says which. Kept because names never change.
   TRANSCRIPTION_FAILED: "transcription_failed",
   INTRO_PATH: "intro_path",
   // The user's first real message after seeing the intro card — the

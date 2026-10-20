@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  countWords,
+  dumpSize,
   encouragementAt,
   formatElapsed,
   isInsufficientDump,
@@ -121,5 +123,37 @@ describe("isInsufficientDump", () => {
     expect(isInsufficientDump(undefined)).toBe(false);
     expect(isInsufficientDump(null)).toBe(false);
     expect(isInsufficientDump(500)).toBe(false);
+  });
+});
+
+// Mirrors the backend quality gate's count, so analytics can be read
+// against its 40-word line. Checked against `quality.py` on these inputs.
+describe("countWords", () => {
+  it("counts whitespace-separated words", () => {
+    expect(countWords("Automate my Shopify refund emails")).toBe(5);
+    expect(countWords("  invoices\nevery\tfriday  ")).toBe(3);
+  });
+
+  it("skips tokens with no letter or digit in them", () => {
+    expect(countWords("Payroll — then 3 reports, done!")).toBe(5);
+    expect(countWords("... --- !!!")).toBe(0);
+  });
+
+  it("counts words in any script", () => {
+    expect(countWords("Rédiger les comptes-rendus")).toBe(3);
+    // Unspaced scripts are one token, exactly as in the gate, which judges
+    // them on characters instead.
+    expect(countWords("我想自动化每周的报告")).toBe(1);
+  });
+
+  it("is zero for empty or blank text", () => {
+    expect(countWords("")).toBe(0);
+    expect(countWords("   \n ")).toBe(0);
+  });
+});
+
+describe("dumpSize", () => {
+  it("reports characters and words, never the text", () => {
+    expect(dumpSize("invoices every friday")).toEqual({ chars: 21, words: 3 });
   });
 });
