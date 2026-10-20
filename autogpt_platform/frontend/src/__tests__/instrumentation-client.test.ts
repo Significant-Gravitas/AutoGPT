@@ -22,7 +22,6 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
 });
@@ -99,6 +98,36 @@ describe("Sentry client instrumentation", () => {
     expect(beforeSend).toBeTypeOf("function");
     expect(beforeSend(rscFallback, {})).toBeNull();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+  });
+
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "client.address": "203.0.113.7",
+              "user.email": "ada@example.com",
+              user: "ada@example.com",
+              "user.id": "user-1",
+              "url.path": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "url.path": "/library",
+    });
   });
 
   it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {

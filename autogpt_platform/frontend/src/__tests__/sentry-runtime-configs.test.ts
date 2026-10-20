@@ -141,6 +141,188 @@ describe.each([
     expect(beforeSendTransaction(withCredentials()).request).toEqual(stripped);
   });
 
+  it("sends no user email or IP address", async () => {
+    await load();
+
+    const { sendDefaultPii, beforeSend, beforeSendTransaction } =
+      initMock.mock.calls[0][0];
+    function withPersonalData() {
+      return {
+        user: {
+          id: "user-1",
+          email: "ada@example.com",
+          ip_address: "203.0.113.7",
+          name: "Ada Lovelace",
+          segment: "pro",
+        },
+        request: {
+          url: "https://platform.agpt.co/library",
+          headers: {
+            "user-agent": "ua",
+            "X-Forwarded-For": "203.0.113.7",
+            "x-real-ip": "203.0.113.7",
+            "x-vercel-forwarded-for": "203.0.113.7",
+            "x-vercel-ip-city": "Warsaw",
+            "cf-connecting-ip": "203.0.113.7",
+            forwarded: "for=203.0.113.7",
+          },
+        },
+      };
+    }
+
+    expect(sendDefaultPii).toBe(false);
+    for (const event of [
+      beforeSend(withPersonalData(), {}),
+      beforeSendTransaction(withPersonalData()),
+    ]) {
+      expect(event.user).toEqual({ id: "user-1" });
+      expect(event.request.headers).toEqual({ "user-agent": "ua" });
+    }
+  });
+
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await load();
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "http.client_ip": "203.0.113.7",
+              "client.address": "203.0.113.7",
+              "http.request.header.x_forwarded_for": "203.0.113.7",
+              "user.email": "ada@example.com",
+              "user.id": "user-1",
+              "http.route": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/library",
+    });
+  });
+
+  it("sends transactions whose spans carry no IP address, email or name", async () => {
+    await load();
+
+    const { beforeSendTransaction } = initMock.mock.calls[0][0];
+    const event = beforeSendTransaction({
+      type: "transaction",
+      transaction: "GET /library",
+      contexts: {
+        trace: {
+          trace_id: "a".repeat(32),
+          span_id: "b".repeat(16),
+          data: {
+            "http.client_ip": "203.0.113.7",
+            "net.peer.ip": "203.0.113.7",
+            "net.host.ip": "10.0.0.2",
+            "client.address": "203.0.113.7",
+            "network.peer.address": "203.0.113.7",
+            "http.request.header.x_forwarded_for": "203.0.113.7, 10.0.0.1",
+            "http.request.header.x-real-ip": "203.0.113.7",
+            "http.request.header.x_vercel_ip_city": "Warsaw",
+            "http.route": "/library",
+            "server.address": "platform.agpt.co",
+            "user.id": "user-1",
+          },
+        },
+      },
+      spans: [
+        {
+          trace_id: "a".repeat(32),
+          span_id: "c".repeat(16),
+          start_timestamp: 1,
+          data: {
+            "net.sock.peer.addr": "203.0.113.7",
+            "net.peer.ip": "203.0.113.7",
+            "user.email": "ada@example.com",
+            "user.name": "ada",
+            "user.id": "user-1",
+            "http.route": "/api/library",
+            "server.address": "backend.agpt.co",
+          },
+        },
+      ],
+    });
+
+    expect(event.contexts.trace.data).toEqual({
+      "http.route": "/library",
+      "server.address": "platform.agpt.co",
+      "user.id": "user-1",
+    });
+    expect(event.spans[0].data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/api/library",
+      "server.address": "backend.agpt.co",
+    });
+  });
+
+  it("sends standalone spans with no IP address, email or name", async () => {
+    await load();
+
+    const { beforeSendSpan } = initMock.mock.calls[0][0];
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      description: "GET /library",
+      data: {
+        user: "ada@example.com",
+        "user.email": "ada@example.com",
+        "user.id": "user-1",
+        "http.client_ip": "203.0.113.7",
+        "client.address": "203.0.113.7",
+        "net.peer.ip": "203.0.113.7",
+        "http.route": "/library",
+        "server.address": "platform.agpt.co",
+      },
+    });
+
+    expect(span.description).toBe("GET /library");
+    expect(span.data).toEqual({
+      "user.id": "user-1",
+      "http.route": "/library",
+      "server.address": "platform.agpt.co",
+    });
+  });
+
+  it("sends logs with the user id only, and no email, name or IP address", async () => {
+    await load();
+
+    const { enableLogs, beforeSendLog } = initMock.mock.calls[0][0];
+    const log = beforeSendLog({
+      level: "info",
+      message: "rendered the library",
+      attributes: {
+        "user.id": "user-1",
+        "user.email": "ada@example.com",
+        "user.name": "ada",
+        "user.ip_address": "203.0.113.7",
+        "client.address": "203.0.113.7",
+        "http.client_ip": "203.0.113.7",
+        ip: "203.0.113.7",
+        "sentry.environment": "pr-123",
+      },
+    });
+
+    expect(enableLogs).toBe(true);
+    expect(log).toEqual({
+      level: "info",
+      message: "rendered the library",
+      attributes: { "user.id": "user-1", "sentry.environment": "pr-123" },
+    });
+  });
+
   it("tags events with the environment the deployment names for itself", async () => {
     vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
 
