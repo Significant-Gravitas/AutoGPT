@@ -32,6 +32,7 @@ from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
 
@@ -252,6 +253,7 @@ async def screen_read(
             tool_call_id=tool_call_id,
             args=args,
             envelope=get_current_envelope(),
+            cost_context=await capture_cost_context(user_id),
         )
         return await _hold(
             call,

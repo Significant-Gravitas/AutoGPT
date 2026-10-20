@@ -27,7 +27,7 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
-    unmask = true,
+    unmask = false,
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
@@ -74,7 +74,7 @@ export function Button(props: ButtonProps) {
         <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
       )}
       {!loading && resolvedLeftIcon}
-      {children}
+      <span className="contents">{children}</span>
       {!loading && rightIcon}
     </>
   );
@@ -122,8 +122,7 @@ export function Button(props: ButtonProps) {
           className={loadingClassName}
           aria-disabled="true"
         >
-          <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-          {children}
+          {buttonContent}
         </NextLink>
       );
     }
@@ -138,8 +137,7 @@ export function Button(props: ButtonProps) {
         className={loadingClassName}
         disabled
       >
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-        {children}
+        {buttonContent}
       </button>
     );
 

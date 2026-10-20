@@ -23,8 +23,6 @@ const defaultFlags = {
   [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
@@ -43,6 +41,7 @@ const defaultFlags = {
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
@@ -83,10 +82,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
-    case Flag.CHAT_SEARCH:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.AUTOGPT_NEW_LAYOUT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
@@ -109,6 +104,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.DREAM_SKILL_LEARNING_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_SKILL_LEARNING_ENABLED;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:

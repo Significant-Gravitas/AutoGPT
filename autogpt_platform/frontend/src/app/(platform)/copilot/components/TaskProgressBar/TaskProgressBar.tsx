@@ -2,13 +2,14 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { EASE_OUT } from "./animations";
 import { StatusIcon } from "./components/StatusIcon/StatusIcon";
 import { TaskRow } from "./components/TaskRow/TaskRow";
 import {
   getCurrentLabel,
   getCurrentTask,
+  haveSameTodos,
   isAllComplete,
   toDisplayStatus,
   type TodoItem,
@@ -49,7 +50,9 @@ interface Props {
   defaultExpanded?: boolean;
 }
 
-export function TaskProgressBar({
+// The chat derives `todos` afresh on every streamed flush; the bar only
+// renders again when the tasks themselves change.
+export const TaskProgressBar = memo(function TaskProgressBar({
   todos,
   isStreaming = false,
   defaultExpanded = false,
@@ -165,5 +168,13 @@ export function TaskProgressBar({
         )}
       </AnimatePresence>
     </div>
+  );
+}, areSameTaskBarProps);
+
+function areSameTaskBarProps(prev: Props, next: Props) {
+  return (
+    prev.isStreaming === next.isStreaming &&
+    prev.defaultExpanded === next.defaultExpanded &&
+    haveSameTodos(prev.todos, next.todos)
   );
 }

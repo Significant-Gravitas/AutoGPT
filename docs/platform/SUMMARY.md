@@ -19,8 +19,8 @@
 ## Self-Hosting
 
 * [Setting Up AutoGPT (Self-Host)](getting-started.md)
+* [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
-* [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
 * [Advanced Setup](advanced_setup.md)
 
 ## Tutorials
@@ -42,6 +42,7 @@
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 

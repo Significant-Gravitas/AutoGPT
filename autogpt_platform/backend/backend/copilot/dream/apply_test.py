@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.graphiti.ingest import IngestionCompletion
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import orgs_db as real_orgs_db
 
 from . import apply as apply_mod
@@ -42,6 +43,11 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
     )
 
 
+async def _worker_wrote_them(completion: IngestionCompletion, _: float) -> bool:
+    completion.written = completion.registered
+    return True
+
+
 @pytest.fixture(autouse=True)
 def _stub_boundaries(mocker):
     """Wire up the apply.py side-effects with AsyncMocks once per test."""
@@ -50,15 +56,16 @@ def _stub_boundaries(mocker):
     # on the pass's IngestionCompletion — but no worker runs in tests, so an
     # unstubbed drain would block the full INGESTION_DRAIN_TIMEOUT_SECONDS
     # (300s) per test and time out the CI job. Default the drain to an
-    # instant success; drain-behavior tests re-patch this explicitly.
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
-    # The driver constructor + close — apply.py opens a FalkorDB driver for
+    # instant success, every episode written, as the worker would report it;
+    # drain-behavior tests re-patch this explicitly.
+    mocker.patch.object(
+        apply_mod, "wait_for_ingestion", AsyncMock(side_effect=_worker_wrote_them)
+    )
+    # The driver factory + close — apply.py opens a FalkorDB driver for
     # demotions and entity invalidations. Patch where it's used.
     driver = mocker.MagicMock()
     driver.close = AsyncMock(return_value=None)
-    mocker.patch.object(
-        apply_mod, "AutoGPTFalkorDriver", mocker.MagicMock(return_value=driver)
-    )
+    mocker.patch.object(apply_mod, "open_driver", mocker.MagicMock(return_value=driver))
     # Helper functions
     mocker.patch.object(
         apply_mod,
@@ -119,7 +126,7 @@ async def test_writes_become_active_envelopes():
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-1234567890ab", pass_id="p-abc", ops=ops
+        scope=MemoryScope.for_user("u-1234567890ab"), pass_id="p-abc", ops=ops
     )
 
     assert stats["consolidated_count"] == 1
@@ -153,7 +160,9 @@ async def test_proposals_become_tentative_envelopes():
         ],
         summary_for_user="ok",
     )
-    await apply_mod.apply_operations(user_id="u-x", pass_id="p-2", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-x"), pass_id="p-2", ops=ops
+    )
     # First call was the consolidate write (there were no writes, so first call IS the proposal)
     call_kwargs = apply_mod.enqueue_episode.await_args.kwargs
     assert call_kwargs["name"].startswith("dream_p-2_recombine_")
@@ -179,7 +188,9 @@ async def test_demotions_group_by_status_and_reason():
             ),
         ],
     )
-    await apply_mod.apply_operations(user_id="u-y", pass_id="p-3", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-y"), pass_id="p-3", ops=ops
+    )
 
     # Three demotions but only TWO buckets: (superseded, stale) and
     # (contradicted, contradicted_by:x)
@@ -200,7 +211,9 @@ async def test_demotions_pass_group_id_to_mark_edges_superseded():
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid="a", reason="stale")],
     )
-    await apply_mod.apply_operations(user_id="u-gid", pass_id="p-gid", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-gid"), pass_id="p-gid", ops=ops
+    )
 
     apply_mod.mark_edges_superseded.assert_awaited_once()
     # derive_group_id prefixes user ids with "user_"
@@ -219,7 +232,7 @@ async def test_hallucinated_demotion_uuids_dropped_before_cypher():
         ],
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-filter",
+        scope=MemoryScope.for_user("u-filter"),
         pass_id="p-filter",
         ops=ops,
         known_fact_uuids={"known-1", "known-2"},
@@ -250,7 +263,9 @@ async def test_batch_path_demotions_validated_against_persisted_bundle(mocker):
             DreamDemotion(edge_uuid="ghost", reason="stale"),
         ],
     )
-    await apply_mod.apply_operations(user_id="u-batch", pass_id="p-batch", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-batch"), pass_id="p-batch", ops=ops
+    )
 
     apply_mod.read_input_bundle.assert_awaited_once_with("p-batch")
     apply_mod.mark_edges_superseded.assert_awaited_once()
@@ -267,7 +282,9 @@ async def test_missing_input_bundle_fails_open_and_keeps_demotions():
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid="unverifiable", reason="stale")],
     )
-    await apply_mod.apply_operations(user_id="u-open", pass_id="p-open", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-open"), pass_id="p-open", ops=ops
+    )
 
     apply_mod.mark_edges_superseded.assert_awaited_once()
     assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
@@ -291,7 +308,7 @@ async def test_redis_blip_on_bundle_fallback_fails_open(mocker, caplog):
     )
     with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
         stats = await apply_mod.apply_operations(
-            user_id="u-blip", pass_id="p-blip", ops=ops
+            scope=MemoryScope.for_user("u-blip"), pass_id="p-blip", ops=ops
         )
 
     apply_mod.mark_edges_superseded.assert_awaited_once()
@@ -316,7 +333,7 @@ async def test_entity_invalidations_not_filtered_by_known_fact_uuids():
         ],
     )
     await apply_mod.apply_operations(
-        user_id="u-ent",
+        scope=MemoryScope.for_user("u-ent"),
         pass_id="p-ent",
         ops=ops,
         known_fact_uuids={"some-fact"},
@@ -332,7 +349,9 @@ async def test_entity_invalidation_calls_single_hop_helper():
             EntityInvalidation(entity_uuid="ent-x", reason="dead_to_us"),
         ],
     )
-    await apply_mod.apply_operations(user_id="u-z", pass_id="p-4", ops=ops)
+    await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-z"), pass_id="p-4", ops=ops
+    )
 
     apply_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
     kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
@@ -351,7 +370,9 @@ async def test_entity_invalidation_skipped_when_flag_off(mocker):
             EntityInvalidation(entity_uuid="ent-x", reason="dead_to_us"),
         ],
     )
-    stats = await apply_mod.apply_operations(user_id="u-z", pass_id="p-off", ops=ops)
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-z"), pass_id="p-off", ops=ops
+    )
 
     apply_mod.invalidate_entity_direct_neighbors.assert_not_awaited()
     assert stats["entity_invalidation_count"] == 0
@@ -371,7 +392,9 @@ async def test_empty_pass_creates_no_session_and_no_message():
     from .schemas import DreamOperationsSnapshot
 
     ops = DreamOperations(summary_for_user="Nothing new today.")
-    stats = await apply_mod.apply_operations(user_id="u-a", pass_id="p-5", ops=ops)
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-a"), pass_id="p-5", ops=ops
+    )
 
     copilot_db.create_chat_session.assert_not_awaited()
     copilot_db.add_chat_message.assert_not_awaited()
@@ -396,7 +419,9 @@ async def test_ops_with_empty_summary_still_create_session_with_placeholder():
         writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
         summary_for_user="",
     )
-    stats = await apply_mod.apply_operations(user_id="u-ph", pass_id="p-ph", ops=ops)
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-ph"), pass_id="p-ph", ops=ops
+    )
 
     copilot_db.create_chat_session.assert_awaited_once()
     copilot_db.add_chat_message.assert_awaited_once()
@@ -418,7 +443,7 @@ async def test_dream_session_titled_with_utc_date():
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-title", pass_id="p-title", ops=ops
+        scope=MemoryScope.for_user("u-title"), pass_id="p-title", ops=ops
     )
 
     copilot_db.update_chat_session_title.assert_awaited_once()
@@ -445,7 +470,9 @@ async def test_title_failure_does_not_abort_apply(mocker):
         writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
         summary_for_user="ok",
     )
-    stats = await apply_mod.apply_operations(user_id="u-tf", pass_id="p-tf", ops=ops)
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-tf"), pass_id="p-tf", ops=ops
+    )
 
     assert stats["consolidated_count"] == 1
     copilot_db.add_chat_message.assert_awaited_once()
@@ -458,19 +485,19 @@ async def test_expert_dream_session_and_write_keep_expert_scope(mocker):
     db.update_chat_session_title = AsyncMock(return_value=True)
     mocker.patch("backend.data.db_accessors.chat_db", return_value=db)
 
-    await apply_mod._create_dream_session("u1", "p1", "expert-1")
+    expert_scope = MemoryScope.for_expert("u1", "expert-1")
+    await apply_mod._create_dream_session(expert_scope, "p1")
     assert db.create_chat_session.call_args.kwargs["expert_id"] == "expert-1"
 
     await apply_mod._write_consolidated_fact(
-        "u1",
+        expert_scope,
         "p1",
         0,
         ConsolidatedFact(content="A likes B", confidence=0.8),
         "session-1",
         IngestionCompletion(),
-        expert_id="expert-1",
     )
-    assert apply_mod.enqueue_episode.call_args.kwargs["expert_id"] == "expert-1"
+    assert apply_mod.enqueue_episode.call_args.args[0] == expert_scope
 
 
 @pytest.mark.asyncio
@@ -494,7 +521,7 @@ async def test_dream_session_resolves_tenant_through_db_manager(mocker):
         return_value=db_manager,
     )
 
-    await apply_mod._create_dream_session("u1", "p1")
+    await apply_mod._create_dream_session(MemoryScope.for_user("u1"), "p1")
 
     db_manager.get_user_default_team.assert_awaited_once_with("u1")
     kwargs = db.create_chat_session.call_args.kwargs
@@ -534,7 +561,7 @@ async def test_summary_written_after_memory_ops(mocker):
     )
 
     await apply_mod.apply_operations(
-        user_id="u-1",
+        scope=MemoryScope.for_user("u-1"),
         pass_id="p-1",
         ops=DreamOperations(
             writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
@@ -568,7 +595,7 @@ async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-drain", pass_id="p-drain", ops=ops
+        scope=MemoryScope.for_user("u-drain"), pass_id="p-drain", ops=ops
     )
 
     drain.assert_awaited_once()
@@ -586,24 +613,68 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
     """When the pass's episodes don't drain inside the cap, the pass must
     still succeed (partial visibility beats a failed pass): counts are
     returned, ingestion_drain_status=timed_out flags the overflow, and a
-    WARNING records the revert to fire-and-forget behavior."""
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=False))
+    WARNING records the revert to fire-and-forget behavior. What the worker
+    has not written yet is reported pending, never consolidated."""
+
+    async def wrote_one_of_two(completion: IngestionCompletion, _: float) -> bool:
+        completion.written = 1
+        return False
+
+    mocker.patch.object(apply_mod, "wait_for_ingestion", wrote_one_of_two)
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[
+            ConsolidatedFact(content="A likes B", confidence=0.8),
+            ConsolidatedFact(content="B likes C", confidence=0.8),
+        ],
         summary_for_user="ok",
     )
     with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
         stats = await apply_mod.apply_operations(
-            user_id="u-slow", pass_id="p-slow", ops=ops
+            scope=MemoryScope.for_user("u-slow"), pass_id="p-slow", ops=ops
         )
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
     assert stats["consolidated_count"] == 1
+    assert (stats["pending_writes"], stats["failed_writes"]) == (1, 0)
     assert any(
         "did not drain" in record.getMessage()
         for record in caplog.records
         if record.levelno == logging.WARNING
     )
+
+
+@pytest.mark.asyncio
+async def test_counts_only_what_the_worker_wrote_of_each_kind(mocker):
+    """Writes and proposals are tracked apart, and each counted only once
+    graphiti saved it: of two writes one failed, and the proposal was still
+    queued when the drain ran out, so one write is consolidated, one failed
+    and one pending, and no proposal counted."""
+
+    async def worker(completion: IngestionCompletion, _: float) -> bool:
+        if completion.registered == 2:
+            completion.written, completion.failed = 1, 1
+            return True
+        return False
+
+    mocker.patch.object(apply_mod, "wait_for_ingestion", worker)
+    ops = DreamOperations(
+        writes=[
+            ConsolidatedFact(content="A likes B", confidence=0.8),
+            ConsolidatedFact(content="B likes C", confidence=0.8),
+        ],
+        proposals=[
+            ProposedFinding(content="A may like C", confidence=0.5, rationale="r")
+        ],
+        summary_for_user="ok",
+    )
+
+    stats = await apply_mod.apply_operations(
+        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops
+    )
+
+    assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
+    assert (stats["consolidated_count"], stats["proposal_count"]) == (1, 0)
+    assert (stats["failed_writes"], stats["pending_writes"]) == (1, 1)
 
 
 @pytest.mark.asyncio
@@ -621,7 +692,7 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
     )
     with caplog.at_level(logging.INFO, logger=apply_mod.logger.name):
         stats = await apply_mod.apply_operations(
-            user_id="u-batch",
+            scope=MemoryScope.for_user("u-batch"),
             pass_id="p-batch",
             ops=ops,
             ingestion_drain_timeout=apply_mod.BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
@@ -629,7 +700,8 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
 
     drain.assert_not_awaited()
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.skipped
-    assert stats["consolidated_count"] == 1
+    # Not waited for, so not known written: counted pending, not consolidated.
+    assert (stats["consolidated_count"], stats["pending_writes"]) == (0, 1)
     assert any("drain skipped" in record.getMessage() for record in caplog.records)
 
 
@@ -643,7 +715,7 @@ async def test_no_enqueued_writes_skips_ingestion_drain(mocker):
     )
     ops = DreamOperations(summary_for_user="Nothing new today.")
     stats = await apply_mod.apply_operations(
-        user_id="u-empty", pass_id="p-empty", ops=ops
+        scope=MemoryScope.for_user("u-empty"), pass_id="p-empty", ops=ops
     )
 
     drain.assert_not_awaited()
@@ -663,7 +735,10 @@ async def test_sync_path_renews_lock_before_drain(mocker):
         summary_for_user="ok",
     )
     await apply_mod.apply_operations(
-        user_id="u-lock", pass_id="p-lock", ops=ops, lock_handle=lock_handle
+        scope=MemoryScope.for_user("u-lock"),
+        pass_id="p-lock",
+        ops=ops,
+        lock_handle=lock_handle,
     )
 
     lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
@@ -689,7 +764,10 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
 
     with pytest.raises(DreamLockLostError):
         await apply_mod.apply_operations(
-            user_id="u-lost", pass_id="p-lost", ops=ops, lock_handle=lock_handle
+            scope=MemoryScope.for_user("u-lost"),
+            pass_id="p-lost",
+            ops=ops,
+            lock_handle=lock_handle,
         )
 
     drain.assert_not_awaited()
@@ -710,7 +788,10 @@ async def test_demotions_only_pass_renews_lock_before_destructive_tail(mocker):
         summary_for_user="tidied up",
     )
     await apply_mod.apply_operations(
-        user_id="u-demote", pass_id="p-demote", ops=ops, lock_handle=lock_handle
+        scope=MemoryScope.for_user("u-demote"),
+        pass_id="p-demote",
+        ops=ops,
+        lock_handle=lock_handle,
     )
 
     lock_handle.extend.assert_awaited_once_with(apply_mod.LOCK_DRAIN_RENEWAL_SECONDS)
@@ -725,7 +806,10 @@ async def test_empty_pass_does_not_renew_lock(mocker):
     lock_handle.extend = AsyncMock(return_value=None)
     ops = DreamOperations(summary_for_user="Nothing new today.")
     await apply_mod.apply_operations(
-        user_id="u-empty", pass_id="p-empty", ops=ops, lock_handle=lock_handle
+        scope=MemoryScope.for_user("u-empty"),
+        pass_id="p-empty",
+        ops=ops,
+        lock_handle=lock_handle,
     )
 
     lock_handle.extend.assert_not_awaited()
@@ -820,7 +904,7 @@ async def test_apply_operations_never_auto_connects_prisma(mocker):
         connect_spy = mocker.patch("backend.data.db.connect", new_callable=AsyncMock)
 
         await apply_mod.apply_operations(
-            user_id="u-1",
+            scope=MemoryScope.for_user("u-1"),
             pass_id="p-1",
             ops=DreamOperations(
                 writes=[],
@@ -883,7 +967,7 @@ async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-snap", pass_id="p-snap", ops=ops
+        scope=MemoryScope.for_user("u-snap"), pass_id="p-snap", ops=ops
     )
 
     snap = stats["snapshot"]
@@ -927,7 +1011,7 @@ async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(moc
         ],
     )
     stats = await apply_mod.apply_operations(
-        user_id="u-miss", pass_id="p-miss", ops=ops
+        scope=MemoryScope.for_user("u-miss"), pass_id="p-miss", ops=ops
     )
     snap = stats["snapshot"]
     assert isinstance(snap, DreamOperationsSnapshot)

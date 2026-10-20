@@ -7,6 +7,7 @@ import {
 } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { okData } from "@/app/api/helpers";
+import type { ExpertIdentity } from "../../useExpertMap";
 import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
 import { isGateReview, toApprovalItem } from "../ApprovalQueue/helpers";
 import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
@@ -18,6 +19,8 @@ type Props =
       pollWhileEmpty?: boolean;
       refetchKey?: number;
       expertName?: string | null;
+      // Its avatar in the review dialog.
+      expert?: ExpertIdentity | null;
     };
 
 /**
@@ -29,19 +32,20 @@ export function CopilotPendingReviews(props: Props) {
   const { onSend, onBackendTurn } = useCopilotChatActions();
   const graphExecId = "graphExecId" in props ? props.graphExecId : "";
   const expertName = "expertName" in props ? props.expertName : null;
-  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
+  const expert = ("expert" in props ? props.expert : null) ?? null;
+  const { pendingReviews, answeredReviews, refetch } =
+    useCopilotPendingReviews(props);
 
-  const heldCalls = pendingReviews
+  const heldReviews = pendingReviews
     .filter(isGateReview)
-    .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
-    .map(toApprovalItem);
+    .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   const otherReviews = pendingReviews.filter(
     (r) => !r.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX),
   );
 
-  async function handleHeldCallAnswered() {
+  async function handleHeldCallAnswered(turnFollows: boolean) {
     await refetch();
-    onBackendTurn?.();
+    if (turnFollows) onBackendTurn?.();
   }
 
   const handleReviewComplete = useCallback(async () => {
@@ -73,9 +77,22 @@ export function CopilotPendingReviews(props: Props) {
   return (
     <div className="flex flex-col gap-2 py-2 empty:hidden">
       <ApprovalQueue
-        items={heldCalls}
+        items={heldReviews.map(toApprovalItem)}
+        reviews={heldReviews}
+        answered={answeredReviews}
         expertName={expertName}
+        expert={
+          expert
+            ? {
+                id: expert.id,
+                name: expert.name,
+                role: expert.role ?? "",
+                avatar_url: expert.avatarUrl,
+              }
+            : null
+        }
         onAnswered={handleHeldCallAnswered}
+        onContinued={() => onBackendTurn?.()}
       />
       {otherReviews.length > 0 && (
         <PendingReviewsList

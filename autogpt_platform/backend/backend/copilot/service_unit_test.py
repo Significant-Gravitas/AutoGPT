@@ -21,6 +21,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
 
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.service import (
     _TITLE_TIMEOUT_SECONDS,
     _fallback_title_from_message,
@@ -673,6 +674,35 @@ class TestGenerateSessionTitle:
             "environment": settings.config.app_env.value,
             "impersonated": False,
         }
+
+    @pytest.mark.asyncio
+    async def test_title_call_lands_in_the_trace_of_the_turn_that_asked(self):
+        """The first turn generates the title, so the title call groups with
+        that reply's other calls in PostHog."""
+        resp = _build_completion(content="Title")
+        helper = AsyncMock(return_value=resp)
+        with (
+            patch(
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
+            ),
+            patch(
+                "backend.copilot.service.config",
+                MagicMock(
+                    aux_uses_openrouter=True,
+                    title_model="anthropic/claude-haiku",
+                ),
+            ),
+        ):
+            set_turn_trace_id("turn-1")
+            try:
+                await _generate_session_title(
+                    "hello world", user_id="user-abc", session_id="sess-abc"
+                )
+            finally:
+                set_turn_trace_id(None)
+        extra_body = helper.await_args.kwargs["extra_body"]
+        assert extra_body["trace"]["trace_id"] == "turn-1"
 
     @pytest.mark.asyncio
     async def test_title_call_off_openrouter_carries_no_broadcast_fields(self):

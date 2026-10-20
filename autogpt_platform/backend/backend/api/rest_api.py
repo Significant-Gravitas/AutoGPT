@@ -28,6 +28,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
@@ -36,6 +37,8 @@ import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.at_reset as chat_at_reset
+import backend.api.features.chat.continuation as chat_continuation
 import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
@@ -66,10 +69,12 @@ import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
 import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skill_learning.routes as skill_learning_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
+import backend.api.features.subscription_activation_routes as subscription_activation_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
@@ -107,6 +112,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -190,6 +196,8 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
+
+    freeze_startup_heap()
 
     yield
 
@@ -387,6 +395,7 @@ app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],
@@ -518,6 +527,11 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
 # Dev-only surface: the test-data seeder is never mounted outside a local
 # app_env, matching how docs_url/metrics are gated above. The runtime
 # `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
@@ -542,6 +556,9 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+)
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
@@ -570,6 +587,16 @@ app.include_router(
 )
 app.include_router(
     chat_feedback.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_at_reset.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_continuation.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )
