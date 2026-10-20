@@ -39,8 +39,9 @@ export function SetupAnalytics(props: SetupProps) {
 
   return (
     <>
-      {/* Google tag: GA4 + Google Ads */}
-      {googleTagEnabled ? (
+      {/* Google tag: GA4 + Google Ads. Nothing to load without an ID: a
+          self-hosted install must not report to anyone else's property */}
+      {googleTagEnabled && (gaId || adsID) ? (
         <>
           <GoogleConsentModeSync />
           <Script
@@ -99,7 +100,9 @@ function buildGoogleTagInitScript({
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     `gtag('js', new Date());`,
-    `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    GAID
+      ? `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`
+      : "",
     adsID
       ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
