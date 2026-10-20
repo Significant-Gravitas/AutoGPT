@@ -155,7 +155,13 @@ function sendDatafastEvent(
 }
 
 export function flushDatafastQueue() {
-  if (typeof window === "undefined" || !window.datafast) return;
+  if (typeof window === "undefined") return;
+  if (!hasConsentFor("analytics")) {
+    datafastQueue.length = 0;
+    datafastQueueOverflowWarned = false;
+    return;
+  }
+  if (!window.datafast) return;
   const datafast = window.datafast;
   datafastQueue
     .splice(0, datafastQueue.length)

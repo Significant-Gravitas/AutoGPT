@@ -537,7 +537,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
