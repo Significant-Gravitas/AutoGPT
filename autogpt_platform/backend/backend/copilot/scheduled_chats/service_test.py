@@ -442,6 +442,9 @@ async def test_a_good_run_that_read_the_streak_before_the_pause_keeps_it(
             await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
 
         assert len(await list_paused_scheduled_chats(user_id)) == 1
+        # And its alert: withdrawn only with the streak.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.PENDING
     finally:
         await _cleanup(user_id)
 
