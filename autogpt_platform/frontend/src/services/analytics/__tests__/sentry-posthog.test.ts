@@ -179,10 +179,11 @@ describe("Sentry to PostHog correlation", () => {
     expect(posthog.capture).not.toHaveBeenCalled();
   });
 
-  it("uses the configured preview project instead of the production project", () => {
-    createPostHogSentryProcessor(
-      "https://key@o4505260022104064.ingest.us.sentry.io/123",
-    )(sentryEvent());
+  it.each([
+    "https://key@o4505260022104064.ingest.us.sentry.io/123",
+    "https://key@o4505260022104064.ingest.sentry.io/123",
+  ])("uses the configured preview project from %s", (previewDSN) => {
+    createPostHogSentryProcessor(previewDSN)(sentryEvent());
     expect(posthog.capture).toHaveBeenCalledWith(
       "$exception",
       expect.objectContaining({

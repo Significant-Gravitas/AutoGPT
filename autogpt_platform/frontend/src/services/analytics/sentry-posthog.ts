@@ -1,5 +1,5 @@
 import { hasConsentFor } from "@/services/consent/consent";
-import { environment } from "@/services/environment";
+import { environment, HOSTED_SENTRY_DSN } from "@/services/environment";
 import type { ErrorEvent } from "@sentry/nextjs";
 import posthog from "posthog-js";
 
@@ -32,17 +32,27 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
   };
 }
 
+// The organization the hosted DSN reports to; next.config.mjs uploads source
+// maps under the same slug.
+const SENTRY_ORG_SLUG = "significant-gravitas";
+const SENTRY_INGEST_HOST = /^(o\d+)\.ingest(?:\.[a-z]{2})?\.sentry\.io$/;
+
+function getIngestOrg(dsn: string) {
+  return new URL(dsn).hostname.match(SENTRY_INGEST_HOST)?.[1];
+}
+
 function getSentryProject(dsn: string | undefined) {
   if (!dsn) return {};
   try {
-    const { hostname, pathname } = new URL(dsn);
-    const projectID = Number(pathname.slice(1));
+    const projectID = Number(new URL(dsn).pathname.slice(1));
+    const org = getIngestOrg(dsn);
     if (
-      /^o4505260022104064\.ingest(?:\.[a-z]{2})?\.sentry\.io$/.test(hostname) &&
+      org &&
+      org === getIngestOrg(HOSTED_SENTRY_DSN) &&
       Number.isSafeInteger(projectID) &&
       projectID > 0
     ) {
-      return { organization: "significant-gravitas", projectId: projectID };
+      return { organization: SENTRY_ORG_SLUG, projectId: projectID };
     }
   } catch {
     // Unknown DSNs can still receive PostHog links without a guessed Sentry URL.
