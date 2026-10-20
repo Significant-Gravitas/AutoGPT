@@ -9,6 +9,7 @@ import pytest
 
 from backend.blocks.google.gmail import GmailReadBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot import ai_spans
 from backend.copilot.gate import ALLOW
 from backend.copilot.gate.reads import model_view
 from backend.copilot.google_data_redaction import (
@@ -16,6 +17,7 @@ from backend.copilot.google_data_redaction import (
     REDACTED,
     redact_google_data,
 )
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -719,6 +721,115 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+class TestPostHogToolSpans:
+    """Every platform tool call, on either engine, is a PostHog ``$ai_span``
+    in the reply's trace, and none carries the tool's input or output."""
+
+    @staticmethod
+    def _tool(response: ToolResponseBase | None = None, error: bool = False):
+        class _Tool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "gmail_read"
+
+            @property
+            def description(self) -> str:
+                return "reads mail"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                if error:
+                    raise RuntimeError("could not read the inbox")
+                assert response is not None
+                return response
+
+        return _Tool()
+
+    @pytest.fixture
+    def capture(self, mocker):
+        set_turn_trace_id("turn-1")
+        ai_spans.set_turn_span("turn-1")
+        yield mocker.patch.object(ai_spans.posthog_client, "capture")
+        set_turn_trace_id(None)
+        ai_spans.set_turn_span(None)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
+        email_subject = "Subject: quarterly numbers"
+        tool = self._tool(
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=email_subject)
+        )
+
+        await tool.execute(
+            "u1", MagicMock(session_id="s1"), "call-1", query=email_subject
+        )
+
+        capture.assert_called_once()
+        _, event, properties = capture.call_args.args
+        assert event == "$ai_span"
+        assert properties["$ai_span_name"] == "gmail_read"
+        assert properties["$ai_trace_id"] == "turn-1"
+        assert properties["$ai_parent_id"] == "turn-1"
+        assert properties["$ai_session_id"] == "s1"
+        assert properties["$ai_is_error"] is False
+        assert email_subject not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
+        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "$ai_error" not in properties
+        assert "no such label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):
+        """An approval card is the user's decision to make, not the tool
+        failing, so it must not count against the tool."""
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+        session = MagicMock(session_id="s1")
+        refusal = tool._refusal("call-1", session, "Needs your approval")
+        with patch.object(tool, "_gate", new=AsyncMock(return_value=(refusal, False))):
+            result = await tool.execute("u1", session, "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_a_sign_in_did_not_fail(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch.object(
+            type(tool), "requires_auth", new_callable=lambda: property(lambda _: True)
+        ):
+            result = await tool.execute(None, MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
+        self, capture
+    ):
+        tool = self._tool(error=True)
+
+        result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "RuntimeError"
+        assert "inbox" not in repr(properties)
 
 
 # ---------------------------------------------------------------------------
