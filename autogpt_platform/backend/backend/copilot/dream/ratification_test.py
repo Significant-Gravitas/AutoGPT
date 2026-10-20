@@ -3,7 +3,7 @@ boundary, verify each tentative-edge outcome produces the right
 Cypher / mark_edges_superseded call and the right counters.
 
 These tests do NOT touch FalkorDB or a live Redis. ratification.py
-opens an ``AutoGPTFalkorDriver`` for its own Cypher and calls
+opens a driver via ``open_driver`` for its own Cypher and calls
 ``mark_edges_superseded`` for demotions; both are patched at the
 module surface so the dispatch logic can be exercised in isolation.
 """
@@ -15,30 +15,31 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.graphiti.scope import MemoryScope
+
 from . import ratification as ratification_mod
 from .ratification import (
     RATIFICATION_GRACE_PERIOD,
     RatificationResult,
     run_ratification_pass,
 )
-from .ratification_hits import hit_key, record_memory_hit
+from .ratification_hits import record_memory_hit
 
 
 def _make_driver(records_for_list: list[dict], records_for_promote=None):
     """Build a MagicMock driver whose execute_query returns the rows we want.
 
     The ratification module issues two Cypher shapes:
+      * the PROMOTE query (SET ratified_at)   → return ``records_for_promote``
       * the LIST query (status='tentative')   → return ``records_for_list``
-      * the PROMOTE query (SET status=active) → return ``records_for_promote``
 
-    We dispatch by inspecting the first arg of execute_query.
+    We dispatch by inspecting the first arg of execute_query; the promote
+    query is checked first because its guard also names 'tentative'.
     """
     driver = MagicMock()
     driver.close = AsyncMock(return_value=None)
 
     async def fake_execute(query: str, **kwargs):
-        if "status = 'tentative'" in query:
-            return (list(records_for_list), None, None)
         if "ratified_at" in query:
             # Promote query — default to one-row response unless caller said otherwise.
             rows = (
@@ -47,6 +48,8 @@ def _make_driver(records_for_list: list[dict], records_for_promote=None):
                 else [{"uuid": kwargs.get("uuid")}]
             )
             return (list(rows), None, None)
+        if "status = 'tentative'" in query:
+            return (list(records_for_list), None, None)
         return ([], None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
@@ -59,7 +62,7 @@ def _patch_driver_constructor(mocker):
     driver = _make_driver(records_for_list=[])
     mocker.patch.object(
         ratification_mod,
-        "AutoGPTFalkorDriver",
+        "open_driver",
         MagicMock(return_value=driver),
     )
     return driver
@@ -89,7 +92,7 @@ def fake_redis(mocker):
 
         async def get(self, key: str):
             self.get_calls.append(key)
-            # Keys are ``mem:hits:{user_id}:{edge_uuid}`` — split off the uuid.
+            # Keys are ``mem:hits:{scope_key}:{edge_uuid}`` — split off the uuid.
             edge_uuid = key.rsplit(":", 1)[-1]
             value = self.hits.get(edge_uuid, 0)
             return str(value).encode() if value else None
@@ -121,9 +124,7 @@ async def test_tentative_edge_with_hits_is_ratified_to_active(
     """Hit count >= 1 → flip to active via the promote Cypher; no demotion."""
     edge = {"uuid": "edge-hot", "created_at": _hours_ago(2)}
     driver = _make_driver(records_for_list=[edge])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
     fake_redis.hits["edge-hot"] = 3
 
     result = await run_ratification_pass("u-ratified")
@@ -159,9 +160,7 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
     }
     driver = _make_driver(records_for_list=[edge])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
 
     result = await run_ratification_pass("u-stale")
 
@@ -172,6 +171,33 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
     assert call.args[1] == ["edge-stale"]
     assert call.kwargs["reason"] == "unratified"
     assert call.kwargs["new_status"] == "superseded"
+    # Only while it is still an unexpired tentative edge: a forget that
+    # landed after the listing is not overwritten.
+    assert call.kwargs["expected_status"] == "tentative"
+
+
+@pytest.mark.asyncio
+async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
+    mocker, fake_redis, stub_mark_superseded
+):
+    """Hits say promote, but the user retracted the edge after the sweep
+    listed it: the guarded write matches nothing, so the retraction stays."""
+    edge = {"uuid": "edge-forgotten", "created_at": _hours_ago(2)}
+    driver = _make_driver(records_for_list=[edge], records_for_promote=[])
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
+    fake_redis.hits["edge-forgotten"] = 2
+
+    result = await run_ratification_pass("u-raced")
+
+    assert result.ratified_count == 0
+    [promote] = [
+        call
+        for call in driver.execute_query.await_args_list
+        if "ratified_at" in call.args[0]
+    ]
+    assert "WHERE e.status = 'tentative' AND e.expired_at IS NULL" in promote.args[0]
+    assert "AND e.forgotten_at IS NULL" in promote.args[0]
+    stub_mark_superseded.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -184,9 +210,7 @@ async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_r
         "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
     }
     driver = _make_driver(records_for_list=[edge])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
     mocker.patch.object(
         ratification_mod,
         "mark_edges_superseded",
@@ -208,9 +232,7 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
     """Zero hits but still inside the grace window → no promote, no demote."""
     edge = {"uuid": "edge-young", "created_at": _hours_ago(6)}
     driver = _make_driver(records_for_list=[edge])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
 
     result = await run_ratification_pass("u-young")
 
@@ -237,17 +259,17 @@ async def test_expert_ratification_uses_expert_graph_and_scoped_hit_key(
     }
     driver = _make_driver(records_for_list=[edge])
     driver_factory = MagicMock(return_value=driver)
-    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", driver_factory)
+    mocker.patch.object(ratification_mod, "open_driver", driver_factory)
 
     result = await run_ratification_pass("user-1", expert_id="expert-1")
 
     assert result.superseded_count == 1
-    group_id = driver_factory.call_args.kwargs["database"]
+    scope = driver_factory.call_args.args[0]
+    assert scope == MemoryScope.for_expert("user-1", "expert-1")
+    group_id = scope.group_id
     assert group_id.startswith("expert_")
     assert stub_mark_superseded.call_args.kwargs["group_id"] == group_id
-    assert hit_key("user-1", "edge-expert", "expert-1") == (
-        f"mem:hits:{group_id}:edge-expert"
-    )
+    assert fake_redis.get_calls == [f"mem:hits:{group_id}:edge-expert"]
 
 
 def test_grace_period_is_thirty_days_per_spec():
@@ -270,9 +292,7 @@ async def test_unhit_edge_just_inside_grace_window_is_untouched(
     )
     edge = {"uuid": "edge-near-boundary", "created_at": created_at}
     driver = _make_driver(records_for_list=[edge])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
 
     result = await run_ratification_pass("u-near-boundary")
 
@@ -292,9 +312,7 @@ async def test_already_active_edges_are_not_in_scope_of_the_listing_query(
     # edge would not show up in the list query; we model that by leaving
     # the list empty here.
     driver = _make_driver(records_for_list=[])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
 
     result = await run_ratification_pass("u-only-active")
 
@@ -335,20 +353,16 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
         },
     ]
     driver = _make_driver(records_for_list=edges)
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
-    )
+    mocker.patch.object(ratification_mod, "open_driver", MagicMock(return_value=driver))
     fake_redis.hits["edge-good-hot"] = 5
     # edge-poison: any hit-count read for this edge raises so the
     # per-edge try/except can catch it without breaking the others.
     original_get_hit_count = ratification_mod._get_hit_count
 
-    async def hit_count_with_poison(
-        user_id: str, edge_uuid: str, expert_id: str | None = None
-    ) -> int:
+    async def hit_count_with_poison(scope: MemoryScope, edge_uuid: str) -> int:
         if edge_uuid == "edge-poison":
             raise RuntimeError("simulated redis explosion")
-        return await original_get_hit_count(user_id, edge_uuid, expert_id)
+        return await original_get_hit_count(scope, edge_uuid)
 
     mocker.patch.object(
         ratification_mod, "_get_hit_count", side_effect=hit_count_with_poison
@@ -363,9 +377,10 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+    scope = MemoryScope.build("u-mixed", expert_id)
     assert fake_redis.get_calls == [
-        hit_key("u-mixed", "edge-good-hot", expert_id),
-        hit_key("u-mixed", "edge-good-stale", expert_id),
+        scope.redis_key("hits", edge_uuid="edge-good-hot"),
+        scope.redis_key("hits", edge_uuid="edge-good-stale"),
     ]
 
 
@@ -381,12 +396,13 @@ async def test_hit_refreshes_ttl_to_full_grace_period(fake_redis):
     by the initial SET NX EX runs out mid-window and the nightly sweep
     falsely reads zero hits for an edge that was being used."""
     grace_seconds = int(RATIFICATION_GRACE_PERIOD.total_seconds())
+    scope = MemoryScope.for_user("u-ttl")
 
-    await record_memory_hit("u-ttl", "edge-busy")
-    await record_memory_hit("u-ttl", "edge-busy")
-    await record_memory_hit("u-ttl", "edge-busy")
+    await record_memory_hit(scope, "edge-busy")
+    await record_memory_hit(scope, "edge-busy")
+    await record_memory_hit(scope, "edge-busy")
 
-    key = hit_key("u-ttl", "edge-busy")
+    key = scope.redis_key("hits", edge_uuid="edge-busy")
     assert fake_redis.expire_calls == [(key, grace_seconds)] * 3
     assert fake_redis.hits["edge-busy"] == 3
 
@@ -401,7 +417,7 @@ async def test_record_memory_hit_swallows_ttl_refresh_failure(fake_redis):
 
     fake_redis.expire = exploding_expire
 
-    await record_memory_hit("u-ttl", "edge-busy")
+    await record_memory_hit(MemoryScope.for_user("u-ttl"), "edge-busy")
 
     assert fake_redis.hits["edge-busy"] == 1
 
@@ -419,9 +435,9 @@ async def test_try_ratify_on_hit_empty_edge_list_returns_zero_without_redis_or_c
     record_spy = mocker.patch.object(
         ratification_mod, "record_memory_hit", new=AsyncMock()
     )
-    driver_spy = mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver")
+    driver_spy = mocker.patch.object(ratification_mod, "open_driver")
 
-    promoted = await ratification_mod.try_ratify_on_hit("u1", [])
+    promoted = await ratification_mod.try_ratify_on_hit(MemoryScope.for_user("u1"), [])
 
     assert promoted == 0
     record_spy.assert_not_called()
@@ -437,9 +453,11 @@ async def test_try_ratify_on_hit_records_hits_for_every_retrieved_edge(mocker):
     mocker.patch.object(ratification_mod, "record_memory_hit", new=record_spy)
     # Driver returns no promotions (everything already-active).
     driver = _make_driver(records_for_list=[], records_for_promote=[])
-    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
+    mocker.patch.object(ratification_mod, "open_driver", return_value=driver)
 
-    await ratification_mod.try_ratify_on_hit("u1", ["edge-a", "edge-b", "edge-c"])
+    await ratification_mod.try_ratify_on_hit(
+        MemoryScope.for_user("u1"), ["edge-a", "edge-b", "edge-c"]
+    )
 
     assert record_spy.await_count == 3
     called_uuids = [c.args[1] for c in record_spy.await_args_list]
@@ -471,10 +489,10 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
         return (list(next(promote_results)), None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
-    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
+    mocker.patch.object(ratification_mod, "open_driver", return_value=driver)
 
     promoted = await ratification_mod.try_ratify_on_hit(
-        "u1", ["edge-1", "edge-2", "edge-3"]
+        MemoryScope.for_user("u1"), ["edge-1", "edge-2", "edge-3"]
     )
 
     assert promoted == 2
@@ -497,10 +515,10 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     driver = MagicMock()
     driver.close = AsyncMock(return_value=None)
     driver.execute_query = AsyncMock(side_effect=fake_execute)
-    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
+    mocker.patch.object(ratification_mod, "open_driver", return_value=driver)
 
     promoted = await ratification_mod.try_ratify_on_hit(
-        "u1", ["edge-a", "edge-poison", "edge-c"]
+        MemoryScope.for_user("u1"), ["edge-a", "edge-poison", "edge-c"]
     )
 
     # The poison edge errored; the others promoted.
@@ -509,15 +527,22 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
 
 
 @pytest.mark.asyncio
-async def test_try_ratify_on_hit_empty_user_id_is_noop(mocker):
-    record_spy = mocker.patch.object(
-        ratification_mod, "record_memory_hit", new=AsyncMock()
+async def test_try_ratify_on_hit_stays_in_the_given_scope(mocker):
+    """The hit counter and the promotion driver both use the scope the
+    caller built, so an expert's retrieval never touches the account's
+    counters or graph."""
+    record_spy = AsyncMock()
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=record_spy)
+    driver = _make_driver(records_for_list=[], records_for_promote=[])
+    open_driver = mocker.patch.object(
+        ratification_mod, "open_driver", return_value=driver
     )
-    driver_spy = mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver")
-    promoted = await ratification_mod.try_ratify_on_hit("", ["edge-a"])
-    assert promoted == 0
-    record_spy.assert_not_called()
-    driver_spy.assert_not_called()
+    scope = MemoryScope.for_expert("u1", "expert-1")
+
+    await ratification_mod.try_ratify_on_hit(scope, ["edge-a"])
+
+    record_spy.assert_awaited_once_with(scope, "edge-a")
+    open_driver.assert_called_once_with(scope)
 
 
 # ---------------------------------------------------------------------------

@@ -40,8 +40,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Failed to load agent data" }}
-              context="agent page"
+              responseError={{ message: "Failed to load workflow data" }}
+              context="workflow page"
               onRetry={() => window.location.reload()}
               className="w-full max-w-md"
             />
@@ -59,8 +59,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Agent not found" }}
-              context="agent page"
+              responseError={{ message: "Workflow not found" }}
+              context="workflow page"
             />
           </div>
         </main>

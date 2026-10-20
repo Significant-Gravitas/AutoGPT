@@ -203,13 +203,15 @@ def _build_graphiti(
     function. One construction site means a kwarg added here reaches the
     tests too, instead of silently drifting from a hand-mirrored copy.
     Production passes none of them; each defaults to the real component.
-    ``group_id`` is only consulted when ``graph_driver`` is not supplied.
+    ``group_id`` is only consulted when ``graph_driver`` is not supplied;
+    ``llm_client`` is wrapped in ``recall_ingest.ForgetAwareLLMClient``.
     """
     from graphiti_core import Graphiti
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client import LLMConfig
 
     from .falkordb_driver import AutoGPTFalkorDriver
+    from .recall_ingest import ForgetAwareLLMClient
     from .reranker import CompatOpenAIRerankerClient
 
     if embedder is None:
@@ -222,9 +224,9 @@ def _build_graphiti(
 
     # P-1.4: cross-encoder reranker for warm-context retrieval.
     # Runs concurrent boolean-classifier prompts (one per candidate
-    # edge) and uses log-probabilities to rank. Cheap because the
-    # reranker model defaults to gpt-4.1-nano — the cost is one batch
-    # of small calls per session-start search. The Compat subclass
+    # edge) and uses log-probabilities to rank. Costs one small call per
+    # candidate (up to 2 * context_max_facts) on the reranker model
+    # (gpt-6-luna by default) per session-start search. The Compat subclass
     # fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
     if cross_encoder is None:
@@ -243,7 +245,7 @@ def _build_graphiti(
             database=group_id,
         )
     return Graphiti(
-        llm_client=llm_client,
+        llm_client=ForgetAwareLLMClient(llm_client),
         embedder=embedder,
         cross_encoder=cross_encoder,
         graph_driver=graph_driver,
@@ -261,7 +263,7 @@ async def get_graphiti_client(group_id: str):
 
     Returns a ``graphiti_core.Graphiti`` instance.
     """
-    from graphiti_core.llm_client import OpenAIClient
+    from .llm_client import GraphitiOpenAIClient
 
     state = _get_loop_state()
     cache = state.cache
@@ -270,7 +272,7 @@ async def get_graphiti_client(group_id: str):
         if group_id in cache:
             return cache[group_id]
 
-        llm_client = OpenAIClient(config=_build_llm_config())
+        llm_client = GraphitiOpenAIClient(config=_build_llm_config())
         client = _build_graphiti(group_id, llm_client)
         cache[group_id] = client
         return client
@@ -337,14 +339,14 @@ async def make_flex_graphiti_client(group_id: str):
     from .flex_client import FlexOpenAIClient
 
     if not chat_cfg.transport.supports_flex_tier:
-        from graphiti_core.llm_client import OpenAIClient
+        from .llm_client import GraphitiOpenAIClient
 
         logger.info(
             "Graphiti community rebuild: flex tier not available on "
             "transport=%s; falling back to sync OpenAIClient.",
             chat_cfg.transport.name,
         )
-        llm_client = OpenAIClient(config=_build_llm_config())
+        llm_client = GraphitiOpenAIClient(config=_build_llm_config())
     else:
         llm_client = FlexOpenAIClient(config=_build_llm_config())
     return _build_graphiti(group_id, llm_client)

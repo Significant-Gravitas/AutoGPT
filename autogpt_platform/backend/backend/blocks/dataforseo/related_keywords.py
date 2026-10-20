@@ -147,6 +147,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def _fetch_related_keywords(
