@@ -63,6 +63,14 @@ def test_the_executor_can_record_a_scheduled_run() -> None:
     manager._create_fastapi_endpoint(manager.record_scheduled_run)
 
 
+def test_the_executor_can_forget_a_deleted_scheduled_chat() -> None:
+    """Otto's delete_schedule tool runs in the copilot executor, which has no
+    Prisma: a direct call there fails, and its cleanup with it."""
+    assert hasattr(DatabaseManagerAsyncClient, "forget_scheduled_chat")
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.forget_scheduled_chat)
+
+
 def test_the_scheduler_can_post_a_note_into_a_chat() -> None:
     """The scheduler has no Prisma of its own; a skipped run's note goes
     through this RPC."""

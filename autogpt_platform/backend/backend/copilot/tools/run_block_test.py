@@ -22,6 +22,16 @@ from .run_block import RunBlockTool
 _TEST_USER_ID = "test-user-run-block"
 
 
+@pytest.fixture(autouse=True)
+def _no_pending_reviews():
+    """No test here seeds a review; unstubbed, this lookup is an RPC to a database
+    manager that only an earlier test's ``server`` fixture would have started."""
+    reviews = MagicMock()
+    reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+    with patch("backend.copilot.tools.helpers.review_db", return_value=reviews):
+        yield
+
+
 def make_mock_block(
     block_id: str, name: str, block_type: BlockType, disabled: bool = False
 ):
@@ -246,11 +256,14 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
-        """Non-excluded blocks pass the filtering guard (may fail later for other reasons)."""
+        """A standard block passes the filtering guard and reaches the schema preview."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        standard_block = make_mock_block(
-            "standard-id", "HTTP Request", BlockType.STANDARD
+        standard_block = make_mock_block_with_schema(
+            block_id="standard-id",
+            name="HTTP Request",
+            input_properties={"url": {"type": "string"}},
+            required_fields=["url"],
         )
 
         with (
@@ -272,10 +285,7 @@ class TestRunBlockFiltering:
                 dry_run=False,
             )
 
-        # Should NOT be an ErrorResponse about CoPilot exclusion
-        # (may be other errors like missing credentials, but not the exclusion guard)
-        if isinstance(response, ErrorResponse):
-            assert "cannot be run directly" not in response.message
+        assert isinstance(response, BlockDetailsResponse)
 
 
 class TestRunBlockInputValidation:
