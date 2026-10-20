@@ -18,6 +18,7 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
 import backend.data.llm_registry
+from backend.blocks import get_blocks
 from backend.copilot import engine_switch
 from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
@@ -26,7 +27,7 @@ from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
@@ -111,12 +112,18 @@ class CoPilotExecutor(AppProcess):
 
     def run(self):
         """Main service loop - consume from RabbitMQ."""
-        # DIAGNOSTIC (SECRT-2966, to be reverted): GC pauses and busy frames.
-        threading.Thread(target=_diag_sample, daemon=True, name="diag").start()
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
         _load_catalog()
+        # Load the block registry before taking turns. A turn's first tool call
+        # loads it otherwise, and the collections over the grown heap stall every turn.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"Loaded {block_count} blocks in {time.monotonic() - load_started:.1f}s"
+        )
+        freeze_startup_heap()
 
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property
@@ -734,64 +741,3 @@ def _persist_switch_failure_marker(session_id: str) -> None:
             f"Failed to persist engine-switch failure marker for "
             f"{session_id}: {marker_err}"
         )
-
-
-def _diag_sample():
-    """DIAGNOSTIC (SECRT-2966, to be reverted)."""
-    import collections
-    import gc
-    import sys
-    import traceback
-
-    diag = logging.getLogger("diag")
-
-    def on_gc(phase, info, _start=[0.0]):
-        if phase == "start":
-            _start[0] = time.perf_counter()
-        elif (took := time.perf_counter() - _start[0]) >= 0.05:
-            diag.warning(f"DIAG gc gen{info['generation']} took {took * 1000:.0f}ms")
-
-    gc.callbacks.append(on_gc)
-    me = threading.get_ident()
-    idle = {
-        "wait",
-        "select",
-        "poll",
-        "_worker",
-        "sleep",
-        "get",
-        "accept",
-        "run_forever",
-        "_run_once",
-        "recv_into",
-        "readline",
-        "control",
-    }
-    window: collections.Counter[str] = collections.Counter()
-    window_start, starved, last = time.monotonic(), 0.0, time.perf_counter()
-    while True:
-        time.sleep(0.02)
-        now = time.perf_counter()
-        if now - last > 0.25:
-            starved += now - last
-        last = now
-        for tid, frame in sys._current_frames().items():
-            if tid == me:
-                continue
-            stack = traceback.extract_stack(frame)
-            if not stack or stack[-1].name in idle:
-                continue
-            leaf = stack[-1]
-            key = f"{leaf.filename.rsplit('site-packages/', 1)[-1]}:{leaf.lineno} {leaf.name}"
-            own = [f for f in stack if "/backend/backend/" in f.filename]
-            if own:
-                key += f" <- {own[-1].filename.rsplit('/backend/', 1)[-1]}:{own[-1].lineno} {own[-1].name}"
-            window[key] += 1
-        if time.monotonic() - window_start >= 5:
-            if window or starved:
-                top = " | ".join(f"{n}x {k}" for k, n in window.most_common(10))
-                diag.warning(
-                    f"DIAG 5s window: sampler starved {starved:.1f}s; busy {top}"
-                )
-            window.clear()
-            window_start, starved = time.monotonic(), 0.0
