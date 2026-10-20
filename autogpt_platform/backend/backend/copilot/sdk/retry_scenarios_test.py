@@ -1121,7 +1121,10 @@ def _make_sdk_patches(
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
-        (f"{_SVC}.resolve_answered", dict(new_callable=AsyncMock, return_value=[])),
+        (
+            "backend.copilot.gate.held.answered",
+            dict(new_callable=AsyncMock, return_value=[]),
+        ),
         (
             f"{_SVC}.drain_pending_for_persist",
             dict(new_callable=AsyncMock, return_value=[]),
