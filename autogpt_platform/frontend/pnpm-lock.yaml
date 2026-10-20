@@ -118,6 +118,9 @@ importers:
       '@tanstack/react-query':
         specifier: 5.90.6
         version: 5.90.6(react@18.3.1)
+      '@tanstack/react-virtual':
+        specifier: 3.13.18
+        version: 3.13.18(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/jaro-winkler':
         specifier: 0.2.4
         version: 0.2.4
