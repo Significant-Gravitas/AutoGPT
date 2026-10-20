@@ -29,10 +29,11 @@ test("landing happy path: a user finishing onboarding lands on /home", async ({
   await expect(page).toHaveURL(/\/onboarding/);
 
   const copilotRequests = recordCopilotNavigations(page);
-  await completeOnboardingWizard(page, {
+  const onboarding = await completeOnboardingWizard(page, {
     role: "Engineering",
-    painPoints: ["Research", "Reports & data"],
   });
+  expect(onboarding.onboardingPath).toBe("brain-dump");
+  expect(onboarding.sawExpertRecommendations).toBe(true);
 
   await expectHomeLanding(page, copilotRequests);
 });

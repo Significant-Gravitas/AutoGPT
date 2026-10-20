@@ -1,5 +1,14 @@
 import { Page, expect } from "@playwright/test";
 
+export async function dismissTabIntros(page: Page) {
+  await page.addLocatorHandler(
+    page.getByTestId("tab-intro-overlay"),
+    async (intro) => {
+      await intro.getByRole("button", { name: "Got it", exact: true }).click();
+    },
+  );
+}
+
 function resolveAppUrl(page: Page, destination: string) {
   const baseURL =
     page.url().startsWith("http://") || page.url().startsWith("https://")
@@ -93,20 +102,45 @@ export async function completeOnboardingWizard(
   await advanceToRoleStep(page, plan);
   await page.getByText(role, { exact: false }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(page.getByText("What's eating your time?")).toBeVisible({
+  const painPointsHeading = page.getByText("What's eating your time?");
+  const skipBrainDump = page.getByRole("button", {
+    name: "Skip for now",
+    exact: true,
+  });
+  await expect(painPointsHeading.or(skipBrainDump)).toBeVisible({
     timeout: 5000,
   });
-  for (const point of painPoints) {
-    await page.getByText(point, { exact: true }).click();
+  const onboardingPath = (await skipBrainDump.isVisible())
+    ? "brain-dump"
+    : "pain-points";
+  if (onboardingPath === "brain-dump") {
+    await skipBrainDump.click();
+    await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
+  } else {
+    for (const point of painPoints) {
+      await page.getByText(point, { exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
   }
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
 
+  const skipHiring = page.getByRole("button", {
+    name: "I'll add members later",
+    exact: true,
+  });
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
   });
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
+  await expect(skipHiring.or(connect).or(preparing).first()).toBeVisible({
+    timeout: 10000,
+  });
+  const sawExpertRecommendations = await skipHiring.isVisible();
+  if (sawExpertRecommendations) {
+    await skipHiring.click();
+    await expect(skipHiring).toBeHidden();
+  }
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -117,5 +151,5 @@ export async function completeOnboardingWizard(
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });
-  return { role, painPoints, plan };
+  return { role, painPoints, plan, onboardingPath, sawExpertRecommendations };
 }
