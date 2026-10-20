@@ -209,6 +209,7 @@ async def test_a_slow_falkordb_reply_does_not_stall_the_loop_and_the_build_serve
     )
     monkeypatch.setattr(graphiti_config, "falkordb_host", "127.0.0.1")
     monkeypatch.setattr(graphiti_config, "falkordb_port", proxy.port)
+    monkeypatch.setattr(graphiti_config, "falkordb_socket_connect_timeout", 2.0)
     monkeypatch.setattr(graphiti_config, "context_refresh_timeout", _BUDGET)
     # The episode read goes through the proxied client; the fact search
     # would call the embedding API.

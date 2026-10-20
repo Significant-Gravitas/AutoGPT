@@ -24,13 +24,20 @@ def test_every_client_carries_the_transport_deadlines(monkeypatch) -> None:
         falkordb_connect.graphiti_config, "falkordb_socket_timeout", 1.3
     )
     with patch.object(falkordb_connect, "FalkorDB") as falkordb:
+        falkordb.return_value.connection.connection_pool.connection_kwargs = {}
         assert falkordb_connect.new_falkordb_client() is falkordb.return_value
         falkordb_connect.new_falkordb_client("falkordb.internal", 7000)
 
     configured, explicit = (call.kwargs for call in falkordb.call_args_list)
     for kwargs in (configured, explicit):
         assert kwargs["socket_connect_timeout"] == 0.7
-        assert kwargs["socket_timeout"] == 1.3
+        assert kwargs["socket_timeout"] == 0.7
+    assert (
+        falkordb.return_value.connection.connection_pool.connection_kwargs[
+            "socket_timeout"
+        ]
+        == 1.3
+    )
     assert configured["host"] == falkordb_connect.graphiti_config.falkordb_host
     assert configured["port"] == falkordb_connect.graphiti_config.falkordb_port
     assert (explicit["host"], explicit["port"]) == ("falkordb.internal", 7000)

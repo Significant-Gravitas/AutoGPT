@@ -353,6 +353,28 @@ class TestJoinGrace:
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(pending.task, timeout=1)
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cancel_before_join", [False, True])
+    async def test_cancelling_only_the_refresh_does_not_cancel_the_turn(
+        self, cancel_before_join
+    ) -> None:
+        with patch.object(
+            context_refresh, "refresh_warm_context", new=_refresh_taking(60)
+        ):
+            pending = start_refresh("user-abc", "deploy the staging environment now")
+            assert pending is not None
+            if cancel_before_join:
+                pending.task.cancel()
+                await asyncio.gather(pending.task, return_exceptions=True)
+            join = asyncio.create_task(join_refresh(pending))
+            if not cancel_before_join:
+                await asyncio.sleep(0)
+                pending.task.cancel()
+
+            assert await asyncio.wait_for(join, timeout=1) is None
+            assert pending.task.cancelled()
+            assert not join.cancelled()
+
 
 class TestRefreshRecipe:
     """The refresh swaps the reranker to RRF but keeps the first turn's

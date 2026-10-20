@@ -2595,11 +2595,35 @@ async def _do_transient_backoff(
     state.usage.cli_session_total_usd = None
     await state.generations.absorb_launch()
     fresh_session = state.options.session_id
+    if ctx.sdk_cwd and state.options.resume is not None:
+        _scrub_resumed_memory_for_retry(
+            ctx.sdk_cwd, state.options.resume, ctx.log_prefix
+        )
     if ctx.sdk_cwd and fresh_session and state.options.resume is None:
         delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
     _fresh_adapter(state, ctx.message_id, ctx.session_id)
+
+
+def _scrub_resumed_memory_for_retry(
+    sdk_cwd: str, session_id: str, log_prefix: str
+) -> None:
+    """Remove the failed send's literal memory before the CLI can resume it."""
+    path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
+    if not path.startswith(projects_base() + os.sep):
+        raise RuntimeError("Cannot safely prepare the session for retry")
+    try:
+        content = Path(path).read_bytes()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise RuntimeError("Cannot read the session for retry") from exc
+    scrubbed = _strip_ephemeral_memory_from_cli_jsonl(content)
+    if scrubbed != content and not _write_cli_session_to_disk(
+        scrubbed, sdk_cwd, session_id, log_prefix
+    ):
+        raise RuntimeError("Cannot save the session for retry")
 
 
 def _is_fallback_stderr(line: str) -> bool:
