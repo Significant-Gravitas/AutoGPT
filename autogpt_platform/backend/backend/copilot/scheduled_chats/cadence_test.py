@@ -153,3 +153,18 @@ def test_the_week_the_clocks_change_reads_like_any_other(now):
 )
 def test_describe(crons, words):
     assert describe(crons, _CHICAGO, _NOW) == words
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 10, 16, 10, 0, tzinfo=ZoneInfo(_CHICAGO)),
+        datetime(2026, 10, 17, 10, 0, tzinfo=ZoneInfo(_CHICAGO)),
+    ],
+    ids=["friday-after-its-run", "saturday"],
+)
+def test_weekdays_read_late_in_the_week_do_not_pass_for_daily(now):
+    """The weekend falls after their last run of the week, and must still
+    fall between two runs of the ones read."""
+    assert describe(["0 9 * * 1-5"], _CHICAGO, now) == "5 times a week"
+    assert describe(["*/30 * * * mon-fri"], _CHICAGO, now) == "240 times a week"

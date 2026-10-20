@@ -94,9 +94,10 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     Each cron is read for at most ``_COUNT_CAP`` runs: a beat found within
     them stands for the week, and a count that reaches the cap says so."""
     if len(crons) == 1:
-        # Over a week and a day, so a weekend shows and weekdays do not pass
-        # for daily; a weekly beat needs weeks to show.
-        beat = _fires(crons, timezone, now, span=_WEEK + timedelta(days=1))
+        # Two weeks, so every gap in a week's runs falls between two of them
+        # whatever day it is read on: weekdays read on a Saturday do not pass
+        # for daily. A weekly beat needs weeks to show.
+        beat = _fires(crons, timezone, now, span=2 * _WEEK)
         if len(beat) < 3:
             beat = _fires(crons, timezone, now, span=4 * _WEEK, limit=3)
         gaps = {later - earlier for earlier, later in zip(beat, beat[1:])}
