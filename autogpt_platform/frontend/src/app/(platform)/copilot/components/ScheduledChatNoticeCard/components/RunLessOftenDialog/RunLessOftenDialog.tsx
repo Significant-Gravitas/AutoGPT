@@ -41,6 +41,10 @@ export function RunLessOftenDialog({ scheduleKey, isOpen, setIsOpen }: Props) {
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
+        ) : dialog.refusal ? (
+          <Text variant="body" className="text-zinc-600">
+            {dialog.refusal}
+          </Text>
         ) : dialog.isError || !dialog.cadence ? (
           <ErrorCard
             responseError={{ message: "Couldn't load how often it runs." }}

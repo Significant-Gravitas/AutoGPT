@@ -10,7 +10,7 @@ import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-sc
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { changeErrorText, lowerFirst } from "./helpers";
+import { changeErrorText, lowerFirst, refusalText } from "./helpers";
 
 interface Args {
   scheduleKey: string;
@@ -74,6 +74,7 @@ export function useRunLessOftenDialog({ scheduleKey, isOpen, onDone }: Args) {
   return {
     cadence,
     isLoading: cadenceQuery.isLoading,
+    refusal: refusalText(cadenceQuery.error),
     isError: cadenceQuery.isError,
     selected,
     select: setSelected,
