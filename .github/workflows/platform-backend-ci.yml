@@ -17,6 +17,7 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
+      - "autogpt_platform/frontend/src/services/feature-flags/use-get-flag.ts"
   pull_request:
     branches: [master, dev, release-*]
     paths:
@@ -33,6 +34,7 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
+      - "autogpt_platform/frontend/src/services/feature-flags/use-get-flag.ts"
   merge_group:
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the

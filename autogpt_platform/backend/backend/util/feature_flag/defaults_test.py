@@ -1,4 +1,6 @@
 import os
+import re
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -8,6 +10,7 @@ from posthog.types import FeatureFlagResult
 
 import backend.util.feature_flag as ff
 from backend.util.feature_flag import Flag, frontend
+from backend.util.feature_flag.defaults import DEFAULT_ON_FLAGS
 from backend.util.settings import FeatureFlagBackend
 
 MATURE_FLAGS = [
@@ -23,6 +26,30 @@ MATURE_FLAGS = [
     "expert-spend-approval",
     "ai-agent-execution-summary",
 ]
+
+
+def test_mature_boolean_defaults_match_frontend():
+    source = (
+        Path(__file__).resolve().parents[4]
+        / "frontend/src/services/feature-flags/use-get-flag.ts"
+    ).read_text(encoding="utf-8")
+    declaration = re.search(
+        r"^const defaultFlags = \{(.*?)^\} satisfies Record<Flag, unknown>;",
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert declaration is not None, "Cannot locate the frontend defaultFlags map"
+    frontend_defaults = {
+        frontend.FrontendFlag[name].value
+        for name in re.findall(
+            r"^\s*\[Flag\.([A-Z0-9_]+)\]: true,\s*$",
+            declaration.group(1),
+            re.MULTILINE,
+        )
+    }
+    assert frontend_defaults == DEFAULT_ON_FLAGS & {
+        flag.value for flag in frontend.FrontendFlag
+    }
 
 
 @pytest.fixture(autouse=True)

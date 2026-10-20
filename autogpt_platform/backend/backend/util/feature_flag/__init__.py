@@ -101,7 +101,7 @@ class Flag(str, Enum):
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
     # finalize / status / download endpoints 404 when off so a stale
     # frontend can't start writing recordings, and the wizard keeps
-    # rendering the pillbox step. Defaults on after the completed rollout.
+    # rendering the pillbox step. Defaults on; operators can turn it off.
     ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
 
     # Gates the per-user weekly community rebuild registered by
@@ -141,7 +141,7 @@ class Flag(str, Enum):
     # dump also produces expert recommendations, the copilot greeting
     # grows a team section, and Otto's empty-roster context tells
     # it that it is the Head of AI. Effective only when both are on;
-    # both default on after the completed rollout.
+    # both default on and retain explicit off switches.
     ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
