@@ -37,13 +37,18 @@ from backend.integrations.codex.transport import (
 )
 from backend.integrations.credential_lease import CredentialLease
 
-_MAX_REQUEST_BYTES = 16 * 1024 * 1024
+# Ten queued 3 MiB images expand to 40 MiB, plus conversation and JSON overhead.
+_MAX_REQUEST_BYTES = 64 * 1024 * 1024
+_REQUEST_TOO_LARGE_MESSAGE = (
+    "Request body is too large. Use fewer or smaller images, "
+    "or shorten the conversation context."
+)
 # Bounds on the per-conversation replay cache. A retry arrives seconds to
 # minutes after the original, so no entry has to outlive its own turn: over 30
 # days of Dev logs the longest Codex turn ran 1,406 s and resolved 67 tool calls
 # (2026-09-18), one boundary each. An entry holds only the response body -- a
 # tool_use boundary or the final text -- never the 0.97M-5.8M token request that
-# provoked the retry, and the byte cap is half the request limit above.
+# provoked the retry. Its byte cap is independent of the image request limit.
 _MAX_REPLAY_ENTRIES = 128
 _MAX_REPLAY_BYTES = 8 * 1024 * 1024
 _REPLAY_TTL_SECONDS = 1800.0
@@ -356,6 +361,10 @@ class CodexAnthropicGateway:
             return _anthropic_error(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
+        except web.HTTPRequestEntityTooLarge:
+            return _anthropic_error(
+                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
+            )
         except (json.JSONDecodeError, ValueError):
             return _anthropic_error(
                 400,
@@ -369,6 +378,10 @@ class CodexAnthropicGateway:
             return _anthropic_error(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
+        except web.HTTPRequestEntityTooLarge:
+            return _anthropic_error(
+                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
+            )
         except (json.JSONDecodeError, ValueError):
             return _anthropic_error(
                 400,
