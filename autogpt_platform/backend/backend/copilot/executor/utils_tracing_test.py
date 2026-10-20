@@ -99,6 +99,13 @@ async def test_dispatch_continues_only_the_trace_of_the_turns_cause(
         ),
         patch.object(utils, "readmit_turn", new=AsyncMock()),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
         patch.object(utils, "enqueue_copilot_turn", new=enqueue),
     ):
         with tracing.start_transaction("copilot.turn", "copilot.turn"):

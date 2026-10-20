@@ -503,6 +503,13 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
             new=AsyncMock(return_value=root_envelope("t1")),
         ),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
         patch(
             "backend.util.clients.get_async_copilot_queue",
             new=AsyncMock(return_value=queue),

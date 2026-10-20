@@ -753,6 +753,9 @@ class DatabaseManager(AppService):
         background_task_db.release_expired_background_turn
     )
     cancel_background_tasks = _(background_task_db.cancel_background_tasks)
+    cancel_orphaned_background_tasks = _(
+        background_task_db.cancel_orphaned_background_tasks
+    )
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
     # tool-pair boundary expansion + visibility guarantees apply uniformly
@@ -786,6 +789,7 @@ class DatabaseManager(AppService):
     list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
     update_chat_session_status = _(chat_db.update_chat_session_status)
     admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
+    record_chat_session_turn = _(chat_db.record_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
@@ -1265,6 +1269,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     suppress_background_followup = d.suppress_background_followup
     release_expired_background_turn = d.release_expired_background_turn
     cancel_background_tasks = d.cancel_background_tasks
+    cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks
     get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
@@ -1292,6 +1297,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_chat_sessions_by_status = d.list_chat_sessions_by_status
     update_chat_session_status = d.update_chat_session_status
     admit_chat_session_turn = d.admit_chat_session_turn
+    record_chat_session_turn = d.record_chat_session_turn
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message

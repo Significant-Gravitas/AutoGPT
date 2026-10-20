@@ -52,6 +52,12 @@ acceptance, delivery, and execution. Deleted or changed-scope destinations do
 not receive a result. The database worker's recovery listing is internal and
 global; operations on individual tasks require the recorded owner.
 
+Dispatch records the active turn identity in session metadata in Postgres.
+If Redis stream metadata is lost, parent Stop cancels that turn's children and
+suppresses their wakes in the same transaction that releases the parent slot.
+Recovery checks the observed session timestamp under a row lock, so a stale
+Stop cannot cancel a later turn's work.
+
 ## Budget semantics
 
 The child and its one follow-up share one admitted background node in the

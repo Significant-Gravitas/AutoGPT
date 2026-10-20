@@ -3734,9 +3734,9 @@ def test_cancel_session_releases_orphan_running(
             )
         ),
     )
-    mock_release = AsyncMock()
+    mock_release = AsyncMock(return_value=True)
     mocker.patch(
-        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        "backend.api.features.chat.routes.cancel_orphaned_background_subtasks",
         new=mock_release,
     )
 
@@ -3746,7 +3746,7 @@ def test_cancel_session_releases_orphan_running(
     data = response.json()
     assert data["cancelled"] is True
     assert data["reason"] == "orphan_released"
-    mock_release.assert_awaited_once()
+    mock_release.assert_awaited_once_with(TEST_USER_ID, "sess-1", stale)
 
 
 def test_cancel_session_skips_orphan_release_within_race_window(

@@ -95,6 +95,10 @@ def mock_queue(monkeypatch):
         "backend.copilot.stream_registry.create_session",
         create_session,
     )
+    monkeypatch.setattr(
+        "backend.copilot.executor.utils.chat_db",
+        lambda: MagicMock(record_chat_session_turn=AsyncMock(return_value=True)),
+    )
     return {
         "enqueue_turn": enqueue_turn,
         "enqueue_cancel": enqueue_cancel,

@@ -38,6 +38,7 @@ from backend.copilot.tree import (
     root_envelope,
 )
 from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
+from backend.data.db_accessors import chat_db
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -670,6 +671,10 @@ async def dispatch_turn(
         # tree's node count, so anything that can raise between there and the
         # finally must be covered by ``release_turn``.
         permissions = _narrow_permissions(permissions, envelope)
+        if user_id and not await chat_db().record_chat_session_turn(
+            session_id, user_id, turn_id
+        ):
+            raise RuntimeError("The turn is no longer running.")
         await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,

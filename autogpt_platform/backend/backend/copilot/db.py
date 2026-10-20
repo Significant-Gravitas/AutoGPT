@@ -1494,6 +1494,21 @@ async def admit_chat_session_turn(
     return "admitted" if updated else "busy"
 
 
+async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
+    """Persist the dispatched turn's identity independently of Redis stream TTLs."""
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" SET metadata=
+            COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
+            "updatedAt"=CURRENT_TIMESTAMP
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running' """,
+            session_id,
+            user_id,
+            turn_id,
+        )
+    )
+
+
 async def update_chat_session_status(
     *,
     session_id: str,

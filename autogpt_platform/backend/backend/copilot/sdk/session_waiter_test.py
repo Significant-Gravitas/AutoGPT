@@ -44,10 +44,18 @@ def mock_session_lookup():
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
     session.metadata.delegated_by_session_id = None
-    with patch(
-        "backend.copilot.sdk.session_waiter.get_chat_session",
-        new=AsyncMock(return_value=session),
-    ) as lookup:
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ) as lookup,
+        patch(
+            "backend.copilot.executor.utils.chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+    ):
         yield lookup
 
 

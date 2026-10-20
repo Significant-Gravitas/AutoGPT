@@ -7,7 +7,7 @@ from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession
 
 from backend.copilot.background_task import BackgroundOutcome, BackgroundTask
-from backend.copilot.model import ChatSessionMetadata
+from backend.copilot.model import ChatSessionMetadata, _parse_json_field
 from backend.data import db
 from backend.util.json import SafeJson
 
@@ -30,7 +30,12 @@ async def create_background_task(
         child = await _lock_session(tx, task.child_session_id)
         if not _matches(parent, task) or not _matches(child, task):
             raise ValueError("The subtask's owner or scope changed.")
-        if parent is None or parent.chatStatus != "running":
+        if (
+            parent is None
+            or parent.chatStatus != "running"
+            or _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+            != task.launch_turn_id
+        ):
             raise ValueError("The launching turn is no longer running.")
         if child is None or child.chatStatus != "idle":
             raise ValueError("The subtask already has work in progress.")
@@ -188,7 +193,11 @@ async def enqueue_background_followup(
     metadata: dict[str, Any],
     terminal: bool = False,
 ) -> Literal["queued", "busy", "closed", "delivered"]:
+    task = await get_background_task(task_id, user_id)
+    if task is None:
+        return "closed"
     async with db.transaction() as tx:
+        parent = await _lock_session(tx, task.parent_session_id)
         rows = await db.query_raw_with_schema(
             """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
             WHERE id=$1 AND "userId"=$2 FOR UPDATE""",
@@ -202,7 +211,6 @@ async def enqueue_background_followup(
         task = rows[0]
         if task.outcome is None or task.wake_suppressed:
             return "closed"
-        parent = await _lock_session(tx, task.parent_session_id)
         if not _matches(parent, task):
             await _close(tx, task_id, user_id)
             return "closed"
@@ -267,6 +275,35 @@ async def cancel_background_tasks(
     session_id: str,
     launch_turn_id: str | None = None,
 ) -> list[BackgroundTask]:
+    return await _cancel_background_tasks(
+        db.prisma, user_id, session_id, launch_turn_id
+    )
+
+
+async def cancel_orphaned_background_tasks(
+    user_id: str, session_id: str, expected_updated_at: datetime
+) -> list[BackgroundTask] | None:
+    """Cancel the observed orphan and its children before freeing the parent slot."""
+    async with db.transaction() as tx:
+        parent = await _lock_session(tx, session_id)
+        if (
+            parent is None
+            or parent.userId != user_id
+            or parent.chatStatus != "running"
+            or parent.updatedAt != expected_updated_at
+        ):
+            return None
+        turn_id = _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+        tasks = await _cancel_background_tasks(tx, user_id, session_id, turn_id)
+        await ChatSession.prisma(tx).update(
+            where={"id": session_id}, data={"chatStatus": "idle"}
+        )
+        return tasks
+
+
+async def _cancel_background_tasks(
+    tx: Prisma, user_id: str, session_id: str, launch_turn_id: str | None
+) -> list[BackgroundTask]:
     tasks = await db.query_raw_with_schema(
         """UPDATE {schema_prefix}"ChatBackgroundTask"
         SET outcome=COALESCE(outcome,'cancelled'),
@@ -279,6 +316,7 @@ async def cancel_background_tasks(
         session_id,
         launch_turn_id,
         model=BackgroundTask,
+        client=tx,
     )
     for task in tasks:
         await db.execute_raw_with_schema(
@@ -287,6 +325,7 @@ async def cancel_background_tasks(
             WHERE id=$1""",
             task.child_turn_id,
             task.outcome,
+            client=tx,
         )
     return tasks
 

@@ -31,7 +31,10 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
-from backend.copilot.background_delivery import cancel_background_subtasks
+from backend.copilot.background_delivery import (
+    cancel_background_subtasks,
+    cancel_orphaned_background_subtasks,
+)
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -314,7 +317,9 @@ async def _validate_and_get_writable_session(
 _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
 
 
-async def _try_release_orphan_running(session_id: str, user_id: str) -> bool:
+async def _try_release_orphan_running(
+    session_id: str, user_id: str, *, cancel_background: bool = False
+) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
     older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
     ``acquire_turn_slot``→``create_session`` race window).  Returns
@@ -333,6 +338,10 @@ async def _try_release_orphan_running(session_id: str, user_id: str) -> bool:
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
     if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
         return False
+    if cancel_background:
+        return await cancel_orphaned_background_subtasks(
+            user_id, session_id, updated_at
+        )
     await active_turns.release_turn_slot(user_id, session_id)
     return True
 
@@ -1710,7 +1719,9 @@ async def cancel_session_task(
         #     orphaning the executor work in the opposite direction.
         # Gate the cleanup on session age so a fresh admit isn't stomped.
         # Anything older than the threshold is the real orphan.
-        if await _try_release_orphan_running(session_id, user_id):
+        if await _try_release_orphan_running(
+            session_id, user_id, cancel_background=True
+        ):
             return CancelSessionResponse(cancelled=True, reason="orphan_released")
         return CancelSessionResponse(cancelled=True, reason="no_active_session")
 

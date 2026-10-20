@@ -365,6 +365,30 @@ async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
+async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
+    world: World,
+):
+    task = await world.launch()
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
+        world.parent.session_id,
+        datetime.now(UTC) - timedelta(minutes=1),
+    )
+    await (await get_redis_async()).delete(
+        stream_registry._get_session_meta_key(world.parent.session_id)
+    )
+    response = await cancel_session_task(world.parent.session_id, world.user_id)
+    assert response.reason == "orphan_released"
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "cancelled" and stored.wake_suppressed
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=task.child_turn_id
+    )
+    await background_delivery.reconcile_background_subtasks()
+    assert len(world.published.await_args_list) == 1
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
+
+
 async def test_expired_worker_without_redis_meta_releases_its_slot(world: World):
     task = await world.launch()
     await world.finish_parent()
@@ -385,6 +409,54 @@ async def test_expired_worker_without_redis_meta_releases_its_slot(world: World)
     await background_delivery.reconcile_background_subtasks()
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
     assert '"outcome": "timed_out"' in world.entry(task.parent_session_id).message
+
+
+async def test_orphan_stop_is_scoped_to_the_observed_turn_and_owner(world: World):
+    old_task = await world.launch()
+    old_parent = await chat_db().get_chat_session_metadata(world.parent.session_id)
+    assert old_parent
+    await world.finish_parent()
+    set_execution_context(world.user_id, world.parent)
+    new_turn_id = await utils.schedule_chat_turn(
+        session_id=world.parent.session_id,
+        user_id=world.user_id,
+        message="A later request",
+    )
+    assert new_turn_id
+    world.envelope = root_envelope(new_turn_id, session_id=world.parent.session_id)
+    new_task = await world.launch("later-launch")
+    assert (
+        await background_task_db.cancel_orphaned_background_tasks(
+            world.user_id, world.parent.session_id, old_parent.updated_at
+        )
+        is None
+    )
+    stale = datetime.now(UTC) - timedelta(minutes=1)
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
+        world.parent.session_id,
+        stale,
+    )
+    parent = await chat_db().get_chat_session_metadata(world.parent.session_id)
+    assert parent
+    assert (
+        await background_task_db.cancel_orphaned_background_tasks(
+            "another-owner", world.parent.session_id, parent.updated_at
+        )
+        is None
+    )
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == "running"
+    stored = await background_task_db.get_background_task(new_task.id, world.user_id)
+    assert stored and stored.outcome is None
+    await (await get_redis_async()).delete(
+        stream_registry._get_session_meta_key(world.parent.session_id)
+    )
+    response = await cancel_session_task(world.parent.session_id, world.user_id)
+    assert response.reason == "orphan_released"
+    old = await background_task_db.get_background_task(old_task.id, world.user_id)
+    new = await background_task_db.get_background_task(new_task.id, world.user_id)
+    assert old and old.outcome is None and not old.wake_suppressed
+    assert new and new.outcome == "cancelled" and new.wake_suppressed
 
 
 async def test_late_cancellation_leaves_a_new_user_turn_queued(world: World):
@@ -432,16 +504,14 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
     )
     monkeypatch.setattr(turn_queue, "turn_refusal", AsyncMock(return_value=None))
     parent = await create_chat_session(user_id, dry_run=False)
-    turn_id = str(uuid4())
-    await chat_db().update_chat_session_status(
+    set_execution_context(user_id, parent)
+    turn_id = await utils.schedule_chat_turn(
         session_id=parent.session_id,
-        expect_status="idle",
-        status="running",
         user_id=user_id,
+        message="Research this in the background",
     )
-    await stream_registry.create_session(
-        parent.session_id, user_id, "chat_stream", "chat", turn_id
-    )
+    assert turn_id
+    published.reset_mock()
     try:
         yield World(
             user_id=user_id,

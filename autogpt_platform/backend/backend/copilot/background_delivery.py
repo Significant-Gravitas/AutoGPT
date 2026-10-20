@@ -45,6 +45,21 @@ async def cancel_background_subtasks(
         await invalidate_session_cache(task.child_session_id)
 
 
+async def cancel_orphaned_background_subtasks(
+    user_id: str, session_id: str, expected_updated_at: datetime
+) -> bool:
+    tasks = await background_task_db().cancel_orphaned_background_tasks(
+        user_id, session_id, expected_updated_at
+    )
+    if tasks is None:
+        return False
+    for task in tasks:
+        await _stop_child(task)
+        await invalidate_session_cache(task.child_session_id)
+    await invalidate_session_cache(session_id)
+    return True
+
+
 async def _reconcile(task: BackgroundTask) -> None:
     now = datetime.now(UTC)
     status = await chat_db().get_chat_session_status(task.child_session_id)
