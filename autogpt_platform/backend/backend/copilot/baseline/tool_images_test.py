@@ -86,7 +86,7 @@ async def test_context_and_attachments_survive_a_pending_image(
     provider = AsyncMock(return_value=stream)
     monkeypatch.setattr(service, "call_provider_stream", provider)
 
-    async with asyncio.timeout(5):
+    async def consume() -> None:
         async for _ in service.stream_chat_completion_baseline(
             session.session_id,
             "Inspect the page",
@@ -97,6 +97,8 @@ async def test_context_and_attachments_survive_a_pending_image(
             context={"url": "https://example.com/page", "content": "Shared context"},
         ):
             pass
+
+    await asyncio.wait_for(consume(), timeout=5)
 
     parts = provider.await_args.kwargs["messages"][-1]["content"]
     assert isinstance(parts, list)
