@@ -1,4 +1,5 @@
-"""How ``structured_completion`` asks each provider for structured output.
+"""How ``inference.complete.structured_complete`` asks each provider for
+structured output.
 
 JSON mode (``force_json_output``) constrains OpenAI, OpenRouter, Groq and
 Ollama, but the native Anthropic Messages call ignores it. There the output
