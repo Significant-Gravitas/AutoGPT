@@ -750,12 +750,14 @@ class TestPostHogToolSpans:
 
     @pytest.mark.asyncio
     async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
-        secret = "Subject: quarterly numbers"
+        email_subject = "Subject: quarterly numbers"
         tool = self._tool(
-            ToolResponseBase(type=ResponseType.NO_RESULTS, message=secret)
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=email_subject)
         )
 
-        await tool.execute("u1", MagicMock(session_id="s1"), "call-1", query=secret)
+        await tool.execute(
+            "u1", MagicMock(session_id="s1"), "call-1", query=email_subject
+        )
 
         capture.assert_called_once()
         _, event, properties = capture.call_args.args
@@ -765,7 +767,7 @@ class TestPostHogToolSpans:
         assert properties["$ai_parent_id"] == "turn-1"
         assert properties["$ai_session_id"] == "s1"
         assert properties["$ai_is_error"] is False
-        assert secret not in repr(properties)
+        assert email_subject not in repr(properties)
 
     @pytest.mark.asyncio
     async def test_a_tool_that_answers_with_an_error_failed(self, capture):
