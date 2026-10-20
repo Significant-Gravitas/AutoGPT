@@ -128,6 +128,11 @@ describe("AutoPilot mode selector", () => {
     expect(
       screen.queryByRole("button", { name: /approval mode: unsupervised/i }),
     ).toBeNull();
+    expect(
+      await screen.findByText(
+        /^Otto will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
     await user.click(
       await screen.findByRole("button", { name: /run unsupervised/i }),
     );
@@ -279,6 +284,27 @@ describe("AutoPilot mode selector", () => {
     });
 
     expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+  });
+
+  it("names the chat's expert in the Unsupervised confirm", async () => {
+    flags.experts = true;
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
   });
 });
 
