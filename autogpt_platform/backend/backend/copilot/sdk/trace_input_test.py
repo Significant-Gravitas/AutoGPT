@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -61,7 +61,7 @@ async def test_turn_exports_prompt_and_references_without_image_bytes(
     tmp_path,
 ) -> None:
     trace_receiver.fail_requests = 0
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     session = ChatSession(
         session_id="sess-1",
         user_id="user-1",
