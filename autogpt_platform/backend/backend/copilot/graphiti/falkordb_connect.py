@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, TypeVar
 
 from falkordb.asyncio import FalkorDB
+from redis.asyncio.cluster import RedisCluster
 
 from .config import graphiti_config
 
@@ -124,16 +125,16 @@ def new_falkordb_client(
     falkordb's constructor probes the server for cluster mode with a
     synchronous INFO, so this does network I/O on the calling thread: call
     it off the event loop (``build_off_loop``, ``DeferredFalkorDB``).
-    ``falkordb_socket_connect_timeout`` bounds opening each connection and
-    ``falkordb_socket_timeout`` each reply, for every command on the client,
-    the probe included: a command whose reply comes later fails with a
-    timeout, and a write that fails that way may already have committed.
+    The constructor's probe uses the shorter of the connect and reply
+    deadlines. Once it finishes, the still-unused async connections get
+    ``falkordb_socket_timeout`` for command replies: a write that times out
+    may already have committed.
     They also end a thread whose await was given up and a connection to a
     server that stopped answering. The chat's asyncio budgets are separate
     and shorter. ``host``, ``port`` and ``password`` default to graphiti
     config.
     """
-    return FalkorDB(
+    client = FalkorDB(
         host=graphiti_config.falkordb_host if host is None else host,
         port=graphiti_config.falkordb_port if port is None else port,
         username=username,
@@ -143,5 +144,18 @@ def new_falkordb_client(
             else password
         ),
         socket_connect_timeout=graphiti_config.falkordb_socket_connect_timeout,
-        socket_timeout=graphiti_config.falkordb_socket_timeout,
+        socket_timeout=min(
+            graphiti_config.falkordb_socket_connect_timeout,
+            graphiti_config.falkordb_socket_timeout,
+        ),
     )
+    connection = client.connection
+    reply_timeout = graphiti_config.falkordb_socket_timeout
+    if isinstance(connection, RedisCluster):
+        connection.connection_kwargs["socket_timeout"] = reply_timeout
+        connection.nodes_manager.connection_kwargs["socket_timeout"] = reply_timeout
+        for node in connection.nodes_manager.startup_nodes.values():
+            node.connection_kwargs["socket_timeout"] = reply_timeout
+    else:
+        connection.connection_pool.connection_kwargs["socket_timeout"] = reply_timeout
+    return client

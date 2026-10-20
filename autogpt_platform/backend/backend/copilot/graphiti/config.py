@@ -74,7 +74,8 @@ class GraphitiConfig(BaseSettings):
         description=(
             "Seconds to open a TCP connection to FalkorDB before giving up, on "
             "every connection the memory code opens. Short, so an unreachable "
-            "server fails a client build or a reconnect quickly."
+            "server fails a client build or a reconnect quickly. Also caps "
+            "the constructor probe's reply timeout."
         ),
     )
     falkordb_socket_timeout: float = Field(
@@ -83,15 +84,15 @@ class GraphitiConfig(BaseSettings):
         description=(
             "Seconds any single FalkorDB reply may take before its command "
             "fails with a timeout: a deadline per reply, on every operation the "
-            "memory code runs (reads, writes, and the probe a client build "
-            "sends). A write whose reply times out may already have been "
+            "memory code runs (reads and writes). The constructor probe uses "
+            "the shorter of this and the connect timeout. A write whose reply "
+            "times out may already have been "
             "committed, so its outcome is unknown to the caller. Separate from "
             "the chat's asyncio budgets (context_timeout; "
             "context_refresh_timeout and the join grace), which are shorter and "
             "end an interactive read first. Long by default so that a slow "
             "write (ingestion, the dream, a forget) on a large graph normally "
-            "completes; it also ends worker threads a cancelled await left "
-            "behind and connections to a server that stopped answering."
+            "completes; it also ends connections to a server that stopped answering."
         ),
     )
 

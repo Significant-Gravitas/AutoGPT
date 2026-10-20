@@ -265,9 +265,8 @@ async def get_graphiti_client(group_id: str):
     unreachable server from stalling the loop, and nothing is locked across
     groups meanwhile. A caller that stops waiting (a cancelled warm context
     refresh) leaves the build running: it caches the client when it
-    finishes, or fails at the transport deadlines (a second to connect,
-    ``falkordb_socket_timeout`` for the probe's reply), and the next call
-    starts afresh.
+    finishes, or fails at the short probe deadline
+    (``falkordb_socket_connect_timeout``), and the next call starts afresh.
 
     Returns a ``graphiti_core.Graphiti`` instance.
     """
