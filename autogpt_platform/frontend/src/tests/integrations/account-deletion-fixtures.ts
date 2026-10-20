@@ -8,6 +8,8 @@ import {
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getGetV1ListCredentialsMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import {
+  getGetV2ListMySkillSubmissionsMockHandler200,
+  getGetV2ListMySkillSubmissionsResponseMock200,
   getGetV2ListMySubmissionsMockHandler200,
   getGetV2ListMySubmissionsResponseMock200,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
@@ -94,6 +96,7 @@ interface DeletionAPIArgs {
   subscription?: SubscriptionStatusResponse;
   credentials?: CredentialsMetaResponse[];
   hasListings?: boolean;
+  hasSkillListings?: boolean;
 }
 
 /** The backend as the flow sees it before anyone clicks anything. */
@@ -101,6 +104,7 @@ export function mockAccountDeletionAPI({
   subscription = subscriptionStatus(),
   credentials = [],
   hasListings = false,
+  hasSkillListings = false,
 }: DeletionAPIArgs = {}) {
   server.use(
     getGetSubscriptionStatusMockHandler200(subscription),
@@ -123,6 +127,11 @@ export function mockAccountDeletionAPI({
         average_rating: null,
       },
     }),
+    getGetV2ListMySkillSubmissionsMockHandler200(
+      hasSkillListings
+        ? getGetV2ListMySkillSubmissionsResponseMock200().slice(0, 1)
+        : [],
+    ),
     getPostAccountSendExitFeedbackMockHandler204(),
   );
 }

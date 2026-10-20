@@ -12,7 +12,8 @@ export interface Consequence {
 interface ConsequencesArgs {
   appNames: string[];
   planLabel: string | null;
-  hasListings: boolean;
+  publishedWorkflows: boolean;
+  publishedSkills: boolean;
 }
 
 interface EmailMatchArgs {
@@ -22,14 +23,15 @@ interface EmailMatchArgs {
 
 const DATA_LINE =
   "Your chats, Experts, workflows, files and memory are deleted.";
-const LISTINGS_LINE =
-  "Your published workflows are removed from the Marketplace.";
+const TRIAL_LABEL = "trial";
+const TRIAL_LINE = "Your trial ends now.";
 const FALLBACK_ERROR = "We couldn't delete your account. Try again.";
 
 export function getConsequences({
   appNames,
   planLabel,
-  hasListings,
+  publishedWorkflows,
+  publishedSkills,
 }: ConsequencesArgs): Consequence[] {
   const lines: Consequence[] = [{ key: "data", text: DATA_LINE }];
   if (appNames.length > 0) {
@@ -41,11 +43,28 @@ export function getConsequences({
   if (planLabel) {
     lines.push({
       key: "plan",
-      text: `Your ${planLabel} plan is canceled and won't renew.`,
+      text:
+        planLabel === TRIAL_LABEL
+          ? TRIAL_LINE
+          : `Your ${planLabel} plan ends now. The rest of this billing period isn't refunded.`,
     });
   }
-  if (hasListings) lines.push({ key: "listings", text: LISTINGS_LINE });
+  const listings = getListingsLine({ publishedWorkflows, publishedSkills });
+  if (listings) lines.push({ key: "listings", text: listings });
   return lines;
+}
+
+function getListingsLine({
+  publishedWorkflows,
+  publishedSkills,
+}: Pick<ConsequencesArgs, "publishedWorkflows" | "publishedSkills">) {
+  if (publishedWorkflows && publishedSkills)
+    return "Your published workflows and skills are removed from the Marketplace.";
+  if (publishedWorkflows)
+    return "Your published workflows are removed from the Marketplace.";
+  if (publishedSkills)
+    return "Your published skills are removed from the Marketplace.";
+  return null;
 }
 
 export function formatAppsLike(names: string[]): string {
@@ -57,7 +76,7 @@ export function getPlanLabel(
   tier: SubscriptionStatusResponseTier | null,
 ): string | null {
   if (!tier || tier === "NO_TIER") return null;
-  if (tier === "TRIAL") return "trial";
+  if (tier === "TRIAL") return TRIAL_LABEL;
   return PLAN_LABEL[tier] ?? null;
 }
 
