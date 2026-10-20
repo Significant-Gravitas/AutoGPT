@@ -5,7 +5,7 @@ import {
   useResumeScheduledChat,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { PausedScheduledChat } from "@/app/api/__generated__/models/pausedScheduledChat";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import * as Sentry from "@sentry/nextjs";
@@ -18,6 +18,7 @@ interface Args {
 
 export function usePausedChatListItem({ paused }: Args) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   function refresh() {
@@ -52,15 +53,22 @@ export function usePausedChatListItem({ paused }: Args) {
     },
   });
 
+  function handleDeleted() {
+    setIsDeleteOpen(false);
+    void refresh();
+    toast({ title: "Scheduled chat deleted" });
+  }
+
   const { mutate: deleteSchedule, isPending: isDeleting } =
     useDeleteV1DeleteExecutionSchedule({
       mutation: {
-        onSuccess: () => {
-          setIsDeleteOpen(false);
-          void refresh();
-          toast({ title: "Scheduled chat deleted" });
-        },
+        onSuccess: handleDeleted,
         onError: (error) => {
+          // Its schedule was gone already; the delete still cleared the row.
+          if (error instanceof ApiError && error.status === 404) {
+            handleDeleted();
+            return;
+          }
           void refresh();
           Sentry.captureException(error);
           toast({

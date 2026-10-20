@@ -116,9 +116,11 @@ def _leading_failure(
     failures: list[tuple[str, ToolFailureDetail]],
 ) -> tuple[str, ToolFailureDetail]:
     """A connection the owner can fix explains a run better than whatever
-    else failed after it."""
+    else failed. Of several, the least key: tools called together finish in
+    any order, and a run failing the same ways must fail the same way."""
     fixable = CONNECTION_ERRORS | CHAT_LINK_ERRORS
-    return next((f for f in failures if f[1].error_type in fixable), failures[0])
+    candidates = [f for f in failures if f[1].error_type in fixable] or failures
+    return min(candidates, key=lambda failure: _failure_of(*failure).key)
 
 
 def _failure_of(tool: str, detail: ToolFailureDetail) -> RunFailure:

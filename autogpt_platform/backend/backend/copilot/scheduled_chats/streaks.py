@@ -43,7 +43,7 @@ class StreakStep(BaseModel):
     # Tell the owner, and keep running.
     tell: bool = False
     # A streak the owner was told about has ended: withdraw what it raised.
-    # The pause alert (#15377) is resolved on it; the notes stay, as a record.
+    # Its pause alert is resolved; the notes stay, as a record.
     ended_notified: bool = False
 
 

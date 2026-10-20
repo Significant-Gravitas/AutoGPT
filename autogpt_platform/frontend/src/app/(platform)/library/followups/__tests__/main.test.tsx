@@ -625,6 +625,48 @@ describe("FollowupsPage", () => {
     await waitFor(() => expect(deletedID).toBe("sched-1"));
   });
 
+  test("a paused follow-up whose schedule was gone already reads as deleted", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      http.delete("*/api/schedules/:scheduleId", () =>
+        HttpResponse.json(
+          { detail: "Schedule #sched-1 not found" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Scheduled chat deleted" }),
+      ),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    );
+  });
+
   test("a paused routine offers no Delete: it goes with its expert", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([]),
