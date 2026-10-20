@@ -87,6 +87,7 @@ still refused.
 | Paused (learning)        | Future automated changes are off for the skill or Expert     |
 | Paused (not in use)      | The owner stopped using the skill; history is kept           |
 | Archived                 | Superseded, stale, or invalidated by a revoked source        |
+| Deleted                  | The owner deleted the skill; its history is kept, archived   |
 
 ## Controls
 
@@ -144,6 +145,13 @@ improvements off but does not suppress the behavior: independent valid evidence
 can support a new proposal for the owner to decide. A source the viewer can no longer
 open shows **Evidence not visible to you** without a title or link.
 
+Deleting a skill ends its history. Its versions stay in History, archived,
+after a *Deleted* entry, and excluding one of their sources later restores
+nothing. The deleted behaviour is suppressed as an undone change is, so
+learning never reapplies it and a near-identical proposal becomes a decision.
+A genuinely different skill can still be learned under the same name; it
+starts a new history with the default controls.
+
 ## Adapters
 
 The learner never inspects an application's schema. A source adapter
@@ -178,16 +186,26 @@ and policy. After that limit the revision is skipped; new verified evidence
 can be considered in a later revision. A reservation does not prove that
 the provider completed a call.
 
+At the saved-skill limit (150 for the account or for each Expert), learning
+saves nothing that would need another saved slot: a new skill, or an edit
+that would move an installed copy into the saved budget. The revision is
+recorded as paused before any version exists, and its paid review is kept
+for the retry above, so it is saved once there is room. If another save
+takes the last slot between that check and the write, the new version waits
+as a pending write and is saved, without another review, once there is
+room. Improvements to skills already saved continue.
+
 Owner-approved content-check exceptions are stored with the immutable
 version as exact match hashes, file paths, and occurrence counts. Restoring
 or improving a version preserves only retained approved occurrences.
 New, duplicated, relocated, and seeded values still require the applicable
 checks.
 
-Ordinary registry package writes use an error-and-retry contract. An
-interrupted ordinary write can leave partial unversioned file changes;
-retry the complete package until the write succeeds. Versioned pending
-writes stay unavailable until recovery completes. Repeating source exclusion
+Every registry package write replaces the whole package in one change:
+every file is stored first, then the package's files are swapped in a
+single database transaction. A failed or interrupted write leaves the
+previous package exactly as it was; retry it to apply the change. Versioned
+pending writes stay unavailable until recovery completes. Repeating source exclusion
 also resumes any interrupted head repair, while preserving an owner use-pause.
 
 ## Not in the first release

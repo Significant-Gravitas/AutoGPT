@@ -9,7 +9,7 @@ from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skil
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change_asset", [False, True])
-async def test_marketplace_cleanup_failure_preserves_baseline_and_retries(
+async def test_a_failed_marketplace_update_preserves_baseline_and_retries(
     monkeypatch, fake_learning_store, change_asset
 ):
     manager = _FakeWorkspaceManager()
@@ -32,10 +32,15 @@ async def test_marketplace_cleanup_failure_preserves_baseline_and_retries(
         remember = AsyncMock()
         monkeypatch.setattr(skills, "invalidate_skills_index_cache", invalidate)
         monkeypatch.setattr(skills, "_remember_updated", remember)
-        delete = manager.delete_file
-        monkeypatch.setattr(
-            manager, "delete_file", AsyncMock(side_effect=OSError("unavailable"))
-        )
+        write = manager.write_file
+
+        async def fail_the_root(**kwargs):
+            # The last step of the package swap, after the stale file is gone.
+            if kwargs["path"].endswith("/SKILL.md"):
+                raise OSError("unavailable")
+            return await write(**kwargs)
+
+        monkeypatch.setattr(manager, "write_file", fail_the_root)
 
         [failed] = await skills.list_user_skills("user-1")
         assert failed.update == skills.UPDATE_AVAILABLE
@@ -54,7 +59,7 @@ async def test_marketplace_cleanup_failure_preserves_baseline_and_retries(
         invalidate.assert_not_awaited()
         remember.assert_not_awaited()
 
-        monkeypatch.setattr(manager, "delete_file", delete)
+        monkeypatch.setattr(manager, "write_file", write)
         [recovered] = await skills.list_user_skills("user-1")
         assert recovered.baseline is not None
         assert recovered.baseline.version_id == v2.version_id

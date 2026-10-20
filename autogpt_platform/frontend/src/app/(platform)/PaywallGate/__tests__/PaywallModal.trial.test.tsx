@@ -263,3 +263,69 @@ test("offers to switch billing cycle when the trial is priced on the other one",
     await pro.findByRole("button", { name: "Start 7-day trial" }),
   ).toBeDefined();
 });
+
+test("a plan checkout keeps the trial button disabled until the page leaves", async () => {
+  const updateTier = vi.fn().mockResolvedValue({
+    status: 200,
+    data: { url: "https://checkout.stripe.com/pay/cs_plan" },
+  });
+  mockUseUpdateSubscriptionTier.mockReturnValue({
+    mutateAsync: updateTier,
+    isPending: false,
+  });
+  const trialCheckout = vi.fn(() => ({
+    url: "https://checkout.stripe.com/trial",
+  }));
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(eligible()),
+    getPostTrialsStartTrialCheckoutMockHandler200(trialCheckout),
+  );
+
+  render(<PaywallModal />);
+
+  const max = within(await screen.findByRole("region", { name: "Max plan" }));
+  fireEvent.click(max.getByRole("button", { name: "Start Max" }));
+  await waitFor(() =>
+    expect(checkoutLocation.href).toBe(
+      "https://checkout.stripe.com/pay/cs_plan",
+    ),
+  );
+
+  const trial = screen.getByRole("button", { name: "Start 7-day trial" });
+  expect(trial.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(trial);
+  expect(trialCheckout).not.toHaveBeenCalled();
+  expect(checkoutLocation.assign).not.toHaveBeenCalled();
+  expect(updateTier).toHaveBeenCalledOnce();
+});
+
+test("a trial checkout keeps the plan buttons disabled until the page leaves", async () => {
+  const updateTier = vi.fn();
+  mockUseUpdateSubscriptionTier.mockReturnValue({
+    mutateAsync: updateTier,
+    isPending: false,
+  });
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(eligible()),
+    getPostTrialsStartTrialCheckoutMockHandler200({
+      url: "https://checkout.stripe.com/trial",
+    }),
+  );
+
+  render(<PaywallModal />);
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Start 7-day trial" }),
+  );
+  await waitFor(() =>
+    expect(checkoutLocation.assign).toHaveBeenCalledWith(
+      "https://checkout.stripe.com/trial",
+    ),
+  );
+
+  const max = within(screen.getByRole("region", { name: "Max plan" }));
+  const plan = max.getByRole("button", { name: "Start Max" });
+  expect(plan.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(plan);
+  expect(updateTier).not.toHaveBeenCalled();
+});

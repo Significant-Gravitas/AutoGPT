@@ -8,14 +8,16 @@ vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
   useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
 }));
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    initialPrompt: prompts.initialPrompt,
-    setInitialPrompt: (value: string | null) => {
-      prompts.initialPrompt = value;
-    },
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      initialPrompt: prompts.initialPrompt,
+      setInitialPrompt: (value: string | null) => {
+        prompts.initialPrompt = value;
+      },
+      notifyMessageSent: vi.fn(),
+    }),
 }));
+import { useChatDraftAccess } from "../useChatDraft";
 import { useChatInput } from "../useChatInput";
 
 beforeEach(() => {
@@ -162,5 +164,54 @@ describe("platform chat drafts", () => {
     expect(
       renderHook(() => useChatInput({ onSend: vi.fn() })).result.current.value,
     ).toBe("");
+  });
+});
+describe("acting on a draft without showing it", () => {
+  it("reads what was typed, and writes it back where the composer shows it", () => {
+    const draft = renderHook(() => useChatDraftAccess("session:chat-quiet"));
+    const composer = renderHook(() =>
+      useChatInput({ onSend: vi.fn(), draftKey: "session:chat-quiet" }),
+    );
+    act(() => composer.result.current.setValue("Then the newsletter"));
+    expect(draft.result.current.read()).toBe("Then the newsletter");
+    act(() =>
+      draft.result.current.write((current) => `Draft the post\n\n${current}`),
+    );
+    expect(composer.result.current.value).toBe(
+      "Draft the post\n\nThen the newsletter",
+    );
+  });
+  it("still reads what was typed when browser storage refuses it", () => {
+    const setItem = vi
+      .spyOn(window.sessionStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    try {
+      const draft = renderHook(() => useChatDraftAccess("session:chat-full"));
+      const composer = renderHook(() =>
+        useChatInput({ onSend: vi.fn(), draftKey: "session:chat-full" }),
+      );
+      act(() => composer.result.current.setValue("Kept on this page"));
+      expect(draft.result.current.read()).toBe("Kept on this page");
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+  it("keeps no copy of a draft once browser storage holds it", () => {
+    const draft = renderHook(() => useChatDraftAccess("session:chat-stored"));
+    const setItem = vi
+      .spyOn(window.sessionStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    act(() => draft.result.current.write("Refused by storage"));
+    setItem.mockRestore();
+    act(() => draft.result.current.write("Stored"));
+
+    sessionStorage.clear();
+
+    // Storage is what holds the draft now, so clearing it clears the draft.
+    expect(draft.result.current.read()).toBe("");
   });
 });

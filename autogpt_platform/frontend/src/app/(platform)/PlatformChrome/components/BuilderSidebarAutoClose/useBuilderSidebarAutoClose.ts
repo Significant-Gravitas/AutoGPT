@@ -1,9 +1,9 @@
-import { useSidebar } from "@/components/ui/sidebar";
+import { getPersistedSidebarOpen, useSidebar } from "@/components/ui/sidebar";
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-export function useBuilderSidebarAutoClose() {
+export function useBuilderSidebarAutoClose(openOutsideBuilder: boolean) {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
   const isBuildRoute = matchesRoute(pathname, "/build");
@@ -23,16 +23,19 @@ export function useBuilderSidebarAutoClose() {
     wasBuildRouteRef.current = isBuildRoute;
 
     if (isBuildRoute) {
-      // On a hard load straight into /build the provider was seeded closed
-      // (defaultOpen), so "state before build" is the app default (open),
-      // not the seeded value.
-      openBeforeBuildRef.current = prev === null ? true : openRef.current;
-      setOpen(false);
+      // A hard load into /build was seeded closed, so restore what any other
+      // route would have opened with rather than that seed.
+      openBeforeBuildRef.current =
+        prev === null ? openOutsideBuilder : openRef.current;
+      setOpen(false, { persist: false });
       return;
     }
     if (openBeforeBuildRef.current !== null) {
-      setOpen(openBeforeBuildRef.current);
+      // A choice made on /build is already remembered; showing it keeps a reload consistent.
+      setOpen(getPersistedSidebarOpen() ?? openBeforeBuildRef.current, {
+        persist: false,
+      });
       openBeforeBuildRef.current = null;
     }
-  }, [isBuildRoute, setOpen]);
+  }, [isBuildRoute, setOpen, openOutsideBuilder]);
 }

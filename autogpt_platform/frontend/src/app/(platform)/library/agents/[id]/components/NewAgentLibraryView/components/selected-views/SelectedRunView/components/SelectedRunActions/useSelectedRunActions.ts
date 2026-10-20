@@ -99,7 +99,7 @@ export function useSelectedRunActions({
 
       const newRunId = okData(res)?.id;
       if (newRunId) {
-        trackAgentRunGoal({ id: run.graph_id, name: agent?.name }, "rerun");
+        trackAgentRunGoal(run.graph_id, "rerun");
       }
 
       await queryClient.invalidateQueries({
