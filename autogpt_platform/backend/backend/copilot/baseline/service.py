@@ -2655,16 +2655,9 @@ async def stream_chat_completion_baseline(
                     # discarded when the new one is persisted in the ``finally``.
                     _session_holder[0] = current_session
 
-                    # ``format_pending_as_user_message`` embeds file attachments
-                    # and context URL/page content into the content string so
-                    # the in-session transcript is a faithful copy of what the
-                    # model actually saw.  We also mirror each push into
-                    # ``openai_messages`` so the model's next LLM round sees it.
-                    #
-                    # Pre-compute the formatted dicts once so both the openai
-                    # messages append and the content_of lookup inside the
-                    # shared helper use the same string — and so ``on_rollback``
-                    # can trim ``openai_messages`` to the recorded anchor.
+                    # Image blocks go only to the model; persisted chat rows
+                    # keep the same formatted text and attachment/context hints.
+                    # Rollback trims the model messages to the recorded anchor.
                     formatted_by_pm = {
                         id(pm): format_pending_as_user_message(pm) for pm in pending
                     }

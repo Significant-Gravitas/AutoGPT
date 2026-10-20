@@ -35,8 +35,10 @@ from backend.copilot.context import (
     resolve_sandbox_path,
 )
 from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
     IMAGE_EXTENSIONS,
     IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
     MAX_IMAGE_BYTES,
     prepare_image,
 )
@@ -343,12 +345,12 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                 info = await sandbox.files.get_info(remote)
                 if info.size > MAX_IMAGE_BYTES:
                     return _mcp(
-                        "Image not shown: exceeds 3 MiB. Resize or compress it and read it again.",
+                        IMAGE_TOO_LARGE_MESSAGE,
                         error=True,
                     )
             elif _is_likely_binary(remote):
                 return _mcp(
-                    "This binary file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images.",
+                    BINARY_IMAGE_READ_GUIDANCE,
                     error=True,
                 )
             raw: bytes = await sandbox.files.read(remote, format="bytes")
@@ -821,7 +823,7 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         return _read_local_image(expanded, offset, limit)
     if _is_likely_binary(expanded):
         return _mcp(
-            "This binary file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images.",
+            BINARY_IMAGE_READ_GUIDANCE,
             error=True,
         )
     try:

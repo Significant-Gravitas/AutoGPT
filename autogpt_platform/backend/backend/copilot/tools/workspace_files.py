@@ -19,9 +19,11 @@ from backend.copilot.context import (
 from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
     IMAGE_EXTENSIONS,
     IMAGE_MIME_TYPES,
     IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
     MAX_IMAGE_BYTES,
     prepare_image,
 )
@@ -708,9 +710,7 @@ class ReadWorkspaceFileTool(BaseTool):
             if is_image and not force_download_url:
                 try:
                     if file_info.size_bytes > MAX_IMAGE_BYTES:
-                        raise ValueError(
-                            "Image not shown: exceeds 3 MiB. Resize or compress it and read it again."
-                        )
+                        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
                     image = prepare_image(
                         cached_content
                         if cached_content is not None
@@ -814,7 +814,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 file_info.mime_type == "application/pdf"
                 or file_info.mime_type.startswith("video/")
             ):
-                msg += ". This file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images."
+                msg += ". " + BINARY_IMAGE_READ_GUIDANCE
             elif file_info.mime_type.startswith("image/") and not is_image:
                 msg += (
                     ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."

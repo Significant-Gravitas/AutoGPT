@@ -122,6 +122,7 @@ async def test_gateway_passes_initial_image_to_transport(image):
         {"type": "base64", "media_type": "image/svg+xml", "data": "unsupported"},
         {"type": "base64", "media_type": "image/png", "data": ""},
         {"type": "url", "url": "file:///private.png"},
+        {"type": "url", "url": "https://example.com/image.png"},
     ],
 )
 def test_unsupported_gateway_image_is_reported_instead_of_omitted(source):

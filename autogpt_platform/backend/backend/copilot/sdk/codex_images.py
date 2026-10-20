@@ -50,8 +50,7 @@ def _image_url(source: object) -> str:
                 and data
             ):
                 return f"data:{mime};base64,{data}"
-        if source.get("type") == "url":
-            url = source.get("url")
-            if isinstance(url, str) and url.startswith("https://"):
-                return url
-    raise ValueError("Image not shown: unsupported image source or format.")
+    raise ValueError(
+        "Image not shown: provide PNG/JPEG/GIF/WebP image bytes through a file read "
+        "or attachment; URL image sources are not supported."
+    )

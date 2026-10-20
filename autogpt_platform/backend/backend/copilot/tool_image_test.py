@@ -1,10 +1,12 @@
 import base64
 import io
 import json
+import random
 
 import pytest
 from PIL import Image
 
+from backend.copilot import tool_image
 from backend.copilot.tool_image import (
     MAX_IMAGE_BYTES,
     parse_held_image,
@@ -77,14 +79,46 @@ def test_unrecognized_held_image_does_not_crash_release(mime, data):
     assert parse_held_image(output) is None
 
 
-def test_mpo_jpeg_is_returned_as_jpeg():
+@pytest.mark.parametrize("format", ["MPO", "GIF", "WEBP", "PNG"])
+def test_multi_frame_image_is_reduced_to_its_first_frame(format):
     output = io.BytesIO()
     Image.new("RGB", (20, 20), "blue").save(
         output,
-        format="MPO",
+        format=format,
         save_all=True,
         append_images=[Image.new("RGB", (20, 20), "red")],
     )
-    image = prepare_image(output.getvalue())
-    assert image.mime_type == "image/jpeg"
-    assert base64.b64decode(image.data_base64) == output.getvalue()
+    raw = output.getvalue()
+    with Image.open(io.BytesIO(raw)) as original:
+        expected = original.convert("RGBA").tobytes()
+    image = prepare_image(raw)
+    assert image.mime_type == "image/png"
+    with Image.open(io.BytesIO(base64.b64decode(image.data_base64))) as viewed:
+        assert viewed.convert("RGBA").tobytes() == expected
+        with pytest.raises(EOFError):
+            viewed.seek(1)
+
+
+def test_normalized_first_frame_still_obeys_byte_limit(monkeypatch):
+    first = Image.frombytes("RGB", (100, 100), random.Random(0).randbytes(30_000))
+    output = io.BytesIO()
+    first.save(
+        output,
+        format="WEBP",
+        quality=5,
+        save_all=True,
+        append_images=[Image.new("RGB", first.size, "red")],
+    )
+    raw = output.getvalue()
+    monkeypatch.setattr(tool_image, "MAX_IMAGE_BYTES", len(raw))
+    with pytest.raises(ValueError, match="exceeds 3 MiB"):
+        prepare_image(raw)
+
+
+@pytest.mark.parametrize("pixel_limit", [100, 170])
+def test_decompression_bomb_warning_and_error_are_rejected(monkeypatch, pixel_limit):
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16)).save(output, format="PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", pixel_limit)
+    with pytest.raises(ValueError, match="cannot be decoded"):
+        prepare_image(output.getvalue())

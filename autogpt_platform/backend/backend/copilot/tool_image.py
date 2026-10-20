@@ -4,7 +4,7 @@ import base64
 import io
 import json
 import warnings
-from typing import Any, Literal, Self
+from typing import Any, Literal, Protocol, Self, cast
 
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
@@ -17,6 +17,13 @@ IMAGE_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/web
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 IMAGE_READ_DESCRIPTION = (
     "Images: PNG/JPEG/GIF/WebP, up to 3 MiB and 2000px/side; first frame only. "
+)
+IMAGE_TOO_LARGE_MESSAGE = (
+    "Image not shown: exceeds 3 MiB. Resize or compress it and read it again."
+)
+BINARY_IMAGE_READ_GUIDANCE = (
+    "This file has not been viewed. Render PDF pages or extract video frames "
+    "to PNG/JPEG, then read the images."
 )
 
 
@@ -66,11 +73,13 @@ class HeldImage(BaseModel):
     image: ToolImage
 
 
+class _AnimatedImage(Protocol):
+    is_animated: bool
+
+
 def prepare_image(raw: bytes) -> ToolImage:
     if len(raw) > MAX_IMAGE_BYTES:
-        raise ValueError(
-            "Image not shown: exceeds 3 MiB. Resize or compress it and read it again."
-        )
+        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -91,6 +100,14 @@ def prepare_image(raw: bytes) -> ToolImage:
                 image.verify()
             with Image.open(io.BytesIO(raw)) as image:
                 image.load()
+                if (
+                    image.format in {"MPO", "GIF", "WEBP", "PNG"}
+                    and cast(_AnimatedImage, image).is_animated
+                ):
+                    first_frame = io.BytesIO()
+                    image.convert("RGBA").save(first_frame, format="PNG")
+                    raw = first_frame.getvalue()
+                    mime = "image/png"
     except (
         UnidentifiedImageError,
         OSError,
@@ -101,6 +118,8 @@ def prepare_image(raw: bytes) -> ToolImage:
         raise ValueError(
             "Image not shown: the file is corrupt or cannot be decoded. Re-export it as PNG or JPEG."
         ) from exc
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
     return ToolImage.model_validate(
         {"mime_type": mime, "data_base64": base64.b64encode(raw).decode("ascii")}
     )
