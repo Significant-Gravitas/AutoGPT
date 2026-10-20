@@ -7,13 +7,14 @@ from collections.abc import Awaitable
 from typing import Any, cast
 
 from falkordb.asyncio import FalkorDB
-from graphiti_core.driver.driver import GraphDriver
+from graphiti_core.driver.driver import GraphDriver, GraphDriverSession
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.helpers import validate_group_ids
 from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
+from .fact_attributes import EdgeMergingSession, merging_save
 from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
 from .scope import MemoryScope
 
@@ -147,6 +148,12 @@ class AutoGPTFalkorDriver(FalkorDriver):
        ``falkordb_connect.DeferredFalkorDB``, which builds the real client on the connect
        pool when the first command needs it. ``host``, ``port`` and
        ``password`` default to graphiti config.
+    5. graphiti's two saves of a fact, run through ``execute_query`` or
+       ``session()`` (``add_episode``'s bulk save), merge graphiti's map
+       into the stored properties instead of replacing them, so what
+       the platform wrote on a fact survives graphiti saving it again,
+       and save nothing on a forgotten fact but its episode list
+       (``fact_attributes.py``).
     """
 
     def __init__(
@@ -243,7 +250,9 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
+        graphiti's saves of a fact run as merges (``merging_save``).
         """
+        cypher_query_ = merging_save(cypher_query_)
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
@@ -323,6 +332,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                 )
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
+
+    def session(self, database: str | None = None) -> GraphDriverSession:
+        """graphiti's FalkorDB session, running its saves of a fact as
+        merges (``fact_attributes.EdgeMergingSession``)."""
+        return EdgeMergingSession(self._get_graph(database))
 
     @staticmethod
     async def _dispatch(graph, cypher_query_, params, read_only: bool) -> Any:
