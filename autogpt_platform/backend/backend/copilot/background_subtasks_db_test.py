@@ -40,8 +40,10 @@ from backend.copilot.model import (
     append_and_save_message,
     create_chat_session,
 )
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.response_model import StreamTextDelta
 from backend.copilot.tool_call_context import tool_call_context
+from backend.copilot.tools.helpers import _permission_denied
 from backend.copilot.tree import (
     TreeRefusal,
     TurnEnvelope,
@@ -64,8 +66,12 @@ class World(BaseModel):
     envelope: TurnEnvelope
     published: AsyncMock
 
-    async def launch(self, call_id: str = "launch") -> BackgroundTask:
-        set_execution_context(self.user_id, self.parent, envelope=self.envelope)
+    async def launch(
+        self, call_id: str = "launch", permissions: CopilotPermissions | None = None
+    ) -> BackgroundTask:
+        set_execution_context(
+            self.user_id, self.parent, permissions=permissions, envelope=self.envelope
+        )
         set_turn_trace_id(self.envelope.tree_id)
         with tool_call_context(call_id):
             response = await background_subtasks.start_background_subtask(
@@ -135,6 +141,34 @@ async def test_completion_waits_for_a_busy_parent(world: World):
     await world.finish_parent()
     await background_delivery.reconcile_background_subtasks()
     assert world.entry(world.parent.session_id).turn_id == task.wake_id
+
+
+@pytest.mark.parametrize("blocks_exclude", [False, True])
+async def test_background_child_keeps_block_restrictions_after_queuing(
+    world: World, blocks_exclude: bool
+):
+    task = await world.launch(
+        permissions=CopilotPermissions(
+            tools=["run_sub_session", "run_capability"],
+            tools_exclude=False,
+            blocks=["ForbiddenBlock" if blocks_exclude else "AllowedBlock"],
+            blocks_exclude=blocks_exclude,
+        )
+    )
+    entry = CoPilotExecutionEntry.model_validate_json(
+        world.entry(task.child_session_id).model_dump_json()
+    )
+    child = await model.get_chat_session(task.child_session_id, world.user_id)
+    assert child and entry.envelope and entry.permissions
+    set_execution_context(
+        world.user_id, child, permissions=entry.permissions, envelope=entry.envelope
+    )
+    assert _permission_denied("allowed", "AllowedBlock", child.session_id) is None
+    assert (
+        _permission_denied("forbidden", "ForbiddenBlock", child.session_id) is not None
+    )
+    assert entry.envelope.permits("run_capability")
+    assert not entry.envelope.permits("run_sub_session")
 
 
 async def test_spent_tree_refuses_followup_without_a_fresh_budget(world: World):

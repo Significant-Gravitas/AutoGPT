@@ -75,7 +75,7 @@ def task_metadata(
         "envelope_tree_id": envelope.tree_id,
         "permissions": (
             permissions.model_dump(mode="json")
-            if (permissions := envelope.as_permissions())
+            if (permissions := task.context.permissions)
             else None
         ),
         "cost_context": task.context.cost_context.model_dump(mode="json"),
