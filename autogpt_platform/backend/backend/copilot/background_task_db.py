@@ -122,28 +122,8 @@ async def finish_background_turn(
         for followup in followups:
             if followup.wake_id == turn_id:
                 async with db.transaction() as tx:
-                    changed = await db.execute_raw_with_schema(
-                        """UPDATE {schema_prefix}"ChatBackgroundTask" SET "followupState"='finished'
-                        WHERE id=$1 AND "userId"=$2 AND "followupState"='queued' """,
-                        followup.id,
-                        user_id,
-                        client=tx,
-                    )
-                    if changed and error:
-                        await _lock_session(tx, session_id)
-                        notice = {
-                            CANCELLED_MESSAGE: "Otto's background follow-up was cancelled.",
-                            BACKGROUND_TIMEOUT_MESSAGE: "Otto couldn't complete the background follow-up within its limits.",
-                        }.get(error, "Otto couldn't complete the background follow-up.")
-                        await _append(
-                            tx,
-                            session_id,
-                            followup.wake_id + "-notice",
-                            f"{notice} "
-                            f"[Open the subtask](/copilot?sessionId={followup.child_session_id}) for details.",
-                            {"background_task_notice": followup.id},
-                            role="assistant",
-                        )
+                    await _lock_session(tx, session_id)
+                    changed = await _finish_followup(tx, followup, error)
                 if changed and error:
                     await invalidate_session_cache(session_id)
         return
@@ -330,6 +310,31 @@ async def release_expired_background_turn(
     )
 
 
+async def cancel_queued_background_followup(user_id: str, session_id: str) -> bool:
+    async with db.transaction() as tx:
+        parent = await _lock_session(tx, session_id)
+        if parent is None or parent.userId != user_id or parent.chatStatus != "queued":
+            return False
+        tasks = await db.query_raw_with_schema(
+            """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
+            WHERE "userId"=$1 AND "parentSessionId"=$2 AND "followupState"='queued'
+              AND "followupStartedAt" IS NULL""",
+            user_id,
+            session_id,
+            model=BackgroundTask,
+            client=tx,
+        )
+        if not tasks:
+            return False
+        for task in tasks:
+            await _finish_followup(tx, task, CANCELLED_MESSAGE)
+        await ChatSession.prisma(tx).update(
+            where={"id": session_id}, data={"chatStatus": "idle"}
+        )
+    await invalidate_session_cache(session_id)
+    return True
+
+
 async def cancel_background_tasks(
     user_id: str,
     session_id: str,
@@ -388,6 +393,31 @@ async def _cancel_background_tasks(
             client=tx,
         )
     return tasks
+
+
+async def _finish_followup(tx: Prisma, task: BackgroundTask, error: str | None) -> bool:
+    changed = await db.execute_raw_with_schema(
+        """UPDATE {schema_prefix}"ChatBackgroundTask" SET "followupState"='finished'
+        WHERE id=$1 AND "userId"=$2 AND "followupState"='queued' """,
+        task.id,
+        task.user_id,
+        client=tx,
+    )
+    if changed and error:
+        notice = {
+            CANCELLED_MESSAGE: "Otto's background follow-up was cancelled.",
+            BACKGROUND_TIMEOUT_MESSAGE: "Otto couldn't complete the background follow-up within its limits.",
+        }.get(error, "Otto couldn't complete the background follow-up.")
+        await _append(
+            tx,
+            task.parent_session_id,
+            task.wake_id + "-notice",
+            f"{notice} "
+            f"[Open the subtask](/copilot?sessionId={task.child_session_id}) for details.",
+            {"background_task_notice": task.id},
+            role="assistant",
+        )
+    return bool(changed)
 
 
 async def _enqueue(

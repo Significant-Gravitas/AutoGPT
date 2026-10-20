@@ -760,6 +760,9 @@ class DatabaseManager(AppService):
         background_task_db.release_expired_background_turn
     )
     cancel_background_tasks = _(background_task_db.cancel_background_tasks)
+    cancel_queued_background_followup = _(
+        background_task_db.cancel_queued_background_followup
+    )
     cancel_orphaned_background_tasks = _(
         background_task_db.cancel_orphaned_background_tasks
     )
@@ -1284,6 +1287,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     release_deleted_background_turn = d.release_deleted_background_turn
     release_expired_background_turn = d.release_expired_background_turn
     cancel_background_tasks = d.cancel_background_tasks
+    cancel_queued_background_followup = d.cancel_queued_background_followup
     cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks
     get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session

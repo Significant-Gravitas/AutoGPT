@@ -672,6 +672,99 @@ async def test_completed_work_persists_even_when_cleanup_crosses_the_deadline(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
+@pytest.mark.parametrize("with_pending_message", [False, True])
+async def test_stopping_a_queued_followup_reports_cancellation_once(
+    world: World, monkeypatch: pytest.MonkeyPatch, with_pending_message: bool
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
+    await background_delivery.reconcile_background_subtasks()
+    session = await model.get_chat_session(task.parent_session_id, world.user_id)
+    assert session
+    if with_pending_message:
+        assert await persist_pending_as_user_rows(
+            session,
+            None,
+            [PendingMessage(content="Keep the update short.")],
+            log_prefix="queued-background-stop-test",
+        )
+
+    response = await cancel_session_task(task.parent_session_id, world.user_id)
+    assert response.cancelled and response.reason == "dequeued"
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == "idle"
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    notices = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(notices) == 1
+    assert (notices[0].content or "").startswith(
+        "Otto's background follow-up was cancelled."
+    )
+    assert len(world.published.await_args_list) == 1
+    session = await model.get_chat_session(task.parent_session_id, world.user_id)
+    assert session and any(m.content == notices[0].content for m in session.messages)
+
+
+@pytest.mark.parametrize("boundary", ["other_owner", "promoted"])
+async def test_queued_followup_stop_preserves_other_owners_and_promoted_turns(
+    world: World, monkeypatch: pytest.MonkeyPatch, boundary: str
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
+    await background_delivery.reconcile_background_subtasks()
+    user_id = world.user_id
+    if boundary == "other_owner":
+        user_id = str(uuid4())
+    else:
+        assert await turn_queue.dispatch_next_for_user(world.user_id)
+    assert not await background_task_db.cancel_queued_background_followup(
+        user_id, task.parent_session_id
+    )
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "queued"
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == (
+        "queued" if boundary == "other_owner" else "running"
+    )
+    assert not await DbMessage.prisma().find_unique(
+        where={"id": task.wake_id + "-notice"}
+    )
+
+
+async def test_queued_followup_stop_rolls_back_when_notice_cannot_be_saved(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
+    await background_delivery.reconcile_background_subtasks()
+    with monkeypatch.context() as failing_notice:
+        failing_notice.setattr(
+            background_task_db,
+            "_append",
+            AsyncMock(side_effect=RuntimeError("notice write failed")),
+        )
+        with pytest.raises(RuntimeError, match="notice write failed"):
+            await cancel_session_task(task.parent_session_id, world.user_id)
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "queued"
+    assert await chat_db().get_chat_session_status(task.parent_session_id) == "queued"
+    assert not await DbMessage.prisma().find_unique(
+        where={"id": task.wake_id + "-notice"}
+    )
+    assert (await cancel_session_task(task.parent_session_id, world.user_id)).cancelled
+
+
 async def test_stopping_a_running_followup_reports_cancellation_once(
     world: World, monkeypatch: pytest.MonkeyPatch
 ):
