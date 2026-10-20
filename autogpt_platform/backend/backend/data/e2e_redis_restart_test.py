@@ -55,7 +55,31 @@ def _wait_port(port: int, *, deadline_s: float = 60.0) -> None:
                 return
         except OSError:
             time.sleep(0.5)
-    raise TimeoutError(f"port {port} never opened within {deadline_s:.0f}s")
+    raise TimeoutError(
+        f"port {port} never opened within {deadline_s:.0f}s\n{_shard_state(port)}"
+    )
+
+
+def _shard_state(port: int) -> str:
+    """The containers' state and the shard's own log, so a shard that never
+    listens says why."""
+    name = f"{ISOLATED_PROJECT}-redis-{ISOLATED_PORTS.index(port)}"
+    ps = _run(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            f"name={ISOLATED_PROJECT}",
+            "--format",
+            "{{.Names}}  {{.Status}}  {{.Ports}}",
+        ]
+    )
+    logs = _run(["docker", "logs", "--tail", "50", name])
+    return (
+        f"docker ps -a:\n{ps.stdout}{ps.stderr}"
+        f"docker logs --tail 50 {name}:\n{logs.stdout}{logs.stderr}"
+    )
 
 
 def _start_isolated_cluster() -> None:
