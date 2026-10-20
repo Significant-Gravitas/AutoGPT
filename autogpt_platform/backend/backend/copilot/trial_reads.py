@@ -11,8 +11,10 @@ up the turn share one read of each too.
 The sharing is scoped to one block, never across requests or turns, so
 nothing can go stale: neither is expected to change between checks a few
 seconds apart, and a check that changes the usage state itself drops it from
-the block first (``forget_usage_state``). A task started inside the block
-inherits the block, but stops sharing when the block ends or is closed.
+the block first (``forget_usage_state``). Where a block waits long enough for
+either to change, as a turn held for a fresh hire's setup does, it drops both
+(``SharedTrialReads.forget``). A task started inside the block inherits the
+block, but stops sharing when the block ends or is closed.
 
 A tool never shares: it acts on the trial and the usage state as they are
 when the tool runs, and a tool can start before the executor's block sees the
@@ -45,6 +47,12 @@ class SharedTrialReads:
     def close(self) -> None:
         """Stop sharing: later lookups read the database again."""
         self.open = False
+
+    def forget(self) -> None:
+        """Drop the reads made so far: the next lookups read the database
+        again, and the block shares those reads instead."""
+        self.reads.clear()
+        self.usage_states.clear()
 
 
 _shared_reads: contextvars.ContextVar[SharedTrialReads | None] = contextvars.ContextVar(
@@ -116,7 +124,10 @@ async def shared_usage_state_read(
 
 def forget_usage_state(user_id: str) -> None:
     """Drop the block's usage state for *user_id* after changing it, so the
-    next lookup reads it again (and the block shares that read instead)."""
+    next lookup reads it again (and the block shares that read instead).
+
+    A lookup already waiting on the dropped read still gets its result, as an
+    unshared read made before the change would have."""
     shared = _shared_reads.get()
     if shared is not None:
         shared.usage_states.pop(user_id, None)

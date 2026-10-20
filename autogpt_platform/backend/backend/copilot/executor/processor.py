@@ -251,14 +251,17 @@ async def _normalize_private_expert_session_tenancy(
     return await upsert_chat_session(session, persist_tenancy=True)
 
 
-async def _wait_for_expert_setup(session: "ChatSession") -> None:
+async def _wait_for_expert_setup(session: "ChatSession") -> bool:
     """Hold a fresh hire's turn until its skills and workflows are installed,
-    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
+    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them.
+
+    Returns whether the turn waited."""
     if session.expert_id is None:
-        return
+        return False
     from backend.data.db_accessors import experts_db
 
     deadline = time.monotonic() + EXPERT_SETUP_WAIT_SECONDS
+    waited = False
     while (
         await experts_db().expert_setup_status(session.user_id, session.expert_id)
         == "installing"
@@ -268,8 +271,10 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
                 f"Expert #{session.expert_id} still setting up after "
                 f"{EXPERT_SETUP_WAIT_SECONDS}s; running the turn without waiting"
             )
-            return
+            return True
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+        waited = True
+    return waited
 
 
 async def _closing_at_model_output(
@@ -717,7 +722,10 @@ class CoPilotProcessor:
                     await cost_context_stack.enter_async_context(
                         credit_billing(credit_turn)
                     )
-            await _wait_for_expert_setup(session)
+            if await _wait_for_expert_setup(session):
+                # Up to a minute: long enough for the user to convert or end
+                # their trial, so the rest of the setup reads both again.
+                trial_reads.forget()
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access

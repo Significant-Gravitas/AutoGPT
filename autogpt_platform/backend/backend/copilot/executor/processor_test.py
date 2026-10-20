@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot import budget_gate
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -48,7 +49,9 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
+from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.model import OAuth2Credentials
 from backend.data.pro_activation import UsageActivationState
 from backend.integrations.codex.transport import (
@@ -381,6 +384,11 @@ async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() 
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ),
+        # The real gate, whose own reads are the ones it must share.
+        patch(
+            "backend.copilot.executor.processor.refusal_for",
+            new=budget_gate.refusal_for,
+        ),
     ):
         await asyncio.create_task(
             CoPilotProcessor()._execute_async(
@@ -389,6 +397,92 @@ async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() 
         )
 
     assert usage_db.get_usage_activation_state.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_turn_held_for_a_hires_setup_is_charged_to_the_plan_after_it() -> None:
+    """The allowance gate reads the plan, then the turn waits for a fresh
+    hire's setup, and the user converts their trial meanwhile: the turn is
+    charged to the plan they converted to, not the trial the gate saw."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.session_id = "sess-1"
+    on_trial = UsageActivationState(
+        user_id="user-1", tier=SubscriptionTier.TRIAL, trial_id="trial-1", ready=True
+    )
+    converted = UsageActivationState(
+        user_id="user-1", tier=SubscriptionTier.PRO, ready=True
+    )
+    plan = [on_trial]
+    usage_db = MagicMock()
+    usage_db.get_usage_activation_state = AsyncMock(
+        side_effect=lambda _user_id: plan[0]
+    )
+
+    async def setup_status(_user_id: str, _expert_id: str) -> str:
+        if plan[0] is on_trial:
+            plan[0] = converted
+            return "installing"
+        return "ready"
+
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    expert_store.expert_setup_status = AsyncMock(side_effect=setup_status)
+
+    async def allowance_gate(user_id: str) -> None:
+        await get_ready_usage_state(user_id)
+
+    charged_to: list[str | None] = []
+
+    async def stream(**_kwargs):
+        context = get_trial_cost_context("user-1")
+        charged_to.append(context.trial_id if context else "nothing")
+        yield StreamTextDelta(id="text-1", delta="Hi")
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            side_effect=stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            side_effect=lambda **kwargs: kwargs["stream"],
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        patch(
+            "backend.copilot.model.upsert_chat_session",
+            new=AsyncMock(side_effect=lambda value, **_kwargs: value),
+        ),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
+        patch(
+            "backend.copilot.usage_activation.pro_activation_db",
+            return_value=usage_db,
+        ),
+        patch(
+            "backend.copilot.executor.processor.refusal_for",
+            new=AsyncMock(side_effect=allowance_gate),
+        ),
+    ):
+        await asyncio.create_task(
+            CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+        )
+
+    assert charged_to == [None]
 
 
 @pytest.mark.asyncio
@@ -828,16 +922,18 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
 
 
 @pytest.mark.parametrize(
-    "statuses, expected_reads",
+    "statuses, expected_reads, waits",
     [
-        (["ready"], 1),
-        (["installing", "installing", "ready"], 3),
+        (["ready"], 1, False),
+        (["installing", "installing", "ready"], 3, True),
         # A setup that never finishes: poll until the deadline, then run.
-        (["installing"] * 50, None),
+        (["installing"] * 50, None, True),
     ],
 )
 @pytest.mark.asyncio
-async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> None:
+async def test_expert_turn_waits_for_hire_setup(
+    statuses, expected_reads, waits
+) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
     expert_store = MagicMock()
     expert_store.expert_setup_status = AsyncMock(side_effect=statuses)
@@ -847,7 +943,7 @@ async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> Non
         patch("backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS", 0.05),
         patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0.005),
     ):
-        await _wait_for_expert_setup(session)
+        assert await _wait_for_expert_setup(session) is waits
 
     reads = expert_store.expert_setup_status.await_count
     if expected_reads is None:

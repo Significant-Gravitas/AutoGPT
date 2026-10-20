@@ -275,6 +275,36 @@ async def test_a_forgotten_usage_state_is_read_again_and_shared_from_then_on():
 
 
 @pytest.mark.asyncio
+async def test_a_forgotten_block_reads_both_again_and_shares_them_from_then_on():
+    trial_before, trial_after = _trial(), _trial(active=False)
+    state_before = _usage_state(SubscriptionTier.TRIAL)
+    state_after = _usage_state()
+    read_trial = AsyncMock(side_effect=[trial_before, trial_after])
+    read_state = AsyncMock(side_effect=[state_before, state_after])
+    with trial_reads_shared() as shared:
+        assert await shared_trial_read("u1", read_trial) is trial_before
+        assert await shared_usage_state_read("u1", read_state) is state_before
+        shared.forget()
+        for _ in range(2):
+            assert await shared_trial_read("u1", read_trial) is trial_after
+            assert await shared_usage_state_read("u1", read_state) is state_after
+    assert read_trial.await_count == 2
+    assert read_state.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_usage_state_read_fails_every_check_in_its_block_only():
+    read = AsyncMock(side_effect=[ConnectionError("db down"), _usage_state()])
+    with trial_reads_shared():
+        for _ in range(2):
+            with pytest.raises(ConnectionError):
+                await shared_usage_state_read("u1", read)
+    state = await shared_usage_state_read("u1", read)
+    assert state.tier == SubscriptionTier.PRO
+    assert read.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_the_chat_routes_checks_read_the_usage_state_once():
     """Paywall, limits and limit check each read a paid user's usage state:
     three database round trips outside a block, one inside the route's."""
