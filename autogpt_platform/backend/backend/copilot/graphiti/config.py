@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -41,6 +41,14 @@ _LOCAL_RERANKER_MODEL = _LOCAL_LLM_MODEL
 # automatically; everyone else needs to ``ollama pull nomic-embed-text``
 # before graphiti ingest starts working — covered in copilot-local-llm.md.
 _LOCAL_EMBEDDER_MODEL = "nomic-embed-text"
+
+
+class RerankerRoute(BaseModel):
+    """The endpoint, key and model spelling the reranker calls with."""
+
+    api_key: str
+    base_url: str | None
+    model: str
 
 
 class GraphitiConfig(BaseSettings):
@@ -97,7 +105,7 @@ class GraphitiConfig(BaseSettings):
     # This config defaults the classifier to gpt-6-luna — the same
     # cloud slug as ``llm_model`` — so the reranker can ship with no
     # env config, at the cost of up to 2 * context_max_facts classifier
-    # calls per session start.
+    # calls per session start. Where it sends them: ``resolve_reranker_route``.
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
@@ -266,6 +274,35 @@ class GraphitiConfig(BaseSettings):
         if local_fallback is not None and local_fallback[1]:
             return local_fallback[1]
         return None  # OpenAI SDK default
+
+    def resolve_reranker_route(self) -> RerankerRoute:
+        """Where the warm-context reranker sends its classifier calls.
+
+        A new chat's first turn waits on the slowest of up to
+        2 * ``context_max_facts`` calls, and through OpenRouter those calls
+        have a long tail (on a preview in October 2026, 5-10% took over 2 s,
+        against 0.6% sent to OpenAI). So an OpenAI model goes to OpenAI
+        directly, with the embedder's key, whenever the embedder does too
+        and graphiti's LLM endpoint is the OpenRouter default. Otherwise
+        (local transport, a custom ``llm_base_url`` or ``embedder_base_url``,
+        no OpenAI key, another vendor's model) it goes where extraction
+        goes, as before.
+        """
+        openai_key = self.resolve_embedder_api_key()
+        provider, _, name = self.reranker_model.rpartition("/")
+        if (
+            not self.llm_base_url
+            and not self.embedder_base_url
+            and openai_key
+            and provider in ("", "openai")
+            and self._chat_local_fallback() is None
+        ):
+            return RerankerRoute(api_key=openai_key, base_url=None, model=name)
+        return RerankerRoute(
+            api_key=self.resolve_llm_api_key(),
+            base_url=self.resolve_llm_base_url(),
+            model=self.reranker_model,
+        )
 
     @model_validator(mode="after")
     def _apply_local_graphiti_models(self) -> "GraphitiConfig":
