@@ -118,6 +118,12 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
+        # do-not-merge (#15739 integration preview): bind the liveness port before
+        # the slow block load, so the 1-CPU preview pod isn't killed while it starts.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
         _load_catalog()
         start_cli_warmup()
         # Load the block registry before taking turns. A turn's first tool call
@@ -143,10 +149,6 @@ class CoPilotExecutor(AppProcess):
         # backend.util.service). Metrics follow the same interface as the RPC
         # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
         # cross-container scraping), loopback in the single-container runtime.
-        start_http_server(
-            settings.config.copilot_executor_port,
-            addr=settings.config.pyro_host,
-        )
 
         self.cancel_thread.start()
         self.run_thread.start()
