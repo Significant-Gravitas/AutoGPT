@@ -31,6 +31,7 @@ from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.background_subtasks import start_background_subtask
+from backend.copilot.background_task import DELIVERY_SECONDS, FOLLOWUP_SECONDS
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -197,7 +198,8 @@ class RunSubSessionTool(BaseTool):
                 sub_autopilot_session_link=_sub_session_link(task.child_session_id),
                 background_task_id=task.id,
                 background_expires_at=(
-                    task.deadline + timedelta(minutes=12)
+                    task.deadline
+                    + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
                 ).isoformat(),
                 message=(
                     "Subtask accepted in the background. You can finish this reply now. "

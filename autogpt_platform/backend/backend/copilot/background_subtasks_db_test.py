@@ -29,7 +29,7 @@ from backend.copilot.background_execution import (
     claim_background_execution,
     finish_background_execution,
 )
-from backend.copilot.background_task import BackgroundTask
+from backend.copilot.background_task import DELIVERY_SECONDS, BackgroundTask
 from backend.copilot.context import set_execution_context
 from backend.copilot.executor import processor, utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -542,6 +542,71 @@ async def test_late_cancellation_leaves_a_new_user_turn_queued(world: World):
         world.user_id, task.child_session_id
     )
     assert await chat_db().get_chat_session_status(task.child_session_id) == "queued"
+
+
+async def test_busy_parent_past_delivery_window_gets_one_notice_when_idle(world: World):
+    task = await world.launch()
+    await world.finish_child(task)
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
+        task.id,
+        datetime.now(UTC) - timedelta(seconds=DELIVERY_SECONDS + 1),
+    )
+    await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "waiting"
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "suppressed"
+    messages = await DbMessage.prisma().find_many(
+        where={"sessionId": world.parent.session_id}
+    )
+    notices = [m for m in messages if m.role == "assistant"]
+    assert len(notices) == 1
+    assert "follow-up window expired" in (notices[0].content or "")
+    assert task.child_session_id in (notices[0].content or "")
+    assert len(world.published.await_args_list) == 1
+
+
+@pytest.mark.parametrize("running", [False, True])
+async def test_expired_followup_is_recovered_once(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    running: bool,
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    if not running:
+        monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
+    await background_delivery.reconcile_background_subtasks()
+    if running:
+        assert await claim_background_execution(world.entry(world.parent.session_id))
+    pending = await chat_db().get_latest_user_message_in_session(
+        world.parent.session_id
+    )
+    assert pending and pending.metadata
+    envelope = TurnEnvelope.model_validate(pending.metadata["envelope"])
+    assert envelope.deadline_at
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
+    monkeypatch.setattr(background_delivery, "datetime", clock)
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
+    messages = await DbMessage.prisma().find_many(
+        where={"sessionId": world.parent.session_id}
+    )
+    notices = [m for m in messages if m.id == task.wake_id + "-notice"]
+    assert len(notices) == 1 and notices[0].role == "assistant"
+    assert "within its limits" in (notices[0].content or "")
+    assert task.child_session_id in (notices[0].content or "")
+    assert len(world.published.await_args_list) == (2 if running else 1)
 
 
 @pytest_asyncio.fixture(loop_scope="session")

@@ -8,6 +8,7 @@ from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry
+from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.copilot.tree import readmit_turn
 from backend.data.db_accessors import background_task_db
 
@@ -51,9 +52,10 @@ async def finish_background_execution(
 ) -> None:
     if (
         entry.user_id
-        and error == "Operation cancelled"
+        and error == CANCELLED_MESSAGE
         and (entry.message_metadata or {}).get(BACKGROUND_STAGE_KEY) != "child"
     ):
+        # A cancelled parent turn also suppresses its children's later wakes.
         await background_task_db().cancel_background_tasks(
             entry.user_id, entry.session_id, entry.turn_id
         )

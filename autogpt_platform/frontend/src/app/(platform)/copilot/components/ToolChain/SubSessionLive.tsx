@@ -28,7 +28,7 @@ import { getCatalogLabel } from "./toolCatalog";
 interface Props {
   subSessionId: string;
   active: boolean;
-  background?: boolean;
+  backgroundExpiresAt?: string | null;
 }
 
 const POLL_MS = 3000;
@@ -54,12 +54,12 @@ interface LiveStep {
 export function SubSessionLive({
   subSessionId,
   active,
-  background = false,
+  backgroundExpiresAt,
 }: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
-    background,
+    backgroundExpiresAt,
   );
   if (!active) return null;
 
@@ -94,19 +94,25 @@ export function SubSessionLive({
 function useLiveSubSession(
   subSessionId: string,
   active: boolean,
-  background = false,
+  backgroundExpiresAt?: string | null,
 ) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
       if (!active) return;
+      const expiresAt = backgroundExpiresAt
+        ? Date.parse(backgroundExpiresAt)
+        : NaN;
+      setIsCapped(false);
       const timer = setTimeout(
         () => setIsCapped(true),
-        background ? 11 * 60_000 : POLL_CAP_MS,
+        Number.isFinite(expiresAt)
+          ? Math.max(0, expiresAt - Date.now())
+          : POLL_CAP_MS,
       );
       return () => clearTimeout(timer);
     },
-    [active, background],
+    [active, backgroundExpiresAt],
   );
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
@@ -388,12 +394,13 @@ export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
   background = false,
+  backgroundExpiresAt?: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId ?? "",
     stale && !!subSessionId,
-    background,
+    backgroundExpiresAt,
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A

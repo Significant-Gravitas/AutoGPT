@@ -185,10 +185,14 @@ export function SubSessionCard({
   const link = str(output, "sub_autopilot_session_link");
   const subSessionId = str(output, "sub_session_id");
   const background = !!str(output, "background_task_id");
+  const backgroundExpiresAt = background
+    ? str(output, "background_expires_at")
+    : null;
   const status = useSubSessionEffectiveStatus(
     subSessionId,
     frozenStatus,
     background,
+    backgroundExpiresAt,
   );
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
@@ -234,7 +238,7 @@ export function SubSessionCard({
       {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
-          background={background}
+          backgroundExpiresAt={backgroundExpiresAt}
           active={["running", "queued"].includes(
             frozenStatus?.toLowerCase() ?? "",
           )}

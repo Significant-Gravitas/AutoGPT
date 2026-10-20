@@ -71,6 +71,21 @@ function subSession(
 describe("SubSessionLive", () => {
   afterEach(cleanup);
 
+  it("pauses background live updates at the expiry supplied by the server", async () => {
+    server.use(subSession([], { chat_status: "running" }));
+    render(
+      <SubSessionCard
+        output={{
+          status: "running",
+          sub_session_id: "sub-1",
+          background_task_id: "task",
+          background_expires_at: new Date(Date.now() - 1000).toISOString(),
+        }}
+      />,
+    );
+    expect(await screen.findByText("Live updates paused")).toBeDefined();
+  });
+
   it("shows a failure notice when Stop is declined by the server", async () => {
     server.use(
       subSession([], { chat_status: "running" }),

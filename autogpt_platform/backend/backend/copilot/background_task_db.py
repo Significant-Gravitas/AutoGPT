@@ -12,6 +12,7 @@ from backend.copilot.background_task import (
     BackgroundTask,
 )
 from backend.copilot.model import ChatSessionMetadata, _parse_json_field
+from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.data import db
 from backend.util.json import SafeJson
 
@@ -141,7 +142,7 @@ async def finish_background_turn(
         else (
             "timed_out"
             if error == BACKGROUND_TIMEOUT_MESSAGE
-            else "cancelled" if error == "Operation cancelled" else "failed"
+            else "cancelled" if error == CANCELLED_MESSAGE else "failed"
         )
     )
     messages = await db.query_raw_with_schema(
