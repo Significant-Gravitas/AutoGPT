@@ -358,6 +358,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "not completed yet). Off by default. It runs in the database manager, "
+            "which then needs the bucket, FalkorDB, PostHog personal key and "
+            "MailerLite settings (docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+
     # Auth identity <-> platform User invariant monitoring
     auth_identity_orphan_sweep_enabled: bool = Field(
         default=False,

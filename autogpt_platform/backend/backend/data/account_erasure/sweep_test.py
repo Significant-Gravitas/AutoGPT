@@ -1,9 +1,10 @@
 """The sweep erases every pending account in turn: a blocked or failed one is
 logged and left for the next run, and the rest still go. Only one sweep runs
-at a time in a process."""
+at a time in a process, and the scheduler's job does nothing while the switch
+is off."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,6 +16,7 @@ from backend.data.account_erasure.models import (
     StepReport,
     StepStatus,
 )
+from backend.executor import scheduler
 
 
 def _report(user_id: str, *, dry_run: bool, status=StepStatus.DONE, blocked=False):
@@ -78,3 +80,18 @@ async def test_a_sweep_that_fails_is_logged_not_raised(monkeypatch):
     )
 
     await sweep._run_sweep()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_the_scheduler_job_starts_the_sweep_only_when_switched_on(monkeypatch, enabled):
+    """The switch is checked in the job too, so turning it off also stops a
+    job that was persisted while it was on."""
+    monkeypatch.setattr(scheduler.config, "account_erasure_sweep_enabled", enabled)
+    client = MagicMock()
+    client.start_account_erasure_sweep = AsyncMock(return_value=True)
+    monkeypatch.setattr(scheduler, "get_database_manager_async_client", lambda: client)
+    monkeypatch.setattr(scheduler, "run_async", asyncio.run)
+
+    scheduler.erase_closed_accounts()
+
+    assert client.start_account_erasure_sweep.await_count == int(enabled)
