@@ -1,7 +1,7 @@
 """Guards for the background-inference price card.
 
 The copilot model defaults (the standard, advanced, title and gate models)
-and Graphiti's memory LLM are what runs when nothing overrides them. Each
+and Graphiti's extraction and reranker LLMs run when nothing overrides them. Each
 must resolve to a catalog price, or a call priced from the card logs its
 tokens and charges nothing.
 """
@@ -38,8 +38,13 @@ def _copilot_default_models() -> dict[str, str]:
 
 
 def _background_default_models() -> dict[str, str]:
-    graphiti_llm = GraphitiConfig.model_fields["llm_model"].default
-    return {**_copilot_default_models(), "graphiti.llm_model": graphiti_llm}
+    return {
+        **_copilot_default_models(),
+        **{
+            f"graphiti.{name}": GraphitiConfig.model_fields[name].default
+            for name in ("llm_model", "reranker_model")
+        },
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -137,6 +142,15 @@ def test_gpt_5_is_priced_at_openai_list_prices():
         output_usd_per_mtok=10.0,
         cache_read_usd_per_mtok=0.125,
         cache_creation_usd_per_mtok=0.0,
+    )
+
+
+def test_gpt_6_luna_is_priced_at_openai_list_prices():
+    assert price_for("gpt-6-luna") == PriceCard(
+        input_usd_per_mtok=0.10,
+        output_usd_per_mtok=0.50,
+        cache_read_usd_per_mtok=0.01,
+        cache_creation_usd_per_mtok=0.125,
     )
 
 

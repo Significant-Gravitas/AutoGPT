@@ -144,6 +144,46 @@ async def test_timezone_change_re_registers_in_the_new_zone(env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scope,prefix",
+    [
+        (ACCOUNT, "community_rebuild"),
+        (EXPERT, "community_rebuild"),
+        (ACCOUNT, "dream_nightly_batch"),
+        (EXPERT, "dream_nightly_batch"),
+        (ACCOUNT, "skill_learning_nightly"),
+    ],
+)
+async def test_failed_timezone_refresh_keeps_the_cron_repairable(env, scope, prefix):
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
+    await registry.ensure_scope_scheduled(scope)
+    add = {
+        "community_rebuild": env.scheduler.add_scope_community_rebuild_schedule,
+        "dream_nightly_batch": env.scheduler.add_scope_nightly_batch_schedule,
+        "skill_learning_nightly": env.scheduler.add_scope_skill_learning_schedule,
+    }[prefix]
+    adder = add.side_effect
+    add.side_effect = RuntimeError("scheduler down")
+    env.timezone = TOKYO
+
+    result = await registry.ensure_scope_scheduled(scope)
+
+    job_id = f"{prefix}_{scope.scope_key}"
+    assert result[prefix]["reason"] == "registration_failed"
+    assert env.db.rows[scope.scope_key].timezone == TOKYO
+    assert env.scheduler.jobs[job_id] == PARIS
+    assert job_id not in env.scheduler.tagged
+    add.side_effect = adder
+
+    report = await env.reconcile()
+
+    assert report.restored == [job_id]
+    assert report.failed == []
+    assert env.scheduler.jobs[job_id] == TOKYO
+    assert (await env.reconcile()).restored == []
+
+
+@pytest.mark.asyncio
 async def test_unknown_timezone_is_not_utc_and_changes_nothing(env):
     env.timezone = None
 

@@ -259,8 +259,7 @@ async def _log_phase_cost(
     phase_models: dict[str, str],
 ) -> bool:
     """Charge one landed phase; ``False`` when there is nothing to charge."""
-    if row.get("error") and row["error"] != "max_tokens":
-        # Truncation still consumes billable tokens; provider failures do not.
+    if row.get("error"):
         return False
     phase_model = phase_models.get(phase)
     if not phase_model:

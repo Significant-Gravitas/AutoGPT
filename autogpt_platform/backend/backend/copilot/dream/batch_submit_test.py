@@ -305,8 +305,9 @@ async def test_submitted_phase_tool_carries_the_phase_schema(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_opus_5_5_phase_offers_the_tool_under_auto(fake_redis):
-    """Opus 5.5 answers a forced ``tool_choice`` with a 400, on the Batches
+@pytest.mark.parametrize("model", ["claude-opus-5-5", "claude-sonnet-5-5"])
+async def test_restricted_model_phase_offers_the_tool_under_auto(fake_redis, model):
+    """Opus and Sonnet 5.5 answer a forced ``tool_choice`` with a 400, on the Batches
     API only hours later in the result row, so its phase goes out under
     ``auto``, the last user turn asking for one call with the full result."""
     create = AsyncMock(return_value=SimpleNamespace(id="msgbatch_auto"))
@@ -324,14 +325,14 @@ async def test_opus_5_5_phase_offers_the_tool_under_auto(fake_redis):
             pass_id="p1",
             job_id="j1",
             phase="recombine",
-            phase_models={"recombine": "claude-opus-5-5"},
+            phase_models={"recombine": model},
             api_key="sk-test",
             input_bundle=_bundle(),
             consolidated_json='{"facts": []}',
         )
 
     params = create.call_args.kwargs["requests"][0]["params"]
-    assert params["model"] == "claude-opus-5-5"
+    assert params["model"] == model
     assert params["tool_choice"] == auto_tool_choice()
     (tool,) = params["tools"]
     assert tool["name"] == "emit_recombination"

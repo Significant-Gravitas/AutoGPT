@@ -64,9 +64,9 @@ describe("Tour DataFast tracking", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
-    // /tour sends DataFast events without consent, but only on the tour
-    // itself and only when a consent banner is configured.
+    // DataFast waits for analytics consent on the tour like everywhere else.
     configureCookiebot();
+    installCookiebot({ statistics: true });
     window.history.pushState({}, "", "/tour/chat");
     window.datafast = datafast;
     datafast.mockClear();
@@ -87,6 +87,28 @@ describe("Tour DataFast tracking", () => {
     vi.unstubAllEnvs();
     removeCookiebot();
     window.history.pushState({}, "", "/");
+  });
+
+  test("sends no DataFast events before the visitor consents", async () => {
+    installCookiebot();
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+    fireEvent.click(screen.getByText("Make this workflow yours"));
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
+  test("fires tour_start on a later visit when consent was not known on the first", async () => {
+    installCookiebot();
+    const first = render(<TourChatPage />);
+    first.unmount();
+    expect(eventsNamed("tour_start")).toHaveLength(0);
+
+    installCookiebot({ statistics: true });
+    render(<TourChatPage />);
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
   });
 
   test("fires tour_start once per session and tour_scenario_start per scenario run", async () => {

@@ -9,7 +9,6 @@ export function TransactionAmount({ amount, className }: Props) {
     <Text
       variant="body-medium"
       as="span"
-      unmask={false}
       className={cn(
         "whitespace-nowrap tabular-nums",
         amount > 0 ? "text-green-700" : "text-textBlack",

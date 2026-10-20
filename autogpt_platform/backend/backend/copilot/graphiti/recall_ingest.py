@@ -59,7 +59,7 @@ from typing import Any
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.llm_client.config import DEFAULT_MAX_TOKENS, ModelSize
-from graphiti_core.nodes import EpisodeType
+from graphiti_core.nodes import EpisodeType, EpisodicNode
 from graphiti_core.prompts.dedupe_edges import EdgeDuplicate
 from graphiti_core.prompts.models import Message
 from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
@@ -208,6 +208,35 @@ async def previous_episode_uuids(
         )
         return []
     return [str(record["uuid"]) for record in reversed(records)]
+
+
+def _in_the_order_asked(
+    episodes: list[EpisodicNode], uuids: list[str]
+) -> list[EpisodicNode]:
+    rank = {uuid: index for index, uuid in enumerate(uuids)}
+    return sorted(episodes, key=lambda episode: rank.get(episode.uuid, len(rank)))
+
+
+def _patch_upstream_episode_order() -> None:
+    """``add_episode`` reads the earlier episodes it was given with
+    graphiti's ``EpisodicNode.get_by_uuids``, which returns them in whatever
+    order the graph yields, so its extraction prompts could see a
+    conversation out of order. Hand them back in the order asked for:
+    oldest first from ``previous_episode_uuids``, as graphiti's own pick
+    (``retrieve_episodes``) already is. graphiti's other callers choose
+    their lists' order too."""
+    if getattr(EpisodicNode.get_by_uuids, "_autogpt_ordered", False):
+        return  # idempotent
+    upstream = EpisodicNode.get_by_uuids.__func__
+
+    async def get_by_uuids(cls, driver: GraphDriver, uuids: list[str]):
+        return _in_the_order_asked(await upstream(cls, driver, uuids), uuids)
+
+    get_by_uuids._autogpt_ordered = True  # type: ignore[attr-defined]
+    setattr(EpisodicNode, "get_by_uuids", classmethod(get_by_uuids))
+
+
+_patch_upstream_episode_order()
 
 
 def _forgotten_or_none(messages: list[Message]) -> set[int] | None:

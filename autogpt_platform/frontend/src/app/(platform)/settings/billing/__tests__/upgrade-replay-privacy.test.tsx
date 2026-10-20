@@ -56,12 +56,6 @@ it("keeps every reviewed Max amount out of replay, including the consent button 
   for (const amount of amounts) {
     expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
   }
-  expect(
-    dialog.getByText("Due today").closest(".sentry-unmask"),
-  ).not.toBeNull();
-  expect(
-    dialog.getByRole("button", { name: "Keep Pro" }).closest(".sentry-unmask"),
-  ).not.toBeNull();
 });
 
 function StartPro() {
@@ -100,12 +94,9 @@ it("keeps Pro's reviewed charge, discount, tax and full renewal terms masked in 
   for (const value of privateValues) {
     expect(value.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
   }
-  expect(
-    dialog.getByRole("button", { name: "Not now" }).closest(".sentry-unmask"),
-  ).not.toBeNull();
 });
 
-it("masks the accepted trial offer in billing while leaving static plan labels visible", async () => {
+it("masks the accepted trial offer in billing", async () => {
   server.use(
     http.get("*/api/credits/subscription", () =>
       HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 }),
@@ -130,7 +121,4 @@ it("masks the accepted trial offer in billing while leaving static plan labels v
   for (const amount of amounts) {
     expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
   }
-  expect(
-    screen.getByText("AutoGPT Pro").closest(".sentry-unmask"),
-  ).not.toBeNull();
 });

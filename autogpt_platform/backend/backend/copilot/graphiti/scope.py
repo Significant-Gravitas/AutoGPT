@@ -17,11 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .client import derive_memory_group_id, derive_memory_scope_key
 
 RedisKeyFamily = Literal[
-    "dream_lock",
-    "last_completed",
-    "hits",
-    "rebuild_lock",
-    "write_lock",
+    "dream_lock", "last_completed", "hits", "rebuild_lock", "write_lock"
 ]
 
 # One in-flight dream per scope (dream/locks.py).
@@ -96,9 +92,9 @@ class MemoryScope(BaseModel):
         before this class existed.
 
         Every family keys on ``scope_key`` (the raw user id for the account,
-        the group id for an expert) except ``rebuild_lock`` and ``write_lock``,
-        which keep their ``group_id`` layout. ``hits`` needs the counted
-        ``edge_uuid``.
+        the group id for an expert) except ``rebuild_lock`` and
+        ``write_lock``, which key on ``group_id``. ``hits`` needs the
+        counted ``edge_uuid``.
         """
         match family:
             case "dream_lock":

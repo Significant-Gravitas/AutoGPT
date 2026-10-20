@@ -26,10 +26,12 @@ from backend.copilot.graphiti.memory_model import (
 )
 from backend.copilot.graphiti.recall import (
     FORGOTTEN_FACT,
+    fact_status,
     search_facts,
     search_forgotten_facts,
 )
 from backend.copilot.graphiti.recall_forget import retract
+from backend.copilot.graphiti.recall_recheck import recheck
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -146,6 +148,8 @@ class MemoryForgetSearchTool(BaseTool):
                 if include_forgotten
                 else []
             )
+            if include_forgotten:
+                edges, _ = await recheck(memory_scope, edges, [])
         except Exception:
             logger.warning(
                 "Memory forget search failed for user %s", user_id[:12], exc_info=True
@@ -347,12 +351,16 @@ def _build_confirm_message(
 def _candidate(edge: EntityEdge) -> dict[str, str]:
     """One forget candidate, in the shape ``memory_forget_search`` returns."""
     valid_from, valid_to = fact_validity(edge)
-    return {
+    candidate = {
         "uuid": edge.uuid,
         "fact": fact_text(edge),
         "valid_from": valid_from,
         "valid_to": valid_to,
     }
+    status = fact_status(edge)
+    if status is not None:
+        candidate["status"] = status
+    return candidate
 
 
 def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:

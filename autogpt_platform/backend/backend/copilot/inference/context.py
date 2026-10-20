@@ -139,12 +139,11 @@ class InferenceError(RuntimeError):
     """A background call produced no usable answer.
 
     ``usage`` is the provider's spend when the failure came *after* a response
-    (empty content, unparseable JSON, a schema mismatch): those tokens were
-    billed, so a caller keeping a cost ledger records them. ``None`` means no
-    call completed and nothing was charged.
+    (empty content, unparseable JSON, a schema mismatch). Callers retain it
+    for telemetry and apply their own charging policy; failed dream phases
+    are absorbed. ``None`` means no call completed.
 
-    ``code`` names the failure without quoting the model, for a record that
-    outlives the call (a dream pass's error); the message may say more.
+    ``code`` identifies the failure without quoting model content in durable records.
     """
 
     def __init__(

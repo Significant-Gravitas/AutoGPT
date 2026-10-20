@@ -3,11 +3,13 @@
 import base64
 import os
 import shutil
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workdir import validate_ephemeral_path
@@ -24,6 +26,7 @@ from backend.copilot.tools.workspace_files import (
     _read_local_tool_result,
     _resolve_write_content,
 )
+from backend.data.workspace import WorkspaceFile
 
 # Re-export so pytest discovers the session-scoped fixture
 setup_test_data = setup_test_data
@@ -596,6 +599,9 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
         mime_type = "text/plain"
         size_bytes = len(fake_content)
 
+        def __init__(self) -> None:
+            self.metadata: dict = {}
+
     mock_resolve = AsyncMock(return_value=(fake_file_id, _FakeFileInfo()))
 
     mock_manager = AsyncMock()
@@ -950,3 +956,56 @@ class TestSkillsRegistryACL:
         from backend.copilot.tools.workspace_files import _path_under_skills_registry
 
         assert _path_under_skills_registry(path) is False
+
+
+class TestReadingASpilledGoogleOutput:
+    """A Google block's output too large for the model is saved to
+    ``tool-outputs/``; reading it back is Google data too."""
+
+    @staticmethod
+    async def _read(metadata: dict, **kwargs):
+        content = b'{"type": "block_output", "outputs": {"result": ["the email"]}}'
+        info = WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name="call-1.json",
+            path="/tool-outputs/call-1.json",
+            storage_path="s",
+            mime_type="application/json",
+            size_bytes=len(content) if kwargs.pop("small", True) else 10**6,
+            metadata=metadata,
+        )
+        manager = AsyncMock()
+        manager.read_file_by_id = AsyncMock(return_value=content)
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                AsyncMock(return_value=(info.id, info)),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                AsyncMock(return_value=manager),
+            ),
+        ):
+            return await ReadWorkspaceFileTool()._execute(
+                user_id="user-1",
+                session=MagicMock(session_id="s1"),
+                path="tool-outputs/call-1.json",
+                **kwargs,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "read",
+        [{}, {"offset": 5, "length": 20}, {"small": False}],
+        ids=["whole", "a window", "a preview"],
+    )
+    async def test_flagged_as_google_data(self, read):
+        google = {"purpose": "tool-output", GOOGLE_DATA_METADATA_KEY: True}
+
+        assert (await self._read(google, **read)).holds_google_data
+        assert not (
+            await self._read({"purpose": "tool-output"}, **read)
+        ).holds_google_data

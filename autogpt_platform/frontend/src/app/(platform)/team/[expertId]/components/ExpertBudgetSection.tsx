@@ -54,7 +54,6 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
         <Text
           variant="body-medium"
           tone="secondary"
-          unmask={false}
           className={cn("tabular-nums", color && "!text-inherit")}
         >
           {weeklySpend

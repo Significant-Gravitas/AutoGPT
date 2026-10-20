@@ -10,7 +10,11 @@ from backend.copilot.graphiti.recall import (
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.copilot.model import ChatSessionInfo
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    legacy_first_message,
+    master_warm,
+)
+from backend.copilot.model import ChatMessage, ChatSessionInfo
 
 from . import fetch as fetch_mod
 from . import hidden_sessions
@@ -72,7 +76,7 @@ async def test_fact_gather_reads_live_facts_by_recalls_own_test():
 
 
 def _chat_store(*session_ids: str) -> SimpleNamespace:
-    message = SimpleNamespace(role="user", content="something the user said")
+    message = ChatMessage(role="user", content="something the user said", sequence=0)
     return SimpleNamespace(
         get_user_chat_sessions=AsyncMock(
             return_value=[
@@ -141,6 +145,26 @@ async def test_the_dream_reads_no_session_when_it_cannot_tell_which_are_hidden(
     chat_store.get_user_chat_sessions.assert_not_awaited()
 
 
+def test_a_session_body_reads_the_first_message_without_its_stored_block():
+    """The dream's session bodies are model input: the first message comes
+    without the memory block an older session stored in it, the backfill not
+    yet run; a later message holding a copy (a paste) is the user's."""
+    first = legacy_first_message(master_warm(("the Nova password is violet-913",)))
+    pasted = legacy_first_message(master_warm(("Bob leads Atlas",)))
+
+    body = fetch_mod._session_body(
+        [
+            ChatMessage(role="user", content=first, sequence=0),
+            ChatMessage(role="assistant", content="done", sequence=1),
+            ChatMessage(role="user", content=pasted, sequence=2),
+        ]
+    )
+
+    assert "violet-913" not in body
+    assert "what is Alice working on" in body
+    assert "Bob leads Atlas" in body
+
+
 @pytest.mark.asyncio
 async def test_session_row_preserves_typed_creation_time(mocker):
     started = datetime(2026, 10, 1, tzinfo=timezone.utc)
@@ -157,3 +181,36 @@ async def test_session_row_preserves_typed_creation_time(mocker):
     row = await fetch_mod._session_row(session, "u")
     assert row.created_at == started
     assert row.body == "user: something the user said"
+
+
+@pytest.mark.asyncio
+async def test_a_note_for_the_user_is_not_dreamt_about(mocker):
+    """A skipped-run card is the platform talking to the user; a dream would
+    store "usage limit reached" as a fact about them."""
+    session = SimpleNamespace(
+        session_id="session-1",
+        title="Briefing",
+        started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    page = SimpleNamespace(
+        messages=[
+            ChatMessage(role="user", content="brief me"),
+            ChatMessage(
+                role="assistant",
+                content="Skipped: daily usage limit reached",
+                metadata={"hidden_from_model": True},
+            ),
+            ChatMessage(role="assistant", content="here is your brief"),
+        ]
+    )
+    database = SimpleNamespace(
+        get_user_chat_sessions=AsyncMock(return_value=[session]),
+        get_chat_messages_paginated=AsyncMock(return_value=page),
+    )
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+
+    rows = await fetch_mod._fetch_recent_sessions(
+        MemoryScope.for_user("user-1"), datetime.now(timezone.utc), 10
+    )
+
+    assert rows[0].body == "user: brief me\nassistant: here is your brief"

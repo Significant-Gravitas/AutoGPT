@@ -309,6 +309,33 @@ class TestACleanupCutShortInItsCharge:
 
 
 class TestAPhaseCharge:
+    @pytest.mark.parametrize(
+        "error", ["max_tokens", "invalid output shape", "provider error"]
+    )
+    async def test_failed_model_phases_are_absorbed_when_the_reaper_settles(
+        self, fake_dream_db, fake_dream_redis, charges, error
+    ):
+        await _dead_batch_pass(fake_dream_db)
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="recombine",
+            row=BatchResultRow(
+                custom_id="p1_recombine",
+                content="{}",
+                input_tokens=30,
+                output_tokens=40,
+                error=error,
+            ),
+            model=_MODELS["recombine"],
+        )
+
+        await reap_expired_passes()
+        await reap_expired_passes()
+
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+        assert state_key("p1") not in fake_dream_redis.hashes
+
     async def test_is_made_once_whoever_asks_and_however_often(
         self, fake_dream_redis, charges
     ):

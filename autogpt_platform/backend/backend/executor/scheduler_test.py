@@ -81,7 +81,7 @@ async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestSe
     (Scheduler._get_active_jobs_cached), not just via the old in-Python
     check — and ``include_paused=True`` must still find it through the
     unfiltered ``_get_jobs_cached`` path used by pause/resume lifecycle
-    callers. Exercised against the real apscheduler_jobs table."""
+    callers. Exercised against a real SQL jobstore table."""
     await db.connect()
     test_user = await create_test_user()
     test_graph = await server.agent_server.test_create_graph(
@@ -626,7 +626,11 @@ class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
         kwargs = self._register(method, self.EXPERT)
 
         assert kwargs["id"] == f"{prefix}_{self.EXPERT.scope_key}"
-        assert kwargs["kwargs"] == {"user_id": "abc", "expert_id": "expert-1"}
+        assert kwargs["kwargs"] == {
+            "user_id": "abc",
+            "expert_id": "expert-1",
+            "func": scheduler_module._MEMORY_CRONS[prefix][0],
+        }
         assert "Asia/Tokyo" in repr(kwargs["trigger"])
 
     def test_scope_methods_are_reachable_over_rpc(self) -> None:
@@ -939,7 +943,7 @@ class TestNightlyBatchScopeGate:
         returned, submit, stamp = self._fire(gate=True, result=result)
 
         assert returned is result
-        submit.assert_called_once_with("abc", None, trigger="cron")
+        submit.assert_called_once_with("abc", None)
         stamp.assert_awaited_once_with(MemoryScope.for_user("abc"), "nightly")
 
     def test_an_errored_run_is_not_stamped(self) -> None:
@@ -953,7 +957,7 @@ class TestNightlyBatchScopeGate:
             gate=True, result=_nightly_result(), expert_id="expert-1"
         )
 
-        submit.assert_called_once_with("abc", "expert-1", trigger="cron")
+        submit.assert_called_once_with("abc", "expert-1")
         stamp.assert_awaited_once_with(
             MemoryScope.for_expert("abc", "expert-1"), "nightly"
         )
@@ -1218,12 +1222,13 @@ def _run_nightly_wrapper(result):
         patch(
             "backend.executor.scheduler._submit_nightly_batch",
             return_value=result,
-        ),
+        ) as submit_mock,
         patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
         patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
         patch("backend.copilot.dream.job_status.update_status_phase") as phase_mock,
     ):
         execute_nightly_batch_with_status("abc", "job-1")
+    submit_mock.assert_called_once_with("abc", trigger="admin")
     return complete_mock, errored_mock, phase_mock
 
 

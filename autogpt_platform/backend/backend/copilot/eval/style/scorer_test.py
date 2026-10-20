@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.api.features.experts.models import Expert
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import InferenceUsage, RouteDecision
 
-from .assembly import load_rubric, roster_experts
+from .assembly import load_rubric
 from .models import DimensionJudgement, Judgement
 from .scorer import EVAL_USER_ID, JUDGE_TIMEOUT_SECONDS, judge_response
 
@@ -27,10 +28,32 @@ def _route(scope, job, *, config=None) -> RouteDecision:
     )
 
 
+def _expert() -> Expert:
+    """The judge reads only the expert's id and the fields its spec block
+    names, so the test builds one instead of reading the skills catalog."""
+    return Expert(
+        id="expert-max",
+        name="Max",
+        avatar_url=None,
+        role="Researcher",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="Careful and direct.",
+        voice_preferences="Plain English.",
+        boundaries="",
+        protected_soul_rules=[],
+        is_template=True,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[],
+    )
+
+
 @pytest.mark.asyncio
 async def test_the_judge_runs_on_its_pinned_model_for_the_judged_expert():
     rubric = load_rubric()
-    (expert,) = roster_experts(["Max"])
+    expert = _expert()
     judgement = Judgement(
         scores={
             d.key: DimensionJudgement(score=rubric.scale_max) for d in rubric.dimensions

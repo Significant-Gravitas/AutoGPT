@@ -72,20 +72,8 @@ function getSentryEnvironment() {
   return override || getEnvironmentStr();
 }
 
-function getPreviewStealingDev() {
-  const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
-  const appEnv = getAppEnv();
-
-  if (
-    !branch ||
-    branch === "dev" ||
-    branch === "refs/heads/dev" ||
-    appEnv !== AppEnv.DEV
-  ) {
-    return null;
-  }
-
-  return branch;
+function getRevision() {
+  return process.env.NEXT_PUBLIC_REVISION?.trim() || "";
 }
 
 function getPostHogCredentials() {
@@ -97,6 +85,10 @@ function getPostHogCredentials() {
 
 function getLaunchDarklyClientId() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+}
+
+function getGAMeasurementID() {
+  return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 }
 
 function getGoogleAdsID() {
@@ -204,9 +196,10 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getPreviewStealingDev,
+  getRevision,
   getPostHogCredentials,
   getLaunchDarklyClientId,
+  getGAMeasurementID,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
   getCookiebotCBID,

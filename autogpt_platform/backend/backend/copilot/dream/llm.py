@@ -13,10 +13,8 @@ JSON:
     cut these down; this is the parser-level safety net.
 
 Every failure is an ``InferenceError`` carrying the call's usage: the
-provider already billed those tokens, so a caller keeping a cost ledger
-still records them. Its message and code never quote the model's answer,
-which a dream pass's record would otherwise keep (``forget_copies.py``): a
-debug log shows the start of it.
+usage stays available for telemetry even when the caller absorbs the cost.
+Its message and code never quote the model answer; only a debug log may show its start.
 """
 
 from __future__ import annotations

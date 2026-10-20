@@ -12,6 +12,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageCreateWithoutRelationsInput,
     ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
@@ -35,6 +36,7 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .model import invalidate_session_cache
 from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
@@ -733,6 +735,8 @@ async def add_chat_messages_batch(
                         data["llmCredentialId"] = msg["llm_credential_id"]
                     if msg.get("langfuse_trace_id") is not None:
                         data["langfuseTraceId"] = msg["langfuse_trace_id"]
+                    if msg.get("trace_id") is not None:
+                        data["traceId"] = msg["trace_id"]
 
                     # Per-row bag. The single-message path already persisted
                     # this; the batch path silently dropped it, so anything
@@ -1413,6 +1417,7 @@ async def update_chat_message_stamps(
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
     langfuse_trace_id: str | None = None,
+    trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
 
@@ -1436,6 +1441,8 @@ async def update_chat_message_stamps(
         data["llmCredentialId"] = llm_credential_id
     if langfuse_trace_id is not None:
         data["langfuseTraceId"] = langfuse_trace_id
+    if trace_id is not None:
+        data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
         data=data,
@@ -1746,52 +1753,34 @@ async def append_expert_run_message(
                 message_id=message_id,
                 metadata=metadata,
             )
+    # The chat page reads the session through the Redis cache: drop a copy
+    # from before this post, or the post shows only once the copy expires.
+    await invalidate_session_cache(session_id)
     return session_id
 
 
-async def append_plain_session_message(
+async def append_session_message(
+    session_id: str,
     user_id: str,
     content: str,
     message_id: str,
     metadata: dict[str, Any] | None = None,
-) -> str | None:
-    """Post an assistant message into the user's latest non-expert (plain
-    Otto) session, creating one when none exists — this is the user's
-    "primary thread", e.g. where a morning briefing lands.
+) -> bool:
+    """Post an assistant message into one chat the user owns, between turns.
 
-    Deduplicates on *message_id* (deterministic per event at the caller), so
-    retries and double-fires never produce duplicate posts.
-    Returns the session id the message landed in, or None when deduped.
+    For a note about that chat, such as why its scheduled run was skipped.
+    Unlike ``append_expert_run_message`` this never creates or re-targets a
+    session: a note about a chat belongs in that chat or nowhere. Returns False
+    when the chat is gone or not the user's, or when *message_id* was already
+    written (deterministic at the caller, so a double fire posts once).
     """
-    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
-    if existing is not None:
-        return None
-
-    # Dream-pass sessions are also ``expertId IS NULL`` but are hidden from
-    # every listing surface (see :data:`_EXCLUDE_DREAM_SESSIONS_SQL`), so
-    # posting into one would drop the message somewhere the user can never
-    # open. Same exclusion as the listing queries.
-    sessions = await db.query_raw_with_schema(
-        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
-        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
-        'ORDER BY "updatedAt" DESC LIMIT 1',
-        user_id,
-        model=PrismaChatSession,
+    if await PrismaChatMessage.prisma().find_unique(where={"id": message_id}):
+        return False
+    session = await PrismaChatSession.prisma().find_first(
+        where={"id": session_id, "userId": user_id}
     )
-    if sessions:
-        session_id = sessions[0].id
-    else:
-        # An automation writes the first message, but the thread itself is the
-        # user's primary chat — the one the product opens them into. Stamping
-        # it ``automation`` (the unset-metadata default) would leave a user
-        # whose briefing arrived before their first chat unable to staff their
-        # team from the very thread they were handed.
-        created = await create_chat_session(
-            session_id=str(uuid.uuid4()),
-            user_id=user_id,
-            metadata=await _default_route_metadata(user_id, origin="interactive"),
-        )
-        session_id = created.session_id
+    if session is None:
+        return False
 
     async def write_with_fresh_sequence() -> None:
         await add_chat_message(
@@ -1803,17 +1792,68 @@ async def append_plain_session_message(
             metadata=metadata,
         )
 
-    # Same Redis NX lock as append_expert_run_message: the sequence read +
-    # insert must not interleave with a concurrent turn writer picking the
-    # same sequence and PK-colliding on (sessionId, sequence).
+    # Same Redis NX lock as append_expert_run_message: the sequence read and
+    # the insert must not interleave with a turn writing the same sequence.
     async with _get_session_lock(session_id):
         try:
             await write_with_fresh_sequence()
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
-                return None
+                return False
             # Reachable only in lock-degraded mode (Redis down yields the
             # lock without acquiring); one retry with a fresh sequence is
             # enough at this write volume.
             await write_with_fresh_sequence()
+    # The next turn and the chat page load the session through the Redis cache
+    # first; a stale copy would hide the row just written.
+    await invalidate_session_cache(session_id)
+    return True
+
+
+async def append_plain_session_message(
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+    title: str | None = None,
+) -> str | None:
+    """Deliver an assistant message in a new, non-expert Otto chat.
+
+    Each distinct message gets its own chat. Deduplicates on *message_id*
+    so retries and double-fires create neither duplicate posts nor empty chats.
+    Returns the new session id, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session_id = str(uuid.uuid4())
+    data = _chat_session_create_input(
+        session_id=session_id,
+        user_id=user_id,
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+        metadata=await _default_route_metadata(user_id, origin="interactive"),
+    )
+    message: ChatMessageCreateWithoutRelationsInput = {
+        "id": message_id,
+        "role": "assistant",
+        "sequence": 0,
+        "content": sanitize_string(content),
+    }
+    if metadata is not None:
+        message["metadata"] = SafeJson(metadata)
+    if title is not None:
+        data["title"] = sanitize_string(title)
+    data["Messages"] = {"create": message}
+
+    # The nested write is atomic: a duplicate message rolls back its new chat too.
+    try:
+        await PrismaChatSession.prisma().create(data=data)
+    except UniqueViolationError:
+        # Nested writes report only "id", without naming the conflicting model.
+        if await PrismaChatMessage.prisma().find_unique(where={"id": message_id}):
+            return None
+        raise
     return session_id

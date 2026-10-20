@@ -12,6 +12,8 @@ layer (``recall.py``) and the chat tools that report on it.
 from enum import Enum
 
 from pydantic import BaseModel, Field, ValidationError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 
 class SourceKind(str, Enum):
@@ -120,10 +122,9 @@ class MemoryForgetFailure(BaseModel):
 
     @classmethod
     def query_error(cls, uuid: str, exc: Exception) -> "MemoryForgetFailure":
-        """The reason names the exception type and its first argument (e.g.
-        FalkorDB's ``Unknown function 'datetime'``), so the model can tell a
-        real query error from a plain no-match; never the full ``repr``,
-        which can carry connection details. Log the exception where caught.
+        """Transport failures expose only their type; query failures include
+        their first argument (e.g. ``Unknown function 'datetime'``).
+        Log the exception where caught.
         """
         return cls(
             uuid=uuid,
@@ -161,6 +162,8 @@ class MemoryForgetFailure(BaseModel):
 
 
 def _describe(exc: Exception) -> str:
+    if isinstance(exc, (OSError, RedisConnectionError, RedisTimeoutError)):
+        return type(exc).__name__
     detail = exc.args[0] if exc.args else type(exc).__name__
     return f"{type(exc).__name__}: {detail}"
 

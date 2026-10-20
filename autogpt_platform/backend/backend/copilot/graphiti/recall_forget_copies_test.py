@@ -80,7 +80,8 @@ async def test_failing_to_blank_them_is_a_cleanup_error_on_each_fact(
 
     assert result.deleted == ["u1"]
     assert [(f.uuid, f.code) for f in result.failures] == [("u1", CLEANUP)]
-    assert "database down" in result.failures[0].reason
+    assert "ConnectionError" in result.failures[0].reason
+    assert "database down" not in result.failures[0].reason
 
 
 @pytest.mark.asyncio

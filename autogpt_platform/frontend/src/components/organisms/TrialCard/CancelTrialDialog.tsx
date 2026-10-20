@@ -41,7 +41,7 @@ export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
             Your trial won&apos;t convert to a paid plan and your card
             won&apos;t be charged.
           </Text>
-          <Text variant="body" unmask={false} className="!text-zinc-800">
+          <Text variant="body" className="!text-zinc-800">
             You keep full access until{" "}
             <strong className="font-semibold">
               {formatTrialEnd(trial.ends_at)}

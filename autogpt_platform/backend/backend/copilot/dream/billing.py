@@ -24,10 +24,12 @@ the existing per-block / per-provider rollups in the admin dashboard
 keep working without dream-specific code paths.
 
 Failure semantics mirror the chat path: a partial pass still charges
-for the phases that completed before the error, because we already
-paid the provider for those tokens. A charge that itself fails raises
-:class:`PhaseChargeError` carrying the phase's priced usage, so the pass
-still reports what the provider billed.
+for the phases that completed before the error. The failed phase is
+absorbed on both sync and batch paths, including truncated or invalid
+structured output. Its usage stays on the error for telemetry, but its
+provider spend is not written to a cost row.
+A charge that itself fails raises :class:`PhaseChargeError` carrying
+the completed phase's priced usage so the pass still reports it.
 """
 
 from __future__ import annotations

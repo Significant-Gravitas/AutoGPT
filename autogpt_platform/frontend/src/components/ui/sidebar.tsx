@@ -198,6 +198,21 @@ function getPersistedSidebarOpen(): boolean | undefined {
   );
 }
 
+// next/link has already called preventDefault by the time this runs, so the
+// modifier keys are what tell a same-tab navigation apart.
+function isSameTabLinkClick(event: React.MouseEvent<HTMLElement>) {
+  if (!(event.target instanceof Element)) return false;
+  if (event.button !== 0) return false;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return false;
+  }
+  const link = event.target.closest("a[href]");
+  if (!link) return false;
+  return (
+    link.getAttribute("target") !== "_blank" && !link.hasAttribute("download")
+  );
+}
+
 const Sidebar = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -218,6 +233,10 @@ const Sidebar = React.forwardRef<
     ref,
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+
+    function handleLinkClick(event: React.MouseEvent<HTMLDivElement>) {
+      if (isSameTabLinkClick(event)) setOpenMobile(false);
+    }
 
     if (collapsible === "none") {
       return (
@@ -241,7 +260,9 @@ const Sidebar = React.forwardRef<
             data-sidebar="sidebar"
             data-mobile="true"
             tabIndex={-1}
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [&>button]:hidden"
+            // The default sheet eases in over 500ms, which lags behind the
+            // tap; a drawer curve that starts fast keeps up with the finger.
+            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -255,6 +276,9 @@ const Sidebar = React.forwardRef<
               event.preventDefault();
               (event.currentTarget as HTMLElement).focus();
             }}
+            // The sheet covers the page, so a link that navigates in this
+            // tab closes it on the way.
+            onClick={handleLinkClick}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
@@ -624,7 +648,9 @@ const SidebarMenuButton = React.forwardRef<
       />
     );
 
-    if (!tooltip) {
+    // Tooltips never show on mobile, and mounting one per chat slows every
+    // opening of the sheet.
+    if (!tooltip || isMobile) {
       return button;
     }
 
