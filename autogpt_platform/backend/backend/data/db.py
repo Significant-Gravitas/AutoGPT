@@ -45,6 +45,22 @@ if STMT_CACHE_SIZE:
 
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
+
+def _perf_session_mode(url: str) -> str:
+    # do-not-merge probe (#15739): the session pooler without pgbouncer mode, so
+    # Prisma caches prepared statements and skips the per-query transaction wrap.
+    p = urlparse(url)
+    qs = dict(parse_qsl(p.query))
+    qs.pop("pgbouncer", None)
+    qs["statement_cache_size"] = "100"
+    netloc = p.netloc
+    if p.port == 6543:
+        netloc = netloc.rsplit(":", 1)[0] + ":5432"
+    return urlunparse(p._replace(netloc=netloc, query=urlencode(qs)))
+
+
+DATABASE_URL = _perf_session_mode(DATABASE_URL)
+
 prisma = Prisma(
     auto_register=True,
     http={"timeout": HTTP_TIMEOUT},
