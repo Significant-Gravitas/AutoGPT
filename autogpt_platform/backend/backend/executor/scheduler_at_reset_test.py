@@ -276,7 +276,7 @@ async def test_it_fires_into_its_chat(fire_env, kind, message, as_user):
     assert sent["unattended"] is True
     assert sent["llm_auth_provider"] == "platform"
     assert sent["scheduled"] == ScheduledTurnOrigin(
-        schedule_id=f"at-reset-{kind}-{SESSION}"
+        schedule_id=f"at-reset-{kind}-{SESSION}", purpose=kind
     )
 
 

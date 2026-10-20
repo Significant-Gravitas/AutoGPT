@@ -5,6 +5,7 @@ import {
   isSessionOpeningMessage,
   type SentFrom,
 } from "../../../../sentFrom";
+import { getScheduledChatNotice } from "../../../ScheduledChatNoticeCard/helpers";
 import { getWorkRunMetadata, toPreview } from "../../../WorkCard/helpers";
 import { deriveLiveCompaction, deriveRowParts, getRunPreview } from "./helpers";
 
@@ -23,6 +24,7 @@ export function useMessageRow({
 }: Args) {
   const { role, parts, metadata } = message;
   const runMetadata = useMemo(() => getWorkRunMetadata(metadata), [metadata]);
+  const notice = useMemo(() => getScheduledChatNotice(metadata), [metadata]);
   const runPreview = useMemo(
     () => (runMetadata ? toPreview(getRunPreview(parts)) : ""),
     [runMetadata, parts],
@@ -38,5 +40,12 @@ export function useMessageRow({
     : (getSentFromMetadata(metadata) ??
       (isSessionOpeningMessage(message) ? sessionSentFrom : null));
 
-  return { runMetadata, runPreview, ...rowParts, ...compaction, sentFrom };
+  return {
+    runMetadata,
+    runPreview,
+    notice,
+    ...rowParts,
+    ...compaction,
+    sentFrom,
+  };
 }

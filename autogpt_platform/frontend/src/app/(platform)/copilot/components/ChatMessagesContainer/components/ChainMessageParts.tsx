@@ -1,6 +1,8 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
+import { HeldOutcomesContext } from "../HeldOutcomesContext";
+import { withHeldOutcome } from "../heldCallRows";
 import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
@@ -33,6 +35,7 @@ export function ChainMessageParts({
   liveCompactionCallId,
   liveCompactionStats,
 }: Props) {
+  const outcomes = useContext(HeldOutcomesContext);
   // Kept per `parts` so each ToolChain gets the same `parts` array back and
   // its own row derivation stays memoised.
   const segments = useMemo(
@@ -56,11 +59,17 @@ export function ChainMessageParts({
         />
       );
     }
+    // Outside the chain a part renders from its held call's outcome; chain rows
+    // keep the stub, which applyHeldOutcome words.
     if (segment.kind === "experts") {
       return (
         <ExpertChangeGroup
           key={`${messageID}-experts-${segment.index}`}
-          parts={segment.parts as ToolUIPart[]}
+          parts={
+            segment.parts.map((part) =>
+              withHeldOutcome(part, outcomes),
+            ) as ToolUIPart[]
+          }
           isCurrentlyStreaming={isCurrentlyStreaming}
           readOnly={readOnly}
         />
@@ -69,7 +78,7 @@ export function ChainMessageParts({
     return (
       <MessagePartRenderer
         key={`${messageID}-${segment.index}`}
-        part={segment.part}
+        part={withHeldOutcome(segment.part, outcomes)}
         messageID={messageID}
         partIndex={segment.index}
         onRetry={onRetry}

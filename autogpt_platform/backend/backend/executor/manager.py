@@ -81,7 +81,7 @@ from backend.util.exceptions import (
 from backend.util.file import clean_exec_files
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.process import AppProcess, set_service_name
+from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
 from backend.util.retry import (
     continuous_retry,
     func_retry,
@@ -1675,6 +1675,7 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Loaded {block_count} blocks in "
             f"{time.monotonic() - load_started:.1f}s"
         )
+        freeze_startup_heap()
 
         self.cancel_thread.start()
         self.run_thread.start()

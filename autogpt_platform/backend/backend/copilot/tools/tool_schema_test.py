@@ -258,6 +258,14 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
+# Bumped 77_014 -> 77_401 for memory_forget_search's `include_forgotten`
+# argument (#14972): a soft forget left a fact the chat could no longer find,
+# so it could never be made permanent with hard_delete. No tool was added.
+# Measured on this branch merged with dev 8432f734f5:
+#     merged tree, before                         76,975 (89 tools)
+#     + include_forgotten              +126       77,101 (89 tools)
+#     + headroom                       +300       77,401
+# The same deliberate margin as the line above, for the same reason.
 # Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
 # provider (SECRT-2878): the enum entry, its place in the supported list, one
 # sentence telling the model it returns the account-linking link (never a key
@@ -267,6 +275,10 @@ from ._test_data import make_session
 #     dev 583fc0bb4e                              76,975 (89 tools)
 #     + this PR's connect_integration  +200       77,175 (89 tools)
 # Plus one.
+# Both bumps met in the memory-core stack's merge with dev f05d2d7393;
+# re-measured on that merged tree (89 tools), with the stack's margin:
+#     merged tree                                 77,301 (89 tools)
+#     + headroom                       +300       77,601
 # Raised 77_176 -> 77_653 for #11220's `constant_inputs`
 # (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
 # agent carrying both a trigger node and input nodes needs to configure the two
@@ -274,7 +286,10 @@ from ._test_data import make_session
 #     dev b92c8bdf24                              77,175 (89 tools)
 #     + #11220's two arguments        +178        77,353 (89 tools)
 #     + headroom                      +300        77,653
-# On conflict keep the higher value: this line must cover every in-flight PR.
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 77,464 (89 tools)
+# The higher value still covers it. On conflict keep the higher value: this
+# line must cover every in-flight PR.
 _CHAR_BUDGET = 77_653
 
 
@@ -471,6 +486,14 @@ def test_total_schema_char_budget() -> None:
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
 #
+# Re-measured on the memory-core stack merged with dev f05d2d7393. Neither
+# side moved this line, but each grew the largest session under it: the
+# stack's memory_forget_search `include_forgotten` (69,609 alone) and dev's
+# connect_integration `ayrshare` (69,687 alone). Together they measure 20
+# over it. Same headroom, for the same reason.
+#     merged tree                                 69,808
+#     + headroom                       +300       70,108
+#
 # #11220's `constant_inputs` and `trigger_config`, the same two arguments as
 # ``_CHAR_BUDGET`` above, ride the largest session. Dev grew 199 past the
 # fab04d6ac9 measurement, so they no longer fit under that headroom.
@@ -478,7 +501,9 @@ def test_total_schema_char_budget() -> None:
 #     dev b92c8bdf24                              69,687
 #     + #11220's two arguments        +164        69,851
 #     + headroom                      +300        70,151
-# On conflict keep the higher value.
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 69,962
+# The higher value still covers it. On conflict keep the higher value.
 _SESSION_WIRE_BUDGET = 70_151
 
 

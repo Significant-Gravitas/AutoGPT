@@ -8,6 +8,7 @@ for Prisma directly while still exercising the queue's branching.
 """
 
 import asyncio
+import logging
 import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -301,6 +302,88 @@ async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
     else:
         release.assert_not_awaited()
         db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flipped", [True, False], ids=["cancelled", "not-queued"])
+async def test_a_queued_turn_cancelled_before_it_started_is_logged(
+    caplog: pytest.LogCaptureFixture, flipped: bool
+) -> None:
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=flipped)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    db.get_next_sequence = AsyncMock(return_value=2)
+    db.add_chat_message = AsyncMock()
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=AsyncMock()),
+        caplog.at_level(logging.INFO, logger=turn_queue.logger.name),
+    ):
+        await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
+
+    lines = [
+        r for r in caplog.records if "cancelled before it started" in r.getMessage()
+    ]
+    if flipped:
+        assert [(r.levelno, r.getMessage()) for r in lines] == [
+            (
+                logging.INFO,
+                "cancel_queued_turn: session=s1 user=u1 cancelled before it "
+                "started, spawned=True",
+            )
+        ]
+    else:
+        assert lines == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("started", [True, False], ids=["started", "refused"])
+async def test_a_queued_sub_session_that_starts_is_logged(
+    caplog: pytest.LogCaptureFixture, started: bool
+) -> None:
+    head = _queued_row("child")
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    dispatched = AsyncMock(
+        side_effect=None if started else TreeRefusal("This tree has closed.")
+    )
+    with (
+        patch.object(
+            turn_queue, "list_queued_sessions", new=AsyncMock(side_effect=[[head], []])
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+        caplog.at_level(logging.INFO, logger=turn_queue.logger.name),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is started
+
+    lines = [r for r in caplog.records if "started queued" in r.getMessage()]
+    if started:
+        turn_id = dispatched.await_args.kwargs["turn_id"]
+        assert [(r.levelno, r.getMessage()) for r in lines] == [
+            (
+                logging.INFO,
+                f"dispatch_next_for_user: started queued session=child user=u1 "
+                f"turn={turn_id} sub_work=True",
+            )
+        ]
+    else:
+        assert lines == []
 
 
 @pytest.mark.asyncio
@@ -1015,7 +1098,7 @@ async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
     ):
         refusal = await turn_queue.turn_refusal("u1", route)
 
-    assert refusal == turn_queue.TurnRefusal(reason="is banned")
+    assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
 
 
 @pytest.mark.asyncio

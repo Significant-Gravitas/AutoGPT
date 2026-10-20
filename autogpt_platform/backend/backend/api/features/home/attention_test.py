@@ -9,6 +9,7 @@ from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.gate.references import Reference
 from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .attention import compose_attention_items
@@ -202,6 +203,61 @@ def test_paused_expert_explains_a_breached_budget() -> None:
 
     assert items[0].kind == "paused"
     assert items[0].description == "Weekly budget reached: 500 of 500 credits."
+
+
+def test_a_paused_scheduled_chat_points_at_the_card_in_its_chat() -> None:
+    """SECRT-2879: the fix (Reconnect, Resume) is on the card in the chat the
+    last run went to, so the item opens that chat."""
+    paused = PausedScheduledChat(
+        schedule_key="routine-1",
+        title="Morning briefing",
+        session_id="session 1",
+        reason="connection",
+        provider="twitter",
+        summary="Paused: can't use Twitter",
+        paused_at=NOW - timedelta(hours=1),
+    )
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        paused_chats=[paused],
+    )
+
+    assert len(items) == 1
+    item = items[0]
+    assert item.kind == "paused" and item.priority == "high"
+    assert item.title == "Scheduled chat “Morning briefing”"
+    assert item.description == "Paused: can't use Twitter"
+    assert item.primary_action is not None
+    assert item.primary_action.href == "/copilot?sessionId=session%201"
+
+
+def test_a_paused_scheduled_chat_without_a_chat_opens_the_scheduled_page() -> None:
+    paused = PausedScheduledChat(
+        schedule_key="sched-1",
+        title="Check CI",
+        session_id=None,
+        reason="error",
+        provider=None,
+        summary="Paused: keeps failing",
+        paused_at=NOW,
+    )
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        paused_chats=[paused],
+    )
+
+    assert items[0].primary_action is not None
+    assert items[0].primary_action.href == "/library/followups"
 
 
 def test_paused_expert_without_a_breached_budget_stays_generic() -> None:
