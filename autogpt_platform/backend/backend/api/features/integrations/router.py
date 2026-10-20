@@ -1173,9 +1173,26 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    # CredentialsDeletionResponse always reports deleted=true, so only return it
+    # once the stored row is actually gone.
     tokens_revoked = None
     if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+        try:
+            tokens_revoked = await revoke_codex_credentials(
+                creds_manager, user_id, cred_id
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+            ) from None
+        except Exception as error:
+            logger.warning(
+                "Codex credential deletion failed with %s", type(error).__name__
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete credentials",
+            ) from None
     else:
         await creds_manager.delete(user_id, cred_id)
 

@@ -168,22 +168,28 @@ async def revoke_codex_credentials(
     user_id: str,
     credential_id: str,
 ) -> bool:
-    try:
-        lease = await manager.acquire_lease(user_id, credential_id)
-    except ValueError:
-        return False
+    """Delete a stored Codex credential, with a best-effort logout first.
+
+    The credential is leased without refreshing it: an expired or revoked
+    ChatGPT grant must still be deletable. Returns whether the provider revoked
+    the grant, which is always False because OpenAI publishes no revocation
+    endpoint for this client (see `CodexDeviceAuthHandler.revoke_tokens`).
+
+    Raises ValueError if the credential doesn't exist or isn't a Codex one, and
+    propagates any other error, so a False return always means "deleted".
+    """
+    lease = await manager.acquire_lease(user_id, credential_id, refresh=False)
     try:
         if lease.credentials.provider != "codex":
-            return False
-        revoked = False
+            raise ValueError(f"Credentials #{credential_id} are not Codex credentials")
         if _is_codex_lease(lease):
             try:
+                # A no-op today; kept so a real logout can slot in later.
                 await _get_codex_transport().logout(lease)
-                revoked = True
             except Exception as error:
                 logger.warning("Codex logout failed with %s", type(error).__name__)
         await lease.delete()
-        return revoked
+        return False
     finally:
         await lease.release()
 
@@ -194,8 +200,19 @@ async def _acquire_codex_lease(
 ) -> CredentialLease:
     try:
         lease = await codex_credentials_manager.acquire_lease(user_id, credential_id)
-    except ValueError:
-        raise _credential_not_found() from None
+    except Exception as error:
+        # Acquiring refreshes an expiring token first, so a failure here is
+        # usually a dead ChatGPT grant on a row that still exists. Only report
+        # "not found" when the row really is gone.
+        if not await codex_credentials_manager.exists(user_id, credential_id):
+            raise _credential_not_found() from None
+        logger.warning(
+            "Codex credential acquisition failed with %s", type(error).__name__
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ChatGPT connection expired; reconnect it",
+        ) from None
     if not _is_codex_lease(lease):
         await lease.release()
         raise _credential_not_found()

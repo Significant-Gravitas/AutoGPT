@@ -170,18 +170,25 @@ class IntegrationCredentialsManager:
         return credentials
 
     async def acquire(
-        self, user_id: str, credentials_id: str
+        self, user_id: str, credentials_id: str, *, refresh: bool = True
     ) -> tuple[Credentials, AsyncRedisLock]:
         """
         ⚠️ WARNING: this locks credentials system-wide and blocks both acquiring
         and updating them elsewhere until the lock is released.
         See the class docstring for more info.
+
+        `refresh=False` only checks that the credential exists and leases the
+        stored row as-is, e.g. to delete a credential whose token can no longer
+        be refreshed. Locking, reloading and lease semantics are unchanged.
         """
         # Refresh before taking the long-lived lease lock. A rotating OAuth
         # provider refreshes under that same credential lock; calling get()
         # after acquiring it would make acquire() wait on its own lock.
-        refreshed = await self.get(user_id, credentials_id)
-        if not refreshed:
+        if refresh:
+            found = await self.get(user_id, credentials_id)
+        else:
+            found = await self.store.get_creds_by_id(user_id, credentials_id)
+        if not found:
             raise ValueError(
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
@@ -205,8 +212,10 @@ class IntegrationCredentialsManager:
             raise
         return credentials, lock
 
-    async def acquire_lease(self, user_id: str, credentials_id: str) -> CredentialLease:
-        credentials, lock = await self.acquire(user_id, credentials_id)
+    async def acquire_lease(
+        self, user_id: str, credentials_id: str, *, refresh: bool = True
+    ) -> CredentialLease:
+        credentials, lock = await self.acquire(user_id, credentials_id, refresh=refresh)
         checkpoint = partial(self.update_acquired, user_id)
         delete = partial(self.delete_acquired, user_id)
         lease = CredentialLease(credentials, lock, checkpoint, delete)
