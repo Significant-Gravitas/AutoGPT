@@ -5,6 +5,8 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth import get_optional_user_id
 from pydantic import SecretStr
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import LockError
 
 from backend.api.features.integrations.codex import (
     CODEX_LOGIN_STATE_KEY,
@@ -837,13 +839,7 @@ def test_codex_delete_never_reports_deleted_when_row_remains(error, expected_sta
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])
-@pytest.mark.parametrize(
-    "refresh_error",
-    [CodexAuthError("access-secret"), ValueError("blocked IP"), OSError("down")],
-)
-def test_codex_status_routes_report_expired_connection_as_conflict(
-    route, refresh_error
-):
+def test_codex_status_routes_report_expired_connection_as_conflict(route):
     with (
         patch(
             "backend.api.features.integrations.codex.codex_credentials_manager"
@@ -852,13 +848,45 @@ def test_codex_status_routes_report_expired_connection_as_conflict(
             "backend.api.features.integrations.codex._get_codex_transport"
         ) as get_transport,
     ):
-        manager.acquire_lease = AsyncMock(side_effect=refresh_error)
+        manager.acquire_lease = AsyncMock(side_effect=CodexAuthError("access-secret"))
         manager.exists = AsyncMock(return_value=True)
 
         response = client.get(f"/codex/credentials/codex-credential/{route}")
 
     assert response.status_code == 409
     assert response.json() == {"detail": "ChatGPT connection expired; reconnect it"}
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+@pytest.mark.parametrize(
+    "infra_error",
+    [
+        RedisConnectionError("Error connecting to redis-0.redis.internal:6379"),
+        LockError("Cannot release a lock that's no longer owned"),
+        TimeoutError("Timed out waiting for a Redis lock"),
+        OSError("network unreachable"),
+    ],
+)
+def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_error):
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(side_effect=infra_error)
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "ChatGPT connection is temporarily unavailable; try again"
+    }
+    assert "redis" not in response.text
     get_transport.assert_not_called()
 
 

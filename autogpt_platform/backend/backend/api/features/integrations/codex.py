@@ -7,9 +7,11 @@ from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, HTTPException, Path, Security, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 
 from backend.api.features.integrations.codex_device_page import render_device_login_page
 from backend.integrations.codex.access import enforce_codex_access_http
+from backend.integrations.codex.chatgpt_auth import CodexAuthError
 from backend.integrations.codex.login import (
     CodexDeviceLogin,
     CodexDeviceLoginState,
@@ -200,15 +202,24 @@ async def _acquire_codex_lease(
 ) -> CredentialLease:
     try:
         lease = await codex_credentials_manager.acquire_lease(user_id, credential_id)
-    except Exception as error:
-        # Acquiring refreshes an expiring token first, so a failure here is
-        # usually a dead ChatGPT grant on a row that still exists. Only report
-        # "not found" when the row really is gone.
-        if not await codex_credentials_manager.exists(user_id, credential_id):
-            raise _credential_not_found() from None
+    except (RedisError, OSError) as error:
+        # Lock or network outage (a lock wait timeout is a TimeoutError), not
+        # an expired grant: the user can't fix it by reconnecting.
         logger.warning(
             "Codex credential acquisition failed with %s", type(error).__name__
         )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT connection is temporarily unavailable; try again",
+        ) from None
+    except Exception as error:
+        # Acquiring refreshes an expiring token first. Only report "not found"
+        # when the row really is gone.
+        if not await codex_credentials_manager.exists(user_id, credential_id):
+            raise _credential_not_found() from None
+        if not isinstance(error, CodexAuthError):
+            raise
+        logger.warning("Codex credential refresh was refused")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="ChatGPT connection expired; reconnect it",
