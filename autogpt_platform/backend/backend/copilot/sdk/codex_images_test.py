@@ -16,6 +16,8 @@ from backend.copilot.sdk.codex_compat_gateway_test import (
     _FakeTransport,
     _headers,
     _lease,
+    _tool_request,
+    _tool_use_id,
 )
 from backend.copilot.sdk.codex_images import image_urls_from_content
 from backend.copilot.tool_image import prepare_image
@@ -160,6 +162,61 @@ async def test_gateway_reports_unreadable_initial_image():
         assert response.status == 400
         assert "Image not shown" in body
     assert not session.requests
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        None,
+        {"type": "base64", "media_type": "image/svg+xml", "data": "unsupported"},
+        {"type": "base64", "media_type": "image/png", "data": ""},
+        {"type": "url", "url": "file:///private.png"},
+        {"type": "url", "url": "https://example.com/image.png"},
+    ],
+)
+async def test_gateway_rejects_unreadable_continuation_without_claiming_call(
+    image, source
+):
+    session = _FakeAgentSession(use_tool=True)
+    async with CodexAnthropicGateway(
+        transport=_FakeTransport(session), credential_lease=_lease(), model="gpt-5.4"
+    ) as gateway, ClientSession() as client:
+        endpoint = f"{gateway.base_url}/v1/messages"
+        headers = _headers(gateway)
+        started = await client.post(
+            endpoint, headers=headers, json=_tool_request("Inspect this image")
+        )
+        assert started.status == 200
+        call_id = _tool_use_id(await started.json())
+        tool_result = {
+            "type": "tool_result",
+            "tool_use_id": call_id,
+            "content": [{"type": "image", "source": source}],
+        }
+        continuation = {"messages": [{"role": "user", "content": [tool_result]}]}
+
+        rejected = await client.post(endpoint, headers=headers, json=continuation)
+        error = await rejected.json()
+        assert rejected.status == 400
+        assert error["error"]["type"] == "invalid_request_error"
+        assert "Image not shown" in error["error"]["message"]
+        assert session.tool_result is None
+        assert len(session.requests) == 1
+        assert not session.cancelled.is_set()
+
+        tool_result["content"] = [image.anthropic()]
+        completed = await client.post(endpoint, headers=headers, json=continuation)
+        body = await completed.json()
+        assert completed.status == 200
+        assert body["content"] == [{"type": "text", "text": "done"}]
+        replay = await client.post(endpoint, headers=headers, json=continuation)
+        assert replay.status == 200
+        assert await replay.json() == body
+
+    assert len(session.requests) == 1
+    assert session.tool_result is not None
+    assert session.tool_result.image_urls == [image.openai()["image_url"]["url"]]
+    assert image.data_base64 not in session.tool_result.content
 
 
 def test_image_token_estimate_does_not_count_base64_as_text(image):
