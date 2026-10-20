@@ -11,6 +11,9 @@ import {
 } from "./registration";
 import { withPushSubscriptionLock } from "./subscription-lock";
 
+const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
+const TEARDOWN_LOCK_WAIT_MS = 2_000;
+
 export async function setupPushSubscription(): Promise<boolean> {
   if (!isPushSupported()) return false;
   if (Notification.permission !== "granted") return false;
@@ -43,16 +46,19 @@ export async function teardownPushSubscription(): Promise<void> {
   // A row the server misses points at a dead endpoint and is dropped on the
   // next send.
   let serverRemoval: Promise<boolean> | undefined;
-  await withPushSubscriptionLock(async () => {
-    const subscription = await registration.pushManager.getSubscription();
-    if (!subscription) return;
-    serverRemoval = removeSubscriptionFromServer(subscription.endpoint);
-    await unsubscribeFromPush(subscription);
-  });
+  await withPushSubscriptionLock(
+    async () => {
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return;
+      serverRemoval = removeSubscriptionFromServer(subscription.endpoint);
+      await unsubscribeFromPush(subscription);
+    },
+    // Inside the logout bound, so a tab stuck holding the lock can't make
+    // logout finish before this browser is unsubscribed.
+    { maxWaitMs: TEARDOWN_LOCK_WAIT_MS },
+  );
   await serverRemoval;
 }
-
-const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
 
 /**
  * Remove this browser's push subscription while the session is still valid.

@@ -247,7 +247,11 @@ describe("push subscription lock across tabs", () => {
   function installSerialLock() {
     let tail: Promise<unknown> = Promise.resolve();
     const request = vi.fn(
-      (_name: string, action: () => Promise<unknown>): Promise<unknown> => {
+      (
+        _name: string,
+        _options: unknown,
+        action: () => Promise<unknown>,
+      ): Promise<unknown> => {
         const run = tail.then(action);
         tail = run.catch(() => undefined);
         return run;
