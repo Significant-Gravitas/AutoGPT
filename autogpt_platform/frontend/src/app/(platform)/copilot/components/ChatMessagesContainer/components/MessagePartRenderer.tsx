@@ -53,7 +53,7 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:")) {
+  if (alt?.startsWith("video:") && typeof src === "string") {
     return (
       <span className="my-2 inline-block">
         <video
