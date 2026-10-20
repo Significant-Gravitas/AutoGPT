@@ -338,21 +338,22 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         sandbox, remote = result
 
         try:
-            if os.path.splitext(remote)[1].lower() in IMAGE_EXTENSIONS:
+            ext = os.path.splitext(remote)[1].lower()
+            if ext in IMAGE_EXTENSIONS:
                 info = await sandbox.files.get_info(remote)
                 if info.size > MAX_IMAGE_BYTES:
                     return _mcp(
                         "Image not shown: exceeds 3 MiB. Resize or compress it and read it again.",
                         error=True,
                     )
-            raw: bytes = await sandbox.files.read(remote, format="bytes")
-            if os.path.splitext(remote)[1].lower() in IMAGE_EXTENSIONS:
-                return _image_result(raw, offset, args.get("limit"))
-            if _is_likely_binary(remote):
+            elif _is_likely_binary(remote):
                 return _mcp(
                     "This binary file has not been viewed. Render PDF pages or extract video frames to PNG/JPEG, then read the images.",
                     error=True,
                 )
+            raw: bytes = await sandbox.files.read(remote, format="bytes")
+            if ext in IMAGE_EXTENSIONS:
+                return _image_result(raw, offset, args.get("limit"))
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)

@@ -146,6 +146,23 @@ async def test_sandbox_image_reaches_sdk_wrapper(monkeypatch, png_bytes):
     sandbox.files.read.assert_awaited_once_with("/home/user/frame.png", format="bytes")
 
 
+@pytest.mark.parametrize("filename", ["scan.pdf", "movie.mp4", "archive.zip"])
+async def test_sandbox_binary_rejected_without_downloading(monkeypatch, filename):
+    sandbox = SimpleNamespace(
+        files=SimpleNamespace(get_info=AsyncMock(), read=AsyncMock(return_value=b""))
+    )
+    monkeypatch.setattr(e2b_file_tools, "_get_sandbox", lambda: sandbox)
+    monkeypatch.setattr(e2b_file_tools, "is_sdk_tool_path", lambda _: False)
+    monkeypatch.setattr(e2b_file_tools, "resolve_sandbox_path", lambda path: path)
+    result = await e2b_file_tools._handle_read_file(
+        {"file_path": f"/home/user/{filename}"}
+    )
+    assert result["isError"]
+    assert "has not been viewed" in result["content"][0]["text"]
+    sandbox.files.read.assert_not_awaited()
+    sandbox.files.get_info.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "args", [{"force_download_url": True}, {"offset": 1}, {"length": 10}]
 )
