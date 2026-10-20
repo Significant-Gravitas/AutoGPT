@@ -1,0 +1,76 @@
+"""Start a turn's CLI process while the turn still builds its first message.
+
+The CLI is a large native binary and takes most of a second to start. Its
+options are known before the turn has written its query (the user context,
+the budget block, attachments), so the turn spawns the process as soon as the
+options are final and lets it boot during that work.
+
+Only the OS process starts early. The attempt that claims it connects a
+``ClaudeSDKClient`` over it as before, so the SDK's reader and its tool and
+hook handlers are still created after the attempt's per-turn resets and see
+the same context they always did.
+"""
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import suppress
+from typing import Any
+
+from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+
+logger = logging.getLogger(__name__)
+
+
+class CLIPrelaunch:
+    """A CLI process spawned for one set of options, used by at most one launch."""
+
+    def __init__(
+        self, options: ClaudeAgentOptions, transport: SubprocessCLITransport
+    ) -> None:
+        self._options = options
+        self._transport = transport
+        self._spent = False
+
+    @classmethod
+    async def start(
+        cls, options: ClaudeAgentOptions, log_prefix: str
+    ) -> "CLIPrelaunch | None":
+        """Spawn the CLI for ``options``; ``None`` if it can't be spawned
+        (the attempt then spawns its own, as it would have anyway)."""
+        transport = SubprocessCLITransport(prompt=_no_prompt(), options=options)
+        try:
+            await transport.connect()
+        except Exception:
+            logger.warning(
+                "%s Couldn't start the CLI ahead of the query",
+                log_prefix,
+                exc_info=True,
+            )
+            with suppress(Exception):
+                await transport.close()
+            return None
+        return cls(options, transport)
+
+    def claim(self, options: ClaudeAgentOptions) -> SubprocessCLITransport | None:
+        """The running process, once, and only for the options it was spawned
+        with: a retry rebuilds its options and spawns its own."""
+        if self._spent or options is not self._options:
+            return None
+        self._spent = True
+        return self._transport
+
+    async def close(self) -> None:
+        """Stop the process if no launch claimed it."""
+        if self._spent:
+            return
+        self._spent = True
+        with suppress(Exception):
+            await self._transport.close()
+
+
+async def _no_prompt() -> AsyncIterator[dict[str, Any]]:
+    """What ``ClaudeSDKClient`` gives its own transport: the client writes each
+    message itself, so the transport is never fed a prompt stream."""
+    return
+    yield {}

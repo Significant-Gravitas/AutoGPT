@@ -5,6 +5,7 @@
 import time as _perf_time
 from backend.copilot import perf_legs as _perf_legs  # do-not-merge probe (#15739)
 import asyncio
+import itertools
 import contextlib
 import contextvars
 import base64
@@ -66,6 +67,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     gateway_for_lease,
@@ -1394,6 +1396,9 @@ class _RetryState:
     # keeps what earlier attempts spent, and so every rebuilt adapter can be
     # handed the same one (see ``_fresh_adapter``).
     governor: TurnGovernor | None = None
+    # The CLI process spawned while the query was still being built, for
+    # the first launch with the turn's original options (``CLIPrelaunch``).
+    prelaunch: CLIPrelaunch | None = None
 
 
 def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
@@ -4258,7 +4263,8 @@ async def _run_stream_attempt(
         )
         yield StreamStatus(message=f"perf:baseline:{int(_perf_time.time() * 1000) % 100000000}")
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    transport = state.prelaunch.claim(state.options) if state.prelaunch else None
+    sdk_client = ClaudeSDKClient(options=state.options, transport=transport)
     client = await sdk_client.__aenter__()
     yield StreamStatus(message=f"perf:cli_connect:{int(_perf_time.time() * 1000) % 100000000}")
     try:
@@ -4974,6 +4980,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
+    # The CLI spawned ahead of the query — stopped in finally if no launch used it.
+    _cli_prelaunch: CLIPrelaunch | None = None
     # Parent Langfuse span for the turn — created so that the
     # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
     # attach to even though it fires after the SDK-emitted spans end.
@@ -5535,6 +5543,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         _otel_ctx.__enter__()
 
+        # Spawn the CLI now, under the turn's trace context, so it boots
+        # while the query below is built (do-not-merge probe A/B, #15739:
+        # every other turn on this process).
+        if _probe_prelaunch_turn():
+            _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
+        yield StreamStatus(
+            message=f"perf:prelaunch:{'on' if _cli_prelaunch is not None else 'off'}"
+        )
+
         current_message = message or ""
         if not current_message and session.messages:
             last_user = [m for m in session.messages if m.role == "user"]
@@ -5851,6 +5868,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_builder=transcript_builder,
             usage=_TokenUsage(),
             governor=governor,
+            prelaunch=_cli_prelaunch,
             # Subagent files are read only on a turn the reconcile bills.
             generations=TurnGenerations(
                 (
@@ -6414,6 +6432,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 turn_completion_tokens = codex_usage.output_tokens
                 turn_cache_read_tokens = codex_usage.cached_input_tokens
                 turn_cache_creation_tokens = 0
+
+        if _cli_prelaunch is not None:
+            await _cli_prelaunch.close()
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -7066,3 +7087,11 @@ def _stamp_turn_trace_id(
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True
+
+
+_PROBE_PRELAUNCH_TURNS = itertools.count()
+
+
+def _probe_prelaunch_turn() -> bool:
+    """do-not-merge probe (#15739): prelaunch on every other turn."""
+    return next(_PROBE_PRELAUNCH_TURNS) % 2 == 1
