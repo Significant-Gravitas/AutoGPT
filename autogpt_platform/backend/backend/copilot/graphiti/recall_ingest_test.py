@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.driver.driver import GraphProvider
 from graphiti_core.edges import EntityEdge
 from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.llm_client.config import LLMConfig, ModelSize
@@ -431,3 +432,32 @@ class TestAGuardThatHitsAnError:
 
         assert (resolved.uuid, invalidated, duplicates) == ("new", [], [])
         assert (forgotten.fact, forgotten.episodes) == (FORGOTTEN_FACT, [])
+
+
+def _episode_record(uuid: str) -> dict[str, Any]:
+    when = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    return {
+        "uuid": uuid,
+        "name": f"conversation_{uuid}",
+        "group_id": "user_g",
+        "source": "message",
+        "source_description": "",
+        "content": f"said {uuid}",
+        "created_at": when,
+        "valid_at": when,
+        "entity_edges": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_earlier_episodes_come_back_in_the_order_asked_for() -> None:
+    """``add_episode`` shows its prompts the episodes in the order
+    ``get_by_uuids`` returns them; the graph yields them in its own order."""
+    driver = MagicMock(graph_operations_interface=None, provider=GraphProvider.FALKORDB)
+    driver.execute_query = AsyncMock(
+        return_value=([_episode_record(u) for u in ("c", "a", "b")], None, None)
+    )
+
+    episodes = await EpisodicNode.get_by_uuids(driver, ["a", "b", "c"])
+
+    assert [episode.uuid for episode in episodes] == ["a", "b", "c"]
