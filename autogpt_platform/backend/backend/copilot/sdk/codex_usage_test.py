@@ -42,7 +42,7 @@ async def test_interrupted_tool_loop_retains_completed_call_usage(ending):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("ending", ["success", "failed_with_usage"])
+@pytest.mark.parametrize("ending", ["success", "failed_with_usage", "incomplete"])
 async def test_response_snapshots_and_final_result_are_counted_once(ending):
     async with usage_gateway(ending) as gateway:
         await run_conversation(gateway)
@@ -69,13 +69,15 @@ async def test_a_retry_keeps_failed_usage_without_recounting_success():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ending", ["stream_disconnect", "stream_timeout", "stream_cancel"]
+    "ending", ["stream_disconnect", "stream_timeout", "stream_cancel", "stream_failed"]
 )
-async def test_usage_reported_before_a_stream_interruption_is_retained(ending):
-    async with usage_gateway(ending) as gateway:
+async def test_interrupted_stream_retains_usage_and_closes_response(ending):
+    stream = _InterruptedStream(ending)
+    async with usage_gateway(ending, response_stream=stream) as gateway:
         await run_conversation(
             gateway, cancel_during_response=ending == "stream_cancel"
         )
+        assert stream.closed
 
     assert gateway.result is None
     assert _codex_gateway_usage(gateway) == expected_usage(2)
@@ -105,7 +107,9 @@ async def run_conversation(
 
 
 @asynccontextmanager
-async def usage_gateway(ending: str) -> AsyncIterator[CodexAnthropicGateway]:
+async def usage_gateway(
+    ending: str, *, response_stream: httpx.AsyncByteStream | None = None
+) -> AsyncIterator[CodexAnthropicGateway]:
     calls = 0
 
     async def respond(_request: httpx.Request) -> httpx.Response:
@@ -119,12 +123,18 @@ async def usage_gateway(ending: str) -> AsyncIterator[CodexAnthropicGateway]:
             return httpx.Response(
                 200,
                 headers={"content-type": "text/event-stream"},
-                stream=_InterruptedStream(ending),
+                stream=response_stream or _InterruptedStream(ending),
             )
         tool = calls % 2 == 1
         success = ending == "success" or (ending == "failed_then_success" and calls > 2)
         kind = "response.completed" if tool or success else "response.failed"
-        usage = USAGE if tool or success or ending == "failed_with_usage" else None
+        if not tool and ending == "incomplete":
+            kind = "response.incomplete"
+        usage = (
+            USAGE
+            if tool or success or ending in ("failed_with_usage", "incomplete")
+            else None
+        )
         response = {"id": f"resp-{calls}", "model": "gpt-5.6-sol", "usage": usage}
         events: list[dict[str, object]] = [
             {
@@ -178,6 +188,7 @@ async def usage_gateway(ending: str) -> AsyncIterator[CodexAnthropicGateway]:
 class _InterruptedStream(httpx.AsyncByteStream):
     def __init__(self, ending: str):
         self.ending = ending
+        self.closed = False
 
     async def __aiter__(self):
         for event in (
@@ -190,7 +201,13 @@ class _InterruptedStream(httpx.AsyncByteStream):
             yield f"data: {json.dumps(event)}\n\n".encode()
         if self.ending == "stream_disconnect":
             raise httpx.ReadError("stream disconnected")
+        if self.ending == "stream_failed":
+            failure = {"type": "response.failed", "response": {"usage": USAGE}}
+            yield f"data: {json.dumps(failure)}\n\n".encode()
         await asyncio.Event().wait()
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def expected_usage(calls: int) -> CodexTokenUsage:

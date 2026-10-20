@@ -204,14 +204,17 @@ class CodexHttpSession:
         # with_raw_response returns LegacyAPIResponse for streaming requests;
         # its synchronous parse() returns the AsyncStream to iterate.
         stream = raw.parse()
-        try:
-            async for event in stream:
-                await _consume_event(event, outcome, event_handler)
-        finally:
-            # Publish the last snapshot once per response, even on cancellation
-            # or failure, before another model call can lose this call's usage.
-            if event_handler is not None and outcome.usage is not None:
-                await event_handler(CodexStreamEvent(type="usage", usage=outcome.usage))
+        async with stream:
+            try:
+                async for event in stream:
+                    await _consume_event(event, outcome, event_handler)
+            finally:
+                # Publish the last snapshot once per response, even on cancellation
+                # or failure, before another model call can lose this call's usage.
+                if event_handler is not None and outcome.usage is not None:
+                    await event_handler(
+                        CodexStreamEvent(type="usage", usage=outcome.usage)
+                    )
         return outcome
 
 

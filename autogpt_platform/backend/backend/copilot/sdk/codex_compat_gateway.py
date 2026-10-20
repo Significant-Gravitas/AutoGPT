@@ -543,6 +543,7 @@ class CodexAnthropicGateway:
             if event.type == "text_delta" and event.delta:
                 await conversation.queue.put(_TextDelta(text=event.delta))
             elif event.type == "usage":
+                # Do not suspend here: usage must survive cancellation during cleanup.
                 conversation.usage = _sum_usage((conversation.usage, event.usage))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
