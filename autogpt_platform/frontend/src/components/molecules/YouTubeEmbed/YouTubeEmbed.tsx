@@ -23,11 +23,12 @@ export function YouTubeEmbed({
 }: Props) {
   const {
     showPlayer,
-    canOpenSettings,
+    hasConsentBanner,
+    canAllowHere,
     settingsReady,
     openSettings,
     loadVideo,
-  } = useYouTubeEmbed();
+  } = useYouTubeEmbed(videoId);
 
   if (showPlayer) {
     return (
@@ -53,7 +54,7 @@ export function YouTubeEmbed({
     >
       <Icon icon={YoutubeIcon} size={28} className="text-zinc-400" />
       <Text variant="body" tone="secondary" className="max-w-sm">
-        {canOpenSettings
+        {canAllowHere
           ? "YouTube sets advertising cookies when this video loads. To watch it here, allow marketing cookies."
           : "YouTube sets advertising cookies when this video loads."}
       </Text>
@@ -69,7 +70,12 @@ export function YouTubeEmbed({
         >
           Watch on YouTube
         </Button>
-        {canOpenSettings ? (
+        {!hasConsentBanner && (
+          <Button variant="primary" size="small" onClick={loadVideo}>
+            Load video
+          </Button>
+        )}
+        {canAllowHere && (
           <Button
             variant="primary"
             size="small"
@@ -77,10 +83,6 @@ export function YouTubeEmbed({
             onClick={openSettings}
           >
             Cookie settings
-          </Button>
-        ) : (
-          <Button variant="primary" size="small" onClick={loadVideo}>
-            Load video
           </Button>
         )}
       </div>

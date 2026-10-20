@@ -131,16 +131,32 @@ describe("YouTubeEmbed", () => {
     );
   });
 
-  test("offers Load video when the consent banner could not load", () => {
+  test("asks again before loading a different video without a banner", () => {
+    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+    const { container, rerender } = renderEmbed();
+    fireEvent.click(screen.getByRole("button", { name: "Load video" }));
+    expect(getPlayer(container)).not.toBeNull();
+
+    rerender(<YouTubeEmbed videoId="aaaaaaaaaaa" title="Other video" />);
+
+    expect(getPlayer(container)).toBeNull();
+    expect(screen.getByRole("button", { name: "Load video" })).toBeDefined();
+  });
+
+  test("only links to YouTube when the consent banner could not load", () => {
     configureCookiebot();
     vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
 
     const { container } = renderEmbed();
 
     expect(getPlayer(container)).toBeNull();
+    expect(screen.getByText(NOTICE)).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Watch on YouTube" }),
+    ).toBeDefined();
     expect(
       screen.queryByRole("button", { name: "Cookie settings" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "Load video" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Load video" })).toBeNull();
   });
 });
