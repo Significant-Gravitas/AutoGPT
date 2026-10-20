@@ -184,6 +184,16 @@ def test_describe(crons, words):
     assert describe(crons, _CHICAGO, _NOW) == words
 
 
+def test_a_busy_beat_cut_short_at_the_cap_is_not_read_as_continuous():
+    """A thousand runs of every minute on Saturdays are all a minute apart, all
+    on one Saturday."""
+    assert describe(["* * * * sat"], _CHICAGO, _NOW) == "At least 1000 times a week"
+    assert (
+        describe(["*/2 * * * mon-fri"], _CHICAGO, _NOW) == "At least 1000 times a week"
+    )
+    assert describe(["*/2 * * * *"], _CHICAGO, _NOW) == "Every 2 minutes"
+
+
 @pytest.mark.parametrize(
     "now",
     [

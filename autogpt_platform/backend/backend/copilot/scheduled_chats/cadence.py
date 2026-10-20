@@ -110,8 +110,9 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     08:30", "Twice a day". None for one that runs less than twice a week and
     not on a weekly beat, such as a monthly one.
 
-    Each cron is read for at most ``_COUNT_CAP`` runs: a beat found within
-    them stands for the week, and a count that reaches the cap says so."""
+    Each cron is read for at most ``_COUNT_CAP`` runs. A beat found within
+    them stands for the week only if the schedule runs every day, and a count
+    that reaches the cap says so."""
     if len(crons) == 1:
         # Two weeks, so every gap in a week's runs falls between two of them
         # whatever day it is read on: weekdays read on a Saturday do not pass
@@ -122,7 +123,10 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
         gaps = {later - earlier for earlier, later in zip(beat, beat[1:])}
         if len(beat) >= 3 and len(gaps) == 1:
             every = _every(gaps.pop(), beat[0])
-            if every is not None:
+            # Cut short at the cap, every minute on Saturdays beats like every
+            # minute: the beat holds only if it runs every day.
+            whole = len(beat) < _COUNT_CAP or all(_runs_per_day(crons, timezone, now))
+            if every is not None and whole:
                 return every
     runs = len(_fires(crons, timezone, now))
     if runs < 2:
