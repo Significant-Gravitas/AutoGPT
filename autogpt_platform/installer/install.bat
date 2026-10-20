@@ -1,8 +1,4 @@
 @echo off
-rem AutoGPT Platform release installer for Windows, for the older command
-rem that downloads https://setup.agpt.co/install.bat and runs it. Like the
-rem PowerShell command in docs/platform/installer.md, it downloads install.ps1
-rem to a unique temporary file and runs it only after a successful fetch.
 setlocal
 set "AUTOGPT_INSTALLER=%TEMP%\autogpt-install-%RANDOM%%RANDOM%%RANDOM%.ps1"
 curl.exe --proto =https --proto-redir =https --tlsv1.2 -fsSL -o "%AUTOGPT_INSTALLER%" https://setup.agpt.co/install.ps1
