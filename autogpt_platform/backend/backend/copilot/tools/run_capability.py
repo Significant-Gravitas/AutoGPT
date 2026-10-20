@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backend.blocks import get_block
+from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
@@ -31,9 +32,16 @@ from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
-from .base import GATE_APPROVED, BaseTool
+from .ayrshare_managed import connect_for_block as ayrshare_connect_for_block
+from .ayrshare_managed import is_ayrshare
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
+from .describe_capability import (
+    MCP_RUN_PARAMETERS,
+    UNKNOWN_ID_HINT,
+    describe_expert,
+    describe_skill,
+)
 from .helpers import (
     prepare_block_for_execution,
     required_input_keys,
@@ -82,6 +90,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -163,6 +172,7 @@ class RunCapabilityTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        decided = bool(kwargs.pop(GATE_DECIDED, False))
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
@@ -197,12 +207,16 @@ class RunCapabilityTool(BaseTool):
             ).from_outside()
         if entry.kind == "block":
             return await _run_block(
-                entry, user_id, session, payload, validate_only, approved
+                entry, user_id, session, payload, validate_only, approved, decided
             )
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
         if entry.kind == "skill":
             return await _run_skill(entry, user_id, session, validate_only)
+        if entry.kind == "expert":
+            # The engines run an expert id as the hire or delegate call it is
+            # (``capabilities/dispatch.py``), so this answers validate_only.
+            return describe_expert(entry, session_id)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -226,6 +240,7 @@ async def _run_block(
     payload: dict[str, Any],
     validate_only: bool,
     approved: bool,
+    decided: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
         return gate_denied_error("blocks", session.session_id)
@@ -245,6 +260,19 @@ async def _run_block(
                 ),
                 session_id=session.session_id,
             )
+        block = get_block(block_id)
+        # Connecting creates the user's real Ayrshare profile; neither mode may.
+        managed = block is not None and is_ayrshare(get_block_provider(block))
+        if managed and (validate_only or session.dry_run):
+            return CapabilityDetailsResponse(
+                message=(
+                    f"Connecting {entry.name} creates the user's Ayrshare profile, "
+                    "so validate_only and dry runs skip it. Nothing was created."
+                ),
+                capability=entry.listing(),
+                parameters={},
+                session_id=session.session_id,
+            )
         prep = await prepare_block_for_execution(
             block_id=block_id,
             input_data=payload,
@@ -260,6 +288,12 @@ async def _run_block(
         )
         if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
+        # Holding the managed Ayrshare credential says nothing about which
+        # networks are linked, so connecting shows the connect card.
+        if managed and block is not None:
+            return await ayrshare_connect_for_block(
+                user_id, block, block_id, session.session_id, session.expert_id
+            )
         return CapabilityDetailsResponse(
             message=(
                 f"The user is already connected for {entry.name}. "
@@ -276,6 +310,7 @@ async def _run_block(
         input_data=payload,
         validate_only=validate_only,
         gate_approved=approved,
+        gate_decided=decided,
     )
 
 
@@ -308,7 +343,7 @@ async def _describe_tool(
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
     ).from_outside()
 

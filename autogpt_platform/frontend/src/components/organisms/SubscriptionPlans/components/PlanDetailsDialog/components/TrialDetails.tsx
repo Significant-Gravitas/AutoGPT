@@ -18,7 +18,7 @@ export function TrialDetails({ offer }: Props) {
           <Text as="dt" variant="body">
             Today
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatPlanAmount(0, offer.currency)}
           </Text>
         </div>
@@ -26,7 +26,7 @@ export function TrialDetails({ offer }: Props) {
           <Text as="dt" variant="body">
             After {offer.duration_days} days
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatTrialPrice(offer)}
           </Text>
         </div>
@@ -37,8 +37,8 @@ export function TrialDetails({ offer }: Props) {
         cancel before it ends.
       </Text>
       <Text variant="body" tone="secondary">
-        Trial usage is limited. Canceling ends trial access immediately. You can
-        manage or cancel your plan in billing.
+        Trial usage is limited. If you cancel, you keep access until the trial
+        ends. You can manage or cancel your plan in billing.
       </Text>
     </div>
   );

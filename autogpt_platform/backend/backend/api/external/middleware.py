@@ -1,8 +1,12 @@
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 
-from backend.api.external.auth_rate_limit import enforce_api_key_validate_rate_limit
+from backend.api.external.auth_rate_limit import (
+    enforce_api_key_validate_rate_limit,
+    refund_api_key_validate_rate_limit,
+)
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -11,6 +15,7 @@ from backend.data.auth.oauth import (
     OAuthAccessTokenInfo,
     validate_access_token,
 )
+from backend.data.user import is_user_banned
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
@@ -26,10 +31,7 @@ async def require_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key"
         )
 
-    # Bound Scrypt burn on colliding-head garbage keys (see #15049). Distinct
-    # from post-auth /v1 route quotas (#14545).
-    await enforce_api_key_validate_rate_limit(request, api_key)
-
+    budget = await enforce_api_key_validate_rate_limit(request, api_key)
     api_key_obj = await validate_api_key(api_key)
 
     if not api_key_obj:
@@ -37,6 +39,8 @@ async def require_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
+    await _refuse_banned_owner(api_key_obj)
+    await refund_api_key_validate_rate_limit(budget)
     return api_key_obj
 
 
@@ -55,6 +59,7 @@ async def require_access_token(
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
+    await _refuse_banned_owner(token_info)
     return token_info
 
 
@@ -75,9 +80,11 @@ async def require_auth(
     """
     # Try API key first
     if api_key is not None:
-        await enforce_api_key_validate_rate_limit(request, api_key)
+        budget = await enforce_api_key_validate_rate_limit(request, api_key)
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await _refuse_banned_owner(api_key_info)
+            await refund_api_key_validate_rate_limit(budget)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -87,15 +94,23 @@ async def require_auth(
     if bearer is not None:
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
-            return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await _refuse_banned_owner(token_info)
+        return token_info
 
     # No credentials provided
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Missing authentication. Provide API key or access token.",
     )
+
+
+async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
+    if await is_user_banned(auth.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
+        )
 
 
 def require_permission(*permissions: APIKeyPermission):

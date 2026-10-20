@@ -3,7 +3,7 @@
 Order of preference, from the plan: connected service > unconnected service
 > primitive with credentials for the host > bare primitive.  It decides
 between entries that match the query equally well; it never lifts a weak
-lexical match over a strong one (see ``index._ranked``).
+lexical match over a strong one (see ``ordering.rank_hits``).
 """
 
 from pydantic import BaseModel, ConfigDict, Field

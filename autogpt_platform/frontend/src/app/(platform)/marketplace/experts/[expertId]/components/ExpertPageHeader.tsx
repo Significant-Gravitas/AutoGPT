@@ -1,51 +1,111 @@
-import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import {
+  expertPastel,
+  getCategoryHex,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
-import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
-import { ReactNode } from "react";
 import { CategoryTag } from "../../../components/CategoryChip/CategoryTag";
 
-interface Props {
+interface BandProps {
   expert: Expert;
-  actions: ReactNode;
 }
 
-export function ExpertPageHeader({ expert, actions }: Props) {
+interface IdentityProps {
+  expert: Expert;
+  stats: string[];
+}
+
+function getTopic(expert: Expert) {
+  return getExpertTopicHex({
+    avatarUrl: expert.avatar_url,
+    categories: expert.categories,
+    role: expert.role,
+  });
+}
+
+const GLOSSY_STAT =
+  "inline-flex h-8 items-center rounded-full border border-zinc-200 bg-gradient-to-b from-white to-zinc-50 px-3.5 text-sm font-medium text-zinc-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+
+/** The hero band: the expert's colour with two soft glows and the category
+ *  on it. The portrait (ExpertHeroIdentity) breaks out of its bottom edge,
+ *  and the hire card overlaps its right end on wide screens. */
+export function ExpertHeroBand({ expert }: BandProps) {
   const area = expert.categories?.[0];
+  const topic = getTopic(expert);
+
+  return (
+    <div
+      className="relative h-44 overflow-hidden rounded-3xl sm:h-56"
+      style={{
+        backgroundColor: expertPastel(topic),
+        backgroundImage: [
+          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, white), transparent 55%)`,
+          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, white), transparent 50%)`,
+        ].join(", "),
+      }}
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.35),transparent_45%)]"
+      />
+      {area ? (
+        <CategoryTag
+          category={area}
+          size="medium"
+          className="absolute left-5 top-5 h-7 px-2.5 text-[13px]"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** The portrait breaking out of the band, the name with its glowing title,
+ *  the tagline and what comes with the hire, on the page's left edge. */
+export function ExpertHeroIdentity({ expert, stats }: IdentityProps) {
+  const area = expert.categories?.[0];
+  const topic = getTopic(expert);
 
   return (
     <header>
-      <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-4 sm:gap-x-5">
+      <div className="relative -mt-16 sm:-mt-20">
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           color={expert.color}
-          backgroundColor={getExpertTopicHex({
-            avatarUrl: expert.avatar_url,
-            categories: expert.categories,
-            role: expert.role,
-          })}
-          size={96}
-          className="border border-black/5"
+          backgroundColor={topic}
+          size={128}
+          className="ml-6 rounded-full border border-[#e3e3e3] shadow-[0_12px_32px_-12px_rgba(16,24,40,0.35)] ring-[6px] ring-[#f9f9f9]"
         />
-        <div className="min-w-0 flex-1">
+        <div className="mt-4 min-w-0">
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
             jobTitle={expert.job_title}
             size="page"
             nameAlign="baseline"
+            areaColor={getCategoryHex(area)}
           />
-          {area ? (
-            <CategoryTag category={area} size="default" className="mt-2" />
-          ) : null}
         </div>
-        <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
-          {actions}
-        </div>
+        {expert.tagline?.trim() ? (
+          <p className="mt-3 max-w-2xl text-lg leading-8 text-zinc-600">
+            {expert.tagline}
+          </p>
+        ) : null}
+        {stats.length > 0 ? (
+          <ul
+            className="mt-5 flex flex-wrap gap-2"
+            aria-label="What comes with this expert"
+          >
+            {stats.map((stat) => (
+              <li key={stat} className={GLOSSY_STAT}>
+                {stat}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
-      <ExpertTagline tagline={expert.tagline} />
     </header>
   );
 }

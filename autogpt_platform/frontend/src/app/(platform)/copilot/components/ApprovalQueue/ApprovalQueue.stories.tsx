@@ -151,8 +151,8 @@ export const NamedSchedule: Story = {
   args: queueOf([referenceCard("Pause schedule")]),
 };
 
-export const NamedTemplate: Story = {
-  args: queueOf([referenceCard("Hire expert")]),
+export const NamedHire: Story = {
+  args: queueOf([referenceCard("Confirm team change")]),
 };
 
 export const NamedChat: Story = {
@@ -197,6 +197,18 @@ export const NamedFile: Story = {
 
 export const UnresolvedId: Story = {
   args: queueOf([referenceCard("Unresolved id")]),
+};
+
+export const FollowUpInTwoDays: Story = {
+  args: queueOf([referenceCard("Follow-up in two days")]),
+};
+
+export const WeeklyFollowUp: Story = {
+  args: queueOf([referenceCard("Weekly follow-up")]),
+};
+
+export const DelegateAndWait: Story = {
+  args: queueOf([referenceCard("Delegate and wait")]),
 };
 
 export const FiveWaiting: Story = {
@@ -450,3 +462,5 @@ export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
 export const RealSandboxCommand = realStory("Sandbox Command");
 export const RealGmailNewsletter = realStory("Gmail Newsletter");
+// A step of a workflow Otto started, parked on its own review: its card in the chat.
+export const RealWorkflowStep = realStory("Workflow Step");

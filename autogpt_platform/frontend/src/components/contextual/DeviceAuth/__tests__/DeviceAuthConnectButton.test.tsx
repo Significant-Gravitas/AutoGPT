@@ -46,8 +46,7 @@ describe("DeviceAuthConnectButton", () => {
   });
 
   it("keeps the code phrase out of session replay", () => {
-    // `Text` adds `sentry-unmask` by default; this is a live authorization
-    // code, so it must not be recorded. Regression test for that default.
+    // This is a live authorization code, so it must never be recorded.
     state.phase = "polling";
     state.userCode = "glow-relish-chaste-soft";
     state.verificationUrl =

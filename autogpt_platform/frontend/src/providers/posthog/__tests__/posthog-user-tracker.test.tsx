@@ -71,6 +71,7 @@ describe("PostHogUserTracker", () => {
     render(<PostHogUserTracker />);
 
     expect(posthog.setPersonPropertiesForFlags).toHaveBeenCalledWith({
+      email: "user@example.com",
       email_domain: "example.com",
       role: "authenticated",
       created_at: "2026-05-08T12:00:00Z",

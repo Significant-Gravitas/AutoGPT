@@ -11,6 +11,7 @@ from backend.copilot.tools.chat_platform import (
     ListChatPlatformChannelsTool,
     PostToChatPlatformTool,
     _any_chat_platform_configured,
+    _configured_chat_platforms,
 )
 from backend.copilot.tools.models import (
     ChatPlatformChannelListResponse,
@@ -618,9 +619,9 @@ def _secrets(**overrides) -> MagicMock:
     ],
 )
 def test_configured_gate_mirrors_adapter_gates(overrides, expected):
-    _any_chat_platform_configured.cache_clear()
+    _configured_chat_platforms.cache_clear()
     settings = MagicMock()
     settings.secrets = _secrets(**overrides)
     with patch(f"{_PATH}.Settings", return_value=settings):
         assert _any_chat_platform_configured() is expected
-    _any_chat_platform_configured.cache_clear()
+    _configured_chat_platforms.cache_clear()

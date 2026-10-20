@@ -87,7 +87,7 @@ export const useRunGraph = () => {
           // Simulate goes through the same mutation as Run; only a real run
           // is an activation.
           if (!variables.data.dry_run) {
-            trackAgentRunGoal({ id: graph_id }, "builder");
+            trackAgentRunGoal(graph_id, "builder");
           }
         },
         onError: (error: any) => {
@@ -114,7 +114,7 @@ export const useRunGraph = () => {
             }
 
             toast({
-              title: errorData?.message || "Graph validation failed",
+              title: errorData?.message || "Workflow validation failed",
               description:
                 "Please fix the validation errors on the highlighted nodes and try again.",
               variant: "destructive",
@@ -152,6 +152,7 @@ export const useRunGraph = () => {
     // closure — saving creates a new graph version and the stale closure value
     // would run the previous (pre-edit) version. See the delete-node-then-run bug.
     const savedGraph = await saveGraph(undefined);
+    if (!savedGraph) return;
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
       // Hand the freshly-saved version to the dialog so it runs THIS version,

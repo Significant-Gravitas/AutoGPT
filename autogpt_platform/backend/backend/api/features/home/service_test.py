@@ -6,6 +6,7 @@ from autogpt_libs.auth.models import RequestContext
 from pytest_mock import MockerFixture
 
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.util.feature_flag import Flag
@@ -102,6 +103,10 @@ def home_dependencies(mocker: MockerFixture):
     )
     mocker.patch(
         "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.scheduled_chats.list_paused_scheduled_chats",
         AsyncMock(return_value=[]),
     )
 
@@ -325,7 +330,7 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     assert dashboard.briefing.outcomes[0].summary == "Completed successfully."
     # The hybrid response also appends the live run; a one-sided scrub that
     # covered only the stored half would still leak through that one.
-    assert dashboard.briefing.outcomes[1].title == "Agent task finished"
+    assert dashboard.briefing.outcomes[1].title == "Workflow task finished"
     assert dashboard.briefing.outcomes[1].summary == "Completed successfully."
 
 
@@ -354,7 +359,7 @@ async def test_activity_summary_hidden_when_flag_disabled(
 
     dashboard = await build_home_dashboard(user_id="user-1")
 
-    assert dashboard.briefing.outcomes[0].title == "Agent task finished"
+    assert dashboard.briefing.outcomes[0].title == "Workflow task finished"
 
 
 @pytest.mark.asyncio
@@ -408,6 +413,46 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     assert dashboard.upcoming_tasks == []
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
+async def test_a_paused_scheduled_chat_needs_attention(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    mocker.patch(
+        "backend.api.features.home.service.scheduled_chats.list_paused_scheduled_chats",
+        AsyncMock(
+            return_value=[
+                PausedScheduledChat(
+                    schedule_key="sched-1",
+                    title="Discord monitor",
+                    session_id="session-1",
+                    reason="connection",
+                    provider="discord",
+                    summary="Paused: can't use Discord",
+                    paused_at=datetime.now(timezone.utc),
+                )
+            ]
+        ),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert [item.id for item in dashboard.attention] == ["paused-chat-sched-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_paused_chat_read_that_fails_costs_only_those_items(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    mocker.patch(
+        "backend.api.features.home.service.scheduled_chats.list_paused_scheduled_chats",
+        AsyncMock(side_effect=RuntimeError("db")),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.attention == []
 
 
 class TestPendingQuestionsFlagGate:

@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 import { nodeStyleBasedOnStatus } from "../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useShallow } from "zustand/react/shallow";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const NodeContainer = ({
@@ -16,9 +15,7 @@ export const NodeContainer = ({
   selected: boolean;
   hasErrors?: boolean;
 }) => {
-  const status = useNodeStore(
-    useShallow((state) => state.getNodeStatus(nodeId)),
-  );
+  const status = useNodeStore((state) => state.getNodeStatus(nodeId));
   return (
     <div
       className={cn(

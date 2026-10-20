@@ -41,7 +41,7 @@ export function BuildTabIntro() {
       isOpen={isOpen}
       icon={FlowIcon}
       title="Create your own workflows."
-      body="Wire blocks into an agent that runs exactly how you want — or let Otto build it."
+      body="Wire blocks into a workflow that runs exactly how you want — or let Otto build it."
       cta={{ label: "Ask Otto to build it", onClick: askAutoPilot }}
       altAction={{ label: "Learn to build it yourself", onClick: learnToBuild }}
       onDismiss={dismiss}
