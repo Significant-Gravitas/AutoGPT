@@ -753,6 +753,9 @@ class DatabaseManager(AppService):
         background_task_db.get_background_followup_envelope
     )
     suppress_background_followup = _(background_task_db.suppress_background_followup)
+    release_deleted_background_turn = _(
+        background_task_db.release_deleted_background_turn
+    )
     release_expired_background_turn = _(
         background_task_db.release_expired_background_turn
     )
@@ -1278,6 +1281,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     enqueue_background_followup = d.enqueue_background_followup
     get_background_followup_envelope = d.get_background_followup_envelope
     suppress_background_followup = d.suppress_background_followup
+    release_deleted_background_turn = d.release_deleted_background_turn
     release_expired_background_turn = d.release_expired_background_turn
     cancel_background_tasks = d.cancel_background_tasks
     cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks

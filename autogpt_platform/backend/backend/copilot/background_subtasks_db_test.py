@@ -454,6 +454,78 @@ async def test_rejected_pickup_closes_with_its_terminal_reason(
 
 
 @pytest.mark.parametrize("followup", [False, True])
+@pytest.mark.parametrize(
+    "state", ["active", "missing_meta", "newer", "newer_admitting", "other_owner"]
+)
+async def test_deleted_handoff_releases_only_its_own_turn(
+    world: World, monkeypatch: pytest.MonkeyPatch, followup: bool, state: str
+):
+    task = await world.launch()
+    await world.finish_parent()
+    session_id = task.child_session_id
+    deleted_session_id = task.parent_session_id
+    if followup:
+        await world.finish_child(task)
+        await background_delivery.reconcile_background_subtasks()
+        session_id = task.parent_session_id
+        deleted_session_id = task.child_session_id
+    entry = world.entry(session_id)
+    assert await chat_db().delete_chat_session(deleted_session_id, world.user_id)
+    assert not await background_task_db.get_background_task(task.id, world.user_id)
+    expected_turn_id = entry.turn_id
+    if state in ("newer", "newer_admitting"):
+        await stream_registry.mark_session_completed(session_id, turn_id=entry.turn_id)
+        if state == "newer":
+            expected_turn_id = await utils.schedule_chat_turn(
+                session_id=session_id, user_id=world.user_id, message="New work."
+            )
+            assert expected_turn_id
+        else:
+            await stream_registry.delete_session_meta(session_id, turn_id=entry.turn_id)
+            assert (
+                await chat_db().admit_chat_session_turn(
+                    session_id=session_id,
+                    user_id=world.user_id,
+                    expect_status="idle",
+                    capacity=10,
+                )
+                == "admitted"
+            )
+    elif state == "missing_meta":
+        await stream_registry.delete_session_meta(session_id, turn_id=entry.turn_id)
+    elif state == "other_owner":
+        entry = entry.model_copy(update={"user_id": "someone-else"})
+    worker = processor.CoPilotProcessor()
+    worker.execution_loop = asyncio.get_running_loop()
+    run_turn = AsyncMock()
+    monkeypatch.setattr(worker, "_run_turn", run_turn)
+
+    for _ in range(2):
+        await asyncio.to_thread(worker.execute, entry, threading.Event(), MagicMock())
+
+    protected = state in ("newer", "newer_admitting", "other_owner")
+    assert await chat_db().get_chat_session_status(session_id) == (
+        "running" if protected else "idle"
+    )
+    active = await stream_registry.get_session(session_id)
+    if state in ("missing_meta", "newer_admitting"):
+        assert active is None
+    else:
+        assert active and active.turn_id == expected_turn_id
+        assert active.status == ("running" if protected else "failed")
+    if state == "active":
+        events: asyncio.Queue[stream_registry.StreamEntry] = asyncio.Queue()
+        await stream_registry._replay(
+            await get_redis_async(), entry.turn_id, "0-0", events
+        )
+        chunks = [events.get_nowait()[1] for _ in range(events.qsize())]
+        assert [c.errorText for c in chunks if isinstance(c, StreamError)] == [
+            stream_registry.CANCELLED_MESSAGE
+        ]
+    run_turn.assert_not_awaited()
+
+
+@pytest.mark.parametrize("followup", [False, True])
 @pytest.mark.parametrize("reason", ["deadline", "budget"])
 async def test_claimed_admission_failure_closes_with_its_terminal_reason(
     world: World, monkeypatch: pytest.MonkeyPatch, followup: bool, reason: str

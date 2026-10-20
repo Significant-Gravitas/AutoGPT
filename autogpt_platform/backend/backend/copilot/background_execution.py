@@ -11,8 +11,10 @@ from backend.copilot.background_task import (
     BackgroundStage,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry
+from backend.copilot.model import invalidate_session_cache
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.copilot.tree import readmit_turn
+from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import background_task_db
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,22 @@ async def _close_unstarted_background_turn(
         return
     task = await background_task_db().get_background_task(task_id, entry.user_id)
     if task is None:
+        active = await stream_registry.get_session(entry.session_id)
+        if active and (active.user_id, active.turn_id) == (
+            entry.user_id,
+            entry.turn_id,
+        ):
+            if await stream_registry.mark_session_completed(
+                entry.session_id,
+                error_message=CANCELLED_MESSAGE,
+                turn_id=entry.turn_id,
+            ):
+                return
+        if await background_task_db().release_deleted_background_turn(
+            task_id, entry.user_id, entry.session_id, entry.turn_id
+        ):
+            await invalidate_session_cache(entry.session_id)
+            await dispatch_next_for_user(entry.user_id)
         return
     if stage == "child":
         if (entry.session_id, entry.turn_id) != (

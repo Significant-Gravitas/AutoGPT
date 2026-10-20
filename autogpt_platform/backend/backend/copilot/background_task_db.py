@@ -285,6 +285,26 @@ async def get_background_followup_envelope(
     )
 
 
+async def release_deleted_background_turn(
+    task_id: str, user_id: str, session_id: str, turn_id: str
+) -> bool:
+    """Release only the orphaned dispatch after its handoff was cascade-deleted."""
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" session SET "chatStatus"='idle'
+            WHERE session.id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND session.metadata->>'_active_turn_id'=$3
+              AND NOT EXISTS (
+                SELECT 1 FROM {schema_prefix}"ChatBackgroundTask" WHERE id=$4
+              )""",
+            session_id,
+            user_id,
+            turn_id,
+            task_id,
+        )
+    )
+
+
 async def release_expired_background_turn(
     task_id: str,
     user_id: str,

@@ -1493,9 +1493,17 @@ async def admit_chat_session_turn(
             return "full"
         # Conditional: a transition outside this lock (a cancel) may have
         # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+        # A newly admitted slot must not inherit a previous turn's cleanup identity.
+        updated = await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession"
+            SET "chatStatus"='running', "updatedAt"=CURRENT_TIMESTAMP,
+                metadata=COALESCE(metadata,'{{}}'::jsonb)-'_active_turn_id'
+            WHERE id=$1 AND "userId"=$2
+              AND "chatStatus"=$3::{schema_prefix}"ChatSessionStatus" """,
+            session_id,
+            user_id,
+            expect_status,
+            client=tx,
         )
     return "admitted" if updated else "busy"
 
