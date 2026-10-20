@@ -90,10 +90,17 @@ async def upsert_push_subscription(
     existing = await PushSubscription.prisma().find_many(
         where={"userId": user_id},
     )
-    # Allow updates to an existing endpoint; only block when adding a *new* one
-    # past the cap.
-    has_this_endpoint = any(row.endpoint == endpoint for row in existing)
-    if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not has_this_endpoint:
+    # The cap stops one account registering unbounded endpoints to amplify
+    # outbound pushes. Refreshing its own endpoint, or taking over one another
+    # account registered (the same browser after switching accounts), adds no
+    # endpoint, so neither is blocked; blocking a takeover would leave the
+    # other account's notifications arriving on this browser.
+    if (
+        len(existing) >= MAX_SUBSCRIPTIONS_PER_USER
+        and not any(row.endpoint == endpoint for row in existing)
+        and await PushSubscription.prisma().find_unique(where={"endpoint": endpoint})
+        is None
+    ):
         raise ValueError(
             f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
         )

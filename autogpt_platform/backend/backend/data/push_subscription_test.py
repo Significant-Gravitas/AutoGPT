@@ -15,6 +15,7 @@ def mock_prisma(mocker):
     mock_client = MagicMock()
     mock_client.upsert = AsyncMock()
     mock_client.find_many = AsyncMock(return_value=[])
+    mock_client.find_unique = AsyncMock(return_value=None)
     mock_client.delete_many = AsyncMock()
     mock_client.update_many = AsyncMock()
     mocker.patch(
@@ -136,6 +137,29 @@ class TestUpsertPushSubscription:
             auth="rotated-auth",
         )
 
+        mock_prisma.upsert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_takes_over_another_users_endpoint_at_the_cap(self, mock_prisma):
+        # Taking over an endpoint adds none, so the cap must not keep the
+        # previous account's notifications arriving on this browser.
+        mock_prisma.find_many.return_value = [
+            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        mock_prisma.find_unique.return_value = MagicMock(userId="user-1")
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/TAKEN",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        mock_prisma.find_unique.assert_awaited_once_with(
+            where={"endpoint": "https://fcm.googleapis.com/fcm/send/sub/TAKEN"}
+        )
         mock_prisma.upsert.assert_awaited_once()
 
     @pytest.mark.asyncio
