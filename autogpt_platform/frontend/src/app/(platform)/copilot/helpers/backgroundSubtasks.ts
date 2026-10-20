@@ -1,9 +1,7 @@
 import { asObject } from "../components/ToolChain/resultHelpers";
 
-export function backgroundRefreshInterval(
-  messages: unknown[],
-  now = Date.now(),
-) {
+export function backgroundRefreshInterval(messages: unknown, now = Date.now()) {
+  if (!Array.isArray(messages)) return false;
   const pending = new Map<string, number>();
   let followup: string | null = null;
   for (const raw of messages) {

@@ -68,6 +68,41 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     streamPath.runtime = path === "stream runtime";
   });
 
+  it.each([undefined, null])(
+    "can send and receive with missing session messages (%s)",
+    async (messages) => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Still able to chat."),
+        }),
+      );
+      renderHost({
+        sessionResponse: http.get(
+          `*/api/chat/sessions/${TEST_SESSION_ID}`,
+          () =>
+            HttpResponse.json({
+              id: TEST_SESSION_ID,
+              created_at: "2026-05-13T00:00:00Z",
+              updated_at: "2026-05-13T00:00:00Z",
+              user_id: "test-user",
+              messages,
+              active_stream: null,
+            }),
+        ),
+      });
+
+      await typeAndSend("hello");
+
+      expect(
+        await screen.findByText("Still able to chat.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    },
+  );
+
   it("receives a background follow-up after the original reply without sending again", async () => {
     const pending = [
       {

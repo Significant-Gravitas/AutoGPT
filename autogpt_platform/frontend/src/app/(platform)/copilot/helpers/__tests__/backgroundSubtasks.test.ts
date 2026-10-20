@@ -22,6 +22,13 @@ const wake = {
 const now = Date.parse("2026-10-19T12:00:00Z");
 
 describe("background subtask delivery", () => {
+  it.each([undefined, null, {}, "unavailable"])(
+    "does not poll absent message history (%s)",
+    (messages) => {
+      expect(backgroundRefreshInterval(messages, now)).toBe(false);
+    },
+  );
+
   it.each([undefined, null, 42, ""])(
     "hides the internal prompt when the display label is unusable (%s)",
     (display_content) => {
