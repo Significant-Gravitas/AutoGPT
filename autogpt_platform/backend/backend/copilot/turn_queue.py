@@ -73,6 +73,7 @@ from backend.copilot.trial_cost_context import (
     restore_cost_context,
 )
 from backend.data.db_accessors import chat_db
+from backend.data.user import is_user_banned
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
@@ -337,7 +338,12 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 user_id=user_id,
             ):
                 return False
-            if pending is not None and _is_spawned(pending):
+            spawned = pending is not None and _is_spawned(pending)
+            logger.info(
+                f"cancel_queued_turn: session={session_id} user={user_id} "
+                f"cancelled before it started, spawned={spawned}"
+            )
+            if spawned and pending is not None:
                 child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
@@ -574,6 +580,11 @@ async def _promote_head(user_id: str) -> bool | None:
             )
         raise
 
+    logger.info(
+        f"dispatch_next_for_user: started queued session={head.session_id} "
+        f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
+    )
+
     if pending.role == "user" and pending.content and not spawned:
         try:
             track_user_message(
@@ -807,10 +818,13 @@ async def turn_refusal(
 ) -> TurnRefusal | None:
     """Why a turn billed to this route may not start for this user, if so.
 
-    Access first (Codex entitlement, the platform paywall), then the platform
-    route's usage: its daily and weekly windows and a trial's total budget.
-    Lookup errors propagate, so each caller decides what an unknown means.
+    A ban first, on every route; then access (Codex entitlement, the platform
+    paywall), then the platform route's usage: its daily and weekly windows and
+    a trial's total budget. Lookup errors propagate, so each caller decides what
+    an unknown means.
     """
+    if await is_user_banned(user_id):
+        return TurnRefusal(reason="is banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
