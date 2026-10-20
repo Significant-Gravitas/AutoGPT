@@ -34,6 +34,7 @@ from backend.copilot.context import (
     is_within_allowed_dirs,
     resolve_sandbox_path,
 )
+from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
 from backend.copilot.tool_image import (
     BINARY_IMAGE_READ_GUIDANCE,
     IMAGE_EXTENSIONS,
@@ -109,6 +110,15 @@ def _is_likely_binary(path: str) -> bool:
     """Heuristic check for binary files by extension."""
     _, ext = os.path.splitext(path)
     return ext.lower() in _READ_BINARY_EXTENSIONS
+
+
+def _binary_read_guidance(path: str) -> str:
+    if os.path.splitext(path)[1].lower() in {".pdf", ".mp4", ".avi", ".mov", ".mkv"}:
+        return BINARY_IMAGE_READ_GUIDANCE
+    return (
+        "This binary file has not been viewed. "
+        "Use bash_exec with 'file' or 'xxd' to inspect it."
+    )
 
 
 _PARTIAL_TRUNCATION_MSG = (
@@ -352,14 +362,15 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                     )
             elif _is_likely_binary(remote):
                 return _mcp(
-                    BINARY_IMAGE_READ_GUIDANCE,
+                    _binary_read_guidance(remote),
                     error=True,
                 )
-            raw: bytes = await sandbox.files.read(remote, format="bytes")
             if ext in IMAGE_EXTENSIONS:
+                raw = await read_sandbox_image(sandbox, remote)
                 return await asyncio.to_thread(
                     _image_result, raw, offset, args.get("limit")
                 )
+            raw = await sandbox.files.read(remote, format="bytes")
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
@@ -388,8 +399,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
 
     if _is_likely_binary(resolved):
         return _mcp(
-            f"Cannot read binary file: {os.path.basename(resolved)}. "
-            "Use bash_exec with 'xxd' or 'file' to inspect binary files.",
+            _binary_read_guidance(resolved),
             error=True,
         )
 
@@ -829,7 +839,7 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         return _read_local_image(expanded, offset, limit)
     if _is_likely_binary(expanded):
         return _mcp(
-            BINARY_IMAGE_READ_GUIDANCE,
+            _binary_read_guidance(expanded),
             error=True,
         )
     try:

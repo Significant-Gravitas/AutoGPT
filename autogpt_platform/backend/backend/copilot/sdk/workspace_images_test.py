@@ -1,7 +1,7 @@
 import base64
 import io
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pypdfium2
 import pytest
@@ -128,10 +128,12 @@ async def test_workspace_image_reaches_baseline_request_and_transcript(
 
 
 async def test_sandbox_image_reaches_sdk_wrapper(monkeypatch, png_bytes):
+    stream = MagicMock()
+    stream.__aiter__.return_value = [png_bytes]
     sandbox = SimpleNamespace(
         files=SimpleNamespace(
             get_info=AsyncMock(return_value=SimpleNamespace(size=len(png_bytes))),
-            read=AsyncMock(return_value=png_bytes),
+            read=AsyncMock(return_value=stream),
         )
     )
     monkeypatch.setattr(e2b_file_tools, "_get_sandbox", lambda: sandbox)
@@ -144,7 +146,8 @@ async def test_sandbox_image_reaches_sdk_wrapper(monkeypatch, png_bytes):
     result = await handler({"file_path": "/home/user/frame.png"})
     assert result["content"][-1]["type"] == "image"
     assert base64.b64decode(result["content"][-1]["data"], validate=True) == png_bytes
-    sandbox.files.read.assert_awaited_once_with("/home/user/frame.png", format="bytes")
+    sandbox.files.read.assert_awaited_once_with("/home/user/frame.png", format="stream")
+    stream.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.parametrize("filename", ["scan.pdf", "movie.mp4", "archive.zip"])

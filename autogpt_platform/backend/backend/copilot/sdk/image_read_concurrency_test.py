@@ -1,7 +1,7 @@
 import io
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from PIL import Image
@@ -68,11 +68,13 @@ async def test_sdk_image_preparation_runs_outside_the_event_loop(
     path = tmp_path / "page.png"
     path.write_bytes(png_bytes)
     monkeypatch.setattr(e2b_file_tools, "get_sdk_cwd", lambda: str(tmp_path))
+    stream = MagicMock()
+    stream.__aiter__.return_value = [png_bytes]
     sandbox = (
         SimpleNamespace(
             files=SimpleNamespace(
                 get_info=AsyncMock(return_value=SimpleNamespace(size=len(png_bytes))),
-                read=AsyncMock(return_value=png_bytes),
+                read=AsyncMock(return_value=stream),
             )
         )
         if reader == "sandbox"
