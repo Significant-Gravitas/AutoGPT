@@ -160,9 +160,11 @@ async def test_consumed_followups_are_exported_as_ordered_user_messages(
         assert tool.end_time_unix_nano <= event.start_time_unix_nano
         assert event.end_time_unix_nano <= continuation.start_time_unix_nano
         assert attrs["langfuse.observation.type"] == "event"
-        assert json.loads(attrs["langfuse.observation.input"]) == [
-            {"role": "user", "content": message.content}
-        ]
+        traced_message = json.loads(attrs["langfuse.observation.input"])[0]
+        assert traced_message["role"] == "user"
+        assert message.content in traced_message["content"]
+        delivered = result["hookSpecificOutput"]["additionalContext"]
+        assert f"Message {index}:\n{traced_message['content']}" in delivered
         assert attrs["langfuse.observation.metadata.source"] == "PostToolUse"
         assert attrs["langfuse.observation.metadata.message_id"] == message.id
         assert attrs["langfuse.observation.metadata.enqueued_at"] == str(
@@ -176,10 +178,9 @@ async def test_consumed_followups_are_exported_as_ordered_user_messages(
             == message.file_ids
         )
         if message.context:
-            assert (
-                json.loads(attrs["langfuse.observation.metadata.context"])
-                == message.context.model_dump()
-            )
+            assert json.loads(attrs["langfuse.observation.metadata.context"]) == {
+                "url": message.context.url
+            }
     assert events[0].start_time_unix_nano <= events[1].start_time_unix_nano
     pending_redis.rpush.assert_awaited_once()
 

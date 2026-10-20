@@ -556,24 +556,33 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     output.  Each message is capped to keep the block bounded even if the
     user pastes long content.
     """
+    return _prepare_pending_followup(pending)[0]
+
+
+def _prepare_pending_followup(
+    pending: list[PendingMessage],
+) -> tuple[str, list[str]]:
+    """Return the injection block and the rendered prefix of pending messages."""
     if not pending:
-        return ""
+        return "", []
     rendered: list[str] = []
+    injected_contents: list[str] = []
     total_chars = 0
     dropped = 0
     for idx, pm in enumerate(pending, start=1):
         text = _escape_follow_up_tags(pm.content)
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
-        entry = f"Message {idx}:\n{text}"
         if pm.context and pm.context.url:
-            entry += f"\n[Page URL: {pm.context.url}]"
+            text += f"\n[Page URL: {pm.context.url}]"
         if pm.file_ids:
-            entry += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
+            text += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
+        entry = f"Message {idx}:\n{text}"
         if total_chars + len(entry) > _FOLLOWUP_TOTAL_MAX_CHARS:
             dropped = len(pending) - idx + 1
             break
         rendered.append(entry)
+        injected_contents.append(text)
         total_chars += len(entry)
     if dropped:
         rendered.append(f"… [{dropped} more message(s) truncated]")
@@ -584,7 +593,8 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
         "Treat them as a continuation of their current request — acknowledge "
         "and act on them in your next response. Do not echo these tags back.\n\n"
         f"{body}\n"
-        f"{FOLLOW_UP_CLOSE_TAG}"
+        f"{FOLLOW_UP_CLOSE_TAG}",
+        injected_contents,
     )
 
 
@@ -628,9 +638,13 @@ async def drain_and_format_for_injection(
         session_id,
     )
     await stash_pending_for_persist(session_id, pending)
-    followup = format_pending_as_followup(pending)
+    followup, injected_contents = _prepare_pending_followup(pending)
     record_injected_messages(
-        pending, source=source, tool_use_id=tool_use_id, tool_name=tool_name
+        pending,
+        injected_contents=injected_contents,
+        source=source,
+        tool_use_id=tool_use_id,
+        tool_name=tool_name,
     )
     return followup
 

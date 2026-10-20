@@ -12,19 +12,22 @@ logger = logging.getLogger(__name__)
 def record_injected_messages(
     messages: list["PendingMessage"],
     *,
+    injected_contents: list[str],
     source: str,
     tool_use_id: str | None,
     tool_name: str | None,
 ) -> None:
-    """Record user input at the tool boundary that consumed it, within its turn."""
+    """Trace only the rendered prefix of messages supplied to the model."""
     try:
         client = get_client()
         if client.get_current_trace_id() is None:
             return
-        for index, message in enumerate(messages, start=1):
+        for index, (message, content) in enumerate(
+            zip(messages, injected_contents), start=1
+        ):
             client.create_event(
                 name="copilot-user-follow-up",
-                input=[{"role": "user", "content": message.content}],
+                input=[{"role": "user", "content": content}],
                 metadata={
                     "source": source,
                     "message_id": message.id,
@@ -32,9 +35,12 @@ def record_injected_messages(
                     "tool_use_id": tool_use_id,
                     "tool_name": tool_name,
                     "batch_index": index,
+                    "excluded_message_count": len(messages) - len(injected_contents),
                     "file_ids": message.file_ids,
                     "context": (
-                        message.context.model_dump() if message.context else None
+                        {"url": message.context.url}
+                        if message.context and message.context.url
+                        else None
                     ),
                 },
             )
