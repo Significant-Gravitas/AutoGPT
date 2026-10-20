@@ -33,7 +33,6 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
       <Text
         variant="small"
         tone="secondary"
-        unmask={!payment}
         className="max-w-[38rem] leading-6"
       >
         {payment?.description ?? fallback}

@@ -1,7 +1,7 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import React, { ButtonHTMLAttributes, useState } from "react";
+import React, { ButtonHTMLAttributes, memo, useState } from "react";
 import { highlightText } from "./helpers";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
@@ -23,18 +23,14 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   blockData: BlockInfo;
 }
 
-interface BlockComponent extends React.FC<Props> {
-  Skeleton: React.FC<{ className?: string }>;
-}
-
-export const Block: BlockComponent = ({
+function BlockCard({
   title,
   description,
   highlightedText,
   className,
   blockData,
   ...rest
-}) => {
+}: Props) {
   const setBlockMenuOpen = useControlPanelStore(
     (state) => state.setBlockMenuOpen,
   );
@@ -173,7 +169,7 @@ export const Block: BlockComponent = ({
       )}
     </>
   );
-};
+}
 
 const BlockSkeleton = () => {
   return (
@@ -187,4 +183,8 @@ const BlockSkeleton = () => {
   );
 };
 
-Block.Skeleton = BlockSkeleton;
+// Memoised: a list re-renders for its own reasons (a new page arriving, a
+// filter count updating) without the rows' props changing.
+export const Block = Object.assign(memo(BlockCard), {
+  Skeleton: BlockSkeleton,
+});

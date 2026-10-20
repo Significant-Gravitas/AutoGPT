@@ -30,7 +30,6 @@ export function PaymentDueAction({
         target="_blank"
         rel="noopener noreferrer"
         size={size}
-        unmask={false}
         className={stacked ? "w-full" : undefined}
         rightIcon={
           <Icon

@@ -20,6 +20,10 @@ const nextConfig = {
     NEXT_PUBLIC_VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV ?? "",
     // Sentry initialises in the browser too, so its kill switch must reach it.
     DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
+    // The build's commit, which Sentry's plugin also names its release, so
+    // PostHog events can be split by deploy.
+    NEXT_PUBLIC_REVISION:
+      process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,

@@ -28,7 +28,6 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
 });
@@ -110,6 +109,36 @@ describe("Sentry client instrumentation", () => {
     expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
   });
 
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "client.address": "203.0.113.7",
+              "user.email": "ada@example.com",
+              user: "ada@example.com",
+              "user.id": "user-1",
+              "url.path": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "url.path": "/library",
+    });
+  });
+
   it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
     await import("../../instrumentation-client");
 
@@ -150,6 +179,19 @@ describe("Sentry client instrumentation", () => {
     expect(beforeSend(blocked, {})).toBe(blocked);
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
     expect(mirrorEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("traces every transaction but profiles one in ten", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const { tracesSampleRate, profilesSampleRate, replaysOnErrorSampleRate } =
+      initMock.mock.calls[0][0];
+
+    expect(tracesSampleRate).toBe(1);
+    expect(profilesSampleRate).toBe(0.1);
+    expect(replaysOnErrorSampleRate).toBe(1);
   });
 
   it("tags events with the environment the deployment names for itself", async () => {

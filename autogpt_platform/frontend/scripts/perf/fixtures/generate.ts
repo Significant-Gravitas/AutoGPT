@@ -1,6 +1,6 @@
 /**
- * Writes the synthetic copilot fixtures: a 200-row chat session and a
- * 20-line streamed reply. Deterministic, so re-running produces the same
+ * Writes the synthetic copilot fixtures: a 200-row chat session, a
+ * 20-line streamed reply and a reply that is mostly one long code block. Deterministic, so re-running produces the same
  * files. To capture real wire data from a running stack instead, use
  * scripts/perf/record.ts.
  *
@@ -185,6 +185,51 @@ export const REPLY_20_LINES = [
   "Let me know if you want me to set up the daily check for you.",
 ].join("\n");
 
+const LONG_CODE_SECTIONS = [
+  "signups",
+  "refunds",
+  "renewals",
+  "upgrades",
+  "trials",
+  "invites",
+  "exports",
+  "payouts",
+  "reviews",
+  "tickets",
+];
+
+function longCodeSection(name: string, index: number) {
+  const title = name[0].toUpperCase() + name.slice(1);
+  return [
+    "/**",
+    ` * Counts the ${name} events and reports the busiest day.`,
+    " */",
+    `export function count${title}(events: { type: string; day: string }[]) {`,
+    `  const matching = events.filter((event) => event.type === "${name}");`,
+    "  const byDay = new Map<string, number>();",
+    "  for (const event of matching) {",
+    "    byDay.set(event.day, (byDay.get(event.day) ?? 0) + 1);",
+    "  }",
+    `  const label = \`${name}: \${matching.length} events\`; // section ${index}`,
+    "  return { total: matching.length, byDay, label };",
+    "}",
+    "",
+  ];
+}
+
+/** A reply that is mostly one long code block, so every flush lands in it. */
+export const REPLY_LONG_CODE = [
+  "Here is the full report script.",
+  "",
+  "```ts",
+  'import { readFileSync } from "fs";',
+  "",
+  ...LONG_CODE_SECTIONS.flatMap(longCodeSection),
+  "```",
+  "",
+  "Run it once a day.",
+].join("\n");
+
 export function buildReplyStream(text: string, messageID: string) {
   const words = text.match(/\S+\s*|\s+/g) ?? [];
   const deltas: string[] = [];
@@ -224,7 +269,14 @@ function main() {
     replyFile,
     buildReplyStream(REPLY_20_LINES, "perf-reply-20-lines"),
   );
-  console.log(`wrote ${sessionFile}\nwrote ${replyFile}`);
+  const longCodeFile = path.join(FIXTURES_DIR, "reply-long-code.sse");
+  fs.writeFileSync(
+    longCodeFile,
+    buildReplyStream(REPLY_LONG_CODE, "perf-reply-long-code"),
+  );
+  console.log(
+    `wrote ${sessionFile}\nwrote ${replyFile}\nwrote ${longCodeFile}`,
+  );
 }
 
 if (require.main === module) main();

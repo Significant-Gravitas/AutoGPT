@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -293,6 +294,35 @@ describe("SubscriptionStep", () => {
     await waitFor(() =>
       expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
     );
+  });
+
+  test("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const location = stubLocation();
+    let posts = 0;
+    server.use(
+      http.post("*/api/credits/subscription", () => {
+        posts += 1;
+        return HttpResponse.json({
+          url: "https://checkout.stripe.com/pay/cs_test",
+        });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    const pro = screen.getByRole("button", { name: /Get Pro/i });
+    fireEvent.click(pro);
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(pro.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(pro);
+    expect(posts).toBe(1);
+
+    restoreFromBackForwardCache();
+
+    expect(pro.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(pro);
+    await waitFor(() => expect(posts).toBe(2));
   });
 
   test.each(["https://checkout.stripe.com/pay/old_account", null])(
