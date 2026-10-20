@@ -72,22 +72,6 @@ function getSentryEnvironment() {
   return override || getEnvironmentStr();
 }
 
-function getPreviewStealingDev() {
-  const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
-  const appEnv = getAppEnv();
-
-  if (
-    !branch ||
-    branch === "dev" ||
-    branch === "refs/heads/dev" ||
-    appEnv !== AppEnv.DEV
-  ) {
-    return null;
-  }
-
-  return branch;
-}
-
 function getRevision() {
   return process.env.NEXT_PUBLIC_REVISION?.trim() || "";
 }
@@ -208,7 +192,6 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getPreviewStealingDev,
   getRevision,
   getPostHogCredentials,
   getLaunchDarklyClientId,
