@@ -61,7 +61,10 @@ describe("AdminLayout shell", () => {
       screen.getAllByRole("link", { name: /marketplace management/i }).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.getAllByRole("link", { name: /admin user management/i }).length,
+      screen.getAllByRole("link", { name: /^users$/i }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("link", { name: /admin settings/i }).length,
     ).toBeGreaterThan(0);
   });
 });

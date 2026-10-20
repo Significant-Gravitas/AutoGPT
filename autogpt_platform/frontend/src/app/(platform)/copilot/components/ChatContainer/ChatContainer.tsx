@@ -9,7 +9,8 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
@@ -259,12 +260,24 @@ export const ChatContainer = ({
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
-  const modeSelector = isAutoModeEnabled ? (
-    <AutopilotModeSelector
-      sessionId={sessionId}
-      persistedMode={sessionAutopilotMode}
-    />
-  ) : undefined;
+  // A thread keeps the mode stored on it; a new expert chat starts on the
+  // expert's own default until its first send creates the session.
+  const initialMode = sessionId
+    ? sessionAutopilotMode
+    : (expertIdentity?.autopilotMode ?? null);
+  // ChatInput is memoised, and this container renders on every streamed
+  // flush: each element and callback it gets keeps its identity until its
+  // own inputs change, so a flush leaves the composer alone.
+  const modeSelector = useMemo(
+    () =>
+      isAutoModeEnabled ? (
+        <AutopilotModeSelector
+          sessionId={sessionId}
+          persistedMode={initialMode}
+        />
+      ) : undefined,
+    [isAutoModeEnabled, sessionId, initialMode],
+  );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -276,6 +289,55 @@ export const ChatContainer = ({
     silenceTimeoutMs,
     onSend: guardedOnSend,
   });
+  const toggleVoice = useStableCallback(voice.toggle);
+  const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);
+  const downloadVoiceUtterance = useStableCallback(
+    voice.downloadFailedUtterance,
+  );
+  const isVoiceModeDisabled =
+    isInputDisabled || isSendLocked || voice.isStarting;
+  const voiceMode = useMemo(
+    () =>
+      isVoiceModeEnabled
+        ? { onStart: toggleVoice, disabled: isVoiceModeDisabled }
+        : undefined,
+    [isVoiceModeEnabled, toggleVoice, isVoiceModeDisabled],
+  );
+  const voiceBar = useMemo(
+    () =>
+      voice.isActive ? (
+        <VoiceModeBar
+          state={voice.state}
+          statusLabel={voice.statusLabel}
+          failure={voice.failure}
+          onRetry={retryVoiceUtterance}
+          onDownload={downloadVoiceUtterance}
+          leaveButton={
+            <VoiceModeButton
+              isActive
+              speaking={voice.state === "speaking"}
+              onClick={toggleVoice}
+            />
+          }
+        />
+      ) : undefined,
+    [
+      voice.isActive,
+      voice.state,
+      voice.statusLabel,
+      voice.failure,
+      retryVoiceUtterance,
+      downloadVoiceUtterance,
+      toggleVoice,
+    ],
+  );
+  const handleStop = useStableCallback(onStop);
+  const handleEnqueue = useStableCallback((message: string) =>
+    onEnqueue?.(message),
+  );
+  const handleDroppedFilesConsumed = useStableCallback(() =>
+    onDroppedFilesConsumed?.(),
+  );
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
@@ -335,8 +397,9 @@ export const ChatContainer = ({
   }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
+  // Stable, and reads `messages` when clicked rather than when created.
   const isRetryingRef = useRef(false);
-  const handleRetry = useCallback(async () => {
+  const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
     try {
@@ -385,7 +448,7 @@ export const ChatContainer = ({
     } finally {
       isRetryingRef.current = false;
     }
-  }, [guardedOnSend, messages]);
+  });
 
   return (
     <CopilotChatActionsProvider
@@ -478,7 +541,7 @@ export const ChatContainer = ({
                   {isTaskBarEnabled && (
                     <div className="relative z-10">
                       <TaskProgressBar
-                        todos={getLatestTaskList(messages) ?? []}
+                        todos={getLatestTaskList(messages)}
                         isStreaming={isStreaming}
                       />
                     </div>
@@ -509,50 +572,25 @@ export const ChatContainer = ({
                           isStreaming={isStreaming}
                           isTurnStarting={status === "submitted"}
                           isUploadingFiles={isUploadingFiles}
-                          onStop={onStop}
-                          onEnqueue={onEnqueue}
+                          onStop={handleStop}
+                          onEnqueue={onEnqueue ? handleEnqueue : undefined}
                           placeholder={
                             (atReset && composer.placeholder) ||
                             "What else can I help with?"
                           }
                           droppedFiles={droppedFiles}
-                          onDroppedFilesConsumed={onDroppedFilesConsumed}
+                          onDroppedFilesConsumed={
+                            onDroppedFilesConsumed
+                              ? handleDroppedFilesConsumed
+                              : undefined
+                          }
                           hasSession={!!sessionId}
                           sessionId={sessionId}
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
-                          voiceToggle={
-                            isVoiceModeEnabled ? (
-                              <VoiceModeButton
-                                isActive={voice.isActive}
-                                disabled={
-                                  isInputDisabled ||
-                                  isSendLocked ||
-                                  voice.isStarting
-                                }
-                                onClick={voice.toggle}
-                              />
-                            ) : undefined
-                          }
-                          voiceBar={
-                            voice.isActive ? (
-                              <VoiceModeBar
-                                state={voice.state}
-                                statusLabel={voice.statusLabel}
-                                failure={voice.failure}
-                                onRetry={voice.retryFailedUtterance}
-                                onDownload={voice.downloadFailedUtterance}
-                                leaveButton={
-                                  <VoiceModeButton
-                                    isActive
-                                    speaking={voice.state === "speaking"}
-                                    onClick={voice.toggle}
-                                  />
-                                }
-                              />
-                            ) : undefined
-                          }
+                          voiceMode={voiceMode}
+                          voiceBar={voiceBar}
                         />
                       </div>
                     </TooltipTrigger>
@@ -573,16 +611,14 @@ export const ChatContainer = ({
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
               modeSelector={modeSelector}
-              voiceToggle={
-                isVoiceModeEnabled ? (
-                  <VoiceModeButton
-                    isActive={false}
-                    disabled={
-                      isInputDisabled || isSendLocked || isCreatingSession
+              voiceMode={
+                isVoiceModeEnabled
+                  ? {
+                      onStart: handleStartVoiceInNewChat,
+                      disabled:
+                        isInputDisabled || isSendLocked || isCreatingSession,
                     }
-                    onClick={handleStartVoiceInNewChat}
-                  />
-                ) : undefined
+                  : undefined
               }
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}

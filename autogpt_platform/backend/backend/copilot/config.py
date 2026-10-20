@@ -299,7 +299,11 @@ class ChatConfig(BaseSettings):
         "judged call and the LLM (``gate_model``) runs only on an ask, to write "
         "the reason. Off without ``TYPESAFE_API_KEY``.",
     )
-    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_model: str = Field(
+        default="jev-1.13.0",
+        description="Pinned Jev version. Once TypeSafe retires it, calls run on "
+        "``jev-latest`` and log an ERROR naming it.",
+    )
     gate_jev_ask_threshold: float | None = Field(
         default=None,
         description="Unset: Jev's allow/ask choice decides. Set: the call also "
@@ -388,6 +392,16 @@ class ChatConfig(BaseSettings):
         ge=0,
         description="How long a process may serve a cached Langfuse prompt before "
         "re-fetching it (0 to disable caching)",
+    )
+
+    # PostHog LLM analytics (copilot/ai_spans.py)
+    posthog_builtin_tool_spans: bool = Field(
+        default=True,
+        description="Send a PostHog ``$ai_span`` for each call of the SDK "
+        "CLI's built-in tools (Task/Agent, WebSearch, ...), sub-agents' calls "
+        "included. Off, only platform tools get spans. The high-volume lookups "
+        "in ``ai_spans.UNTRACED_BUILTIN_TOOLS`` (Read, Grep, TodoWrite, ...) "
+        "never get one.",
     )
 
     # Rate limiting — cost-based limits per day and per week, stored in

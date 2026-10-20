@@ -15,7 +15,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import Link, { useLinkStatus } from "next/link";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import {
   BookOpen01Icon,
   Delete02Icon,
@@ -74,7 +74,9 @@ function ChatLinkLoader() {
   );
 }
 
-export function RecentChatItem({
+// Memoised: the list hands every row the same shared callbacks (taking the
+// session id), so a list refetch only re-renders rows whose session changed.
+export const RecentChatItem = memo(function RecentChatItem({
   session,
   isActive,
   isEditing,
@@ -226,4 +228,4 @@ export function RecentChatItem({
       </DropdownMenu>
     </SidebarMenuItem>
   );
-}
+});

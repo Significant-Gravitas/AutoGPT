@@ -120,7 +120,7 @@ See [Component structure](#-component-structure) and [Styling](#-styling) sectio
 
 If a feature will ship across multiple PRs, guard it with a flag so we can merge iteratively.
 
-- Use [LaunchDarkly](https://www.launchdarkly.com) based flags (see Feature Flags below)
+- See Feature Flags below
 - Avoid long-lived feature branches
 
 ### 3) Open PR and get reviews ✅
@@ -497,7 +497,7 @@ You don't need to wrap components in error boundaries manually unless you need c
 
 ## 🚩 Feature Flags
 
-- Flags are powered by [LaunchDarkly](https://docs.launchdarkly.com/)
+- By default the browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
 - Use the helper APIs under `src/services/feature-flags`
 
 Check a flag in a client component:
@@ -534,7 +534,7 @@ Adding new flags:
    - `launchdarkly`: LaunchDarkly
    - `posthog`: PostHog
    - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
-   - `server`: whichever the backend's `FEATURE_FLAG_BACKEND` names, by the same rule
+   - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
 
 ---
 

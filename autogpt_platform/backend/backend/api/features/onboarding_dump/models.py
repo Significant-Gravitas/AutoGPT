@@ -44,6 +44,19 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset(
     }
 )
 
+# Stored recordings are named ``brain-dump-{recording_id}.{ext}``. The
+# retention sweep finds them in the bucket by this name, so the two must
+# stay in step.
+RECORDING_FILENAME_PREFIX = "brain-dump-"
+AUDIO_FILE_EXTENSIONS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
+
 
 class UploadPartResponse(BaseModel):
     recording_id: str

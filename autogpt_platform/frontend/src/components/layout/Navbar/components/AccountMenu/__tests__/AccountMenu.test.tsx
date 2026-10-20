@@ -1,6 +1,6 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
 import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
@@ -82,6 +82,14 @@ const baseGroups: MenuItemGroup[] = [
 ];
 
 describe("AccountMenu", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("renders user name and email when loaded", () => {
     render(
       <AccountMenu
@@ -202,13 +210,12 @@ describe("AccountMenu", () => {
     const activity = screen.getByTestId("account-menu-activity-trigger");
     const feedback = screen.getByRole("button", { name: "Give feedback" });
 
-    expect(feedback.getAttribute("data-tally-open")).toBe("3yx2L0");
     expect(activity.closest("li")?.nextElementSibling).toBe(
       feedback.closest("li"),
     );
   });
 
-  test("gives feedback without loading another Tally script", () => {
+  test("does not load the Tally script before feedback is asked for", () => {
     render(
       <AccountMenu
         userName="Ada"
@@ -221,5 +228,19 @@ describe("AccountMenu", () => {
     expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
       0,
     );
+  });
+
+  test("leaves Give feedback out when not running in the cloud", () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });

@@ -4,7 +4,9 @@ import {
   render,
   screen,
 } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { Toaster } from "@/components/molecules/Toast/toaster";
+import { stubTallyEmbed } from "@/tests/integrations/tally";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenuFeedbackRow } from "../AccountMenuFeedbackRow";
 
 const mockSidebar = vi.hoisted(() => ({
@@ -26,6 +28,10 @@ const mockSentry = vi.hoisted(() => ({
   getReplay: vi.fn(),
 }));
 
+const flushReplay = vi.fn();
+
+let tally: ReturnType<typeof stubTallyEmbed>;
+
 const mockUseAuth = vi.hoisted(() => ({
   current: { isLoggedIn: true, isUserLoading: false },
 }));
@@ -37,7 +43,12 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 async function renderRow() {
-  render(<AccountMenuFeedbackRow />);
+  render(
+    <>
+      <AccountMenuFeedbackRow />
+      <Toaster />
+    </>,
+  );
   await act(async () => {});
   return screen.getByRole("button", { name: "Give feedback" });
 }
@@ -47,35 +58,100 @@ describe("AccountMenuFeedbackRow", () => {
     mockSidebar.current = null;
     mockUseAuth.current = { isLoggedIn: true, isUserLoading: false };
     mockAuth.getCurrentUser.mockReset();
-    mockSentry.getReplay.mockReturnValue({ getReplayId: () => "replay-123" });
+    flushReplay.mockReset();
+    mockSentry.getReplay.mockReturnValue({
+      getReplayId: () => "replay-123",
+      flush: flushReplay,
+    });
     window.history.replaceState({}, "", "/library?sort=updatedAt");
+    tally = stubTallyEmbed();
   });
 
-  test("renders a Give feedback button wired to the Tally feedback form", async () => {
-    const button = await renderRow();
+  afterEach(async () => {
+    await tally.restore();
+  });
 
-    expect(button.getAttribute("data-tally-open")).toBe("3yx2L0");
-    expect(button.getAttribute("data-tally-emoji-text")).toBe("👋");
-    expect(button.getAttribute("data-tally-emoji-animation")).toBe("wave");
-    expect(button.getAttribute("data-sentry-replay-id")).toBe("replay-123");
-    expect(button.getAttribute("data-sentry-replay-url")).toBe(
-      "https://significant-gravitas.sentry.io/replays/replay-123/",
+  test("does not load the Tally script until someone asks for feedback", async () => {
+    await renderRow();
+
+    expect(tally.scripts).toHaveLength(0);
+  });
+
+  test("loads Tally on the first click, then opens the feedback form with the page context", async () => {
+    fireEvent.click(await renderRow());
+
+    expect(tally.scripts).toHaveLength(1);
+    await tally.finishLoading();
+
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
+    expect(tally.openPopup).toHaveBeenCalledWith(
+      "3yx2L0",
+      expect.objectContaining({
+        emoji: { text: "👋", animation: "wave" },
+        hiddenFields: {
+          sentryReplayId: "replay-123",
+          sentryReplayUrl:
+            "https://significant-gravitas.sentry.io/replays/replay-123/",
+          pageUrl: `${window.location.origin}/library`,
+          isAuthenticated: "true",
+        },
+      }),
     );
-    expect(button.getAttribute("data-page-url")).toBe(
-      `${window.location.origin}/library`,
-    );
-    expect(button.getAttribute("data-is-authenticated")).toBe("true");
+  });
+
+  test("later clicks open the form without loading Tally again", async () => {
+    const button = await renderRow();
+    fireEvent.click(button);
+    await tally.finishLoading();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(tally.scripts).toHaveLength(1);
+    expect(tally.openPopup).toHaveBeenCalledTimes(2);
+  });
+
+  test("flushes the Sentry replay once the form is open", async () => {
+    fireEvent.click(await renderRow());
+    await tally.finishLoading();
+
+    act(() => tally.popupOptions().onOpen());
+
+    expect(flushReplay).toHaveBeenCalledTimes(1);
   });
 
   test("marks values that are not known yet", async () => {
     mockSentry.getReplay.mockReturnValue(undefined);
     mockUseAuth.current = { isLoggedIn: false, isUserLoading: true };
-    const button = await renderRow();
+    fireEvent.click(await renderRow());
+    await tally.finishLoading();
 
-    expect(button.getAttribute("data-sentry-replay-id")).toBe(
-      "not-initialized",
-    );
-    expect(button.getAttribute("data-is-authenticated")).toBe("unknown");
+    expect(tally.popupOptions().hiddenFields).toMatchObject({
+      sentryReplayId: "not-initialized",
+      sentryReplayUrl: "not-initialized",
+      isAuthenticated: "unknown",
+    });
+  });
+
+  test("offers a link to the form when Tally can't load, and tries again on the next click", async () => {
+    const button = await renderRow();
+    fireEvent.click(button);
+    await tally.failLoading();
+
+    expect(
+      await screen.findByText("Couldn't open the feedback form"),
+    ).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: "Open the form in a new tab" })
+        .getAttribute("href"),
+    ).toBe("https://tally.so/r/3yx2L0");
+
+    fireEvent.click(button);
+    expect(tally.scripts).toHaveLength(2);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("reads auth from the client store, not the getCurrentUser server action", async () => {
@@ -99,6 +175,8 @@ describe("AccountMenuFeedbackRow", () => {
     fireEvent.click(await renderRow());
 
     expect(setOpenMobile).toHaveBeenCalledWith(false);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("leaves the desktop sidebar alone", async () => {
@@ -108,10 +186,15 @@ describe("AccountMenuFeedbackRow", () => {
     fireEvent.click(await renderRow());
 
     expect(setOpenMobile).not.toHaveBeenCalled();
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 
   test("works outside a sidebar", async () => {
-    const button = await renderRow();
-    expect(() => fireEvent.click(button)).not.toThrow();
+    fireEvent.click(await renderRow());
+
+    expect(tally.scripts).toHaveLength(1);
+    await tally.finishLoading();
+    expect(tally.openPopup).toHaveBeenCalledTimes(1);
   });
 });

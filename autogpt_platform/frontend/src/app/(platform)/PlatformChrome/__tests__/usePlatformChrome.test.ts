@@ -1,28 +1,33 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
+
 import { usePlatformChrome } from "../usePlatformChrome";
 
 const pathnameMock = vi.fn<() => string>(() => "/marketplace");
-const searchParamsMock = vi.fn(() => new URLSearchParams());
 vi.mock("next/navigation", () => ({
   usePathname: () => pathnameMock(),
-  useSearchParams: () => searchParamsMock(),
 }));
 
-const authMock = vi.fn(() => ({
-  isLoggedIn: true,
-  isUserLoading: false,
-}));
-vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => authMock(),
-}));
+function setAuth({
+  isLoggedIn,
+  isUserLoading,
+}: {
+  isLoggedIn: boolean;
+  isUserLoading: boolean;
+}) {
+  useAuthStore.setState({
+    user: isLoggedIn ? ({ id: "user-1" } as User) : null,
+    isUserLoading,
+  });
+}
 
 describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
-    searchParamsMock.mockReturnValue(new URLSearchParams());
-    authMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
+    setAuth({ isLoggedIn: true, isUserLoading: false });
   });
 
   it("shows the app sidebar from the very first render", () => {
@@ -70,7 +75,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("shows the tour sidebar for logged-out marketplace visitors", async () => {
-    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    setAuth({ isLoggedIn: false, isUserLoading: false });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
@@ -80,7 +85,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the tour sidebar hidden while the session check is in flight", async () => {
-    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: true });
+    setAuth({ isLoggedIn: false, isUserLoading: true });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
@@ -99,7 +104,7 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the tour sidebar off non-marketplace routes when logged out", async () => {
-    authMock.mockReturnValue({ isLoggedIn: false, isUserLoading: false });
+    setAuth({ isLoggedIn: false, isUserLoading: false });
     pathnameMock.mockReturnValue("/library");
     const { result } = renderHook(() => usePlatformChrome());
 
@@ -115,15 +120,5 @@ describe("usePlatformChrome", () => {
 
     expect(result.current.isCopilotRoute).toBe(true);
     expect(result.current.overlayInsetHeader).toBe(true);
-  });
-
-  it("flags an open chat session so its chip takes over the header buttons", () => {
-    pathnameMock.mockReturnValue("/home");
-    const { result, rerender } = renderHook(() => usePlatformChrome());
-    expect(result.current.isChatSession).toBe(false);
-
-    searchParamsMock.mockReturnValue(new URLSearchParams("sessionId=abc"));
-    rerender();
-    expect(result.current.isChatSession).toBe(true);
   });
 });

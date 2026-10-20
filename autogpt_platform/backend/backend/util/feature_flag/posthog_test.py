@@ -54,6 +54,22 @@ class TestClientConstruction:
         assert kwargs["secret_key"] is None
         assert kwargs["enable_local_evaluation"] is False
 
+    @pytest.mark.parametrize(
+        ("sentry_release", "expected"),
+        [("0123abcd", {"revision": "0123abcd"}), ("", {})],
+        ids=["revision set", "no revision"],
+    )
+    def test_its_events_carry_the_revision(self, mocker, sentry_release, expected):
+        """``$feature_flag_called`` comes from this client, not ``capture``."""
+        configure(mocker)
+        mocker.patch.object(ph.settings.config, "sentry_release", sentry_release)
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+
+        _, kwargs = posthog.call_args
+        assert kwargs["super_properties"] == expected
+
     def test_the_client_is_built_once(self, mocker):
         configure(mocker)
         posthog = mocker.patch.object(ph, "Posthog")
