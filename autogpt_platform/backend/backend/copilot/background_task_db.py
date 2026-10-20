@@ -131,11 +131,10 @@ async def finish_background_turn(
                     )
                     if changed and error:
                         await _lock_session(tx, session_id)
-                        notice = (
-                            "Otto's background follow-up was cancelled."
-                            if error == CANCELLED_MESSAGE
-                            else "Otto couldn't complete the background follow-up within its limits."
-                        )
+                        notice = {
+                            CANCELLED_MESSAGE: "Otto's background follow-up was cancelled.",
+                            BACKGROUND_TIMEOUT_MESSAGE: "Otto couldn't complete the background follow-up within its limits.",
+                        }.get(error, "Otto couldn't complete the background follow-up.")
                         await _append(
                             tx,
                             session_id,

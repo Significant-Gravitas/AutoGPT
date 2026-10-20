@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from backend.copilot import stream_registry
 from backend.copilot.background_task import (
+    BACKGROUND_TIMEOUT_MESSAGE,
     DELIVERY_SECONDS,
     FOLLOWUP_SECONDS,
     BackgroundTask,
@@ -180,7 +181,7 @@ async def _recover_followup(task: BackgroundTask, now: datetime) -> None:
                 task.user_id,
                 task.parent_session_id,
                 task.wake_id,
-                "Follow-up deadline exceeded",
+                BACKGROUND_TIMEOUT_MESSAGE,
             )
         else:
             await _stop_running_turn(

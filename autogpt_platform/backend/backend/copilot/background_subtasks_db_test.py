@@ -646,6 +646,51 @@ async def test_stopping_a_running_followup_reports_cancellation_once(
     assert session and any(m.content == notices[0].content for m in session.messages)
 
 
+@pytest.mark.parametrize(
+    "error, notice",
+    [
+        (
+            stream_registry.CANCELLED_MESSAGE,
+            "Otto's background follow-up was cancelled.",
+        ),
+        (
+            BACKGROUND_TIMEOUT_MESSAGE,
+            "Otto couldn't complete the background follow-up within its limits.",
+        ),
+        (
+            "Provider request failed.",
+            "Otto couldn't complete the background follow-up.",
+        ),
+        ("Follow-up interrupted", "Otto couldn't complete the background follow-up."),
+    ],
+)
+async def test_failed_followup_notice_matches_its_reason_once(
+    world: World, error: str, notice: str
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    entry = world.entry(task.parent_session_id)
+    assert await claim_background_execution(entry)
+    assert await model.get_chat_session(task.parent_session_id, world.user_id)
+
+    await finish_background_execution(entry, error)
+    await finish_background_execution(entry, error)
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    messages = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(messages) == 1
+    assert messages[0].content == (
+        f"{notice} [Open the subtask](/copilot?sessionId={task.child_session_id}) for details."
+    )
+    session = await model.get_chat_session(task.parent_session_id, world.user_id)
+    assert session and any(m.content == messages[0].content for m in session.messages)
+
+
 async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     world: World, monkeypatch: pytest.MonkeyPatch
 ):
@@ -986,7 +1031,11 @@ async def test_expired_followup_is_recovered_once(
     )
     notices = [m for m in messages if m.id == task.wake_id + "-notice"]
     assert len(notices) == 1 and notices[0].role == "assistant"
-    assert "within its limits" in (notices[0].content or "")
+    assert (notices[0].content or "").startswith(
+        "Otto couldn't complete the background follow-up."
+        if running
+        else "Otto couldn't complete the background follow-up within its limits."
+    )
     assert task.child_session_id in (notices[0].content or "")
     assert len(world.published.await_args_list) == (2 if running else 1)
 
