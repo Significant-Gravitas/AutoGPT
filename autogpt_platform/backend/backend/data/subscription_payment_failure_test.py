@@ -59,6 +59,7 @@ class FakeStripe:
         status: str,
         latest_invoice: str = "",
         price: str = "price_pro",
+        created: int | None = None,
     ):
         self.subscriptions[sub_id] = {
             "id": sub_id,
@@ -68,6 +69,8 @@ class FakeStripe:
             "metadata": {},
             "items": {"data": [{"price": {"id": price}}]},
         }
+        if created is not None:
+            self.subscriptions[sub_id]["created"] = created
 
     def add_invoice(
         self,
@@ -505,16 +508,19 @@ async def test_old_failure_never_cancels_a_newer_active_subscription():
     assert world.tier_writes == []
 
 
-def _superseded_by_a_newer_plan(world: World, balance: int) -> dict:
+def _superseded_by_a_newer_plan(
+    world: World, balance: int, newer_price: str = "price_max"
+) -> dict:
     """An old PRO subscription went past due, and the customer then bought
     MAX through Checkout, whose cleanup skips past-due subscriptions."""
     world.ledger.balance = balance
     world.tier = SubscriptionTier.MAX
     world.stripe.add_subscription(
-        "sub_new", "active", latest_invoice="in_new", price="price_max"
+        "sub_new", "active", latest_invoice="in_new", price=newer_price, created=2
     )
     world.stripe.add_invoice("in_new", "sub_new", status="paid")
-    return _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
+    world.stripe.add_subscription("sub_old", "past_due", "in_old", created=1)
+    return world.stripe.add_invoice("in_old", "sub_old")
 
 
 @pytest.mark.asyncio
@@ -537,6 +543,51 @@ async def test_replaced_subscription_is_cancelled_and_voided_never_paid():
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
     assert world.tier == SubscriptionTier.MAX
     assert world.tier_writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "newer_price,tier",
+    [("price_max", SubscriptionTier.MAX), ("price_pro", SubscriptionTier.PRO)],
+)
+async def test_old_plan_paid_after_a_newer_plan_replaced_it_is_ended(
+    newer_price: str, tier: SubscriptionTier
+):
+    """Stripe's card retry can pay an old past-due plan before any failure
+    event reaches us. Its update event ends the old plan, instead of
+    cancelling the newer one as a stale duplicate (or, on the same tier,
+    billing the customer for both)."""
+    with World() as world:
+        _superseded_by_a_newer_plan(world, balance=0, newer_price=newer_price)
+        world.tier = tier
+        world.stripe.card_pays("in_old")
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_old"))
+        await world.subscription_updated("sub_old")
+        # Stripe's events for the cancel.
+        await world.subscription_updated("sub_old")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_old"]["cancellation_details"] == {
+        "comment": REPLACED_PLAN_CANCELLATION_COMMENT
+    }
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+    assert world.tier == tier
+    assert world.tier_writes == []
+
+
+@pytest.mark.asyncio
+async def test_a_newer_plans_own_update_still_ends_the_older_plan():
+    """The check looks for a newer plan only: the newer plan's own update
+    still cleans up an older active one, as a Checkout upgrade does."""
+    with World() as world:
+        world.stripe.add_subscription("sub_old", "active", "in_old", created=1)
+        world.stripe.add_subscription(
+            "sub_new", "active", "in_new", price="price_max", created=2
+        )
+        await world.subscription_updated("sub_new")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.tier == SubscriptionTier.MAX
 
 
 @pytest.mark.asyncio
