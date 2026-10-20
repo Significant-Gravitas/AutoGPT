@@ -29,7 +29,6 @@ from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
-from backend.copilot.expert_check import checked_expert
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -81,8 +80,7 @@ async def build_expert_identity_suffix(
     identity cannot be loaded.
 
     Runs on every turn, so it skips the workflow joins — only the expert's
-    own name/role/identity columns are read here. Inside a turn it reads
-    nothing: the turn checked the expert before its engine started.
+    own name/role/identity columns are read here.
     """
     if expert_id is None:
         return ""
@@ -90,28 +88,13 @@ async def build_expert_identity_suffix(
         raise ExpertSessionUnavailableError(
             "Expert session identity is unavailable without an authenticated user."
         )
-    # The turn already checked this expert before it got here.
-    check = checked_expert(user_id, expert_id)
-    if check is None:
-        expert, personal_scope = await _read_private_expert(user_id, expert_id)
-    else:
-        expert, personal_scope = check.expert, (check.organization_id, check.team_id)
-    if (organization_id, team_id) != personal_scope:
-        raise ExpertSessionUnavailableError(
-            "This private expert session must be reopened in its personal workspace."
-        )
-    return render_expert_identity_suffix(expert)
-
-
-async def _read_private_expert(
-    user_id: str, expert_id: str
-) -> tuple[Expert, tuple[str, str | None]]:
-    """The expert's identity and its owner's personal scope, read fresh."""
     expert = await _load_expert_identity(user_id, expert_id)
     if expert is None or expert.is_archived:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
+
+    db = experts_db()
     try:
-        personal_scope = await experts_db().resolve_private_expert_tenancy(
+        personal_org_id, personal_team_id = await db.resolve_private_expert_tenancy(
             user_id, expert_id
         )
     except ExpertNotFoundError as e:
@@ -122,7 +105,11 @@ async def _read_private_expert(
     except Exception as e:
         logger.warning(f"Failed to validate expert session tenancy: {e}")
         raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
-    return expert, personal_scope
+    if (organization_id, team_id) != (personal_org_id, personal_team_id):
+        raise ExpertSessionUnavailableError(
+            "This private expert session must be reopened in its personal workspace."
+        )
+    return render_expert_identity_suffix(expert)
 
 
 def render_expert_identity_suffix(expert: Expert) -> str:

@@ -35,9 +35,6 @@ class FakeProvider:
         self.generation_lookups_fail = False
         self.faults: list[PlannedFault] = []
         self.faults_served: list[PlannedFault] = []
-        # The name the model calls its tool by on the Messages API. The SDK
-        # engine serves the copilot's tools over MCP, as mcp__copilot__<name>.
-        self.tool_name = wire.TOOL_NAME
         self.url = ""
         self._runner: web.AppRunner | None = None
         self._requests_per_turn: dict[int, int] = {}
@@ -91,16 +88,13 @@ class FakeProvider:
         ttl = cache_ttl(body)
         usage = scripted_usage(len(self.calls), cached=ttl is not None)
         generation_id = f"gen-{uuid.uuid4().hex}" if route == "openrouter" else None
-        self._bill(
-            route, body["model"], usage, ttl, generation_id, body.get("provider")
-        )
+        self._bill(route, body["model"], usage, ttl, generation_id)
         sse = wire.anthropic_messages(
             message_id=generation_id or f"msg_{uuid.uuid4().hex}",
             model=body["model"],
             reply=anthropic_reply(body["messages"]),
             usage=usage,
             ttl=ttl,
-            tool_name=self.tool_name,
         )
         return await _stream(request, sse)
 
@@ -221,7 +215,6 @@ class FakeProvider:
         usage: Usage,
         ttl: CacheTtl | None,
         generation_id: str | None,
-        routing: dict | None = None,
     ) -> Call:
         table = price_table(route)
         if table is not None and model not in table:
@@ -236,7 +229,6 @@ class FakeProvider:
             cache_ttl=ttl,
             invoice_usd=table[model].of(usage, ttl) if table is not None else 0.0,
             generation_id=generation_id,
-            routing=routing,
         )
         self.calls.append(call)
         return call

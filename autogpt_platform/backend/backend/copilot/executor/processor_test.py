@@ -12,28 +12,18 @@ import concurrent.futures
 import logging
 import threading
 import time
-from collections.abc import Iterator
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.experts.models import (
-    PROTECTED_SOUL_RULES,
-    CheckedExpert,
-    Expert,
-    ExpertSetupStatus,
-)
-from backend.copilot import budget_gate
 from backend.copilot.ai_spans import current_span_id
-from backend.copilot.constants import EMPTY_FINISH_NOTICE, STREAM_INCOMPLETE_MARKER
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
-    _closing_at_model_output,
     _normalize_private_expert_session_tenancy,
     _wait_for_expert_setup,
     sync_fail_close_session,
@@ -47,31 +37,18 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
-    build_expert_identity_suffix,
 )
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
-from backend.copilot.model import ChatMessage, ChatSession
-from backend.copilot.prompting import VOICE_TURN_PREFIX
-from backend.copilot.rate_limit import (
-    SubscriptionTier,
-    UserPaywalledError,
-    get_user_tier,
-)
+from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
     StreamError,
-    StreamReasoningDelta,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
-    StreamToolInputStart,
 )
-from backend.copilot.service import format_user_context_prefix
 from backend.copilot.tree import TurnEnvelope
-from backend.copilot.trial_cost_context import get_trial_cost_context
-from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
-from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.model import OAuth2Credentials
-from backend.data.pro_activation import UsageActivationState
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -231,39 +208,6 @@ class _TrackedStream:
         self.aclose_called = True
 
 
-def _expert(
-    *, name: str = "Maria", setup_status: ExpertSetupStatus = "ready"
-) -> Expert:
-    return Expert(
-        id="expert-1",
-        name=name,
-        avatar_url=None,
-        role="SEO Specialist",
-        tagline=None,
-        bio=None,
-        skills=[],
-        identity=f"You are {name}.",
-        voice_preferences="Direct.",
-        boundaries="Ask first.",
-        protected_soul_rules=list(PROTECTED_SOUL_RULES),
-        is_template=False,
-        source_template_id=None,
-        is_archived=False,
-        workflows=[],
-        setup_status=setup_status,
-    )
-
-
-def _checked_expert(
-    organization_id: str, team_id: str | None, *, expert: Expert | None = None
-) -> CheckedExpert:
-    return CheckedExpert(
-        expert=expert or _expert(),
-        organization_id=organization_id,
-        team_id=team_id,
-    )
-
-
 def _make_entry() -> CoPilotExecutionEntry:
     return CoPilotExecutionEntry(
         session_id="sess-1",
@@ -397,193 +341,6 @@ class TestExecuteAsyncScheduledTurnContext:
         assert seen["span_id"] == "child-turn"
 
 
-@pytest.mark.asyncio
-async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() -> None:
-    """The allowance gate, cost attribution and the setup's tier checks share
-    one usage-state read; a lookup after the model's first output, like a
-    tool's, reads it again."""
-    usage_db = MagicMock()
-    usage_db.get_usage_activation_state = AsyncMock(
-        return_value=UsageActivationState(
-            user_id="user-1", tier=SubscriptionTier.PRO, ready=True
-        )
-    )
-    redis = MagicMock()
-    redis.get = AsyncMock(return_value=None)
-
-    async def stream(**_kwargs):
-        await get_user_tier("user-1")
-        await get_user_tier("user-1")
-        yield StreamTextDelta(id="text-1", delta="Hi")
-        await get_user_tier("user-1")
-
-    with (
-        patch(
-            "backend.copilot.executor.processor.ChatConfig",
-            return_value=MagicMock(test_mode=True),
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_dummy",
-            side_effect=stream,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
-            side_effect=lambda **kwargs: kwargs["stream"],
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=AsyncMock(),
-        ),
-        patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
-        ),
-        patch(
-            "backend.copilot.usage_activation.pro_activation_db",
-            return_value=usage_db,
-        ),
-        patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            new=AsyncMock(return_value=redis),
-        ),
-        patch(
-            "backend.copilot.rate_limit._fetch_cost_limits_flag",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "backend.copilot.rate_limit.get_feature_flag_value",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ),
-        # The real gate, whose own reads are the ones it must share.
-        patch(
-            "backend.copilot.executor.processor.refusal_for",
-            new=budget_gate.refusal_for,
-        ),
-    ):
-        await asyncio.create_task(
-            CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
-            )
-        )
-
-    assert usage_db.get_usage_activation_state.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_a_turn_held_for_a_hires_setup_is_charged_to_the_plan_after_it() -> None:
-    """The allowance gate reads the plan, then the turn waits for a fresh
-    hire's setup, and the user converts their trial meanwhile: the turn is
-    charged to the plan they converted to, not the trial the gate saw."""
-    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
-    session.session_id = "sess-1"
-    on_trial = UsageActivationState(
-        user_id="user-1", tier=SubscriptionTier.TRIAL, trial_id="trial-1", ready=True
-    )
-    converted = UsageActivationState(
-        user_id="user-1", tier=SubscriptionTier.PRO, ready=True
-    )
-    plan = [on_trial]
-    usage_db = MagicMock()
-    usage_db.get_usage_activation_state = AsyncMock(
-        side_effect=lambda _user_id: plan[0]
-    )
-
-    async def setup_status(_user_id: str, _expert_id: str) -> str:
-        if plan[0] is on_trial:
-            plan[0] = converted
-            return "installing"
-        return "ready"
-
-    expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock(
-        return_value=_checked_expert(
-            "personal-org",
-            "personal-team",
-            expert=_expert(setup_status="installing"),
-        )
-    )
-    expert_store.expert_setup_status = AsyncMock(side_effect=setup_status)
-
-    async def allowance_gate(user_id: str) -> None:
-        await get_ready_usage_state(user_id)
-
-    charged_to: list[str | None] = []
-
-    async def stream(**_kwargs):
-        context = get_trial_cost_context("user-1")
-        charged_to.append(context.trial_id if context else "nothing")
-        yield StreamTextDelta(id="text-1", delta="Hi")
-
-    with (
-        patch(
-            "backend.copilot.executor.processor.ChatConfig",
-            return_value=MagicMock(test_mode=True),
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_chat_completion_dummy",
-            side_effect=stream,
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
-            side_effect=lambda **kwargs: kwargs["stream"],
-        ),
-        patch(
-            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=AsyncMock(),
-        ),
-        patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=session),
-        ),
-        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
-        patch(
-            "backend.copilot.model.upsert_chat_session",
-            new=AsyncMock(side_effect=lambda value, **_kwargs: value),
-        ),
-        patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
-        patch(
-            "backend.copilot.usage_activation.pro_activation_db",
-            return_value=usage_db,
-        ),
-        patch(
-            "backend.copilot.executor.processor.refusal_for",
-            new=AsyncMock(side_effect=allowance_gate),
-        ),
-    ):
-        await asyncio.create_task(
-            CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
-            )
-        )
-
-    assert charged_to == [None]
-
-
-@pytest.mark.asyncio
-async def test_closing_the_turn_stream_closes_the_engine_stream() -> None:
-    engine_closed = False
-
-    async def engine():
-        nonlocal engine_closed
-        try:
-            yield StreamStatus(message="Working…")
-            yield StreamTextDelta(id="text-1", delta="Hi")
-        finally:
-            engine_closed = True
-
-    trial_reads = SharedTrialReads()
-    stream = _closing_at_model_output(engine(), trial_reads)
-    assert isinstance(await anext(stream), StreamStatus)
-    assert trial_reads.open
-    await stream.aclose()
-
-    assert engine_closed
-
-
 class TestExecuteAsyncAclose:
     """``_execute_async`` must call ``aclose`` on the published stream both
     when the loop exits naturally and when ``cancel`` is set mid-stream —
@@ -645,40 +402,6 @@ class TestExecuteAsyncAclose:
         assert published.aclose_called is True
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_turn_stops_sharing_its_trial_read(self) -> None:
-        """Cancelled before the model's first output, the turn still ends its
-        shared block, so nothing it started goes on reusing the turn's read."""
-        published = _TrackedStream(events=[StreamStatus(message="Working…")])
-        cancel = threading.Event()
-        cancel.set()
-        opened: list[SharedTrialReads] = []
-
-        @contextmanager
-        def recorded_block() -> Iterator[SharedTrialReads]:
-            with trial_reads_shared() as shared:
-                opened.append(shared)
-                yield shared
-
-        patches = self._patches(published)
-        with (
-            patches[0],
-            patches[1],
-            patches[2],
-            patches[3],
-            patches[4],
-            patch(
-                "backend.copilot.executor.processor.trial_reads_shared",
-                recorded_block,
-            ),
-        ):
-            await CoPilotProcessor()._execute_async(
-                _make_entry(), cancel, MagicMock(), _make_log()
-            )
-
-        [shared] = opened
-        assert not shared.open
-
-    @pytest.mark.asyncio
     async def test_a_turn_is_one_transaction_in_the_dispatchers_trace(
         self, sentry_transactions
     ) -> None:
@@ -714,264 +437,17 @@ class TestExecuteAsyncAclose:
             "copilot.llm_auth_provider": "platform",
             "copilot.model_tier": "default",
             "copilot.turn.origin": "chat",
-            "copilot.turn.first": "true",
-            "copilot.expert": "false",
             "copilot.engine": "dummy",
             "copilot.turn.outcome": "completed",
-            "copilot.turn.shape": "text_first",
         }
         data = trace["data"]
         assert data["copilot.session_id"] == "sess-1"
         assert data["copilot.turn_id"] == "turn-1"
         assert data["copilot.turn.queue_wait_ms"] >= 2000
         assert 0 <= data["copilot.turn.setup_ms"] <= data["copilot.turn.ttft_ms"]
-        assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.first_text_ms"]
-        assert data["copilot.turn.first_text_ms"] <= data["copilot.turn.duration_ms"]
+        assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.duration_ms"]
         assert data["copilot.turn.chunk_count"] == 3
         assert data["copilot.turn.tool_call_count"] == 1
-
-    @pytest.mark.asyncio
-    async def test_a_turn_times_its_first_token_and_text_from_the_request(
-        self, sentry_transactions
-    ) -> None:
-        entry = _make_entry().model_copy(update={"request_arrival_at": time.time() - 3})
-        published = _TrackedStream(
-            events=[
-                StreamReasoningDelta(id="r", delta="thinking"),
-                StreamTextDelta(id="t", delta="hi"),
-            ]
-        )
-
-        patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            await CoPilotProcessor()._execute_async(
-                entry, threading.Event(), MagicMock(), _make_log()
-            )
-
-        [turn] = sentry_transactions
-        data = turn["contexts"]["trace"]["data"]
-        assert turn["tags"]["copilot.turn.waited"] == "false"
-        assert data["copilot.turn.first_text_ms"] < 3000
-        assert data["copilot.turn.request_to_ttft_ms"] >= 3000
-        assert (
-            data["copilot.turn.request_to_ttft_ms"]
-            <= data["copilot.turn.request_to_first_text_ms"]
-        )
-
-    @pytest.mark.asyncio
-    async def test_a_turn_that_waited_for_its_start_is_not_timed_from_the_request(
-        self, sentry_transactions
-    ) -> None:
-        """Queued behind another turn, held at a limit or redelivered: the
-        request is hours old, and timing from it would count the wait."""
-        entry = _make_entry().model_copy(
-            update={"request_arrival_at": time.time() - 2 * 3600}
-        )
-        published = _TrackedStream(events=[StreamTextDelta(id="t", delta="hi")])
-
-        patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            await CoPilotProcessor()._execute_async(
-                entry, threading.Event(), MagicMock(), _make_log()
-            )
-
-        [turn] = sentry_transactions
-        data = turn["contexts"]["trace"]["data"]
-        assert turn["tags"]["copilot.turn.waited"] == "true"
-        assert "copilot.turn.first_text_ms" in data
-        assert "copilot.turn.request_to_ttft_ms" not in data
-        assert "copilot.turn.request_to_first_text_ms" not in data
-
-    @pytest.mark.asyncio
-    async def test_a_turn_dispatched_without_a_request_has_no_request_timings(
-        self, sentry_transactions
-    ) -> None:
-        published = _TrackedStream(events=[StreamTextDelta(id="t", delta="hi")])
-
-        patches = self._patches(published)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            await CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
-            )
-
-        [turn] = sentry_transactions
-        data = turn["contexts"]["trace"]["data"]
-        assert "copilot.turn.first_text_ms" in data
-        assert "copilot.turn.request_to_ttft_ms" not in data
-        assert "copilot.turn.request_to_first_text_ms" not in data
-
-    @pytest.mark.parametrize(
-        "events, shape, answered",
-        [
-            (
-                [
-                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
-                    StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
-                    StreamTextDelta(id="t", delta="done"),
-                ],
-                "tool_first",
-                True,
-            ),
-            (
-                [
-                    StreamReasoningDelta(id="r", delta="thinking"),
-                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
-                ],
-                "tool_first",
-                False,
-            ),
-            # Whitespace on its own shows nothing: the tool call came first,
-            # and the answer starts with the text after it.
-            (
-                [
-                    StreamTextDelta(id="t", delta="\n\n"),
-                    StreamToolInputStart(toolCallId="c", toolName="run_block"),
-                    StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
-                    StreamTextDelta(id="t", delta="done"),
-                ],
-                "tool_first",
-                True,
-            ),
-            ([StreamTextDelta(id="t", delta=" \n")], "none", False),
-            ([StreamReasoningDelta(id="r", delta="thinking")], "none", False),
-            ([StreamStatus(message="Thinking…")], "none", False),
-            # A turn that ends without an answer streams a notice in its place.
-            (
-                [
-                    StreamReasoningDelta(id="r", delta="thinking"),
-                    StreamTextDelta(id="n", delta=EMPTY_FINISH_NOTICE),
-                ],
-                "none",
-                False,
-            ),
-            ([StreamTextDelta(id="n", delta=STREAM_INCOMPLETE_MARKER)], "none", False),
-        ],
-    )
-    @pytest.mark.asyncio
-    async def test_a_turn_is_shaped_by_whether_text_or_a_tool_came_first(
-        self, sentry_transactions, events, shape, answered
-    ) -> None:
-        entry = _make_entry().model_copy(update={"request_arrival_at": time.time()})
-
-        patches = self._patches(_TrackedStream(events=events))
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            await CoPilotProcessor()._execute_async(
-                entry, threading.Event(), MagicMock(), _make_log()
-            )
-
-        [turn] = sentry_transactions
-        data = turn["contexts"]["trace"]["data"]
-        assert turn["tags"]["copilot.turn.shape"] == shape
-        assert ("copilot.turn.first_text_ms" in data) is answered
-        assert ("copilot.turn.request_to_first_text_ms" in data) is answered
-
-    @pytest.mark.parametrize(
-        "history, message, is_user_message, first",
-        [
-            # A follow-up the chat route saved before dispatching it.
-            (
-                [("user", "hi"), ("assistant", "hello"), ("user", "next")],
-                "next",
-                True,
-                "false",
-            ),
-            # The chat's first message, saved by the chat route.
-            ([("user", "hi")], "hi", True, "true"),
-            # An expert's greeting before the chat's first user message.
-            ([("assistant", "Welcome!"), ("user", "hi")], "hi", True, "true"),
-            # A sub-session's first turn: nothing saved yet, the engine saves
-            # the message when the turn starts.
-            ([], "do this", True, "true"),
-            # A sub-session's follow-up, dispatched without saving its message.
-            ([("user", "hi"), ("assistant", "hello")], "do this", True, "false"),
-            # A first turn redelivered after it saved a tool call: the engine
-            # saves its message again and resumes the chat.
-            ([("user", "brief me"), ("assistant", "done")], "brief me", True, "false"),
-            # A redelivered turn whose message the engine saved with its
-            # server tags stripped: the same message, not a second one.
-            (
-                [("user", "do this")],
-                "<user_context>x</user_context>do this",
-                True,
-                "true",
-            ),
-            # A voice chat's first message: the route saves and dispatches it
-            # behind the voice instructions, which the turn's copy drops.
-            (
-                [("user", VOICE_TURN_PREFIX + "hi")],
-                VOICE_TURN_PREFIX + "hi",
-                True,
-                "true",
-            ),
-            (
-                [
-                    ("user", VOICE_TURN_PREFIX + "hi"),
-                    ("assistant", "hello"),
-                    ("user", VOICE_TURN_PREFIX + "next"),
-                ],
-                VOICE_TURN_PREFIX + "next",
-                True,
-                "false",
-            ),
-            # A first turn redelivered after the engine saved its message
-            # behind the user's context block, before anything answered it.
-            ([("user", format_user_context_prefix("ctx") + "hi")], "hi", True, "true"),
-            # Scheduled follow-ups the scheduler stores as the model's, like a
-            # recurring routine sending its prompt into its chat again.
-            ([("user", "brief me"), ("assistant", "done")], "brief me", False, "false"),
-            ([("user", "hi"), ("assistant", "hello")], "do this", False, "false"),
-            # Keep going on a chat's first turn.
-            ([("user", "hi"), ("assistant", "partly")], "continue", False, "false"),
-            # A scheduled turn into a chat nobody has written to yet.
-            ([], "do this", False, "true"),
-            # A kickoff the platform posts as the chat's first message.
-            ([("assistant", "kickoff")], "", False, "true"),
-        ],
-    )
-    @pytest.mark.parametrize("expert_id", [None, "expert-1"])
-    @pytest.mark.asyncio
-    async def test_a_turn_is_tagged_with_the_kind_of_chat_it_is_in(
-        self, sentry_transactions, history, message, is_user_message, first, expert_id
-    ) -> None:
-        session = ChatSession.new(
-            "user-1",
-            dry_run=False,
-            organization_id="personal-org",
-            team_id="personal-team",
-            expert_id=expert_id,
-        )
-        session.session_id = "sess-1"
-        session.messages = [
-            ChatMessage(role=role, content=content) for role, content in history
-        ]
-        entry = _make_entry().model_copy(
-            update={"message": message, "is_user_message": is_user_message}
-        )
-        expert_store = MagicMock()
-        expert_store.resolve_private_expert_tenancy = AsyncMock(
-            return_value=("personal-org", "personal-team")
-        )
-        expert_store.expert_setup_status = AsyncMock(return_value="ready")
-
-        patches = self._patches(_TrackedStream(events=[]))
-        with (
-            patches[0],
-            patches[1],
-            patches[2],
-            patches[3],
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch("backend.data.db_accessors.experts_db", return_value=expert_store),
-        ):
-            await CoPilotProcessor()._execute_async(
-                entry, threading.Event(), MagicMock(), _make_log()
-            )
-
-        [turn] = sentry_transactions
-        assert turn["tags"]["copilot.turn.first"] == first
-        assert turn["tags"]["copilot.expert"] == ("true" if expert_id else "false")
 
     @pytest.mark.asyncio
     async def test_a_turn_that_streams_an_error_is_failed(
@@ -1026,10 +502,8 @@ class TestExecuteAsyncAclose:
         stream_fn = MagicMock(side_effect=stream)
 
         expert_store = MagicMock()
-        expert_store.check_private_expert = AsyncMock(
-            return_value=_checked_expert(
-                "current-personal-org", "current-personal-team"
-            )
+        expert_store.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("current-personal-org", "current-personal-team")
         )
         expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
@@ -1080,7 +554,9 @@ class TestExecuteAsyncAclose:
             )
 
         get_session_mock.assert_awaited_once_with("sess-1", "user-1")
-        expert_store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
+        expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+            "user-1", "expert-1"
+        )
         upsert.assert_awaited_once_with(session, persist_tenancy=True)
         assert lifecycle == ["persist", "stream"]
         assert stream_fn.call_args.kwargs["session"] is session
@@ -1148,8 +624,8 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
 
     stream_fn = MagicMock(side_effect=stream)
     expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock(
-        return_value=_checked_expert("current-personal-org", "current-personal-team")
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("current-personal-org", "current-personal-team")
     )
     expert_store.expert_setup_status = AsyncMock(return_value="ready")
     session_db = MagicMock()
@@ -1224,8 +700,8 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
     )
     session.credentials = {"github": {"id": "current-credential"}}
     expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock(
-        return_value=_checked_expert("personal-org", "personal-team")
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
     )
     upsert = AsyncMock()
 
@@ -1240,23 +716,23 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
 
     assert result is session
     assert session.credentials == {"github": {"id": "current-credential"}}
-    expert_store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "user-1", "expert-1"
+    )
     upsert.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
-    "statuses, expected_reads, waits",
+    "statuses, expected_reads",
     [
-        (["ready"], 1, False),
-        (["installing", "installing", "ready"], 3, True),
+        (["ready"], 1),
+        (["installing", "installing", "ready"], 3),
         # A setup that never finishes: poll until the deadline, then run.
-        (["installing"] * 50, None, True),
+        (["installing"] * 50, None),
     ],
 )
 @pytest.mark.asyncio
-async def test_expert_turn_waits_for_hire_setup(
-    statuses, expected_reads, waits
-) -> None:
+async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> None:
     session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
     expert_store = MagicMock()
     expert_store.expert_setup_status = AsyncMock(side_effect=statuses)
@@ -1266,7 +742,7 @@ async def test_expert_turn_waits_for_hire_setup(
         patch("backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS", 0.05),
         patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0.005),
     ):
-        assert await _wait_for_expert_setup(session) is waits
+        await _wait_for_expert_setup(session)
 
     reads = expert_store.expert_setup_status.await_count
     if expected_reads is None:
@@ -1287,7 +763,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     session.session_id = "sess-1"
     session.credentials = {"github": {"id": "autopilot-credential"}}
     expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
     upsert = AsyncMock()
     stream_fn = MagicMock(return_value=MagicMock())
     entry = _make_entry().model_copy(
@@ -1333,7 +809,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
         "session-team",
     )
     assert session.credentials == {"github": {"id": "autopilot-credential"}}
-    expert_store.check_private_expert.assert_not_awaited()
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
     upsert.assert_not_awaited()
     assert stream_fn.call_args.kwargs["session"] is session
     assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
@@ -1389,7 +865,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
     )
     session.session_id = "sess-1"
     expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock(
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
         side_effect=PermissionError("expert is not owned by user")
     )
     dummy_engine = MagicMock()
@@ -1469,7 +945,7 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     )
     session.session_id = "sess-1"
     expert_store = MagicMock()
-    expert_store.check_private_expert = AsyncMock(side_effect=domain_error)
+    expert_store.resolve_private_expert_tenancy = AsyncMock(side_effect=domain_error)
     dummy_engine = MagicMock()
     baseline_engine = MagicMock()
     sdk_engine = MagicMock()
@@ -1520,131 +996,6 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
         error_code=None,
         turn_id="turn-1",
     )
-
-
-class TestExpertTurnsCheckTheirExpert:
-    """An expert's turn reads its expert once, before its engine runs; the
-    setup wait and the identity block the engine builds use that read. The
-    engine here builds the identity the way the real ones do, inside the turn
-    and behind the processor's heartbeat stream."""
-
-    @staticmethod
-    def _session() -> ChatSession:
-        session = ChatSession.new(
-            "user-1",
-            dry_run=False,
-            organization_id="personal-org",
-            team_id="personal-team",
-            expert_id="expert-1",
-        )
-        session.session_id = "sess-1"
-        return session
-
-    @staticmethod
-    def _store(check) -> MagicMock:
-        store = MagicMock()
-        store.check_private_expert = AsyncMock(side_effect=check)
-        store.expert_setup_status = AsyncMock(return_value="ready")
-        store.get_expert = AsyncMock(return_value=_expert(name="Someone else"))
-        store.resolve_private_expert_tenancy = AsyncMock(
-            return_value=("personal-org", "personal-team")
-        )
-        return store
-
-    @staticmethod
-    async def _run_turn(session: ChatSession, store: MagicMock, identities: list[str]):
-        async def engine(*, session: ChatSession, **_kwargs):
-            identities.append(
-                await build_expert_identity_suffix(
-                    session.user_id,
-                    session.expert_id,
-                    organization_id=session.organization_id,
-                    team_id=session.team_id,
-                )
-            )
-            yield StreamTextDelta(id="t", delta="hi")
-
-        with (
-            patch(
-                "backend.copilot.executor.processor.ChatConfig",
-                return_value=MagicMock(test_mode=True),
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_chat_completion_dummy",
-                engine,
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
-                side_effect=lambda **kwargs: kwargs["stream"],
-            ),
-            patch(
-                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-                new=AsyncMock(),
-            ),
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch("backend.data.db_accessors.experts_db", return_value=store),
-            patch("backend.copilot.expert_context.experts_db", return_value=store),
-            patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
-        ):
-            await CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
-            )
-
-    @pytest.mark.asyncio
-    async def test_an_expert_turn_reads_its_expert_once(self) -> None:
-        async def check(user_id: str, expert_id: str):
-            return _checked_expert("personal-org", "personal-team")
-
-        store = self._store(check)
-        identities: list[str] = []
-        await self._run_turn(self._session(), store, identities)
-
-        store.check_private_expert.assert_awaited_once_with("user-1", "expert-1")
-        store.expert_setup_status.assert_not_awaited()
-        store.get_expert.assert_not_awaited()
-        store.resolve_private_expert_tenancy.assert_not_awaited()
-        assert len(identities) == 1
-        assert "For this session you are Maria" in identities[0]
-
-    @pytest.mark.asyncio
-    async def test_the_turn_after_the_expert_went_away_is_refused(self) -> None:
-        session = self._session()
-        gone = False
-        identities: list[str] = []
-
-        async def check(user_id: str, expert_id: str):
-            if gone:
-                raise ExpertNotFoundError(expert_id)
-            return _checked_expert("personal-org", "personal-team")
-
-        store = self._store(check)
-        await self._run_turn(session, store, identities)
-        gone = True
-        with pytest.raises(ExpertSessionUnavailableError):
-            await self._run_turn(session, store, identities)
-
-        assert len(identities) == 1
-        assert "<expert_identity>" in identities[0]
-
-    @pytest.mark.asyncio
-    async def test_a_fresh_hire_still_waits_for_its_setup(self) -> None:
-        async def check(user_id: str, expert_id: str):
-            return _checked_expert(
-                "personal-org",
-                "personal-team",
-                expert=_expert(setup_status="installing"),
-            )
-
-        store = self._store(check)
-        store.expert_setup_status = AsyncMock(side_effect=["installing", "ready"])
-        identities: list[str] = []
-        await self._run_turn(self._session(), store, identities)
-
-        assert store.expert_setup_status.await_count == 2
-        assert len(identities) == 1
 
 
 def _codex_entry(

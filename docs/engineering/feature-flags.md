@@ -17,14 +17,6 @@ project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
 evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
 instead, unless the read is local-only, as a signed-out visitor's own read is.
 
-A flag the code reads but the project doesn't have is served its code default.
-The backend still asks `/flags` about it once, because PostHog answers some
-flags there that it leaves out of the definitions (one in its newer config
-format, for instance). Once `/flags` has had no answer either, the backend
-serves the default without asking again for five minutes, so the read costs no
-network round trip. Creating the flag takes effect at the next definitions
-poll, or within those five minutes for a flag the definitions leave out.
-
 | | Dev | Prod |
 |---|---|---|
 | PostHog project | [281733](https://eu.posthog.com/project/281733/feature_flags) | [117338](https://eu.posthog.com/project/117338/feature_flags) |

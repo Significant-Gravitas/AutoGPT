@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { pendingUploadKey, useCopilotStreamStore } from "./copilotStreamStore";
-import type { ReplyTimingStart } from "./helpers/replyTiming";
 import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
@@ -18,10 +17,7 @@ import {
 import { useCopilotUIStore } from "./store";
 import type { SendInput } from "./stream/turnRuntime";
 
-type SendMessageFn = (
-  message: SendInput,
-  timing?: ReplyTimingStart,
-) => Promise<void>;
+type SendMessageFn = (message: SendInput) => Promise<void>;
 
 interface Args {
   sessionId: string | null;
@@ -84,7 +80,6 @@ export function useSendMessage({
         files: send.files,
         parts,
         metadata: send.metadata,
-        timing: send.timing,
       })
       .catch((error: unknown) => {
         recoverFailedDeferredSend(send.text, parts, error);
@@ -96,7 +91,6 @@ export function useSendMessage({
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
-    timing?: ReplyTimingStart,
   ) {
     const trimmed = message.trim();
     const workspaceParts = buildStoredAttachmentParts(workspaceFiles ?? []);
@@ -105,7 +99,6 @@ export function useSendMessage({
       files: files ?? [],
       parts: workspaceParts,
       metadata,
-      timing,
     };
     if (!trimmed && !hasAttachments(outgoing)) return;
     // Backstop: the composer caps each attach, so the UI cannot reach this.
@@ -138,12 +131,9 @@ export function useSendMessage({
       const store = useCopilotStreamStore.getState();
       store.setPendingFileParts([...store.pendingFileParts, ...workspaceParts]);
     }
-    useCopilotStreamStore.getState().setPendingFirstSend({
-      text: trimmed,
-      files: files ?? [],
-      metadata,
-      timing,
-    });
+    useCopilotStreamStore
+      .getState()
+      .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
     try {
       await createSession({
         expertKickoff: metadata?.kind === "expert_kickoff",

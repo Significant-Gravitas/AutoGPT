@@ -236,14 +236,6 @@ export function setToolDisplayName(
   return { ...patchRow(log, index, { toolCalls }), displayNames };
 }
 
-const DRAINED_USER_KEY_PREFIX = "user:";
-
-/** Whether a row key, which is also its rendered bubble's id, is a drained
- *  follow-up's: part of the turn it was taken into, not a turn of its own. */
-export function isDrainedUserKey(key: string): boolean {
-  return key.startsWith(DRAINED_USER_KEY_PREFIX);
-}
-
 /**
  * Row rule 8: drained follow-ups are user rows, keyed by pending message id,
  * at the hint's place in the stream, with the metadata their stored row has.
@@ -259,7 +251,7 @@ export function appendDrainedUserRows(
   const known = new Set(log.rows.map((r) => r.key));
   const rows = messages
     .map((m) => ({
-      ...assistantRow(`${DRAINED_USER_KEY_PREFIX}${m.id}`, m.content),
+      ...assistantRow(`user:${m.id}`, m.content),
       role: "user" as const,
       metadata: m.metadata ?? null,
     }))

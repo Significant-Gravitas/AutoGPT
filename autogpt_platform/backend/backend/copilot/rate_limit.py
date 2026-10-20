@@ -65,7 +65,7 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.trial_cost_context import capture_cost_context
-from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
+from backend.copilot.trial_reads import shared_trial_read
 from backend.copilot.usage_activation import (
     UsageActivationUnavailable,
     get_ready_usage_state,
@@ -1198,9 +1198,6 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     if tier == SubscriptionTier.TRIAL:
         return await _effective_usage_tier(user_id, tier)
     if tier == SubscriptionTier.NO_TIER and await _maybe_reconcile_stripe_tier(user_id):
-        # The reconcile wrote the tier: read it again rather than the
-        # request's shared copy from before.
-        forget_usage_state(user_id)
         return SubscriptionTier((await get_ready_usage_state(user_id)).tier)
     return tier
 
