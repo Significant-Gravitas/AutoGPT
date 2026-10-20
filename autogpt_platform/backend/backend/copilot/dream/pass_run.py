@@ -15,11 +15,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.inference.context import InferenceError
-
 from .routing import ExecutionPath
-from .schemas import DreamPassResult, DreamPassUsage, DreamPhase, PhaseUsage
-from .usage import aggregate_usage, phase_usage
+from .schemas import DreamPassResult, DreamPassUsage, PhaseUsage
+from .usage import aggregate_usage
 
 # Why a pass was skipped rather than run: its scope was taken (the lock held,
 # or another of its passes still open and fresh), the master flag was off, the
@@ -40,11 +38,7 @@ class DreamPassRun(BaseModel):
     started_at: datetime
     monotonic_start: float
     execution_path: ExecutionPath
-    # An admin asked the guard to expire a fresh open pass of the scope
-    # rather than skip behind it.
     force: bool = False
-    # Every phase billed so far, in order, a failed phase whose answer came
-    # back included.
     phases: list[PhaseUsage] = Field(default_factory=list)
 
     @classmethod
@@ -64,23 +58,14 @@ class DreamPassRun(BaseModel):
         """What the phases billed so far used, per phase and in total."""
         return aggregate_usage(self.phases, self.execution_path)
 
-    def bill_failed_phase(self, phase: DreamPhase, exc: InferenceError) -> None:
-        """Count a failed phase among the billed ones when its answer came
-        back (the phase recorded its cost); a call that got none used
-        nothing."""
-        if exc.usage is not None:
-            self.phases.append(phase_usage(phase, exc.usage))
-
     def elapsed_seconds(self) -> float:
         return asyncio.get_event_loop().time() - self.monotonic_start
 
     def failure(self, error: str) -> DreamPassResult:
-        """The pass failed, or was stopped from outside. On the sync route it
-        still carries the usage of the phases billed before the error: billing
-        charges for tokens we already paid for. The batch route's phases bill
-        at the provider and reach the callbacks, never this side (a batch
-        submitted before the failure still runs), so its usage here is
-        unknown."""
+        """The pass failed or was stopped. Sync usage covers completed phases.
+        The batch route's phases bill at the provider and
+        reach the callbacks, never this side (a batch submitted before the
+        failure still runs), so its usage here is unknown."""
         if self.execution_path == "anthropic_batch":
             return self._ended(error=error)
         return self._ended(error=error, usage=self.usage())

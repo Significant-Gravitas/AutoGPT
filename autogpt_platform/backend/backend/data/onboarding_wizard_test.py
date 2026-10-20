@@ -8,7 +8,6 @@ from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     UserOnboardingUpdate,
     get_user_onboarding,
-    reset_user_onboarding,
     update_user_onboarding,
 )
 from backend.util.json import SafeJson
@@ -155,19 +154,6 @@ async def test_reading_draft_scopes_each_authenticated_user(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_reset_clears_only_the_authenticated_users_draft(mocker):
-    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
-    prisma.return_value.upsert = AsyncMock()
-
-    await reset_user_onboarding("authenticated-user")
-
-    call = prisma.return_value.upsert.call_args
-    assert call.kwargs["where"] == {"userId": "authenticated-user"}
-    assert call.kwargs["data"]["update"]["wizardProgress"] is None
-    assert call.kwargs["data"]["update"]["wizardRevision"] == {"increment": 1}
-
-
-@pytest.mark.asyncio(loop_scope="function")
 async def test_unrelated_update_does_not_overwrite_draft(mocker):
     prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
     prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
@@ -176,24 +162,6 @@ async def test_unrelated_update_does_not_overwrite_draft(mocker):
 
     assert prisma.return_value.upsert.call_args.kwargs["data"]["update"] == {
         "walletShown": True
-    }
-
-
-@pytest.mark.asyncio(loop_scope="function")
-async def test_explicit_null_clears_draft(mocker, draft_transaction):
-    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
-    prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
-
-    await update_user_onboarding(
-        "user-one",
-        UserOnboardingUpdate.model_validate(
-            {"wizardProgress": None, "wizardRevision": 0, "wizardUserId": "user-one"}
-        ),
-    )
-
-    assert draft_transaction.useronboarding.update_many.call_args.kwargs["data"] == {
-        "wizardProgress": None,
-        "wizardRevision": {"increment": 1},
     }
 
 

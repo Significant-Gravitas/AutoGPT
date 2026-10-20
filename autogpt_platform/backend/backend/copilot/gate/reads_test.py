@@ -17,7 +17,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.context import set_turn_unattended
-from backend.copilot.gate import held, reads
+from backend.copilot.gate import ALLOW, Decision, held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
@@ -868,7 +868,7 @@ async def test_a_blocks_own_output_is_still_judged(rows):
 
 
 def _no_action_gate():
-    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
+    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW)))
 
 
 # What a producer declares came from outside AutoGPT is all the judge reads.
@@ -984,7 +984,13 @@ async def test_a_blocks_output_is_judged_without_the_platforms_message(rows):
     with (
         patch(f"{_READS}.judge_content", judge),
         # Approved, so the block runs without its own review pause.
-        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, True))),
+        patch.object(
+            BaseTool,
+            "_gate",
+            AsyncMock(
+                return_value=(None, Decision(allowed=True, approved=True, decided=True))
+            ),
+        ),
         _resolves_to(_capability("block", _STORE_VALUE)),
         patch("backend.copilot.tools.helpers.workspace_db", lambda: workspace),
         patch("backend.copilot.tools.helpers.user_db", lambda: users),
@@ -1189,7 +1195,7 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
         ),
         patch(
             "backend.copilot.tools.base._persist_and_summarize",
-            AsyncMock(side_effect=lambda raw_output, *args: raw_output),
+            AsyncMock(side_effect=lambda raw_output, *args, **kwargs: raw_output),
         ),
     ):
         to_model = _text_from_mcp_result(await wrapper({"url": "u"}))

@@ -13,8 +13,7 @@ JSON:
     cut these down; this is the parser-level safety net.
 
 Every failure is an ``InferenceError`` carrying the call's usage: the
-provider already billed those tokens, so a caller keeping a cost ledger
-still records them.
+usage stays available for telemetry even when the caller absorbs the cost.
 """
 
 from __future__ import annotations

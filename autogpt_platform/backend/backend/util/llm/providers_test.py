@@ -899,7 +899,7 @@ class TestOllama:
 
     @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
-        """``structured_complete`` passes ``force_json_output=True`` for
+        """``structured_completion`` passes ``force_json_output=True`` for
         every dream phase and the dream docs promise forced JSON works on
         every transport — Ollama honors it via ``format="json"``."""
         captured: dict = {}
@@ -2565,6 +2565,10 @@ class TestForcedToolChoiceCapability:
             "anthropic/claude-opus-5.5",
             "anthropic.claude-opus-5-5",
             "claude-opus-5-5-20261015",
+            "claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5.5",
+            "anthropic.claude-sonnet-5-5",
+            "claude-sonnet-5-5-20260928",
             "claude-fable-5-1",
             "claude-mythos-5-1",
         ],
