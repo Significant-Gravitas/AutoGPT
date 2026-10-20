@@ -72,6 +72,7 @@
     "@streamdown/math": "1.0.1",
     "@streamdown/mermaid": "1.0.1",
     "@tanstack/react-query": "5.90.6",
+    "@tanstack/react-virtual": "3.13.18",
     "@types/jaro-winkler": "0.2.4",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "1.2.0",
