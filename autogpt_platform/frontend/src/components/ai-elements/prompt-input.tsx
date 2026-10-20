@@ -36,6 +36,7 @@ import { Children, useCallback, useLayoutEffect, useRef } from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -253,7 +254,7 @@ export function PromptInputTextarea({
         if (e.shiftKey) return;
         // On touch-first devices (phones/tablets) Enter inserts a newline;
         // users send with the submit button instead.
-        if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
+        if (isTouchDevice()) return;
         e.preventDefault();
 
         e.currentTarget.form?.requestSubmit();
