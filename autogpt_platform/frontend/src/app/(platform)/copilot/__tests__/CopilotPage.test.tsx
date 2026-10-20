@@ -95,6 +95,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
   },
   useGetFlag: () => false,
+  useFlagStatus: () => ({ enabled: false, ready: true, answered: true }),
 }));
 
 // Auth check moved into CopilotPage directly — default to a logged-in

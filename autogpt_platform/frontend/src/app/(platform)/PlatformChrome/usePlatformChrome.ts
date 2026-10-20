@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { matchesRoute } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 
 import { getRouteTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { isCopilotPathname } from "./helpers";
@@ -27,7 +27,8 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
 // every URL-param write. See useIsChatSession.
 export function usePlatformChrome() {
   const pathname = usePathname();
-  const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
+  const { enabled: isNewLayoutEnabled, answered: isLayoutFlagResolved } =
+    useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
   // The store, not useAuth: useAuth reads the search params too. The app-root
   // providers (CredentialsProvider, OnboardingProvider) call useAuth on every
   // page, so the session check still starts in the tour shell.
@@ -73,7 +74,7 @@ export function usePlatformChrome() {
   return {
     showNewLayout: isNewLayoutActive && !isExcludedRoute && !showTourSidebar,
     isNewLayoutActive,
-    isLayoutReady: isMounted,
+    isLayoutReady: isMounted && isLayoutFlagResolved,
     // On copilot the inset header floats over the chat instead of stacking
     // above it, so messages scroll to the viewport top. Kept separate from
     // `isCopilotRoute` so a future overlay-header route doesn't inherit

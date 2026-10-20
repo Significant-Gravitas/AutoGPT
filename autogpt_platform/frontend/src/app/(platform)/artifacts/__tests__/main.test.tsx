@@ -47,7 +47,10 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
-  useFlagStatus: () => setFlagStatusMock(),
+  useFlagStatus: (flag: string) =>
+    flag === "autogpt-new-layout"
+      ? { enabled: false, ready: true, answered: true }
+      : setFlagStatusMock(),
 }));
 
 // Uploads go straight to the backend (not through the MSW-mocked proxy), so

@@ -1,8 +1,9 @@
-import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
+import type { FlagSourceResult } from "@/services/feature-flags/flag-source";
 
 import { usePlatformChrome } from "../usePlatformChrome";
 
@@ -24,23 +25,21 @@ function setAuth({
   });
 }
 
-const flagMock = vi.fn<(flag: string) => boolean>(() => true);
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flagMock(flag),
-  };
-});
+const flagMock = vi.fn<(flag: string) => FlagSourceResult>();
+vi.mock("@/services/feature-flags/flag-source", () => ({
+  useFlagSource: (flag: string) => flagMock(flag),
+}));
 
 describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
-    flagMock.mockReturnValue(true);
+    flagMock.mockReturnValue({ value: true, resolved: true });
     setAuth({ isLoggedIn: true, isUserLoading: false });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("enables the new layout after mount when the flag is on and route is allowed", async () => {
@@ -52,12 +51,53 @@ describe("usePlatformChrome", () => {
   });
 
   it("keeps the classic layout when the flag is off", async () => {
-    flagMock.mockReturnValue(false);
+    flagMock.mockReturnValue({ value: false, resolved: true });
     const { result } = renderHook(() => usePlatformChrome());
 
     await waitFor(() => {
       expect(result.current.showNewLayout).toBe(false);
     });
+  });
+
+  it.each([true, false])(
+    "waits for a delayed layout flag before starting the changelog (enabled: %s)",
+    (enabled) => {
+      flagMock.mockReturnValue({ value: undefined, resolved: false });
+      const { result, rerender } = renderHook(() => usePlatformChrome());
+
+      expect(result.current.isLayoutReady).toBe(false);
+
+      flagMock.mockReturnValue({ value: enabled, resolved: true });
+      rerender();
+
+      expect(result.current.isLayoutReady).toBe(true);
+      expect(result.current.showNewLayout).toBe(enabled);
+    },
+  );
+
+  it("keeps the changelog waiting past the flag timeout until an answer arrives", () => {
+    vi.useFakeTimers();
+    flagMock.mockReturnValue({ value: undefined, resolved: false });
+    const { result, rerender } = renderHook(() => usePlatformChrome());
+
+    act(() => vi.advanceTimersByTime(10_000));
+
+    expect(result.current.isLayoutReady).toBe(false);
+
+    flagMock.mockReturnValue({ value: false, resolved: true });
+    rerender();
+
+    expect(result.current.isLayoutReady).toBe(true);
+    expect(result.current.showNewLayout).toBe(false);
+  });
+
+  it("starts the changelog for a forced classic layout without a vendor response", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT", "false");
+    flagMock.mockReturnValue({ value: undefined, resolved: false });
+    const { result } = renderHook(() => usePlatformChrome());
+
+    expect(result.current.isLayoutReady).toBe(true);
+    expect(result.current.showNewLayout).toBe(false);
   });
 
   it("excludes the /settings route from the new layout", async () => {
@@ -108,7 +148,7 @@ describe("usePlatformChrome", () => {
     },
   );
 
-  it("passes the flag enum to useGetFlag", async () => {
+  it("reads the new-layout flag from the configured source", async () => {
     renderHook(() => usePlatformChrome());
     await waitFor(() => {
       expect(flagMock).toHaveBeenCalledWith("autogpt-new-layout");
