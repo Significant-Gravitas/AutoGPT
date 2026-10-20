@@ -1,5 +1,6 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+from backend.copilot import perf_probe as _pp  # do-not-merge probe
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
@@ -1856,6 +1857,7 @@ async def stream_chat_post(
 
     stream_start_time = time.perf_counter()
     _rt = [("start", stream_start_time)]
+    _pp.start()
     # Wall-clock arrival time, propagated to the executor so the turn-start
     # drain can order pending messages relative to this request (pending
     # pushed BEFORE this instant were typed earlier; pending pushed AFTER
@@ -2168,7 +2170,7 @@ async def stream_chat_post(
             )
             await stream_registry.publish_chunk(
                 turn_id,
-                StreamStatus(message="perf-route:" + ",".join(f"{_n}={int((_t - _rt[0][1]) * 1000)}" for _n, _t in _rt[1:])),
+                StreamStatus(message="perf-route:" + ",".join(f"{_n}={int((_t - _rt[0][1]) * 1000)}" for _n, _t in sorted(_rt[1:] + _pp.take(), key=lambda _m: _m[1]))),
                 session_id=session_id,
             )
         except Exception:
