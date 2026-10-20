@@ -5338,16 +5338,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             step_checkin=config.sdk_step_checkin,
         )
 
-        security_hooks = create_security_hooks(
-            user_id,
-            sdk_cwd=sdk_cwd,
-            max_subtasks=config.claude_agent_max_subtasks,
-            on_compact=compaction.on_compact,
-            tool_display_bridge=tool_display_bridge,
-            governor=governor,
-            builtin_tool_spans=config.posthog_builtin_tool_spans,
-        )
-
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
                 permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
@@ -5361,6 +5351,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if kickoff_hidden:
             kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
             allowed = [n for n in allowed if n not in kickoff_hidden_mcp]
+
+        security_hooks = create_security_hooks(
+            user_id,
+            sdk_cwd=sdk_cwd,
+            max_subtasks=config.claude_agent_max_subtasks,
+            on_compact=compaction.on_compact,
+            tool_display_bridge=tool_display_bridge,
+            governor=governor,
+            builtin_tool_spans=config.posthog_builtin_tool_spans,
+            allowed_tools=allowed,
+        )
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""

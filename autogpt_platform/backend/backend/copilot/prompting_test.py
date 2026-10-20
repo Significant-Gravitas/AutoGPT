@@ -34,6 +34,15 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
+            0
+        ]
+        assert "`read_tool_result`" in guidance
+        assert "`Read`" not in guidance
+
 
 class TestComputerNote:
     """A plain chat on E2B is told it has a screen; an expert session is told
