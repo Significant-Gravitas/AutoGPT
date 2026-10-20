@@ -1985,6 +1985,17 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     assert match.kwargs["seconds"] == 12 * 3600
 
 
+def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
+    ids = [c.kwargs["id"] for c in _registered_jobs(monkeypatch, 6).add_job_calls]
+
+    assert ids.count("dream_pass_reaper") == 1
+    assert ids.count("dream_pass_retention") == 1
+
+
+def test_dream_pass_retention_defaults_to_ninety_days():
+    assert Config.model_fields["dream_pass_retention_days"].default == 90
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
     monkeypatch.setattr(
@@ -2992,6 +3003,39 @@ async def test_a_routine_is_named_by_its_title_and_keyed_by_its_id(
     kwargs = post_notice.call_args.kwargs
     assert kwargs["schedule_key"] == "routine-1"
     assert kwargs["title"] == "Morning briefing"
+
+
+@pytest.mark.asyncio
+async def test_an_hourly_schedule_over_its_limit_is_offered_to_run_less_often(
+    owner_gate, post_notice
+):
+    _over_a_cap(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
+
+
+@pytest.mark.asyncio
+async def test_a_routine_is_offered_less_often_by_all_of_its_times(
+    owner_gate, post_notice
+):
+    """Each job carries one fire time; whether the routine can run less often
+    depends on all of them. Two weekly times make twice a week, which can."""
+    _over_a_cap(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Weekly review",
+        prompt="Review the week.",
+        crons=["0 9 * * mon", "0 9 * * thu"],
+        enabled=True,
+    )
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        await _fire(_args(routine_id="routine-1", run_at=None, cron="0 9 * * mon"))
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
 
 
 @pytest.mark.asyncio

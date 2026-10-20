@@ -83,6 +83,7 @@ def _tool_entry(name: str, tool: "BaseTool", group: str | None) -> CapabilityEnt
     tags = sorted(set(tokenize(name)))
     if group:
         tags.append(group)
+    tags += tool.search_keywords
     return CapabilityEntry(
         id=f"tool:{name}",
         kind="tool",

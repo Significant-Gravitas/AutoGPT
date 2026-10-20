@@ -41,6 +41,9 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { getWorkRunMetadata } from "../WorkCard/helpers";
 import { TailSpacer } from "./components/TailSpacer";
+import { VirtualTranscript } from "./components/VirtualTranscript/VirtualTranscript";
+import type { TranscriptRow } from "./components/VirtualTranscript/helpers";
+import type { JumpToMessage } from "./components/VirtualTranscript/useVirtualTranscript";
 import { MessageRow } from "./components/MessageRow/MessageRow";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
@@ -55,8 +58,10 @@ import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
+type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
+
 interface Props {
-  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  messages: ChatMessage[];
   status: string;
   error: Error | undefined;
   isLoading: boolean;
@@ -315,6 +320,16 @@ export function ChatMessagesContainer({
     () => buildMessageIndexById(messages),
     [messages],
   );
+  const transcriptRows = useMemo(
+    () => toTranscriptRows(renderRows),
+    [renderRows],
+  );
+  // The minimap scrolls to rows by their DOM node; one the windowed
+  // transcript has unmounted is reached through the transcript instead.
+  const jumpRef = useRef<JumpToMessage | null>(null);
+  const [jumpToUnmountedMessage] = useState(
+    () => (messageID: string) => jumpRef.current?.(messageID),
+  );
   const lastMessage = messages[messages.length - 1];
   const showPendingSend = !readOnly && !!pendingSend;
   // Read off the rendered rows: a fallback follow-up row the split drops in
@@ -441,6 +456,60 @@ export function ChatMessagesContainer({
   }, [isRestoringActiveSession]);
   const restoreClock = useElapsedAnchor(showRestoreFallback);
 
+  function renderRow({ message, rowIndex }: TranscriptRow) {
+    if (getRowHeldCallKind(message) === "answered") {
+      return (
+        <Text variant="small" className="py-1 text-center text-zinc-500">
+          {answeredLabel(renderRows, rowIndex)}
+        </Text>
+      );
+    }
+
+    const isLastRow = rowIndex === renderRows.length - 1;
+    const isAssistant = message.role === "assistant";
+    const isLastAssistant = isLastRow && isAssistant;
+    const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
+    const nextRow = renderRows[rowIndex + 1];
+    // A segment that only runs up to a mid-turn drain is never the end
+    // of its turn — the same backend turn continues under the follow-up
+    // bubble, so the stats bar and the assistant actions belong to the
+    // last segment alone.
+    const isLastInTurn =
+      isAssistant &&
+      !isMidTurnSegmentRow(message) &&
+      (!nextRow || nextRow.role === "user");
+    const showsTurnStats = isLastInTurn && !isCurrentlyStreaming;
+
+    return (
+      <MessageRow
+        message={message}
+        isLastAssistant={isLastAssistant}
+        isCurrentlyStreaming={isCurrentlyStreaming}
+        isLastInTurn={isLastInTurn}
+        turnStat={turnStats?.get(message.id)}
+        turnMessages={
+          showsTurnStats
+            ? turnMessagesForRow(messages, message, messageIndexById)
+            : undefined
+        }
+        elapsedSeconds={isLastRow ? streamClock.frozenSeconds : undefined}
+        indicator={isLastAssistant && showIndicator ? indicator : null}
+        isSessionQueued={
+          message.role === "user" && sessionChatStatus === "queued"
+        }
+        sessionSentFrom={
+          isSessionOpeningMessage(message) ? sessionSentFrom : null
+        }
+        sessionID={sessionID}
+        readOnly={readOnly}
+        compact={isCompact}
+        filePattern={filePattern}
+        fileUrlBuilder={fileUrlBuilder}
+        onRetry={isLastAssistant ? onRetry : undefined}
+      />
+    );
+  }
+
   const thread = (
     <>
       {showThreadHeader && (
@@ -450,7 +519,12 @@ export function ChatMessagesContainer({
           floatingControls={floatingControls}
         />
       )}
-      {!isCompact && <ChatMinimap messages={messages} />}
+      {!isCompact && (
+        <ChatMinimap
+          messages={messages}
+          onJumpToUnmounted={jumpToUnmountedMessage}
+        />
+      )}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -463,7 +537,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -490,72 +564,15 @@ export function ChatMessagesContainer({
                 <LoadingSpinner className="text-neutral-600" />
               </div>
             )}
-          {renderRows.map((message, rowIndex) => {
-            // A run-post renders as a WorkCard inside the row, whatever else
-            // its metadata carries.
-            const heldCallRow = getWorkRunMetadata(message.metadata)
-              ? null
-              : getHeldCallRowKind(message.metadata);
-            if (heldCallRow === "result") return null;
-            if (heldCallRow === "answered") {
-              return (
-                <Text
-                  key={message.id}
-                  variant="small"
-                  className="py-1 text-center text-zinc-500"
-                >
-                  {answeredLabel(renderRows, rowIndex)}
-                </Text>
-              );
-            }
-
-            const isLastRow = rowIndex === renderRows.length - 1;
-            const isAssistant = message.role === "assistant";
-            const isLastAssistant = isLastRow && isAssistant;
-            const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
-            const nextRow = renderRows[rowIndex + 1];
-            // A segment that only runs up to a mid-turn drain is never the end
-            // of its turn — the same backend turn continues under the follow-up
-            // bubble, so the stats bar and the assistant actions belong to the
-            // last segment alone.
-            const isLastInTurn =
-              isAssistant &&
-              !isMidTurnSegmentRow(message) &&
-              (!nextRow || nextRow.role === "user");
-            const showsTurnStats = isLastInTurn && !isCurrentlyStreaming;
-
-            return (
-              <MessageRow
-                key={message.id}
-                message={message}
-                isLastAssistant={isLastAssistant}
-                isCurrentlyStreaming={isCurrentlyStreaming}
-                isLastInTurn={isLastInTurn}
-                turnStat={turnStats?.get(message.id)}
-                turnMessages={
-                  showsTurnStats
-                    ? turnMessagesForRow(messages, message, messageIndexById)
-                    : undefined
-                }
-                elapsedSeconds={
-                  isLastRow ? streamClock.frozenSeconds : undefined
-                }
-                indicator={isLastAssistant && showIndicator ? indicator : null}
-                isSessionQueued={
-                  message.role === "user" && sessionChatStatus === "queued"
-                }
-                sessionSentFrom={
-                  isSessionOpeningMessage(message) ? sessionSentFrom : null
-                }
-                sessionID={sessionID}
-                readOnly={readOnly}
-                compact={isCompact}
-                filePattern={filePattern}
-                fileUrlBuilder={fileUrlBuilder}
-                onRetry={isLastAssistant ? onRetry : undefined}
-              />
-            );
-          })}
+          {transcriptRows.length > 0 && (
+            <VirtualTranscript
+              rows={transcriptRows}
+              renderRow={renderRow}
+              lastUserMessageID={lastUserMessageID}
+              compact={isCompact}
+              jumpRef={jumpRef}
+            />
+          )}
           {showPendingSend && pendingSend && (
             <PendingUploadMessage
               pendingSend={pendingSend}
@@ -607,6 +624,7 @@ export function ChatMessagesContainer({
               pollWhileEmpty={reviewTarget?.kind === "chat"}
               refetchKey={countHeldCalls(messages)}
               expertName={expertIdentity?.name ?? null}
+              expert={expertIdentity ?? null}
             />
           )}
           {!readOnly &&
@@ -652,4 +670,24 @@ export function ChatMessagesContainer({
       {thread}
     </PendingAnswerContexts>
   );
+}
+
+// A run-post renders as a WorkCard inside the row, whatever else its
+// metadata carries.
+function getRowHeldCallKind(message: ChatMessage) {
+  return getWorkRunMetadata(message.metadata)
+    ? null
+    : getHeldCallRowKind(message.metadata);
+}
+
+// A held call's result row renders nothing, so it stays out of the list: an
+// empty row would still take a gap.
+function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
+  const rows: TranscriptRow[] = [];
+  renderRows.forEach((message, rowIndex) => {
+    if (getRowHeldCallKind(message) !== "result") {
+      rows.push({ message, rowIndex });
+    }
+  });
+  return rows;
 }

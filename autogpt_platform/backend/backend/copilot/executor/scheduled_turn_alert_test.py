@@ -160,6 +160,24 @@ def test_a_compacted_history_is_not_work_done():
     assert outcome.failure is not None and outcome.whole_run
 
 
+def test_a_cli_tool_that_returns_an_error_payload_is_not_a_failure():
+    """Read can return a file that holds an ErrorResponse; that is the file,
+    not the run failing."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(
+        StreamToolOutputAvailable(
+            toolCallId="c",
+            toolName="Read",
+            output=ErrorResponse(
+                message="refused", error="credential_rejected"
+            ).model_dump_json(),
+        )
+    )
+
+    assert watch.tool_failures == []
+
+
 def _looked_up(tool: str) -> StreamToolOutputAvailable:
     return StreamToolOutputAvailable(
         toolCallId=f"call-{tool}", toolName=tool, output='{"type": "capabilities"}'

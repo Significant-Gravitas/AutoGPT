@@ -26,7 +26,7 @@ export function useSessionTitlePoll({
   isReconnecting,
 }: Args) {
   const queryClient = useQueryClient();
-  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
+  const titlePollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const prevStatusRef = useRef(status);
 
   useEffect(() => {
