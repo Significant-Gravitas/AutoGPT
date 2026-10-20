@@ -1504,6 +1504,9 @@ async def admit_chat_session_turn(
 
 # The session's status (NULL when it isn't the user's), the user's running
 # count and the conditional flip, read and written against one snapshot.
+# statement_timestamp(), not NOW(): NOW() is when the transaction began, before
+# the lock wait, and a running row stamped that far back can look like an
+# orphan to the stale-slot release.
 _ADMIT_TURN_QUERY = """
 WITH session_row AS (
     SELECT "chatStatus"::text AS status
@@ -1515,7 +1518,8 @@ WITH session_row AS (
     WHERE "userId" = $2 AND "chatStatus" = $4::{schema_prefix}"ChatSessionStatus"
 ), flipped AS (
     UPDATE {schema_prefix}"ChatSession"
-    SET "chatStatus" = $4::{schema_prefix}"ChatSessionStatus", "updatedAt" = NOW()
+    SET "chatStatus" = $4::{schema_prefix}"ChatSessionStatus",
+        "updatedAt" = statement_timestamp()
     WHERE "id" = $1 AND "userId" = $2
         AND "chatStatus" = $3::{schema_prefix}"ChatSessionStatus"
         AND (SELECT count FROM running) < $5

@@ -3,6 +3,7 @@ what the cap reads."""
 
 import asyncio
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -178,6 +179,57 @@ async def test_a_claim_on_a_row_a_cancel_moves_mid_admit_is_busy():
         assert (
             await chat_db().get_chat_session_status(session.session_id)
         ) == CHAT_STATUS_IDLE
+    finally:
+        await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
+    """The stale-slot release takes a running row past its grace for an
+    orphan, so an admit queued behind the user's lock stamps the time it
+    flipped the row, not the time its transaction began."""
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"active-turns-{user_id}@example.com"}
+    )
+    try:
+        session = await create_chat_session(user_id, dry_run=False)
+        holding = asyncio.Event()
+        release = asyncio.Event()
+
+        async def hold_the_users_lock() -> None:
+            async with transaction() as tx:
+                await tx.execute_raw(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    f"copilot-turns:{user_id}",
+                )
+                holding.set()
+                await release.wait()
+
+        holder = asyncio.create_task(hold_the_users_lock())
+        await holding.wait()
+        admitting = asyncio.create_task(
+            copilot_db.admit_chat_session_turn(
+                session_id=session.session_id,
+                user_id=user_id,
+                expect_status=CHAT_STATUS_IDLE,
+                capacity=5,
+            )
+        )
+        await asyncio.sleep(1.5)
+        assert not admitting.done()
+        released_at = datetime.now(UTC)
+        release.set()
+        await holder
+
+        assert await admitting == "admitted"
+        row = await copilot_db.PrismaChatSession.prisma().find_unique(
+            where={"id": session.session_id}
+        )
+        assert row is not None
+        # Not 1.5 s before the release; the margin covers the database's clock
+        # differing a little from this one.
+        assert row.updatedAt >= released_at - timedelta(milliseconds=500)
     finally:
         await User.prisma().delete(where={"id": user_id})
 
