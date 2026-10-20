@@ -1700,9 +1700,13 @@ async def _load_prior_transcript(
 
 def _history_before_turn(session_messages: list[ChatMessage]) -> list[ChatMessage]:
     """The session's messages before the current turn, as the model reads
-    them (``extract_context_messages`` without a transcript)."""
-    return without_stored_first_turn_memory(
-        [m for m in session_messages if m.role != "reasoning"][:-1]
+    them (``extract_context_messages`` without a transcript): a row kept
+    from the model is dropped after the slice, so it never seeds the
+    transcript later turns read back as their own history."""
+    return visible_to_model(
+        without_stored_first_turn_memory(
+            [m for m in session_messages if m.role != "reasoning"][:-1]
+        )
     )
 
 
