@@ -69,8 +69,10 @@ class FakeStripe:
             "metadata": {},
             "items": {"data": [{"price": {"id": price}}]},
         }
-        if created is not None:
-            self.subscriptions[sub_id]["created"] = created
+        # Stripe stamps every subscription; by default, in the order added.
+        self.subscriptions[sub_id]["created"] = (
+            created if created is not None else len(self.subscriptions)
+        )
 
     def add_invoice(
         self,
@@ -588,6 +590,25 @@ async def test_a_newer_plans_own_update_still_ends_the_older_plan():
 
     assert world.stripe.cancelled == ["sub_old"]
     assert world.tier == SubscriptionTier.MAX
+
+
+@pytest.mark.asyncio
+async def test_an_older_plan_left_active_does_not_replace_a_newer_failing_one():
+    """If a Checkout cleanup failed and left the older plan active, a failure
+    on the newer plan must not end the newer plan as replaced."""
+    with World(balance=0) as world:
+        world.tier = SubscriptionTier.MAX
+        world.stripe.add_subscription("sub_old", "active", "in_old", created=1)
+        world.stripe.add_subscription(
+            "sub_new", "past_due", "in_new", price="price_max", created=2
+        )
+        event = world.stripe.add_invoice("in_new", "sub_new")
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.stripe.subscriptions["sub_new"]["status"] == "past_due"
+    assert world.stripe.invoices["in_new"]["status"] == "open"
 
 
 @pytest.mark.asyncio
