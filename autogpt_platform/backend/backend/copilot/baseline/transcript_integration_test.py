@@ -291,8 +291,7 @@ class TestLoadPriorTranscript:
         assert "Skipped: daily usage limit reached" not in builder.to_jsonl()
 
     @pytest.mark.asyncio
-    async def test_missing_transcript_allows_upload(self):
-        """Nothing in GCS → upload is safe; the turn writes the first snapshot."""
+    async def test_missing_transcript_seeds_prior_history_for_upload(self):
         builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
@@ -301,13 +300,45 @@ class TestLoadPriorTranscript:
             upload_safe, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_messages=_make_session_messages("user", "assistant"),
+                session_messages=_make_session_messages("user", "assistant", "user"),
                 transcript_builder=builder,
             )
 
         assert upload_safe is True
         assert dl is None
-        assert builder.is_empty
+        assert builder.entry_count == 2
+        assert builder.last_entry_type == "assistant"
+        assert "user message 0" in builder.to_jsonl()
+        assert "assistant message 1" in builder.to_jsonl()
+        assert "user message 2" not in builder.to_jsonl()
+
+    @pytest.mark.asyncio
+    async def test_missing_transcript_seed_leaves_out_rows_hidden_from_model(self):
+        """A skipped-run note in the history is the platform talking to the
+        user: seeding it would make every later turn read it back."""
+        builder = TranscriptBuilder()
+        messages = _make_session_messages("user", "assistant", "assistant", "user")
+        messages[2] = ChatMessage(
+            role="assistant",
+            content="Skipped: daily usage limit reached",
+            sequence=2,
+            metadata={"hidden_from_model": True},
+        )
+        with patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=None),
+        ):
+            upload_safe, _ = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_messages=messages,
+                transcript_builder=builder,
+            )
+
+        assert upload_safe is True
+        assert builder.entry_count == 2
+        assert "assistant message 1" in builder.to_jsonl()
+        assert "usage limit reached" not in builder.to_jsonl()
 
     @pytest.mark.asyncio
     async def test_invalid_transcript_allows_upload(self):
