@@ -97,7 +97,7 @@ On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slu
 ## Rolling out a new model
 
 1. Add the model to the catalog with `visibility="HIDDEN"` — registered and routable, invisible in any picker or public listing.
-2. Send your test cohort (e.g. employees) to its slug on the `copilot-model-routing` flag, in the vendor `FEATURE_FLAG_BACKEND` names. On PostHog, the default, that is a variant whose JSON payload carries the slug, served by a release condition matching the cohort, in each environment's own project; on LaunchDarkly, a targeting rule.
+2. Send your test cohort (e.g. employees) to its slug on the `copilot-model-routing` PostHog flag: a variant whose JSON payload carries the slug, served by a release condition matching the cohort, in each environment's own project.
 3. Watch product-intelligence quality scores segmented by the stamped model column.
 4. Graduate: flip `visibility` to `GA` and set the routing cell in a catalog PR; remove the cohort's condition from the flag.
 
