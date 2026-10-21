@@ -92,6 +92,12 @@ class PostHogEvent(StrEnum):
     ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
     ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
     ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
+    # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
+    # webhooks for the mail the platform sends itself.
+    EMAIL_DELIVERED = "email_delivered"
+    EMAIL_OPENED = "email_opened"
+    EMAIL_CLICKED = "email_clicked"
+    EMAIL_BOUNCED = "email_bounced"
 
 
 class PlannedPostHogEvent(StrEnum):

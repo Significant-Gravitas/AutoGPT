@@ -55,6 +55,10 @@ LIVE_EVENT_NAMES = {
     "account_deletion_feedback",
     "account_deletion_alternative_clicked",
     "account_deletion_completed",
+    "email_delivered",
+    "email_opened",
+    "email_clicked",
+    "email_bounced",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

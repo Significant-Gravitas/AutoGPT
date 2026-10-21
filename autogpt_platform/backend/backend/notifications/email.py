@@ -5,10 +5,18 @@ Everything goes out on a transactional stream, separate from marketing mail
 changelog are MailerLite's). Every message carries a plain-text MIME part built
 from the same data model. Product notifications carry one-click
 List-Unsubscribe headers; billing, auth and internal Ops mail do not.
+
+Each message is tagged with what it is (the notification type, or ``auth``).
+Postmark echoes the tag in its delivery, open, click and bounce webhooks,
+which ``api/features/postmark`` turns into PostHog events. Every message also
+says whether Postmark tracks its opens and clicks, so the stream's own default
+never decides: notification mail follows ``postmark_track_opens_and_clicks``,
+and auth mail is never tracked, since its links carry sign-in tokens.
 """
 
 import asyncio
 import logging
+from typing import Any
 
 from postmarker.core import PostmarkClient
 from postmarker.models.emails import EmailManager
@@ -28,6 +36,9 @@ settings = Settings()
 
 # Bounds how long one send can hold a thread-pool worker.
 POSTMARK_TIMEOUT_SECONDS = 30
+
+# Postmark tag for Better Auth's emails, which are not notifications.
+AUTH_EMAIL_TAG = "auth"
 
 
 class TypedPostmarkClient(PostmarkClient):
@@ -86,6 +97,7 @@ class EmailSender:
         stream = get_delivery_stream(notification_type)
         await self._send(
             user_email=user_email,
+            tag=notification_type.value.lower(),
             sender=_sender_for(stream),
             reply_to=_reply_to_for(stream),
             subject=email.subject,
@@ -116,11 +128,16 @@ class EmailSender:
             HtmlBody=body,
             TextBody=text_body,
             MessageStream=settings.config.postmark_transactional_stream,
+            Tag=AUTH_EMAIL_TAG,
+            # A reset or verification link holds a token; link tracking would
+            # route it through Postmark's redirect and into the click webhook.
+            **_tracking(False),
         )
 
     async def _send(
         self,
         user_email: str,
+        tag: str,
         sender: str,
         subject: str,
         html_body: str,
@@ -144,7 +161,18 @@ class EmailSender:
             TextBody=text_body,
             MessageStream=settings.config.postmark_transactional_stream,
             Headers=headers,
+            Tag=tag,
+            **_tracking(settings.config.postmark_track_opens_and_clicks),
         )
+
+
+def _tracking(enabled: bool) -> dict[str, Any]:
+    """Postmark's per-message tracking fields. Links are rewritten in the
+    HTML part only: a rewritten link in the plain-text part is a long opaque
+    redirect a reader can't check before following."""
+    if enabled:
+        return {"TrackOpens": True, "TrackLinks": "HtmlOnly"}
+    return {"TrackOpens": False, "TrackLinks": "None"}
 
 
 def _sender_for(stream: DeliveryStream) -> str:

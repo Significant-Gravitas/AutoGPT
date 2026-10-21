@@ -137,7 +137,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         if was_created:
             signup_method = await _signup_method(user.id, user_data)
             track_signup_completed(user_id=user.id, signup_method=signup_method)
-            set_account_properties(user.id, user.email, signup_method)
+            set_account_properties(
+                user.id, user.email, signup_method, user_data.get("role")
+            )
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -376,7 +378,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
         user = await prisma.user.find_unique(where={"email": email})
         return User.from_db(user) if user else None
     except Exception as e:
-        raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+        # Not the address: this message reaches logs and Sentry.
+        raise DatabaseError(f"Failed to get user by email: {e}") from e
 
 
 async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
