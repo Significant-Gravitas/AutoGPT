@@ -455,22 +455,6 @@ class FillEnvSecretsTest(unittest.TestCase):
                 keys.append(path.read_text(encoding="utf-8"))
             self.assertNotEqual(keys[0], keys[1])
 
-    def test_internal_api_key_is_generated_for_env_files_only(self) -> None:
-        """`make init-env` fills it for Docker Compose; the all-in-one image
-        makes a new one at every boot, so it never enters the persisted config."""
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / ".env"
-            path.write_text("INTERNAL_API_KEY=\n", encoding="utf-8")
-
-            self.assertEqual(runtime_config.fill_env_blanks(path), ["INTERNAL_API_KEY"])
-            value = path.read_text(encoding="utf-8").strip().partition("=")[2]
-            self.assertRegex(value, r"^[A-Za-z0-9_-]{32,}$")
-
-            persisted = runtime_config.ensure_runtime_config(
-                Path(directory) / "runtime.env", {}
-            )
-            self.assertNotIn("INTERNAL_API_KEY", persisted)
-
     def test_generated_file_becomes_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
@@ -488,8 +472,7 @@ class FillEnvSecretsTest(unittest.TestCase):
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text("", encoding="utf-8")
             (root / "backend/.env.default").write_text(
-                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n"
-                "INTERNAL_API_KEY=\n",
+                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n",
                 encoding="utf-8",
             )
             (root / "frontend/.env.default").write_text(

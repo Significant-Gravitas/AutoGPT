@@ -43,7 +43,7 @@ from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
-from backend.util.service_auth import internal_auth_dependencies, internal_auth_headers
+from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -551,9 +551,7 @@ class AppService(BaseAppService, ABC):
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
 
-        # Register the exposed API routes. Only these take the internal key:
-        # the health checks below and /metrics stay open to probes and scrapers.
-        auth = internal_auth_dependencies(self.service_name)
+        # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
@@ -561,13 +559,15 @@ class AppService(BaseAppService, ABC):
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
-                    dependencies=auth,
                 )
         app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
         app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
         self._register_exception_handlers(app)
+        # Last, so it is the outermost middleware: every request but the health
+        # checks and /metrics needs the internal key before anything reads it.
+        require_internal_key(app, self.service_name)
         return app
 
     @asynccontextmanager
@@ -715,10 +715,13 @@ def get_service_client(
             self._async_clients = {}  # None key for default async client
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
+        # trust_env=False: an HTTP_PROXY meant for outbound traffic must never
+        # carry these plain-HTTP calls, nor the internal key they hold.
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
                 headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
@@ -732,6 +735,7 @@ def get_service_client(
             return httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls

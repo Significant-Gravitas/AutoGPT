@@ -570,9 +570,6 @@ jobs:
         run: |
           echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
           echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
-          # Services started by the tests then require it from each other,
-          # so every RPC call a test makes is checked for carrying it.
-          echo "INTERNAL_API_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Test shard
         shell: bash

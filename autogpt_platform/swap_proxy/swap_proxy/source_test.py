@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -8,6 +9,7 @@ from swap_proxy.settings import Settings
 from swap_proxy.source import BackendCredentialSource, SourceUnavailable
 
 TOKEN = "ghp_a-real-looking-token"
+KEY = "internal-key-0123456789abcdefghijklmnop"
 
 
 def _backend(handler):
@@ -49,10 +51,10 @@ def _authorization_seen(api_key: str = ""):
 
 
 async def test_every_call_carries_the_internal_key():
-    source, seen = _authorization_seen("internal-key")
+    source, seen = _authorization_seen(KEY)
     await source.bound_names("api.github.com")
     await source.resolve("user-a", "github", "api.github.com", "box-1")
-    assert seen == ["Bearer internal-key", "Bearer internal-key"]
+    assert seen == [f"Bearer {KEY}", f"Bearer {KEY}"]
 
 
 async def test_without_a_key_no_authorization_is_sent():
@@ -63,7 +65,7 @@ async def test_without_a_key_no_authorization_is_sent():
 
 
 async def test_the_key_is_the_backends_own_setting(monkeypatch):
-    monkeypatch.setenv("INTERNAL_API_KEY", "shared-key")
+    monkeypatch.setenv("INTERNAL_API_KEY", KEY)
     seen: list[str | None] = []
 
     def transport(request: httpx.Request) -> httpx.Response:
@@ -73,7 +75,44 @@ async def test_the_key_is_the_backends_own_setting(monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(transport))
     source = BackendCredentialSource.from_settings(Settings(), client)
     await source.bound_names("api.github.com")
-    assert seen == ["Bearer shared-key"]
+    assert seen == [f"Bearer {KEY}"]
+
+
+@pytest.mark.parametrize("key", ["too-short", "a key with spaces " * 3, "é" * 40])
+def test_a_malformed_key_stops_the_proxy_starting(monkeypatch, key):
+    monkeypatch.setenv("INTERNAL_API_KEY", key)
+    with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
+        BackendCredentialSource.from_settings(Settings())
+
+
+def test_no_key_warns_that_nothing_will_be_swapped(monkeypatch, caplog):
+    monkeypatch.delenv("INTERNAL_API_KEY", raising=False)
+    BackendCredentialSource.from_settings(Settings())
+    assert "INTERNAL_API_KEY is not set" in caplog.text
+
+
+async def test_an_environment_proxy_never_sees_a_call(monkeypatch):
+    """The calls are plain HTTP and carry the key: an outbound proxy set in the
+    environment must not be where they go."""
+    reached: list[bytes] = []
+
+    async def trap(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        reached.append(await reader.read(1024))
+        writer.close()
+
+    server = await asyncio.start_server(trap, "127.0.0.1", 0)
+    proxy = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.setenv(name, proxy)
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    # A host that never resolves: going direct fails fast, a proxy would be asked.
+    source = BackendCredentialSource("http://swap-service.invalid:8012", api_key=KEY)
+    async with server:
+        with pytest.raises(SourceUnavailable):
+            await source.bindings()
+    await source.aclose()
+    assert reached == []
 
 
 async def test_bound_names_come_from_the_bindings_table_asked_once():

@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import re
 import socket
 import threading
 import time
@@ -10,9 +14,10 @@ import pytest
 import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from prometheus_client import REGISTRY
 
-from backend.util import service_auth
-from backend.util.exceptions import MissingConfigError
+from backend.util import process, service_auth
+from backend.util.process import AppProcess
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -21,9 +26,9 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
-from backend.util.settings import BehaveAs, Settings
+from backend.util.settings import Settings
 
-KEY = "internal-key-for-tests"
+KEY = "internal-key-for-tests-0123456789abcdef"
 _port = 0
 
 
@@ -58,21 +63,32 @@ class MetricsService(AppService):
         return "pong"
 
 
+class _Unstarted(AppProcess):
+    reads_feature_flags = False
+    ran = False
+
+    def run(self) -> None:
+        pass
+
+    def execute_run_command(self, silent: bool) -> None:
+        self.ran = True
+
+
 class _SupportsClientCache(Protocol):
     _sync_clients: dict[str, httpx.Client]
 
 
-def _settings(key: str = KEY, *, cloud: bool = False, required: bool = False):
+def _settings(key: str = KEY, *, encryption_key: str = "", optional: bool = False):
     settings = Settings()
     settings.secrets.internal_api_key = key
-    settings.config.behave_as = BehaveAs.CLOUD if cloud else BehaveAs.LOCAL
-    settings.config.internal_rpc_require = required
+    settings.secrets.encryption_key = encryption_key
+    settings.config.internal_api_key_optional = optional
     return settings
 
 
 @pytest.fixture
 def use_settings(monkeypatch: pytest.MonkeyPatch):
-    """Make the server and its clients read these settings."""
+    """Make services and their clients read these settings."""
 
     def use(settings: Settings) -> None:
         monkeypatch.setattr(service_auth, "Settings", lambda: settings)
@@ -89,42 +105,60 @@ def _call_add(client: TestClient, **headers: str) -> httpx.Response:
     return client.post("/add", json={"a": 2, "b": 3}, headers=headers)
 
 
-# Where the key is enforced
+def _derived(encryption_key: str) -> str:
+    """Pinned: changing the derivation makes every caller still running the
+    previous release present a different key."""
+    digest = hmac.new(
+        encryption_key.encode(), b"autogpt internal service key v1", hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def test_local_with_a_key_enforces_it():
-    assert len(service_auth.internal_auth_dependencies("svc", _settings())) == 1
+# Which key
 
 
-def test_cloud_sends_the_key_without_requiring_it_until_told(caplog):
-    assert service_auth.internal_auth_dependencies("svc", _settings(cloud=True)) == []
-    assert "not yet required" in caplog.text
+def test_unset_the_key_is_derived_from_the_encryption_key():
+    key = service_auth.internal_api_key(_settings("", encryption_key="enc-1"))
+
+    assert key == _derived("enc-1")
+    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", key)
+    assert key != service_auth.internal_api_key(_settings("", encryption_key="enc-2"))
 
 
-def test_cloud_enforces_once_required():
-    settings = _settings(cloud=True, required=True)
-    assert len(service_auth.internal_auth_dependencies("svc", settings)) == 1
+def test_a_set_key_wins_over_the_derived_one():
+    settings = _settings(KEY, encryption_key="enc-1")
+    assert service_auth.internal_api_key(settings) == KEY
 
 
-def test_no_key_accepts_calls_and_warns(caplog):
-    assert service_auth.internal_auth_dependencies("svc", _settings("")) == []
-    assert "INTERNAL_API_KEY is not set" in caplog.text
+@pytest.mark.parametrize(
+    "malformed", ["short", "x" * 31, "a key with spaces that is long enough", "é" * 40]
+)
+def test_a_malformed_key_is_refused(malformed):
+    with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
+        service_auth.internal_api_key(_settings(malformed))
 
 
-def test_required_without_a_key_refuses_to_start(use_settings):
-    use_settings(_settings("", required=True))
-    with pytest.raises(MissingConfigError, match="INTERNAL_API_KEY"):
-        KeyedService().build_fastapi_app()
+def test_a_malformed_key_stops_every_process_starting(use_settings, monkeypatch):
+    monkeypatch.setattr(process, "check_secrets", lambda: None)
+    use_settings(_settings("short"))
+    unstarted = _Unstarted()
+
+    with pytest.raises(ValueError, match="INTERNAL_API_KEY"):
+        unstarted.start()
+    assert not unstarted.ran
 
 
-def test_client_headers_carry_the_key_only_when_set():
+def test_client_headers_carry_the_key():
     assert service_auth.internal_auth_headers(_settings()) == {
         "Authorization": f"Bearer {KEY}"
+    }
+    assert service_auth.internal_auth_headers(_settings("", encryption_key="e")) == {
+        "Authorization": f"Bearer {_derived('e')}"
     }
     assert service_auth.internal_auth_headers(_settings("")) == {}
 
 
-# What an enforcing service accepts
+# What a service accepts
 
 
 def test_an_exposed_method_needs_the_key(use_settings):
@@ -134,10 +168,75 @@ def test_an_exposed_method_needs_the_key(use_settings):
     assert _call_add(client, Authorization="Bearer wrong-key").status_code == 401
     assert _call_add(client, Authorization=f"Basic {KEY}").status_code == 401
     assert _call_add(client, Authorization=KEY).status_code == 401
+    assert _call_add(client, Authorization=f"Bearer  {KEY}").status_code == 401
 
     response = _call_add(client, Authorization=f"Bearer {KEY}")
     assert response.status_code == 200
     assert response.json() == 5
+
+
+def test_the_derived_key_is_enforced(use_settings):
+    client = TestClient(_app(use_settings, _settings("", encryption_key="enc-1")))
+
+    assert _call_add(client).status_code == 401
+    assert _call_add(client, Authorization=f"Bearer {_derived('enc-1')}").json() == 5
+
+
+def test_the_key_is_checked_before_the_body_is_read(use_settings):
+    """Unauthenticated bodies are never buffered or parsed: a malformed one is
+    refused as unauthenticated, not reported as invalid."""
+    client = TestClient(_app(use_settings, _settings()))
+    json_type = {"content-type": "application/json"}
+    with_key = {**json_type, "Authorization": f"Bearer {KEY}"}
+
+    assert (
+        client.post("/add", content=b"{not json", headers=json_type).status_code == 401
+    )
+    assert (
+        client.post("/add", content=b"{not json", headers=with_key).status_code == 422
+    )
+
+
+async def test_the_middleware_never_reads_a_refused_body():
+    async def app(scope, receive, send):
+        raise AssertionError("a refused request reached the service")
+
+    async def receive():
+        raise AssertionError("a refused request's body was read")
+
+    sent: list[dict] = []
+
+    async def send(message):
+        sent.append(message)
+
+    middleware = service_auth.InternalKeyMiddleware(
+        app, service_name="svc", key=KEY, optional=False
+    )
+    scope = {"type": "http", "path": "/add", "headers": [], "client": ("10.0.0.9", 1)}
+    await middleware(scope, receive, send)
+
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 401
+
+
+async def test_a_websocket_without_the_key_is_closed():
+    async def app(scope, receive, send):
+        raise AssertionError("a refused websocket reached the service")
+
+    async def receive():
+        raise AssertionError("a refused websocket was read")
+
+    sent: list[dict] = []
+
+    async def send(message):
+        sent.append(message)
+
+    middleware = service_auth.InternalKeyMiddleware(
+        app, service_name="svc", key=KEY, optional=False
+    )
+    await middleware({"type": "websocket", "path": "/x", "headers": []}, receive, send)
+
+    assert sent == [{"type": "websocket.close", "code": 1008}]
 
 
 def test_a_non_ascii_key_is_refused_not_an_error(use_settings):
@@ -148,6 +247,14 @@ def test_a_non_ascii_key_is_refused_not_an_error(use_settings):
         headers={"Authorization": "Bearer clé".encode("latin-1")},
     )
     assert response.status_code == 401
+
+
+def test_a_refusal_cannot_forge_a_log_line(use_settings, caplog):
+    client = TestClient(_app(use_settings, _settings()))
+    client.post("/add%0A2026-10-21 INFO forged", json={})
+
+    assert "\n2026-10-21 INFO forged" not in caplog.text
+    assert "\\n2026-10-21 INFO forged" in caplog.text
 
 
 def test_health_checks_stay_open(use_settings):
@@ -166,9 +273,38 @@ def test_metrics_stay_open(use_settings, monkeypatch: pytest.MonkeyPatch):
     assert client.post("/ping").status_code == 401
 
 
-def test_cloud_accepts_calls_without_the_key_until_required(use_settings):
-    client = TestClient(_app(use_settings, _settings(cloud=True)))
+def test_the_api_docs_need_the_key(use_settings):
+    client = TestClient(_app(use_settings, _settings()))
+    for path in ("/openapi.json", "/docs"):
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"Authorization": f"Bearer {KEY}"}).is_success
+
+
+def _without_key(service: str) -> float:
+    sample = REGISTRY.get_sample_value(
+        "autogpt_internal_rpc_calls_without_key_total", {"service": service}
+    )
+    return sample or 0.0
+
+
+def test_while_optional_only_a_missing_key_is_accepted(use_settings, caplog):
+    client = TestClient(_app(use_settings, _settings(optional=True)))
+    before = _without_key("KeyedService")
+
     assert _call_add(client).status_code == 200
+    assert _without_key("KeyedService") == before + 1
+    assert _call_add(client, Authorization="Bearer wrong-key").status_code == 401
+    assert _call_add(client, Authorization=f"Basic {KEY}").status_code == 401
+    assert _call_add(client, Authorization=f"Bearer {KEY}").status_code == 200
+    assert _without_key("KeyedService") == before + 1
+    assert "INTERNAL_API_KEY_OPTIONAL is on" in caplog.text
+
+
+def test_no_key_at_all_leaves_a_service_open_and_says_so(use_settings, caplog):
+    client = TestClient(_app(use_settings, _settings("")))
+
+    assert _call_add(client).status_code == 200
+    assert "No internal service key" in caplog.text
 
 
 # Real clients over a real socket
@@ -203,6 +339,44 @@ def _serving(app: FastAPI) -> Iterator[int]:
         thread.join(timeout=10)
 
 
+@contextmanager
+def _trap_proxy(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[bytes]]:
+    """An outbound proxy configured the usual way, recording what reaches it."""
+    reached: list[bytes] = []
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    listener.settimeout(0.2)
+    stop = threading.Event()
+
+    def serve() -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                continue
+            with conn:
+                conn.settimeout(2)
+                try:
+                    reached.append(conn.recv(1024))
+                except OSError:
+                    reached.append(b"")
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    proxy = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.setenv(name, proxy)
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        yield reached
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+        listener.close()
+
+
 @pytest.fixture
 def local_host(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv(f"{KeyedService.__name__.upper()}_HOST", "127.0.0.1")
@@ -225,13 +399,47 @@ async def test_every_rpc_client_sends_the_key(use_settings, local_host):
         assert client.add(4, 5) == 9
 
 
-def test_a_client_without_the_key_is_refused_and_not_retried(use_settings, local_host):
-    app = _app(use_settings, _settings())
-    with _serving(app):
-        use_settings(_settings(""))
+def test_a_refused_caller_cannot_make_the_service_take_in_its_body(use_settings):
+    """The connection closes with the refusal, so a body promised in the
+    headers is never waited for or read."""
+    with (
+        _serving(_app(use_settings, _settings())) as port,
+        socket.create_connection(("127.0.0.1", port), timeout=5) as conn,
+    ):
+        conn.sendall(
+            b"POST /add HTTP/1.1\r\nHost: rpc\r\n"
+            b"Content-Type: application/json\r\nContent-Length: 100000000\r\n\r\n"
+        )
+        received = b""
+        while chunk := conn.recv(4096):  # b"" once the service hangs up
+            received += chunk
+
+    assert received.startswith(b"HTTP/1.1 401")
+
+
+def test_a_client_with_another_key_is_refused_and_not_retried(use_settings, local_host):
+    with _serving(_app(use_settings, _settings())):
+        use_settings(_settings("another-key-for-tests-0123456789abcdef"))
         client = get_service_client(KeyedServiceClient, request_retry=True)
         started = time.monotonic()
         with pytest.raises(HTTPClientError) as refused:
             client.add(2, 3)
         assert refused.value.status_code == 401
         assert time.monotonic() - started < 5
+
+
+async def test_rpc_calls_never_go_through_an_environment_proxy(
+    use_settings, monkeypatch
+):
+    """The calls are plain HTTP and carry the key: an outbound proxy set in the
+    environment must not be where they go."""
+    use_settings(_settings())
+    # A host that never resolves: going direct fails fast, a proxy would be asked.
+    monkeypatch.setenv(f"{KeyedService.__name__.upper()}_HOST", "keyed.invalid")
+    with _trap_proxy(monkeypatch) as reached:
+        client = get_service_client(KeyedServiceClient, request_retry=False)
+        with pytest.raises(httpx.HTTPError):
+            client.add(2, 3)
+        with pytest.raises(httpx.HTTPError):
+            await client.add_async(2, 3)
+    assert reached == []

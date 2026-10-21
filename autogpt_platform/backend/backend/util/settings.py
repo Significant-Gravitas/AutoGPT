@@ -204,13 +204,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The default hostname of the Pyro server.",
     )
-    internal_rpc_require: bool = Field(
+    internal_api_key_optional: bool = Field(
         default=False,
-        description="Enforce the internal RPC key even on a cloud deployment. "
-        "Self-host and local always enforce when the key is set; this adds "
-        "enforcement to BEHAVE_AS=cloud. Leave off for one deploy while every "
-        "service starts sending the key, then turn on once old, pre-key "
-        "instances have drained, so in-flight calls from them are not rejected.",
+        description="Temporary, for rolling the internal service key out to a "
+        "deployment whose older instances cannot send it yet: accept internal "
+        "calls that carry no key (a wrong key is still refused). Turn it off "
+        "once none of those instances is still running.",
     )
     pyro_client_comm_timeout: float = Field(
         default=15,
@@ -1193,9 +1192,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     internal_api_key: str = Field(
         default="",
-        description="Shared key every internal service sends on its RPC calls "
-        "and requires on the methods it exposes. Every backend service of one "
-        "deployment must have the same value.",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Blank derives one from "
+        "ENCRYPTION_KEY. Set it to keep the key fixed when ENCRYPTION_KEY "
+        "rotates, or to give it to the swap proxy.",
     )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")

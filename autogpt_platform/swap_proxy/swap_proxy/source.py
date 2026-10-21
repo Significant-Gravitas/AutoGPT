@@ -16,6 +16,7 @@ and the request fails at the provider: loudly, and with nothing leaked.
 """
 
 import logging
+import re
 import time
 from typing import Optional, Protocol
 
@@ -34,6 +35,8 @@ _BINDINGS_RETRY = 30.0
 _CREDENTIAL_TTL = 15.0
 _CACHE_MAX = 10_000
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
+# The same rule as the backend's (backend/util/service_auth.py).
+_VALID_KEY = re.compile(r"[A-Za-z0-9._~-]{32,}={0,2}")
 
 
 class SourceUnavailable(Exception):
@@ -56,9 +59,11 @@ class BackendCredentialSource:
         api_key: str = "",
     ):
         self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.AsyncClient(timeout=_TIMEOUT)
+        # trust_env=False: an HTTP_PROXY in the environment must never carry
+        # these plain-HTTP calls, nor the internal key they hold.
+        self._client = client or httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False)
         # The backend's internal service key, which its services require on
-        # every call once enforced (backend/util/service_auth.py).
+        # every call (backend/util/service_auth.py).
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._bindings: Optional[tuple[float, dict[str, tuple[str, ...]]]] = None
         self._credentials: dict[
@@ -69,7 +74,19 @@ class BackendCredentialSource:
     def from_settings(
         cls, settings: Settings, client: Optional[httpx.AsyncClient] = None
     ) -> "BackendCredentialSource":
-        return cls(settings.backend_url, client, settings.internal_api_key)
+        """Raises on a malformed key, so the proxy does not start with one."""
+        key = settings.internal_api_key
+        if key and not _VALID_KEY.fullmatch(key):
+            raise ValueError(
+                "INTERNAL_API_KEY must be at least 32 URL-safe characters: "
+                "letters, digits, '-', '_', '.', '~' (and '=' padding)."
+            )
+        if not key:
+            logger.warning(
+                "INTERNAL_API_KEY is not set: the backend refuses swap lookups "
+                "without it, so no request will get a credential."
+            )
+        return cls(settings.backend_url, client, key)
 
     async def bindings(self) -> dict[str, tuple[str, ...]]:
         now = time.monotonic()

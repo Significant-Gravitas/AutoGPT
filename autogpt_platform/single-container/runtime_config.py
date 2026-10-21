@@ -194,7 +194,6 @@ def _new_values(environment: Mapping[str, str]) -> dict[str, str]:
         **{
             name: _configured_or_generated(environment, name, generator)
             for name, generator in SECRET_GENERATORS.items()
-            if name not in NOT_PERSISTED
         },
         "VAPID_PRIVATE_KEY": vapid_private,
         "VAPID_PUBLIC_KEY": vapid_public,
@@ -252,24 +251,14 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
     "ENCRYPTION_KEY": _fernet_key,
     "UNSUBSCRIBE_SECRET_KEY": lambda: secrets.token_urlsafe(36),
     "GRAPHITI_FALKORDB_PASSWORD": lambda: secrets.token_urlsafe(36),
-    "INTERNAL_API_KEY": lambda: secrets.token_urlsafe(36),
 }
-
-# Generated into `.env` files but never into the all-in-one image's persisted
-# config: the image makes a fresh one on every boot (`entrypoint.sh`), since
-# only the services inside the container use it.
-NOT_PERSISTED: frozenset[str] = frozenset({"INTERNAL_API_KEY"})
 
 # Secrets already retired from the public .env.default files (SECRT-2611).
 # `check-env-defaults` keeps them blank: entropy scanners do not reliably catch
 # a freshly generated key pasted back into one of these lines, so the invariant
 # is asserted directly. Paths are relative to autogpt_platform/.
 BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
-    "backend/.env.default": (
-        "ENCRYPTION_KEY",
-        "UNSUBSCRIBE_SECRET_KEY",
-        "INTERNAL_API_KEY",
-    ),
+    "backend/.env.default": ("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY"),
     "frontend/.env.default": ("BETTER_AUTH_SECRET",),
 }
 

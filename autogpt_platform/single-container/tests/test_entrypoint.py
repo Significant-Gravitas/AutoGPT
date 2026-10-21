@@ -169,33 +169,6 @@ class EnvironmentPolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines()[-1], "cloud")
 
-    def test_generates_a_fresh_internal_api_key_every_boot(self) -> None:
-        # The services in the container require it from each other.
-        keys = []
-        for _ in range(2):
-            result = self._configure(output="$INTERNAL_API_KEY")
-            self.assertEqual(result.returncode, 0, result.stderr)
-            keys.append(result.stdout.splitlines()[-1])
-
-        for key in keys:
-            self.assertRegex(key, r"^[A-Za-z0-9_-]{32,}$")
-        self.assertNotEqual(keys[0], keys[1])
-
-    def test_keeps_an_operator_internal_api_key(self) -> None:
-        result = self._configure(
-            output="$INTERNAL_API_KEY", INTERNAL_API_KEY="operator-chosen-key"
-        )
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.splitlines()[-1], "operator-chosen-key")
-
-    def test_internal_api_key_reaches_the_services(self) -> None:
-        # Exported, so supervisord and every service it starts inherit it.
-        result = self._configure(output="$(printenv INTERNAL_API_KEY)")
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertRegex(result.stdout.splitlines()[-1], r"^[A-Za-z0-9_-]{32,}$")
-
     def test_disables_copilot_spend_caps_by_default(self) -> None:
         # Self-hosted operators pay the provider directly, so the cloud
         # daily/weekly USD caps must not apply unless explicitly configured.

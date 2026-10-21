@@ -2,96 +2,160 @@
 
 A method an ``AppService`` exposes runs for anything that can reach the
 service's port, and many of them read or change any user's data. So every
-exposed method requires ``INTERNAL_API_KEY``, which ``get_service_client``
-sends with every call. It travels as a bearer token in ``Authorization``,
-whose value Sentry and the event scrubber in ``backend.util.metrics`` already
-keep out of error reports. Health checks and ``/metrics`` stay open: probes
-and the Prometheus scraper call them, and neither returns user data.
+request to an RPC service must carry ``Authorization: Bearer <key>``, which
+``get_service_client`` adds to every call, and a service refuses any other
+request before reading its body. Only the health checks and ``/metrics`` are
+open, for probes and the Prometheus scraper; neither returns user data. The
+header is ``Authorization`` because Sentry and the event scrubber in
+``backend.util.metrics`` already keep its value out of error reports.
 
-When the key is enforced:
+The key is ``INTERNAL_API_KEY`` when set, and otherwise derived from
+``ENCRYPTION_KEY``, which every backend service of a deployment already
+shares: a deployment needs nothing new to enforce it. A derived key changes
+with ``ENCRYPTION_KEY``, so restart every service together when rotating that,
+or set ``INTERNAL_API_KEY`` first.
 
-- ``BEHAVE_AS=local`` (self-hosted and development): whenever it is set.
-- ``BEHAVE_AS=cloud``: only once ``INTERNAL_RPC_REQUIRE`` is on. A hosted
-  deploy replaces services gradually, and an instance of the previous release
-  keeps calling without the key for as long as it drains (an executor for up
-  to a day), so the key is sent for one release before it is required.
-
-With no key set at all, calls are accepted as before and every service warns.
+``INTERNAL_API_KEY_OPTIONAL`` is for rolling the key out to a deployment whose
+older instances cannot send it yet: a call that carries no key is accepted
+and counted, while a call with a wrong key is still refused.
 """
 
+import base64
+import hashlib
 import hmac
 import logging
-from typing import Annotated
+import re
 
-from fastapi import HTTPException, Request, Security, params
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import FastAPI
+from prometheus_client import Counter
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-from backend.util.exceptions import MissingConfigError
-from backend.util.settings import BehaveAs, Settings
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-_bearer = HTTPBearer(auto_error=False, scheme_name="InternalServiceKey")
+OPEN_PATHS = frozenset({"/health_check", "/health_check_async", "/metrics"})
+
+_VALID_KEY = re.compile(r"[A-Za-z0-9._~-]{32,}={0,2}")
+_DERIVATION_LABEL = b"autogpt internal service key v1"
+_REFUSAL = b'{"detail":"Invalid internal service key"}'
+
+calls_without_key = Counter(
+    "autogpt_internal_rpc_calls_without_key_total",
+    "Internal RPC calls accepted without a key while INTERNAL_API_KEY_OPTIONAL "
+    "is on. Turn the setting off once this stops growing.",
+    ["service"],
+)
+
+
+def internal_api_key(settings: Settings | None = None) -> str:
+    """The key internal calls carry: ``INTERNAL_API_KEY``, else one derived
+    from ``ENCRYPTION_KEY``, else ``""`` when neither is set.
+
+    Raises ``ValueError`` on a malformed ``INTERNAL_API_KEY``; every process
+    checks it at start (``AppProcess.start``).
+    """
+    secrets = (settings or Settings()).secrets
+    if secrets.internal_api_key:
+        if not _VALID_KEY.fullmatch(secrets.internal_api_key):
+            raise ValueError(
+                "INTERNAL_API_KEY must be at least 32 URL-safe characters: "
+                "letters, digits, '-', '_', '.', '~' (and '=' padding)."
+            )
+        return secrets.internal_api_key
+    if not secrets.encryption_key:
+        return ""
+    digest = hmac.new(
+        secrets.encryption_key.encode(), _DERIVATION_LABEL, hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 def internal_auth_headers(settings: Settings | None = None) -> dict[str, str]:
-    """The headers an RPC client sends with every call: the key, if set."""
-    key = (settings or Settings()).secrets.internal_api_key
+    """The headers an RPC client sends with every call."""
+    key = internal_api_key(settings)
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
-def internal_auth_dependencies(
-    service_name: str, settings: Settings | None = None
-) -> list[params.Depends]:
-    """What every exposed method of *service_name* depends on: the key check,
-    when it is enforced, and nothing otherwise.
-
-    Raises ``MissingConfigError`` when ``INTERNAL_RPC_REQUIRE`` is on but no key
-    is set, so the service refuses to start rather than serve unauthenticated.
-    """
+def require_internal_key(
+    app: FastAPI, service_name: str, settings: Settings | None = None
+) -> None:
+    """Make *app* refuse every request outside ``OPEN_PATHS`` that does not
+    carry the key."""
     settings = settings or Settings()
-    key = settings.secrets.internal_api_key
-    required = settings.config.internal_rpc_require
-    if required and not key:
-        raise MissingConfigError(
-            "INTERNAL_RPC_REQUIRE is on but INTERNAL_API_KEY is not set: give "
-            "every backend service of this deployment the same key."
-        )
+    key = internal_api_key(settings)
     if not key:
         logger.warning(
-            f"[SECURITY] [{service_name}] INTERNAL_API_KEY is not set: anything "
-            "that can reach this service's port can call its methods. Add a line "
-            "`INTERNAL_API_KEY=` to autogpt_platform/backend/.env and run "
-            "`make init-env` in autogpt_platform/ to generate one."
+            f"[SECURITY] [{service_name}] No internal service key: set "
+            "ENCRYPTION_KEY (every service needs it) or INTERNAL_API_KEY. Until "
+            "then anything that can reach this port can call its methods."
         )
-        return []
-    if settings.config.behave_as == BehaveAs.CLOUD and not required:
+        return
+    optional = settings.config.internal_api_key_optional
+    if optional:
         logger.warning(
-            f"[SECURITY] [{service_name}] INTERNAL_API_KEY is sent but not yet "
-            "required. Turn on INTERNAL_RPC_REQUIRE once no instance started "
-            "without the key is still running."
+            f"[SECURITY] [{service_name}] INTERNAL_API_KEY_OPTIONAL is on: calls "
+            "without the key are accepted. Turn it off once no instance started "
+            "before the key was sent is still running "
+            "(autogpt_internal_rpc_calls_without_key_total stops growing)."
         )
-        return []
-    return [Security(_verify_key(key, service_name))]
+    app.add_middleware(
+        InternalKeyMiddleware, service_name=service_name, key=key, optional=optional
+    )
 
 
-def _verify_key(key: str, service_name: str):
-    # Bytes, so a header holding non-ASCII text is refused instead of making
-    # compare_digest raise.
-    expected = key.encode()
+class InternalKeyMiddleware:
+    """Refuses a request outside ``OPEN_PATHS`` without the key, before its
+    body is read: the bearer token is compared in constant time, and only an
+    absent one passes while the key is optional."""
 
-    async def verify(
-        request: Request,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer)],
-    ) -> None:
-        supplied = credentials.credentials.encode() if credentials else b""
-        if hmac.compare_digest(supplied, expected):
+    def __init__(self, app: ASGIApp, service_name: str, key: str, optional: bool):
+        self.app = app
+        self.service_name = service_name
+        self.expected = key.encode()
+        self.optional = optional
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket") or scope["path"] in OPEN_PATHS:
+            await self.app(scope, receive, send)
             return
-        caller = request.client.host if request.client else "unknown"
+        supplied = _bearer_token(scope)
+        if supplied is not None and hmac.compare_digest(supplied, self.expected):
+            await self.app(scope, receive, send)
+            return
+        if supplied is None and self.optional:
+            calls_without_key.labels(self.service_name).inc()
+            await self.app(scope, receive, send)
+            return
+        caller = (scope.get("client") or ("unknown",))[0]
         logger.warning(
-            f"[{service_name}] Refused {request.url.path} from {caller}: "
+            f"[{self.service_name}] Refused {scope['path']!r} from {caller}: "
             "missing or wrong internal service key"
         )
-        raise HTTPException(status_code=401, detail="Invalid internal service key")
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(_REFUSAL)).encode()),
+                    (b"www-authenticate", b"Bearer"),
+                    # Close instead of taking in the rest of a refused body.
+                    (b"connection", b"close"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": _REFUSAL})
 
-    return verify
+
+def _bearer_token(scope: Scope) -> bytes | None:
+    """The first ``Authorization`` header's bearer token: ``None`` when there
+    is no such header, ``b""`` when it holds anything but a bearer token."""
+    for name, value in scope["headers"]:
+        if name == b"authorization":
+            scheme, _, token = value.partition(b" ")
+            return token if scheme.lower() == b"bearer" else b""
+    return None
