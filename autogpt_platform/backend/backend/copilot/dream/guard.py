@@ -17,14 +17,17 @@ pass's own:
 
 A row is fresh while its lease has not lapsed or, without a lease, while it was
 written within the pass lock's TTL. Expiring is one conditional transition that
-bumps the row's cancel generation, so its pass stops at its next check; it
-lands only while the row is still open. A stale row's expiry is also a
+bumps the row's cancel generation, so its pass stops at its next check, and
+marks the row for the cleanup after that pass (its batch, its landed phases,
+its state), which the reaper finishes if the pass does not (``cleanup.py``);
+it lands only while the row is still open. A stale row's expiry is also a
 compare-and-set on the row's last write: it lands only if nothing has written
 the row since the guard read it, and a row that moved in between is alive and
 blocks after all. An admin's forced expiry of a fresh row skips that
 compare-and-set: that row's pass no longer holds the lock (the forcing pass
 took it), and it stops at its next check or at its lock check before apply.
-Rows past the limit, and rows no newer pass looks at, are left for a reaper.
+Rows past the limit, and rows no newer pass looks at, are left for the reaper
+(``reaper.py``).
 
 Two passes triggered together can both skip: the one that lost the lock race
 records ``lock_held`` while its row is still open, and the winner's guard sees
@@ -48,6 +51,7 @@ from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 
 from .locks import DEFAULT_LOCK_TTL_SECONDS
+from .pass_errors import PassErrorCode, pass_error
 from .pass_record import expired
 from .pass_run import DreamPassRun, PassEnded
 from .store import read_open_passes, read_pass, write_stop
@@ -94,10 +98,10 @@ async def _dream_pass_enabled(run: DreamPassRun) -> bool:
     as the cron entry that fired it (if any) already let it through."""
     flag = Flag.DREAM_PASS_ENABLED.value
     try:
-        enabled, authoritative = await asyncio.wait_for(
-            evaluate_feature_flag(Flag.DREAM_PASS_ENABLED, run.user_id),
-            timeout=FLAG_READ_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(FLAG_READ_TIMEOUT_SECONDS):
+            enabled, authoritative = await evaluate_feature_flag(
+                Flag.DREAM_PASS_ENABLED, run.user_id
+            )
     except Exception:
         logger.warning(
             f"Dream pass {run.pass_id}: could not read {flag}; going on",
@@ -150,11 +154,15 @@ async def _expire(run: DreamPassRun, row: DreamPassRecord, *, stale: bool) -> bo
     """Expire *row* and say whether it no longer holds the scope: expired now,
     closed by its own pass meanwhile, or unknown because the store did not
     answer in time (the pass goes on)."""
-    reason = _expiry_reason(run, row, stale=stale)
     unchanged_since = row.updated_at if stale else None
+    error = pass_error("expired", _expiry_code(row, stale=stale))
     try:
-        if await write_stop(row.id, expired(reason, not_updated_since=unchanged_since)):
-            logger.warning(f"Dream pass {run.pass_id} expired pass {row.id}: {reason}")
+        if await write_stop(row.id, expired(error, not_updated_since=unchanged_since)):
+            logger.warning(
+                f"Dream pass {run.pass_id} expired pass {row.id} as {error} "
+                f"({row.status.value.lower()}, lease until {row.lease_expires_at}, "
+                f"last written {row.updated_at})"
+            )
             return True
         current = await read_pass(row.id)
     except Exception:
@@ -166,12 +174,8 @@ async def _expire(run: DreamPassRun, row: DreamPassRecord, *, stale: bool) -> bo
     return current is None or current.status not in OPEN_STATUSES
 
 
-def _expiry_reason(run: DreamPassRun, row: DreamPassRecord, *, stale: bool) -> str:
-    """What the expired row's error says happened."""
+def _expiry_code(row: DreamPassRecord, *, stale: bool) -> PassErrorCode:
+    """Why the row is expired, as its error records it."""
     if not stale:
-        return f"forced by an admin-triggered dream pass {run.pass_id}"
-    if row.lease_expires_at is not None:
-        lapsed = f"lease lapsed at {row.lease_expires_at.isoformat()}"
-    else:
-        lapsed = f"no progress since {row.updated_at.isoformat()}"
-    return f"{lapsed}; expired by dream pass {run.pass_id}"
+        return "forced"
+    return "lease_lapsed" if row.lease_expires_at is not None else "stalled"

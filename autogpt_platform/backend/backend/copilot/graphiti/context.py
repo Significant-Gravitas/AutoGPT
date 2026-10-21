@@ -37,6 +37,7 @@ from .recall_render import (
     render,
     render_episode,
 )
+from .recall_stamp import stamp_recalls_in_scope
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -117,13 +118,18 @@ async def _fetch(
     )
     edges, episodes = await recheck(scope, edges, episodes)
 
-    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge that's
-    # currently ``status='tentative'`` gets promoted to ``active`` inline, and
-    # every retrieved edge bumps its warm-context hit counter. Fire-and-forget
-    # so the chat turn never blocks on Redis or FalkorDB writes. A refresh
-    # does not ratify (``context_refresh.refresh_warm_context`` says why).
+    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
+    # that's currently ``status='tentative'`` gets promoted to
+    # ``active`` inline, and every retrieved edge bumps its
+    # warm-context hit counter and gets its recall stamped
+    # (``recall_stamp.py``). Fire-and-forget so the chat turn
+    # never blocks on Redis or FalkorDB writes. A refresh does not
+    # ratify (``context_refresh.refresh_warm_context`` says why), but the
+    # facts it surfaces were used, so their recalls are still stamped.
     if edges and ratify:
         _spawn_ratification_hits(scope, edges)
+    elif edges:
+        _spawn_recall_stamps(scope, edges)
 
     if not edges and not episodes:
         return None
@@ -152,8 +158,7 @@ def _spawn_ratification_hits(scope: MemoryScope, edges: list[EntityEdge]) -> Non
 
     Imports lazily so the dream/ratification module isn't pulled into
     every retrieval boot path; keeps the cold-start cost zero for
-    users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
-    combination.
+    users whose independent DREAM_PASS_ENABLED flag is off.
     """
     edge_uuids = [edge.uuid for edge in edges]
     if not edge_uuids:
@@ -164,6 +169,18 @@ def _spawn_ratification_hits(scope: MemoryScope, edges: list[EntityEdge]) -> Non
     task = asyncio.create_task(
         try_ratify_on_hit(scope, edge_uuids),
         name=f"ratify-hits-{scope.owner_user_id[:12]}",
+    )
+    _pending_hit_tasks.add(task)
+    task.add_done_callback(_on_hit_task_done)
+
+
+def _spawn_recall_stamps(scope: MemoryScope, edges: list[EntityEdge]) -> None:
+    """Fire-and-forget the recall stamp for edges a follow-up refresh
+    surfaced: they were used, so a dream should not demote them for
+    staleness, but a refresh records no ratification hits."""
+    task = asyncio.create_task(
+        stamp_recalls_in_scope(scope, [edge.uuid for edge in edges]),
+        name=f"stamp-recalls-{scope.owner_user_id[:12]}",
     )
     _pending_hit_tasks.add(task)
     task.add_done_callback(_on_hit_task_done)

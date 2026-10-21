@@ -182,7 +182,6 @@ async def test_context_and_attachments_survive_a_pending_image(
         "_fetch_graphiti_context": warm_context,
         "drain_pending_safe": [pending],
         "persist_pending_as_user_rows": True,
-        "is_enabled_for_user": True,
         "build_builder_system_prompt_suffix": "",
         "build_budget_ctx": "",
         "build_session_context": "",

@@ -113,8 +113,6 @@ export function BalanceCard({ index = 0 }: Props) {
                 disabled={!isValid || isAdding || isRedirecting}
                 loading={isAdding}
                 onClick={handleSubmit}
-                data-fast-goal="credit_topup_checkout"
-                data-fast-goal-surface="settings_billing"
               >
                 Continue to checkout
               </Button>

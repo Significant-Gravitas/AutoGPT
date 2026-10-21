@@ -114,7 +114,7 @@ export function useSendMessage({
         ...outgoing,
         parts: [...pendingFileParts, ...workspaceParts],
       });
-      return;
+      return sessionId;
     }
 
     if (isCreatingSessionRef.current) return;
@@ -135,7 +135,7 @@ export function useSendMessage({
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
     try {
-      await createSession({
+      return await createSession({
         expertKickoff: metadata?.kind === "expert_kickoff",
       });
     } catch (err) {

@@ -16,6 +16,7 @@ import {
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getListMyExpertMemoryFactsMockHandler200 } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
 import { Expert } from "@/app/api/__generated__/models/expert";
@@ -55,9 +56,6 @@ vi.mock("framer-motion", async (importActual) => {
 });
 
 const toastMock = vi.hoisted(() => vi.fn());
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
 const autoModeFlag = vi.hoisted(() => ({ enabled: false }));
 
 function libraryResponse(
@@ -108,13 +106,16 @@ beforeEach(() => {
     getListExpertPodsMockHandler([]),
     getListExpertCredentialsMockHandler([]),
     getListExpertSetupItemsMockHandler([]),
+    getListMyExpertMemoryFactsMockHandler200({
+      expert_id: "expert-maria",
+      items: [],
+    }),
     getGetV1ListProvidersMockHandler([]),
     getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
   );
 });
 
 afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   autoModeFlag.enabled = false;
   toastMock.mockReset();
 });
@@ -134,10 +135,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
     useGetFlag: (flag: string) =>
       flag === actual.Flag.COPILOT_AUTO_MODE
         ? autoModeFlag.enabled
@@ -1097,27 +1094,12 @@ describe("TeamPage", () => {
     expect(podsRequest).not.toHaveBeenCalled();
   });
 
-  test("calls notFound() when the flag is resolved and disabled", () => {
-    let listRequests = 0;
-    server.use(
-      getListExpertsMockHandler(() => {
-        listRequests += 1;
-        return [hiredMaria];
-      }),
-    );
-    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
+  test("loads the expert roster without a rollout flag", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
     notFoundMock.mockClear();
-
-    try {
-      render(<TeamPage />);
-    } catch {
-      // React surfaces the thrown notFound() error; the assertion below is
-      // what we actually care about.
-    }
-
-    expect(notFoundMock).toHaveBeenCalled();
-    expect(listRequests).toBe(0);
-    expect(screen.queryByRole("button", { name: "Edit Soul" })).toBeNull();
+    render(<TeamPage />);
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 
   test("does not mark the card as needing setup when a stale id has a live job", async () => {

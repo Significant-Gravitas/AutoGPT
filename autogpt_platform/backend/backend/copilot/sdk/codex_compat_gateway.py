@@ -152,6 +152,7 @@ class _Conversation(_GatewayState):
     response_lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
     task: asyncio.Task[None] | None = None
     result: CodexInvocationResult | None = None
+    usage: CodexTokenUsage | None = None
     replays: dict[str, _Replay] = Field(default_factory=dict)
 
 
@@ -244,7 +245,6 @@ class CodexAnthropicGateway:
         if not self._results:
             return None
         latest = self._results[-1]
-        usage = _sum_usage(result.usage for result in self._results)
         durations = [
             result.duration_ms
             for result in self._results
@@ -253,13 +253,21 @@ class CodexAnthropicGateway:
         return latest.model_copy(
             update={
                 "duration_ms": sum(durations) if durations else None,
-                "usage": usage,
+                "usage": self.usage,
             }
         )
 
     @property
     def results(self) -> tuple[CodexInvocationResult, ...]:
         return tuple(self._results)
+
+    @property
+    def usage(self) -> CodexTokenUsage | None:
+        """Reported usage across completed and interrupted conversations.
+
+        Conversations remain retained for this gateway's lifetime (one SDK turn).
+        """
+        return _sum_usage(c.usage for c in self._conversations.values())
 
     async def start(self) -> None:
         await self.__aenter__()
@@ -556,6 +564,9 @@ class CodexAnthropicGateway:
         async def handle_event(event: CodexStreamEvent) -> None:
             if event.type == "text_delta" and event.delta:
                 await conversation.queue.put(_TextDelta(text=event.delta))
+            elif event.type == "usage":
+                # Do not suspend here: usage must survive cancellation during cleanup.
+                conversation.usage = _sum_usage((conversation.usage, event.usage))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
             future: asyncio.Future[CodexDynamicToolResult] = (
@@ -591,6 +602,8 @@ class CodexAnthropicGateway:
                 handle_event,
             )
             conversation.result = result
+            if conversation.usage is None:
+                conversation.usage = result.usage
             self._results.append(result)
             await conversation.queue.put(_Completed(result=result))
         except asyncio.CancelledError:

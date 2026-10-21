@@ -574,10 +574,14 @@ class TestRatificationOnlyWhenAsked:
             ),
             patch.object(context, "recheck", side_effect=everything),
             patch.object(context, "_spawn_ratification_hits") as mock_spawn,
+            patch.object(context, "_spawn_recall_stamps") as mock_stamps,
         ):
             await context._fetch(scope, "hello world", ratify=False)
             assert mock_spawn.call_count == 0
+            mock_stamps.assert_called_once()
 
             mock_spawn.reset_mock()
+            mock_stamps.reset_mock()
             await context._fetch(scope, "hello world")
             assert mock_spawn.call_count == 1
+            mock_stamps.assert_not_called()

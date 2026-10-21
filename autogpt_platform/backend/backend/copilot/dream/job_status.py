@@ -65,11 +65,17 @@ class JobStatus(BaseModel, Generic[ResultT]):
     """Status row for one fire-and-forget admin job.
 
     Stored as a JSON-serialized Redis string at
-    ``dream:status:{kind}:{job_id}``. Single ``SET`` per write so there
-    are no read-modify-write races even if multiple workers touch the
-    same job_id concurrently — the last writer wins, but each writer
-    has read the latest state before composing its update via the
-    helpers in this module.
+    ``dream:status:{kind}:{job_id}``. Each write is one ``SET`` of the
+    whole row, so a reader never sees half of one. The helpers in this
+    module read the row, compose their update and then SET it, and that
+    read-modify-write is not atomic: two writers racing on one job_id can
+    interleave, and the later SET wins over what the earlier wrote. What
+    keeps a dream pass's job right is who writes it, not atomicity: the
+    terminal guards (``mark_complete`` and ``mark_errored`` never rewrite a
+    completed row), the rule that an errored row keeps the usage its
+    result already carried (``_errored_result``), and the batch executor
+    claiming a delivery before its handler or drop hook runs, so one walker
+    ends a pass.
 
     Generic over ``ResultT`` (the work body's return shape). The Redis
     layer always reads and writes the row as JSON — the type parameter
@@ -233,7 +239,9 @@ async def mark_errored(
     Refuses to overwrite a job already in ``state='complete'`` — the
     batch tail runs cleanup after ``mark_complete``, and a transient
     error routed through the crash guard must not rewrite a completed
-    job (whose writes and billing landed) as errored.
+    job (whose writes and billing landed) as errored. A job errored again
+    keeps the usage its result already carries when the new result has
+    none: a failure replayed after cleanup knows less than the first.
     """
     existing = await read_status(kind=kind, job_id=job_id)
     if existing is None:
@@ -259,11 +267,25 @@ async def mark_errored(
             "updated_at": now,
             "completed_at": now,
             "error": error[:2000],  # cap; error strings can be huge stack traces
-            "result": result.model_dump() if result is not None else existing.result,
+            "result": _errored_result(existing.result, result),
         }
     )
     await _persist(updated)
     return updated
+
+
+def _errored_result(
+    existing: dict[str, Any] | None, result: BaseModel | None
+) -> dict[str, Any] | None:
+    """The result an errored job keeps: *result*, but never without the
+    usage the existing one carries."""
+    if result is None:
+        return existing
+    replacement = result.model_dump()
+    kept_usage = existing.get("usage") if existing is not None else None
+    if replacement.get("usage") is None and kept_usage is not None:
+        replacement["usage"] = kept_usage
+    return replacement
 
 
 async def read_status(*, kind: JobKind, job_id: str) -> JobStatus[Any] | None:
@@ -301,7 +323,8 @@ async def read_status(*, kind: JobKind, job_id: str) -> JobStatus[Any] | None:
 
 
 async def _persist(status: JobStatus[Any]) -> None:
-    """Serialize + write with TTL. Single SET — no read-modify-write race."""
+    """Serialize and write the whole row with its TTL in one SET. The write
+    is atomic; the read-modify-write around it is not (``JobStatus``)."""
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()

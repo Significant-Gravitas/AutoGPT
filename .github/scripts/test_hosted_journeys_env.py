@@ -7,9 +7,9 @@ from hosted_journeys_env import DEFAULT_FLAGS_FILE, hosted_env_lines
 class HostedJourneysEnvTests(unittest.TestCase):
     def test_flags_become_backend_overrides(self):
         lines = hosted_env_lines(
-            {"hire-experts": True, "enable-platform-payment": False}
+            {"generic-trigger-agents": True, "enable-platform-payment": False}
         )
-        self.assertIn("FORCE_FLAG_HIRE_EXPERTS=true", lines)
+        self.assertIn("FORCE_FLAG_GENERIC_TRIGGER_AGENTS=true", lines)
         self.assertIn("FORCE_FLAG_ENABLE_PLATFORM_PAYMENT=false", lines)
         self.assertIn("ENABLE_CREDIT=true", lines)
 

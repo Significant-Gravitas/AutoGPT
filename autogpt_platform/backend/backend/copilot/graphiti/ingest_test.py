@@ -656,8 +656,12 @@ class TestDerivedFindingLane:
             # Should have 2 items: user episode + derived finding
             assert q.qsize() == 2
 
-        q.get_nowait()
+        user_payload = q.get_nowait()
         finding_payload = q.get_nowait()
+        # Only the user's own words promote the tentative facts they state:
+        # the finding is the assistant's, on probation like a dream proposal.
+        assert user_payload["_restatement"] is True
+        assert "_restatement" not in finding_payload
         # CUSTOM_EXTRACTION_INSTRUCTIONS tells the extractor to always make an
         # entity of the envelope's "user"; a null one leaves the finding with
         # nothing to attach to.
@@ -1018,6 +1022,8 @@ class TestEnqueueEpisodeEdgeMetadata:
             assert payload["_edge_metadata"] is None
             # Non-scoped-drain writes carry no completion tracker.
             assert payload["_completion"] is None
+            # Memory-store calls and dream writes are no user's restatement.
+            assert "_restatement" not in payload
 
     @pytest.mark.asyncio
     async def test_completion_rides_payload_sidecar(self) -> None:

@@ -7,6 +7,130 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/access-blocks": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List access blocks",
+        "description": "The IP and email domain blocks in force, newest first. Admin-only.",
+        "operationId": "getAdminList access blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessBlockPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create access block",
+        "description": "Refuse new sign-ups (and, for an IP, sign-ins) from an IP or email\ndomain. 409 while a block on the same value is in force. Admin-only.",
+        "operationId": "postAdminCreate access block",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccessBlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessBlock" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/access-blocks/{block_id}": {
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete access block",
+        "description": "Lift a block. Admin-only.",
+        "operationId": "deleteAdminDelete access block",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Block Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/blocks/cost-estimates": {
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
@@ -1527,6 +1651,78 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/dream/passes": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Dream Pass Records",
+        "description": "List a user's dream passes, across the account and every expert,\nnewest first: the durable records, each as ``GET .../record`` returns\nit. A finished pass keeps its phase outputs, operations and usage; its\ninput bundle went when it closed, and its lease with it, or, for a pass\nwhose close left a cleanup pending, once that cleanup finished.",
+        "operationId": "getV2ListDreamPassRecords",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["open", "all"],
+              "type": "string",
+              "description": "Only the passes still running, or all of them",
+              "default": "all",
+              "title": "Status"
+            },
+            "description": "Only the passes still running, or all of them"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many passes, newest first",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "How many passes, newest first"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DreamPassListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/dream/{job_id}": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -1585,7 +1781,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Cancel Dream Pass Run",
-        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a phase\nboundary, its batch submit, or just before apply, on either route)\nwithout applying. A batch pass waiting on its provider stops when that\nbatch lands. A pass already past its last check still applies, once, and\nwhatever a pass applied stays. 404 for a pass that does not exist or\nbelongs to another user, alike; 409 once the pass has ended.",
+        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a phase\nboundary, its batch submit, or just before apply, on either route)\nwithout applying. A batch pass waiting on its provider has that batch\ncancelled too, and the batch executor drops it at its next poll, which\nreleases the pass's lock. A pass already past its last check still\napplies, once, and whatever a pass applied stays. 404 for a pass that\ndoes not exist or belongs to another user, alike; 409 once the pass has\nended.",
         "operationId": "postV2CancelDreamPassRun",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2867,6 +3063,44 @@
                 "schema": {
                   "$ref": "#/components/schemas/PlatformCostExportResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/ip-report": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user IP report",
+        "description": "Where an account signed up and signed in from, the other accounts on\nthose IPs or its email domain, and the blocks covering them. Admin-only.",
+        "operationId": "getAdminGet user ip report",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountIPReport" }
               }
             }
           },
@@ -12678,6 +12912,68 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/suggested-tasks": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Suggested Tasks",
+        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed.",
+        "operationId": "get_brain_dump_suggested_tasks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Update Brain Dump Suggested Tasks",
+        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so \"Hide all\" and its Undo are one write each.",
+        "operationId": "update_brain_dump_suggested_tasks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SuggestedTasksUpdate" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -16340,7 +16636,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
@@ -16349,7 +16645,7 @@
         "summary": "Admin Read Skill Submission File",
         "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
         "operationId": "getV2Admin read skill submission file",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -16392,7 +16688,7 @@
         "summary": "Review Skill Submission",
         "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
         "operationId": "postV2Review skill submission",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17346,7 +17642,6 @@
         "summary": "List marketplace skills",
         "description": "Approved skill listings, most recently updated first.",
         "operationId": "getV2List marketplace skills",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "category",
@@ -17435,7 +17730,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -17477,7 +17772,7 @@
             "description": "Marketplace profile required, or slug taken"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/skills/submissions/{skill_listing_version_id}": {
@@ -17486,7 +17781,7 @@
         "summary": "Edit skill submission",
         "description": "Update a pending submission and re-snapshot the library skill.",
         "operationId": "putV2Edit skill submission",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17536,7 +17831,6 @@
         "summary": "Get marketplace skill",
         "description": "One listing with the full SKILL.md body the install will copy.",
         "operationId": "getV2Get marketplace skill",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -17640,7 +17934,7 @@
         "summary": "Install marketplace skill",
         "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -19101,6 +19395,140 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AccessBlock": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": { "$ref": "#/components/schemas/AuthAccessBlockKind" },
+          "value": { "type": "string", "title": "Value" },
+          "reason": { "type": "string", "title": "Reason" },
+          "created_by_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Id"
+          },
+          "created_by_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Email"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "reason",
+          "created_by_id",
+          "created_by_email",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "AccessBlock"
+      },
+      "AccessBlockPage": {
+        "properties": {
+          "blocks": {
+            "items": { "$ref": "#/components/schemas/AccessBlock" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["blocks", "total"],
+        "title": "AccessBlockPage"
+      },
+      "AccountIP": {
+        "properties": {
+          "ip_address": { "type": "string", "title": "Ip Address" },
+          "display_address": { "type": "string", "title": "Display Address" },
+          "is_ipv6_prefix": { "type": "boolean", "title": "Is Ipv6 Prefix" },
+          "has_sign_up": { "type": "boolean", "title": "Has Sign Up" },
+          "sign_in_count": { "type": "integer", "title": "Sign In Count" },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          },
+          "last_user_agent": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last User Agent"
+          },
+          "other_account_count": {
+            "type": "integer",
+            "title": "Other Account Count"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AccessBlock" },
+              { "type": "null" }
+            ]
+          },
+          "events": {
+            "items": { "$ref": "#/components/schemas/IPEventEntry" },
+            "type": "array",
+            "title": "Events"
+          },
+          "event_count": { "type": "integer", "title": "Event Count" }
+        },
+        "type": "object",
+        "required": [
+          "ip_address",
+          "display_address",
+          "is_ipv6_prefix",
+          "has_sign_up",
+          "sign_in_count",
+          "first_seen",
+          "last_seen",
+          "last_user_agent",
+          "other_account_count",
+          "block",
+          "events",
+          "event_count"
+        ],
+        "title": "AccountIP"
+      },
+      "AccountIPReport": {
+        "properties": {
+          "retention_days": { "type": "integer", "title": "Retention Days" },
+          "ips": {
+            "items": { "$ref": "#/components/schemas/AccountIP" },
+            "type": "array",
+            "title": "Ips"
+          },
+          "domain": { "$ref": "#/components/schemas/EmailDomainInfo" },
+          "related": {
+            "items": { "$ref": "#/components/schemas/RelatedAccount" },
+            "type": "array",
+            "title": "Related"
+          },
+          "related_total": { "type": "integer", "title": "Related Total" }
+        },
+        "type": "object",
+        "required": [
+          "retention_days",
+          "ips",
+          "domain",
+          "related",
+          "related_total"
+        ],
+        "title": "AccountIPReport"
+      },
       "AccuracyAlertData": {
         "properties": {
           "graph_id": { "type": "string", "title": "Graph Id" },
@@ -19879,6 +20307,11 @@
         "title": "AtResetTurnsResponse",
         "description": "The chat's turns set for the budget reset, at most one of each kind."
       },
+      "AuthAccessBlockKind": {
+        "type": "string",
+        "enum": ["IP", "EMAIL_DOMAIN"],
+        "title": "AuthAccessBlockKind"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -19897,6 +20330,11 @@
         "type": "object",
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
+      },
+      "AuthIPEventKind": {
+        "type": "string",
+        "enum": ["SIGN_UP", "SIGN_IN"],
+        "title": "AuthIPEventKind"
       },
       "AuthorizeRequest": {
         "properties": {
@@ -21794,12 +22232,18 @@
             "type": "array",
             "title": "Source Episode Uuids",
             "description": "UUIDs of the :Episodic nodes the fact was consolidated from."
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids",
+            "description": "UUIDs of the active facts (:RELATES_TO edges) the fact was consolidated from."
           }
         },
         "type": "object",
         "required": ["content", "confidence"],
         "title": "ConsolidatedFact",
-        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. Provenance always points back to the source episodes\nso apply.py can record where the consolidation came from."
+        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. It cites the episodes and active facts it was drawn from,\nso apply can record where the consolidation came from and a forget of one\nof them reaches it (``dream/citations.py``); one citing nothing the pass\nread is dropped unwritten."
       },
       "ConsolidationOutput": {
         "properties": {
@@ -22223,6 +22667,33 @@
         "type": "object",
         "required": ["api_key", "plain_text_key"],
         "title": "CreateAPIKeyResponse"
+      },
+      "CreateAccessBlockRequest": {
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AuthAccessBlockKind" },
+          "value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "value", "reason"],
+        "title": "CreateAccessBlockRequest"
       },
       "CreateAliasRequest": {
         "properties": {
@@ -23058,7 +23529,17 @@
             "enum": ["superseded", "contradicted"],
             "title": "New Status"
           },
-          "applied": { "type": "boolean", "title": "Applied", "default": true }
+          "applied": { "type": "boolean", "title": "Applied", "default": true },
+          "protected": {
+            "type": "boolean",
+            "title": "Protected",
+            "default": false
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["edge_uuid", "reason", "new_status"],
@@ -23438,7 +23919,7 @@
         },
         "type": "object",
         "title": "DreamOperations",
-        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — proposals cannot cross scopes.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
+        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — a write or proposal citing a fact of\n    another scope (a fact's scope, else ``real:global``) is dropped\n    whole, as is one citing nothing the pass read\n    (``dream/citations.py``); episode citations are not scoped. A\n    source in the same scope that the write does not truly rest on is\n    not caught.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
       },
       "DreamOperationsSnapshot": {
         "properties": {
@@ -23506,6 +23987,36 @@
             "title": "Failed Writes",
             "default": 0
           },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
+            "default": 0
+          },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
+          },
           "summary_for_user": {
             "type": "string",
             "title": "Summary For User",
@@ -23542,7 +24053,20 @@
         },
         "type": "object",
         "title": "DreamPassCancelRequest",
-        "description": "Why an admin cancels a dream pass, kept as the pass's error."
+        "description": "Why an admin cancels a dream pass, for the log; the pass records\n``cancelled: by_admin``."
+      },
+      "DreamPassListResponse": {
+        "properties": {
+          "passes": {
+            "items": { "$ref": "#/components/schemas/DreamPassRecord" },
+            "type": "array",
+            "title": "Passes"
+          }
+        },
+        "type": "object",
+        "required": ["passes"],
+        "title": "DreamPassListResponse",
+        "description": "A user's dream passes, every scope, newest first."
       },
       "DreamPassOperations": {
         "properties": {
@@ -23611,6 +24135,20 @@
             ],
             "title": "Lease Expires At"
           },
+          "cleanup_pending_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Cleanup Pending At"
+          },
+          "cost_context": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Cost Context"
+          },
           "input_bundle": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamInput" },
@@ -23642,6 +24180,18 @@
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
+          },
+          "erased_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erased At"
+          },
+          "read_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Read Uuids"
           },
           "created_at": {
             "type": "string",
@@ -23786,6 +24336,36 @@
             "type": "integer",
             "title": "Failed Writes",
             "default": 0
+          },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
+            "default": 0
+          },
+          "protected_demotions": {
+            "type": "integer",
+            "title": "Protected Demotions",
+            "default": 0
+          },
+          "indeterminate_demotion_writes": {
+            "type": "integer",
+            "title": "Indeterminate Demotion Writes",
+            "default": 0
+          },
+          "demotion_accounting_complete": {
+            "type": "boolean",
+            "title": "Demotion Accounting Complete",
+            "default": true
           },
           "summary_for_user": {
             "type": "string",
@@ -23998,6 +24578,33 @@
         "required": ["description", "body"],
         "title": "EditSkillRequest"
       },
+      "EmailDomainInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "is_public_provider": {
+            "type": "boolean",
+            "title": "Is Public Provider"
+          },
+          "other_account_count": {
+            "type": "integer",
+            "title": "Other Account Count"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AccessBlock" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "is_public_provider",
+          "other_account_count",
+          "block"
+        ],
+        "title": "EmailDomainInfo"
+      },
       "EnableShareRequest": {
         "properties": {
           "auto_share_executions": {
@@ -24018,7 +24625,7 @@
         "type": "object",
         "required": ["entity_uuid", "reason"],
         "title": "EntityInvalidation",
-        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — apply.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
+        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
       },
       "EntityInvalidationSummary": {
         "properties": {
@@ -24028,6 +24635,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Edges Touched"
+          },
+          "edges_protected": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Protected"
+          },
+          "indeterminate": {
+            "type": "boolean",
+            "title": "Indeterminate",
+            "default": false
           }
         },
         "type": "object",
@@ -25042,6 +25659,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Options"
+          },
+          "allow_multiple": {
+            "type": "boolean",
+            "title": "Allow Multiple",
+            "default": false
           }
         },
         "type": "object",
@@ -25565,6 +26187,18 @@
       "FactRow": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
+          "recall_count": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Recall Count"
+          },
+          "last_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Recalled At"
+          },
+          "prev_recalled_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Prev Recalled At"
+          },
           "source": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source"
@@ -25610,7 +26244,8 @@
           "status",
           "created_at"
         ],
-        "title": "FactRow"
+        "title": "FactRow",
+        "description": "An active fact and its recall stamps (all ``None``: never recalled)."
       },
       "FactSummary": {
         "properties": {
@@ -25862,30 +26497,30 @@
       "ForgetFactResponse": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
-          "forgotten": { "type": "boolean", "title": "Forgotten" }
+          "forgotten": { "type": "boolean", "title": "Forgotten" },
+          "derived_forgotten": {
+            "type": "integer",
+            "title": "Derived Forgotten",
+            "default": 0
+          },
+          "resumed": { "type": "boolean", "title": "Resumed", "default": false }
         },
         "type": "object",
         "required": ["uuid", "forgotten"],
-        "title": "ForgetFactResponse"
+        "title": "ForgetFactResponse",
+        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
       },
       "FrontendFlag": {
         "type": "string",
         "enum": [
           "marketplace-search-terms",
           "enable-platform-payment",
-          "artifacts-page",
           "chat-mode-option",
           "generic-trigger-agents",
           "chat-workspace-files",
           "chat-pinning",
           "task-progress-bar",
-          "hire-experts",
-          "skills-hub",
           "settings-notifications",
-          "onboarding-brain-dump",
-          "onboarding-expert-team",
-          "graphiti-memory",
-          "graphiti-communities-enabled",
           "dream-pass-enabled",
           "dream-pass-invalidate-entity",
           "dream-skill-learning-enabled",
@@ -25900,19 +26535,12 @@
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
           "ENABLE_PLATFORM_PAYMENT",
-          "ARTIFACTS_PAGE",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
           "CHAT_PINNING",
           "TASK_PROGRESS_BAR",
-          "HIRE_EXPERTS",
-          "SKILLS_HUB",
           "SETTINGS_NOTIFICATIONS",
-          "ONBOARDING_BRAIN_DUMP",
-          "ONBOARDING_EXPERT_TEAM",
-          "GRAPHITI_MEMORY",
-          "GRAPHITI_COMMUNITIES_ENABLED",
           "DREAM_PASS_ENABLED",
           "DREAM_PASS_INVALIDATE_ENTITY",
           "DREAM_SKILL_LEARNING_ENABLED",
@@ -27560,6 +28188,23 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "IPEventEntry": {
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AuthIPEventKind" },
+          "user_agent": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Agent"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "user_agent", "created_at"],
+        "title": "IPEventEntry"
+      },
       "ImageURLResponse": {
         "properties": {
           "image_url": { "type": "string", "title": "Image Url" }
@@ -28265,7 +28910,7 @@
           },
           "webhook": {
             "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
+              { "$ref": "#/components/schemas/WebhookWithoutSecrets" },
               { "type": "null" }
             ]
           },
@@ -29137,6 +29782,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Deleted Uuids"
+          },
+          "derived_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Derived Uuids"
+          },
+          "resumed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Resumed Uuids"
           },
           "failed_uuids": {
             "items": { "type": "string" },
@@ -31743,6 +32398,16 @@
             "title": "Superseded Count",
             "default": 0
           },
+          "protected_count": {
+            "type": "integer",
+            "title": "Protected Count",
+            "default": 0
+          },
+          "accounting_complete": {
+            "type": "boolean",
+            "title": "Accounting Complete",
+            "default": true
+          },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
@@ -31978,6 +32643,69 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RelatedAccount": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": { "type": "string", "title": "Name" },
+          "role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "banned": { "type": "boolean", "title": "Banned" },
+          "ban_expires": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ban Expires"
+          },
+          "has_profile": { "type": "boolean", "title": "Has Profile" },
+          "via_ips": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Via Ips"
+          },
+          "via_domain": { "type": "boolean", "title": "Via Domain" },
+          "plan": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "granted",
+              "no_subscription"
+            ],
+            "title": "Payment Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "created_at",
+          "banned",
+          "ban_expires",
+          "has_profile",
+          "via_ips",
+          "via_domain",
+          "plan",
+          "payment_status"
+        ],
+        "title": "RelatedAccount"
       },
       "RenameFileRequest": {
         "properties": {
@@ -34904,6 +35632,75 @@
         "title": "SuggestedPromptsResponse",
         "description": "Response model for user-specific suggested prompts grouped by theme."
       },
+      "SuggestedTask": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "prompt": { "type": "string", "title": "Prompt" },
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "id": { "type": "string", "title": "Id" },
+          "state": {
+            "type": "string",
+            "enum": ["open", "sent", "dismissed"],
+            "title": "State",
+            "default": "open"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["title", "prompt", "id"],
+        "title": "SuggestedTask",
+        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``."
+      },
+      "SuggestedTasksResponse": {
+        "properties": {
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/SuggestedTask" },
+            "type": "array",
+            "title": "Tasks",
+            "default": []
+          },
+          "stored": { "type": "boolean", "title": "Stored", "default": false }
+        },
+        "type": "object",
+        "title": "SuggestedTasksResponse",
+        "description": "The user's suggested first tasks, every state included.\n\n``stored`` is false when the user has no list of their own and these\nare the generic starters: the greeting shows them, the regular Home\npage does not, until a state change stores them."
+      },
+      "SuggestedTasksUpdate": {
+        "properties": {
+          "task_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Task Ids"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "sent", "dismissed"],
+            "title": "State"
+          },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": ["task_ids", "state"],
+        "title": "SuggestedTasksUpdate"
+      },
       "SuggestedTheme": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -37807,7 +38604,7 @@
         "title": "VoiceSample",
         "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
-      "Webhook": {
+      "WebhookWithoutSecrets": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
@@ -37829,7 +38626,6 @@
             "type": "object",
             "title": "Config"
           },
-          "secret": { "type": "string", "title": "Secret" },
           "organization_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Organization Id"
@@ -37837,10 +38633,6 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
-          },
-          "provider_webhook_id": {
-            "type": "string",
-            "title": "Provider Webhook Id"
           },
           "url": { "type": "string", "title": "Url", "readOnly": true }
         },
@@ -37852,11 +38644,10 @@
           "webhook_type",
           "resource",
           "events",
-          "secret",
-          "provider_webhook_id",
           "url"
         ],
-        "title": "Webhook"
+        "title": "WebhookWithoutSecrets",
+        "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
       },
       "WorkspaceFile": {
         "properties": {

@@ -212,7 +212,7 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("baggage")).toBe("sentry-trace_id=abc123");
   });
 
-  it("forwards allowlisted DataFast attribution headers", async () => {
+  it("forwards allowlisted DataFast and PostHog session headers", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {
         status: 200,
@@ -224,6 +224,7 @@ describe("proxy route — handler pass-through", () => {
       headers: {
         "x-datafast-visitor-id": "visitor-123",
         "x-datafast-session-id": "session-456",
+        "x-posthog-session-id": "posthog-session-789",
       },
     });
     await GET(req, makeParams(["api", "v1", "items"]));
@@ -231,6 +232,7 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-datafast-visitor-id")).toBe("visitor-123");
     expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
+    expect(sentHeaders.get("x-posthog-session-id")).toBe("posthog-session-789");
   });
 
   it("sends the edge-observed country only as a signed token", async () => {

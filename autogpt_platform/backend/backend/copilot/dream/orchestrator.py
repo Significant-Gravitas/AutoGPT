@@ -13,12 +13,13 @@ submits the first phase to Anthropic's Message Batches API instead and
 results land.
 
 Every pass, on either route, gets a durable ``DreamPass`` row
-(``store.py``): inserted at the start, advanced after each step, and
-closed with how the pass ended, a write attempted before the pass releases
-its lock. Like every record write it is best-effort: one that fails or
-times out leaves the row open behind a free lock until a later pass's guard
-or a reaper closes it. A pass holding the lock runs ``guard.py`` first, and
-``cancel.py``'s checks before each phase, before its batch submit and apply.
+(``store.py``): inserted with its lease at the start, advanced after each
+step, and closed with how the pass ended, a write attempted before the pass
+releases its lock. Like every record write it is best-effort: one that fails
+leaves the row open behind a free lock until a later pass's guard or the
+reaper (``reaper.py``) closes it. A pass holding the lock runs ``guard.py``
+first, then before each phase and apply checks for a stop (``cancel.py``) and
+renews its lease (``lease.py``); the batch route checks before its submit.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set and, on the sync route, the usage
@@ -51,8 +52,9 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
-from .cancel import stop_before_apply, stop_if_stopped
-from .clamp import clamp_operations
+from .cancel import stopped_error
+from .citations import fact_scopes
+from .clamp import clamp_pass_operations
 from .fetch import (
     DreamInput,
     EpisodeRow,
@@ -60,8 +62,16 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
-from .guard import guard_dream_pass
-from .locks import DEFAULT_LOCK_TTL_SECONDS, DreamLockHandle, DreamLockHeld, dream_lock
+from .guard import GUARD_BUDGET_SECONDS, guard_dream_pass
+from .lease import admit_sync_apply, checkpoint
+from .locks import (
+    LOCK_CHECK_TIMEOUT_SECONDS,
+    DreamLockHandle,
+    DreamLockHeld,
+    DreamLockLostError,
+    dream_lock,
+)
+from .pass_errors import pass_error
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
@@ -82,6 +92,7 @@ from .schemas import (
     RecombinationOutput,
 )
 from .store import (
+    RECORD_WRITE_TIMEOUT_SECONDS,
     record_applying,
     record_gathered,
     record_phase_output,
@@ -133,16 +144,24 @@ SANITIZE_MAX_TOKENS = 16384
 #   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
 #   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
 #   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
-#     + demotions + summary + cost logging + the pass's record writes,
-#     EXCLUDING the drain)
+#     + demotions + summary + cost logging, EXCLUDING the drain)
 #   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The pass's own bounded round trips to its record, its guard and its lock
+# come on top: DREAM_STORE_IO_SECONDS, 179s should every one of them run to
+# its deadline (a stalled DatabaseManager or Redis). Then a pass whose phases
+# also run to their ceilings outlasts the scheduler's wait. That wait is not
+# a kill: ``run_async`` stops waiting and leaves the pass running, and its
+# lease renewals keep its lock and its row's lease fresh, so neither a newer
+# pass's guard nor the reaper takes it for dead, and it finishes.
 #
 # The drain no longer counts against the lock TTL: apply renews the dream
 # lock to a fresh budget right before the drain (see
 # apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
-# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
-# with genuine margin, and the drain itself runs under the renewed lock.
-# Both invariants are pinned by
+# LLM + non-drain headroom + store I/O = 1619s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+# (1620s), even with every store round trip at its deadline (and a lease
+# renewal before each phase shortens that stretch further), and the drain
+# itself runs under the renewed lock. Both invariants are pinned by
 # test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
 # bumping any value here fails that test until the budget is re-balanced.
 #
@@ -155,11 +174,25 @@ CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
 # Reserved for the non-LLM segments of the pass OTHER than the ingestion
-# drain (budget check, fetch, enqueue, demotions, summary write, cost
-# logging, and the DreamPass record writes, each capped at
-# store.RECORD_WRITE_TIMEOUT_SECONDS). The drain is budgeted separately as
-# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+# drain and the store round trips below (budget check, fetch, enqueue,
+# demotions, summary write, cost logging). The drain is budgeted separately
+# as apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
 DREAM_NON_LLM_HEADROOM_SECONDS = 120
+# The sync pass's bounded round trips to its record and its lock, each at
+# its own deadline. Record reads and writes: the RUNNING insert, the
+# gathered window, before each phase a stop check, a lease write and the
+# phase's output, the APPLYING write, apply's admission (a stop check and a
+# lease write), and the outcome. Lock round trips: the lease extend before
+# each phase, apply's admission (a lock read and an extend), and apply's own
+# renewals, before its first write and before its drain. Plus the guard's
+# whole budget.
+_RECORD_ROUND_TRIPS = 2 + 3 * 3 + 1 + 2 + 1
+_LOCK_ROUND_TRIPS = 3 + 2 + 2
+DREAM_STORE_IO_SECONDS = (
+    GUARD_BUDGET_SECONDS
+    + _RECORD_ROUND_TRIPS * RECORD_WRITE_TIMEOUT_SECONDS
+    + _LOCK_ROUND_TRIPS * LOCK_CHECK_TIMEOUT_SECONDS
+)
 
 # Per-user marker stamped after a successful (non-skipped) sync apply so
 # the next nightly pass can skip all three LLM phases when no new episode
@@ -405,14 +438,14 @@ async def _execute_dream_pass_async(
     run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
-        await start_pass(
-            run.pass_id,
-            scope,
-            route=run.execution_path,
-            trigger=trigger,
-            started_at=run.started_at,
-        )
-        async with dream_lock(scope, ttl_seconds=DEFAULT_LOCK_TTL_SECONDS) as handle:
+        if not await start_pass(run, scope, trigger=trigger):
+            # A hard forget finds only passes whose rows it can read: one
+            # whose row may not be there must not read the graph.
+            result = run.failure(pass_error("pass", "record_unconfirmed"))
+            await record_sync_outcome(result)
+            return result
+        async with dream_lock(scope, token=run.lease_token) as handle:
+            run.hold(handle)
             return await _run_locked(
                 run, scope, handle, config=config, status_id=status_id
             )
@@ -420,7 +453,7 @@ async def _execute_dream_pass_async(
         result = run.skipped("lock_held")
     except Exception as exc:  # pragma: no cover — last-resort guard
         logger.exception("Dream pass crashed for user %s: %s", user_id[:12], exc)
-        result = run.failure(str(exc))
+        result = run.failure(pass_error("pass", "crashed"))
     await record_sync_outcome(result)
     return result
 
@@ -466,14 +499,23 @@ async def _run_locked(
     to take the lock normally finds this one's row closed. It is best-effort
     like every record write: one that fails or times out is dropped and the
     lock is released anyway, so a free lock can still have an open row
-    (APPLYING, say) behind it until a reaper closes it."""
+    (APPLYING, say) behind it until a later pass's guard or the reaper
+    closes it."""
     try:
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
         )
+    except DreamLockLostError:
+        logger.exception("Dream pass lost its lock for user %s", run.user_id[:12])
+        result = run.failure(pass_error("apply", "lock_lost"))
+    except PhaseChargeError:
+        logger.exception(
+            "Dream pass could not be charged for user %s", run.user_id[:12]
+        )
+        result = run.failure(pass_error("billing", "charge_failed"))
     except Exception as exc:
         logger.exception("Dream pass crashed for user %s: %s", run.user_id[:12], exc)
-        result = run.failure(str(exc))
+        result = run.failure(pass_error("pass", "crashed"))
     await record_sync_outcome(result)
     return result
 
@@ -533,7 +575,9 @@ async def _gather(
     budget_ok, budget_skip = await check_dream_budget(run.user_id, config=config)
     if not budget_ok:
         if budget_skip == "rate_limit_unavailable":
-            raise PassEnded(run.failure(f"billing: {budget_skip}"))
+            raise PassEnded(
+                run.failure(pass_error("billing", "rate_limit_unavailable"))
+            )
         raise PassEnded(run.skipped(budget_skip or "insufficient_credits"))
     input_bundle = await gather_dream_input(scope)
     if not input_bundle.episodes and not input_bundle.facts:
@@ -542,7 +586,12 @@ async def _gather(
         raise PassEnded(run.skipped("no_input"))
     if await _nothing_new_since_last_pass(run, scope, input_bundle, status_id):
         raise PassEnded(run.skipped("no_new_activity"))
-    await record_gathered(run.pass_id, input_bundle)
+    if not await record_gathered(run.pass_id, input_bundle):
+        # What the pass read must be on its row before any model call: a
+        # hard forget marks a closed pass by it. A row that refused it was
+        # closed by a stop, whose error the pass ends with.
+        stopped = await stopped_error(run.pass_id)
+        raise PassEnded(run.failure(stopped or pass_error("gather", "record_failed")))
     return input_bundle
 
 
@@ -608,11 +657,12 @@ async def _phase(
     attempts are absorbed. A completed phase whose charge failed
     (``PhaseChargeError``) joins that usage too, then its error ends the
     pass as a crash does."""
-    await stop_if_stopped(run)
+    await checkpoint(run, phase)
     try:
         output, usage = await call()
     except InferenceError as exc:
-        raise PassEnded(run.failure(f"{phase}: {exc}")) from exc
+        logger.warning("Dream pass %s: %s failed: %s", run.pass_id, phase, exc)
+        raise PassEnded(run.failure(pass_error(phase, exc.code))) from exc
     except PhaseChargeError as exc:
         run.phases.append(phase_usage(phase, exc.usage))
         raise
@@ -629,26 +679,23 @@ async def _apply(
     input_bundle: DreamInput,
 ) -> DreamPassResult:
     """Clamp the operations, make the last checks, apply and stamp the marker."""
-    ops = clamp_operations(
-        sanitized,
-        len(input_bundle.facts),
-        known_fact_uuids=input_bundle.known_fact_uuids,
-    )
+    ops = clamp_pass_operations(sanitized, input_bundle)
     await record_applying(run.pass_id, ops)
-    await stop_before_apply(run, lock_handle)
+    lease = await admit_sync_apply(run, scope, lock_handle)
     apply_stats = await apply_operations(
         scope,
         run.pass_id,
         ops,
         known_fact_uuids=input_bundle.known_fact_uuids,
         known_episode_uuids=input_bundle.known_episode_uuids,
+        fact_scopes=fact_scopes(input_bundle),
         lock_handle=lock_handle,
+        lease=lease,
     )
-    # Apply succeeded (even as a no-op) — stamp the marker so the
-    # next nightly pass can skip when nothing new has landed.
-    # Stamped with the gather-window end so episodes that arrived
-    # mid-pass still count as new next time. Sync path only: batch
-    # apply runs hours later in batch_callbacks, which doesn't
+    # Apply succeeded (even as a no-op) — stamp the marker so the next nightly
+    # pass can skip when nothing new has landed. Stamped with the gather-window
+    # end so episodes that arrived mid-pass still count as new next time. Sync
+    # path only: batch apply runs hours later in batch_callbacks, which doesn't
     # stamp yet.
     await _stamp_last_completed_marker(scope, input_bundle.window_end)
     return _applied_result(run, apply_stats, ops)
@@ -680,6 +727,15 @@ def _applied_result(
         proposal_count=_as_int("proposal_count"),
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
+        provenance_pending=_as_int("provenance_pending"),
+        uncited_writes_dropped=_as_int("uncited_writes_dropped"),
+        cross_scope_citations_dropped=_as_int("cross_scope_citations_dropped"),
+        protected_demotions=_as_int("protected_demotions"),
+        indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
+        # Only apply's own False marks the count unconfirmed.
+        demotion_accounting_complete=(
+            apply_stats.get("demotion_accounting_complete") is not False
+        ),
         summary_for_user=ops.summary_for_user,
         # Fail-closed: a missing/malformed drain flag reads as
         # ``timed_out`` (writes at risk), never a confirmed drain.

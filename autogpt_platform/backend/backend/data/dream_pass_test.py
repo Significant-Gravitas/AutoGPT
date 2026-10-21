@@ -17,11 +17,15 @@ from prisma.models import Expert, User
 
 from backend.copilot.dream.fetch import DreamInput, EpisodeRow, FactRow, SessionRow
 from backend.copilot.dream.input_bundle import input_bundle_to_dict
+from backend.copilot.dream.pass_errors import UNRECORDED, pass_error
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
+    DemotionSummary,
     DreamOperations,
+    DreamOperationsSnapshot,
     DreamPassUsage,
+    EntityInvalidationSummary,
     PhaseUsage,
     RecombinationOutput,
 )
@@ -104,6 +108,23 @@ async def test_a_new_row_reads_back_running_and_gathering(make_user):
     assert fetched.phase_outputs == DreamPhaseOutputs()
     assert fetched.operations == DreamPassOperations()
     assert fetched.input_bundle is None and fetched.usage is None
+    assert fetched.cost_context is None
+
+
+async def test_a_new_row_keeps_the_usage_attribution_its_pass_started_under(
+    make_user,
+):
+    """The attribution every charge of the pass goes by, as written; no
+    transition writes it again."""
+    owner = await make_user()
+    attribution = {"user_id": owner, "trial_id": "trial-1", "generation": None}
+    draft = _draft(owner, cost_context=attribution)
+
+    await create_dream_pass(draft)
+    await update_dream_pass(draft.id, DreamPassUpdate(error="moved on"))
+
+    fetched = await get_dream_pass(draft.id)
+    assert fetched is not None and fetched.cost_context == attribution
 
 
 async def test_an_update_writes_only_the_columns_it_sets(make_user):
@@ -140,7 +161,32 @@ async def test_phase_outputs_and_operations_merge_one_field_at_a_time(make_user)
         facts=[ConsolidatedFact(content="Nick ships on Fridays", confidence=0.8)]
     )
     planned = DreamOperations(summary_for_user="clamped")
-    applied = DreamPassApplied(consolidated_count=1, dream_session_id="s1")
+    applied = DreamPassApplied(
+        consolidated_count=1,
+        dropped_forgotten=4,
+        uncited_writes_dropped=3,
+        cross_scope_citations_dropped=5,
+        protected_demotions=2,
+        indeterminate_demotion_writes=1,
+        demotion_accounting_complete=False,
+        dream_session_id="s1",
+        snapshot=DreamOperationsSnapshot(
+            demotions=[
+                DemotionSummary(
+                    edge_uuid="a",
+                    reason="user_signal",
+                    new_status="superseded",
+                    applied=False,
+                    indeterminate=True,
+                )
+            ],
+            entity_invalidations=[
+                EntityInvalidationSummary(
+                    entity_uuid="hub", reason="stale_fact", indeterminate=True
+                )
+            ],
+        ),
+    )
 
     for update in (
         DreamPassUpdate(phase_outputs=DreamPhaseOutputs(consolidate=consolidated)),
@@ -190,6 +236,9 @@ async def test_the_input_bundle_keeps_the_batch_paths_format(make_user):
                 confidence=0.7,
                 status="active",
                 created_at=None,
+                recall_count=3,
+                last_recalled_at="2026-09-27T09:30:00.000000+00:00",
+                prev_recalled_at="2026-09-20T18:00:00.000000+00:00",
             )
         ],
         recent_sessions=[
@@ -232,7 +281,9 @@ async def test_a_finished_pass_is_final(make_user):
 
     assert not await update_dream_pass(
         draft.id,
-        DreamPassUpdate(status=DreamPassStatus.ERRORED, error="late crash"),
+        DreamPassUpdate(
+            status=DreamPassStatus.ERRORED, error=pass_error("pass", "crashed")
+        ),
     )
     assert not await update_dream_pass(
         draft.id,
@@ -326,14 +377,21 @@ async def test_deleting_the_expert_or_the_user_removes_their_passes(make_user):
 
 
 async def test_text_loses_the_control_characters_postgres_rejects(make_user):
+    """Free text (a skip's reason) is kept without them. An error is not free
+    text: one that is not a fixed code is recorded as ``UNRECORDED``."""
     owner = await make_user()
     draft = _draft(owner)
     await create_dream_pass(draft)
 
     assert await update_dream_pass(
         draft.id,
-        DreamPassUpdate(status=DreamPassStatus.ERRORED, error="bad\x00byte"),
+        DreamPassUpdate(
+            status=DreamPassStatus.SKIPPED,
+            skip_reason="bad\x00byte",
+            error="bad\x00byte",
+        ),
     )
 
     row = await get_dream_pass(draft.id)
-    assert row is not None and row.error == "badbyte"
+    assert row is not None
+    assert (row.skip_reason, row.error) == ("badbyte", UNRECORDED)

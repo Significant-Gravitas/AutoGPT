@@ -1,6 +1,7 @@
 """The dream store: each transition the two routes write, the read side, and
 that a failed write never reaches the pass."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -15,6 +16,8 @@ from prisma.enums import (
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import (
+    CLOSED_ROW_CLEARS,
+    MARKED_ROW_CLEARS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -25,7 +28,9 @@ from backend.data.dream_pass_models import (
 
 from . import store
 from .fetch import DreamInput
+from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .pass_record import dream_pass_result_from_row
+from .pass_run import DreamPassRun
 from .schemas import (
     ConsolidationOutput,
     DreamOperations,
@@ -51,6 +56,18 @@ def db(mocker) -> MagicMock:
     database.get_dream_pass_for_user = AsyncMock()
     mocker.patch.object(store, "dream_db", return_value=database)
     return database
+
+
+def _run(route) -> DreamPassRun:
+    """Pass p1 as the sync entry point starts it, its lease token ``tok``."""
+    return DreamPassRun(
+        user_id="u1",
+        pass_id="p1",
+        started_at=_STARTED,
+        monotonic_start=0.0,
+        execution_path=route,
+        lease_token="tok",
+    )
 
 
 def _update(db: MagicMock) -> tuple[str, DreamPassUpdate]:
@@ -127,9 +144,7 @@ class TestWrites:
     ):
         scope = MemoryScope.for_expert("u1", "expert-1")
 
-        await store.start_pass(
-            "p1", scope, route=route, trigger=trigger, started_at=_STARTED
-        )
+        assert await store.start_pass(_run(route), scope, trigger=trigger)
 
         db.create_dream_pass.assert_awaited_once_with(
             DreamPassDraft(
@@ -142,13 +157,22 @@ class TestWrites:
                 status=DreamPassStatus.RUNNING,
                 phase=DreamPassPhase.GATHER,
                 started_at=_STARTED,
+                lease_token="tok",
+                lease_expires_at=_STARTED + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
             )
         )
 
-    async def test_gathered_records_the_window_and_moves_to_consolidate(self, db):
-        bundle = _bundle()
+    async def test_gathered_records_the_window_and_what_was_read(self, db):
+        """Every fact and episode the bundle holds, sorted: a hard forget
+        marks the pass by them once it has closed."""
+        bundle = _bundle().model_copy(
+            update={
+                "known_fact_uuids": {"f2", "f1"},
+                "known_episode_uuids": {"e1"},
+            }
+        )
 
-        await store.record_gathered("p1", bundle)
+        assert await store.record_gathered("p1", bundle)
 
         assert _update(db) == (
             "p1",
@@ -156,8 +180,18 @@ class TestWrites:
                 phase=DreamPassPhase.CONSOLIDATE,
                 window_start=bundle.window_start,
                 window_end=bundle.window_end,
+                read_uuids=["e1", "f1", "f2"],
             ),
         )
+
+    @pytest.mark.parametrize("written, said", [(False, False), (None, None)])
+    async def test_gathered_says_whether_it_landed(self, db, written, said):
+        if written is None:
+            db.update_dream_pass.side_effect = ConnectionError("db down")
+        else:
+            db.update_dream_pass.return_value = written
+
+        assert await store.record_gathered("p1", _bundle()) is said
 
     @pytest.mark.parametrize(
         "phase, output, next_step",
@@ -261,6 +295,7 @@ class TestWrites:
                 status=DreamPassStatus.SKIPPED,
                 skip_reason="no_new_activity",
                 completed_at=_FINISHED,
+                clear=CLOSED_ROW_CLEARS,
             ),
         )
 
@@ -313,6 +348,9 @@ class TestWrites:
         _, update = _update(db)
         assert update.status is DreamPassStatus.COMPLETE
         assert update.usage == usage
+        # Marked for the cleanup after the pass, its lease kept for it.
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
 
     async def test_a_failed_batch_pass_records_the_error_and_usage(self, db):
         usage = _usage()
@@ -324,6 +362,8 @@ class TestWrites:
         assert update.error == "recombine: provider down"
         assert update.usage == usage
         assert update.completed_at is not None
+        assert update.cleanup_pending_at == update.completed_at
+        assert update.clear == MARKED_ROW_CLEARS
 
 
 class TestAFailedWriteNeverFailsThePass:
@@ -359,19 +399,16 @@ class TestAFailedWriteNeverFailsThePass:
             for r in caplog.records
         )
 
-    async def test_an_insert_that_raises_is_logged_at_warning(self, db, caplog):
+    async def test_an_insert_that_raises_is_unconfirmed_and_logged(self, db, caplog):
         db.create_dream_pass.side_effect = ConnectionError("db down")
 
         with caplog.at_level(logging.WARNING, logger=store.logger.name):
-            await store.start_pass(
-                "p1",
-                MemoryScope.for_user("u1"),
-                route="sync_baseline",
-                trigger="cron",
-                started_at=_STARTED,
+            confirmed = await store.start_pass(
+                _run("sync_baseline"), MemoryScope.for_user("u1"), trigger="cron"
             )
 
-        assert "could not insert" in caplog.text
+        assert confirmed is False
+        assert "could not insert its record; the pass stops" in caplog.text
 
     async def test_an_unreachable_accessor_is_logged_at_warning(self, mocker, caplog):
         mocker.patch.object(store, "dream_db", side_effect=RuntimeError("no rpc"))
@@ -400,6 +437,96 @@ class TestAFailedWriteNeverFailsThePass:
 
         [record] = [r for r in caplog.records if "no open record" in r.getMessage()]
         assert record.levelno == logging.DEBUG
+
+
+class TestTheLeaseAndTheSweeps:
+    async def test_a_renewal_writes_the_token_and_its_new_expiry(self, db):
+        before = datetime.now(timezone.utc)
+
+        assert await store.record_lease("p1", "tok", 1800) is True
+
+        pass_id, update = _update(db)
+        assert (pass_id, update.lease_token, update.status) == ("p1", "tok", None)
+        assert update.lease_expires_at is not None
+        assert update.lease_expires_at >= before + timedelta(seconds=1800)
+        assert update.clear == frozenset()
+
+    async def test_a_delivery_closes_its_row_expired_and_marked(self, db):
+        await store.record_expired("p1", "apply: never finished")
+
+        _, update = _update(db)
+        assert (update.status, update.error) == (
+            DreamPassStatus.EXPIRED,
+            "apply: never finished",
+        )
+        assert update.bump_cancel_generation is True
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
+
+    async def test_the_sweeps_and_the_admin_list_reach_the_table(self, db):
+        cutoff = _STARTED - timedelta(minutes=30)
+        db.list_expired_dream_passes = AsyncMock(return_value=[_row()])
+        db.list_dream_pass_cleanups = AsyncMock(return_value=[])
+        db.list_dream_passes = AsyncMock(return_value=[])
+        db.delete_old_dream_passes = AsyncMock(return_value=3)
+
+        assert await store.read_expired_passes(cutoff, limit=100) == [_row()]
+        assert await store.read_pending_cleanups(due_before=cutoff, limit=100) == []
+        assert await store.read_user_passes("u1", open_only=True, limit=5) == []
+        assert await store.delete_old_passes(cutoff, limit=1000, timeout=60) == 3
+
+        db.list_expired_dream_passes.assert_awaited_once_with(cutoff, limit=100)
+        cursor = (cutoff - timedelta(hours=1), "p0")
+        assert await store.read_expired_passes(cutoff, limit=5, after=cursor) == [
+            _row()
+        ]
+        db.list_expired_dream_passes.assert_awaited_with(
+            cutoff, limit=5, after_lapse=cursor[0], after_id="p0"
+        )
+        db.list_dream_pass_cleanups.assert_awaited_once_with(cutoff, limit=100)
+        assert (
+            await store.read_pending_cleanups(
+                due_before=cutoff, limit=5, marked_through=cutoff, after=cursor
+            )
+            == []
+        )
+        db.list_dream_pass_cleanups.assert_awaited_with(
+            cutoff,
+            limit=5,
+            marked_through=cutoff,
+            after_mark=cursor[0],
+            after_id="p0",
+        )
+        db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
+        db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)
+
+    async def test_a_finished_cleanup_clears_the_mark_on_the_closed_row(self, db):
+        assert await store.record_cleanup_finished("p1") is True
+
+        pass_id, update = _update(db)
+        assert (pass_id, update.closed_row) == ("p1", True)
+        assert update.clear == frozenset(
+            {"cleanup_pending_at", "lease_token", "lease_expires_at"}
+        )
+
+    async def test_a_sweep_that_stalls_raises_at_its_deadline(self, db, monkeypatch):
+        async def hang(*_args, **_kwargs) -> None:
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(store, "RECORD_WRITE_TIMEOUT_SECONDS", 0.05)
+        db.list_expired_dream_passes = AsyncMock(side_effect=hang)
+        db.list_dream_pass_cleanups = AsyncMock(side_effect=hang)
+        db.delete_old_dream_passes = AsyncMock(side_effect=hang)
+        db.update_dream_pass = AsyncMock(side_effect=hang)
+
+        with pytest.raises(TimeoutError):
+            await store.read_expired_passes(_STARTED, limit=1)
+        with pytest.raises(TimeoutError):
+            await store.read_pending_cleanups(due_before=_STARTED, limit=1)
+        with pytest.raises(TimeoutError):
+            await store.record_cleanup_finished("p1")
+        with pytest.raises(TimeoutError):
+            await store.delete_old_passes(_STARTED, limit=1, timeout=0.05)
 
 
 class TestReadSide:
@@ -503,7 +630,12 @@ class TestReadSide:
     async def test_a_sync_outcome_reads_back_as_the_result_it_recorded(self, db):
         """What the orchestrator returned is what the eval driver reads."""
         result = _complete_result(
-            dropped_forgotten=2, pending_writes=3, failed_writes=4
+            dropped_forgotten=2,
+            pending_writes=3,
+            failed_writes=4,
+            uncited_writes_dropped=2,
+            cross_scope_citations_dropped=3,
+            provenance_pending=5,
         )
         await store.record_sync_outcome(result)
         _, update = _update(db)

@@ -25,7 +25,11 @@ from prisma.enums import (
 
 from backend.copilot.dream import job_status
 from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
-from backend.copilot.dream.batch_state import state_key, write_phase_to_state
+from backend.copilot.dream.batch_state import (
+    read_state,
+    state_key,
+    write_phase_to_state,
+)
 from backend.copilot.dream.batch_submit import input_bundle_key, persist_input_bundle
 from backend.copilot.dream.cancel import cancel_dream_pass
 from backend.copilot.dream.fetch import DreamInput
@@ -50,6 +54,16 @@ from backend.executor.batch_executor import (
     walk_once,
 )
 from backend.util.llm.providers import BatchResultRow
+
+
+@pytest.fixture(autouse=True)
+def submitted_rows(fake_dream_db) -> None:
+    """Every pass these callbacks name has the row its orchestrator left at
+    submit, carrying the usage attribution the pass started under: the one
+    the callback restores and every charge goes by. A test about the row
+    seeds its own over it."""
+    for pass_id in ("p1", "p-expert", "p-missing"):
+        _seed_submitted_pass(fake_dream_db, pass_id)
 
 
 @pytest.fixture
@@ -84,13 +98,15 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
-    async def fake_eval(script, numkeys, key, token):
-        # The only Lua the dream path runs is the lock's single-key
-        # compare-and-delete; mirror its semantics on the string store.
-        if string_store.get(key) == token:
+    async def fake_eval(script, numkeys, key, token, *argv):
+        # The only Lua the dream path runs is the lock's two single-key
+        # scripts, compare-and-delete and compare-and-extend (the lease
+        # renewal, which passes the TTL); mirror them on the string store.
+        if string_store.get(key) != token:
+            return 0
+        if not argv:
             string_store.pop(key, None)
-            return 1
-        return 0
+        return 1
 
     stub = AsyncMock()
     stub.hset.side_effect = fake_hset
@@ -197,7 +213,7 @@ class TestPhaseChaining:
                 mark_errored,
             ),
             patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock",
+                "backend.copilot.dream.cleanup.release_dream_lock",
                 release_lock,
             ),
         ):
@@ -212,11 +228,11 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch DreamInput missing; memory scope unavailable"
-        )
-        release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), None)
+        assert mark_errored.await_args.kwargs["error"] == "batch: input_missing"
+        # No token anywhere (no bundle, no row): the pass's ownership of the
+        # lock is unknown, so nothing is released; its TTL, or the reaper,
+        # settles it.
+        release_lock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_autopilot_payload_cannot_apply_expert_dream(
@@ -248,7 +264,7 @@ class TestPhaseChaining:
                 mark_errored,
             ),
             patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock",
+                "backend.copilot.dream.cleanup.release_dream_lock",
                 release_lock,
             ),
         ):
@@ -263,10 +279,7 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -304,7 +317,7 @@ class TestPhaseChaining:
                 mark_errored,
             ),
             patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock",
+                "backend.copilot.dream.cleanup.release_dream_lock",
                 release_lock,
             ),
         ):
@@ -323,10 +336,7 @@ class TestPhaseChaining:
             )
 
         submit_phase.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -378,6 +388,9 @@ class TestPhaseChaining:
         update_status.assert_awaited_once()
         update_kwargs = update_status.call_args.kwargs
         assert update_kwargs["current_phase"] == "recombine"
+        # The landed phase keeps the model it ran on, to be charged on it.
+        state = await read_state("p1")
+        assert state["consolidate"]["model"] == "claude-sonnet-5"
 
     @pytest.mark.asyncio
     async def test_recombine_result_submits_sanitize_batch(self, fake_redis):
@@ -432,7 +445,7 @@ class TestPhaseChaining:
         flips to complete."""
         from backend.copilot.dream.batch_state import write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
-        from backend.copilot.dream.fetch import DreamInput
+        from backend.copilot.dream.fetch import DreamInput, FactRow
 
         _, _, string_store = fake_redis
         # The orchestrator holds the dream lock while persisting the bundle;
@@ -446,6 +459,19 @@ class TestPhaseChaining:
                 group_id="user_u1",
                 window_start=now,
                 window_end=now,
+                facts=[
+                    FactRow(
+                        uuid="fact-1",
+                        source="A",
+                        target="B",
+                        name="likes",
+                        fact="A likes B",
+                        scope="project:bread",
+                        confidence=0.7,
+                        status="active",
+                        created_at=None,
+                    )
+                ],
                 known_fact_uuids={"fact-1"},
                 known_episode_uuids={"episode-1"},
             ),
@@ -476,9 +502,7 @@ class TestPhaseChaining:
             patch("backend.copilot.dream.apply.apply_operations", apply),
             patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
             patch("backend.copilot.inference.record.persist_and_record_usage", persist),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -490,6 +514,8 @@ class TestPhaseChaining:
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
         assert apply.call_args.kwargs["known_episode_uuids"] == {"episode-1"}
+        # ...and each fact's scope, which a write's fact citations must share.
+        assert apply.call_args.kwargs["fact_scopes"] == {"fact-1": "project:bread"}
         # The batch path must NOT run the 300s in-line ingestion drain: apply
         # executes inside this handler, which BatchExecutor.walk_once awaits
         # serially — a long drain would stall every other user's batch poll.
@@ -591,7 +617,7 @@ class TestPhaseChaining:
                 new=persist,
             ),
             patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock",
+                "backend.copilot.dream.cleanup.release_dream_lock",
                 release_lock,
             ),
         ):
@@ -709,9 +735,7 @@ class TestPhaseChaining:
             patch("backend.copilot.dream.apply.apply_operations", apply),
             patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
             patch("backend.copilot.dream.batch_state.delete_state", AsyncMock()),
             patch("backend.copilot.dream.batch_state.delete_input_bundle", AsyncMock()),
         ):
@@ -781,7 +805,7 @@ class TestPhaseChaining:
         apply.assert_not_awaited()
         mark_complete.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "gate unavailable" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "apply: gate_unavailable"
 
 
 class TestErrorPaths:
@@ -796,15 +820,13 @@ class TestErrorPaths:
         entry = _entry(phase="consolidate")
         entry.payload = {"user_id": "u1", "job_id": "j-dead"}
 
-        with patch(
-            "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-        ):
+        with patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()):
             await handle_dream_batch_result(entry, [])
 
         final = await read_status(kind="dream_pass", job_id="j-dead")
         assert final is not None
         assert final.state == "errored"
-        assert "missing" in (final.error or "")
+        assert final.error == "batch: payload_incomplete"
 
     @pytest.mark.asyncio
     async def test_unknown_phase_marks_job_errored_not_stuck(self, fake_redis):
@@ -819,15 +841,13 @@ class TestErrorPaths:
             "phase": "daydream",
         }
 
-        with patch(
-            "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-        ):
+        with patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()):
             await handle_dream_batch_result(entry, [])
 
         final = await read_status(kind="dream_pass", job_id="j-odd")
         assert final is not None
         assert final.state == "errored"
-        assert "unknown batch phase" in (final.error or "")
+        assert final.error == "batch: unknown_phase"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("error", ["content moderation", "max_tokens"])
@@ -850,7 +870,7 @@ class TestErrorPaths:
                 ],
             )
         mark_errored.assert_awaited_once()
-        assert error in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: provider_error"
         record_cost.assert_not_awaited()
         redis, _, _ = fake_redis
         stored = json.loads(redis.hset.await_args.args[2])
@@ -881,7 +901,7 @@ class TestErrorPaths:
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: schema_mismatch"
         record_cost.assert_not_awaited()
         redis, _, _ = fake_redis
         stored = json.loads(redis.hset.await_args.args[2])
@@ -1028,9 +1048,7 @@ class TestErrorPaths:
             patch("backend.copilot.dream.batch_callbacks._chain_next_phase", chain),
             patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", record_cost),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
         ):
             # Must not propagate — the crash guard finalizes and swallows.
             await handle_dream_batch_result(
@@ -1039,28 +1057,27 @@ class TestErrorPaths:
             )
 
         mark_errored.assert_awaited_once()
-        assert "handler crashed" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: crashed"
         # Released with the ownership token the input bundle carried.
         release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), "tok-u1")
 
 
 class TestMalformedPayload:
     @pytest.mark.asyncio
-    async def test_missing_pass_id_releases_lock_without_token(self, fake_redis):
-        """Malformed payload (missing pass_id) early-returns but, since the
-        user_id is known, still attempts the lock release — with no pass_id
-        there's no persisted token to read, so the release is token-less
-        (release_dream_lock then defers to the lock TTL rather than
-        blind-deleting)."""
-        release = AsyncMock()
+    async def test_missing_pass_id_leaves_the_lock_to_its_ttl(self, fake_redis):
+        """Malformed payload (missing pass_id) early-returns: with no pass_id
+        there is no persisted token to release the lock with and no row to
+        mark for the reaper, so the lock is left to its TTL rather than
+        blind-deleted."""
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         entry = _entry()
         entry.payload["pass_id"] = ""
-        with patch("backend.copilot.dream.batch_outcome.release_dream_lock", release):
-            await handle_dream_batch_result(
-                entry,
-                [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
-            )
-        release.assert_awaited_once_with(MemoryScope.for_user("u1"), None)
+        await handle_dream_batch_result(
+            entry,
+            [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
+        )
+        assert string_store["dream:inflight:u1"] == "tok-u1"
 
     @pytest.mark.asyncio
     async def test_unknown_phase_label_releases_lock_with_persisted_token(
@@ -1085,7 +1102,7 @@ class TestMalformedPayload:
         release = AsyncMock()
         entry = _entry()
         entry.payload["phase"] = "some_fake_phase"
-        with patch("backend.copilot.dream.batch_outcome.release_dream_lock", release):
+        with patch("backend.copilot.dream.cleanup.release_dream_lock", release):
             await handle_dream_batch_result(entry, [_row(custom_id="x", content="y")])
         release.assert_awaited_once_with(MemoryScope.for_user("u1"), "tok-u1")
 
@@ -1147,9 +1164,9 @@ class TestLockTokenWiring:
     ):
         """A Redis blip on the lock-token read in the terminal tail fires
         AFTER mark_complete already ran. The read must stay best-effort
-        (token=None → lock TTL fallback) — letting it propagate would hit
-        the handler's crash guard, whose fail_pass rewrites the
-        already-completed job to errored."""
+        (no token: the lock is left, never blind-deleted) — letting it
+        propagate would hit the handler's crash guard, whose fail_pass
+        rewrites the already-completed job to errored."""
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
         await self._seed_terminal_pass()
@@ -1157,7 +1174,13 @@ class TestLockTokenWiring:
         mark_complete = AsyncMock()
         mark_errored = AsyncMock()
         release_lock = AsyncMock()
-        read_token = AsyncMock(side_effect=ConnectionError("redis blip"))
+
+        async def blips_once_the_job_is_complete(pass_id: str) -> str:
+            if mark_complete.await_count:
+                raise ConnectionError("redis blip")
+            return "tok-u1"
+
+        read_token = AsyncMock(side_effect=blips_once_the_job_is_complete)
         with (
             patch(
                 "backend.copilot.dream.apply.apply_operations",
@@ -1167,8 +1190,11 @@ class TestLockTokenWiring:
             patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
             patch("backend.copilot.dream.batch_outcome.read_lock_token", read_token),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
+            # The row never got the token: the lease renewal's write failed.
             patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
+                "backend.copilot.dream.lease.record_lease",
+                AsyncMock(return_value=None),
             ),
         ):
             await handle_dream_batch_result(
@@ -1178,9 +1204,10 @@ class TestLockTokenWiring:
 
         mark_complete.assert_awaited_once()
         mark_errored.assert_not_awaited()
-        # Token read failed → token-less release; release_dream_lock then
-        # defers to the lock TTL rather than blind-deleting.
-        release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), None)
+        # The token read failed and the row keeps none either: ownership is
+        # unknown, so nothing is released rather than blind-deleted.
+        release_lock.assert_not_awaited()
+        assert string_store["dream:inflight:u1"] == "tok-u1"
 
     @pytest.mark.asyncio
     async def test_cleanup_failure_after_complete_keeps_job_completed(self, fake_redis):
@@ -1204,9 +1231,7 @@ class TestLockTokenWiring:
             patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
             patch("backend.copilot.dream.batch_state.delete_state", delete_state),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -1242,9 +1267,7 @@ class TestLockTokenWiring:
         with (
             patch("backend.copilot.dream.apply.apply_operations", apply),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -1279,9 +1302,7 @@ class TestLockTokenWiring:
             patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
             patch("backend.copilot.dream.job_status.read_status", read_existing),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -1366,9 +1387,7 @@ class TestDreamPassRecord:
             patch(
                 "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
             ),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             for phase, content in (
                 ("consolidate", _CONSOLIDATE_CONTENT),
@@ -1432,9 +1451,7 @@ class TestDreamPassRecord:
         )
         with (
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             await handle_dream_batch_result(
                 _entry(phase="recombine"),
@@ -1443,7 +1460,7 @@ class TestDreamPassRecord:
 
         assert fake_dream_db.statuses("p1") == [DreamPassStatus.ERRORED]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "recombine: provider down"
+        assert row["error"] == "recombine: provider_error"
         # The errored phase used nothing billable; consolidate did.
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
         assert row["completed_at"] is not None
@@ -1462,9 +1479,7 @@ class TestDreamPassRecord:
                 AsyncMock(side_effect=RuntimeError("FalkorDB unreachable")),
             ),
             patch("backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -1476,15 +1491,15 @@ class TestDreamPassRecord:
             DreamPassStatus.ERRORED,
         ]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "apply: RuntimeError: FalkorDB unreachable"
+        assert row["error"] == "apply: crashed", "no exception text is recorded"
         assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "payload_fix, error",
         [
-            ({"phase": "daydream"}, "unknown batch phase 'daydream'"),
-            ({"phase": None}, "batch payload missing user_id/pass_id/phase"),
+            ({"phase": "daydream"}, "batch: unknown_phase"),
+            ({"phase": None}, "batch: payload_incomplete"),
         ],
         ids=["unknown_phase", "missing_phase"],
     )
@@ -1493,8 +1508,10 @@ class TestDreamPassRecord:
     ):
         """The consolidate phase landed and was billed; a payload no phase
         handler can take then ends the pass. The record is closed with that
-        phase's usage before the disowned lock is released."""
+        phase's usage before the disowned lock is released, under the token
+        the row keeps: the pass never persisted a bundle to carry one."""
         _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
         await write_phase_to_state(
             pass_id="p1",
             phase="consolidate",
@@ -1510,11 +1527,11 @@ class TestDreamPassRecord:
             return await record(pass_id, update)
 
         release_lock = AsyncMock(side_effect=lambda *_: order.append("lock released"))
+        charge = AsyncMock(side_effect=lambda ctx, usage: order.append("charged"))
         with (
             patch.object(fake_dream_db, "update_dream_pass", recorded),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
+            patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
         ):
             await handle_dream_batch_result(entry, [])
 
@@ -1522,7 +1539,122 @@ class TestDreamPassRecord:
         assert row["status"] is DreamPassStatus.ERRORED
         assert row["error"] == error
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
-        assert order == ["record ERRORED", "lock released"]
+        # Like any failure: the landed phase charged once, and the pass's
+        # batch state gone with its lock.
+        assert order == ["record ERRORED", "charged", "lock released"]
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
+        assert state_key("p1") not in fake_redis[1]
+
+    @pytest.mark.asyncio
+    async def test_a_dead_end_payload_naming_another_owner_ends_the_pass_as_its_rows(
+        self, fake_redis, fake_dream_db
+    ):
+        """The payload is the part that went wrong: the landed phase is
+        charged to the owner the row names, and that owner's lock released,
+        never the payload's."""
+        _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine", expert_id="e-other")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
+        charge = AsyncMock()
+        with (
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
+            patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.ERRORED
+        charged_scope = charge.await_args.args[0].scope
+        assert (charged_scope.user_id, charged_scope.expert_id) == ("u1", None)
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "row_read",
+        [
+            AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+            AsyncMock(return_value=None),
+        ],
+        ids=["row_unreadable", "row_missing"],
+    )
+    async def test_a_dead_end_payload_without_its_row_ends_as_its_bundles_owner(
+        self, fake_redis, fake_dream_db, row_read
+    ):
+        """No row to say whose pass it is: the input bundle says, as it does
+        for the phase handler. The landed phase is charged to, and the lock
+        released for, the bundle's owner, never the payload's."""
+        _seed_submitted_pass(fake_dream_db)
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+            lock_token="tok-u1",
+        )
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
+        charge = AsyncMock()
+        with (
+            patch("backend.copilot.dream.batch_deliveries.read_pass", row_read),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
+            patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        assert charge.await_args.args[0].scope.user_id == "u1"
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
+
+    @pytest.mark.asyncio
+    async def test_a_dead_end_payload_with_no_record_of_its_owner_is_left_to_the_reaper(
+        self, fake_redis, fake_dream_db
+    ):
+        """Neither the row nor the input bundle can be read: nothing is charged,
+        released or deleted on the payload's word. The row closes marked, the
+        landed phase kept in the state, for the reaper to clean up after the
+        pass as the owner the row names."""
+        _seed_submitted_pass(fake_dream_db)
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
+        charge = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.dream.batch_deliveries.read_pass",
+                AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+            ),
+            patch(
+                "backend.copilot.dream.batch_deliveries.read_input_bundle",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
+            patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        charge.assert_not_awaited()
+        release_lock.assert_not_awaited()
+        row = fake_dream_db.rows["p1"]
+        assert row["status"] is DreamPassStatus.ERRORED
+        assert row["cleanup_pending_at"] is not None
+        assert state_key("p1") in fake_redis[1]
 
     @pytest.mark.asyncio
     async def test_an_unreadable_state_still_closes_the_row_errored(
@@ -1571,7 +1703,7 @@ class TestDreamPassRecord:
         submit_phase.assert_not_awaited()
         row = fake_dream_db.rows["p1"]
         assert row["status"] is DreamPassStatus.ERRORED
-        assert row["error"] == "consolidate: handler crashed"
+        assert row["error"] == "consolidate: crashed"
         assert row.get("usage") is None
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None and status.state == "errored"
@@ -1613,9 +1745,7 @@ class TestDreamPassRecord:
             patch(
                 "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
             ),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", AsyncMock()
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", AsyncMock()),
         ):
             with patch.object(fake_dream_db, "update_dream_pass", applying_held):
                 first = asyncio.create_task(
@@ -1695,10 +1825,12 @@ class TestDreamPassRecord:
             "p1",
             "p2",
         }
-        # Each callback's two writes (its output, its next batch) and its
-        # stop check's read, each abandoned at the deadline; the check that
-        # got no answer let the chain go on.
-        assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (6, 6)
+        # Each callback's read of its usage attribution, its two writes (its
+        # output, its next batch), its stop check's read and the read of its
+        # row for the lock token its bundle lacks, each abandoned at the
+        # deadline; the reads that got no answer let the chain go on, the
+        # attribution's under the batch's copy.
+        assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (10, 10)
 
     @pytest.mark.asyncio
     async def test_a_store_outage_never_fails_a_batch_pass(
@@ -1722,9 +1854,7 @@ class TestDreamPassRecord:
             patch(
                 "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
             ),
-            patch(
-                "backend.copilot.dream.batch_outcome.release_dream_lock", release_lock
-            ),
+            patch("backend.copilot.dream.cleanup.release_dream_lock", release_lock),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -1739,19 +1869,23 @@ class TestDreamPassRecord:
 
 async def _cancel_p1() -> str:
     assert (await cancel_dream_pass("p1", user_id="u1", reason="testing")).cancelled
-    return "cancelled: testing"
+    return "cancelled: by_admin"
 
 
 async def _expire_p1() -> str:
-    assert await write_stop("p1", expired("lease lapsed", not_updated_since=None))
-    return "expired: lease lapsed"
+    assert await write_stop(
+        "p1", expired("expired: lease_lapsed", not_updated_since=None)
+    )
+    return "expired: lease_lapsed"
 
 
 class TestAStoppedPass:
     """A pass whose row was cancelled, or expired by a newer pass's guard,
     while its batch was in flight: the callback that lands next ends it before
     it chains the next phase or claims the apply gate, through ``fail_pass``,
-    after asking the provider to cancel the batch the row names."""
+    after asking the provider to cancel the batch the row names. (A cancel
+    asks for that itself as it closes the row; each test counts only the
+    callback's own request.)"""
 
     @pytest.fixture
     def anthropic(self):
@@ -1850,6 +1984,7 @@ class TestAStoppedPass:
     ):
         lock_key = await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await stop()
+        anthropic.messages.batches.cancel.reset_mock()
         submit_phase = AsyncMock()
 
         with (
@@ -1873,17 +2008,24 @@ class TestAStoppedPass:
         await self._assert_ended(fake_dream_db, fake_dream_redis, lock_key, error)
 
     @pytest.mark.asyncio
-    async def test_an_unattributed_callback_ends_it_charging_nothing(
-        self, fake_dream_db, fake_dream_redis, anthropic, charges
+    @pytest.mark.parametrize(
+        "row_attribution", [True, False], ids=["row_kept_it", "row_kept_none"]
+    )
+    async def test_an_unattributed_callback_ends_it_charging_only_by_its_row(
+        self, fake_dream_db, fake_dream_redis, anthropic, charges, row_attribution
     ):
         """A cancelled pass whose next callback carries no usage attribution
-        (#15208) ends as any failed pass ends, through ``fail_pass``, but
-        charges nothing, not even the phase that landed: it has no usage
-        context of its own to charge it under. The row stays as the cancel
-        closed it."""
+        (#15208) ends as any failed pass ends, through ``fail_pass``. The
+        phase that landed is charged once under the attribution the pass's
+        row carries, the one it started under, and not at all when the row
+        carries none. The batch the result came from is stopped too (the
+        cancel stopped the one the row named), and the row stays as the
+        cancel closed it."""
         lock_key = await self._in_flight(
             fake_dream_db, fake_dream_redis, landed=("consolidate",)
         )
+        if not row_attribution:
+            fake_dream_db.rows["p1"]["cost_context"] = None
         await _cancel_p1()
         entry = _entry(phase="recombine")
         del entry.payload["cost_context"]
@@ -1893,13 +2035,19 @@ class TestAStoppedPass:
                 entry, [_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT)]
             )
 
-        charges.assert_not_awaited()
-        anthropic.messages.batches.cancel.assert_not_awaited()
+        charged = [call.args[0].job.phase for call in charges.await_args_list]
+        assert charged == (["consolidate"] if row_attribution else [])
+        assert [
+            c.args[0] for c in anthropic.messages.batches.cancel.await_args_list
+        ] == [
+            "msgbatch_live",
+            "msgbatch_recombine",
+        ]
         await self._assert_ended(
             fake_dream_db,
             fake_dream_redis,
             lock_key,
-            "batch usage attribution unavailable",
+            "batch: usage_attribution_unavailable",
         )
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.CANCELLED
 
@@ -1912,6 +2060,7 @@ class TestAStoppedPass:
         is charged or cancelled twice."""
         await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         entry = _entry(phase="consolidate")
         rows = [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)]
         with (
@@ -1943,6 +2092,7 @@ class TestAStoppedPass:
             fake_dream_db, fake_dream_redis, landed=("consolidate", "recombine")
         )
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         apply = AsyncMock()
 
         with patch("backend.copilot.dream.apply.apply_operations", apply):
@@ -1995,7 +2145,7 @@ class TestAStoppedPass:
             DreamPassStatus.CANCELLED,
         ]
         await self._assert_ended(
-            fake_dream_db, fake_dream_redis, lock_key, "cancelled: testing"
+            fake_dream_db, fake_dream_redis, lock_key, "cancelled: by_admin"
         )
 
     @pytest.mark.asyncio
@@ -2004,6 +2154,7 @@ class TestAStoppedPass:
     ):
         lock_key = await self._in_flight(fake_dream_db, fake_dream_redis, landed=())
         error = await _cancel_p1()
+        anthropic.messages.batches.cancel.reset_mock()
         anthropic.messages.batches.cancel.side_effect = RuntimeError(
             "batch has already ended"
         )
@@ -2025,13 +2176,17 @@ class TestAStoppedPass:
 
 
 @pytest.mark.asyncio
-async def test_callback_restores_original_trial_generation_for_late_result():
+async def test_callback_restores_original_trial_generation_for_late_result(
+    fake_dream_db,
+):
     entry = _entry()
     entry.payload["cost_context"] = {
         "user_id": "u1",
         "trial_id": "trial-original",
         "generation": None,
     }
+    # The pass's row, which the callback restores from, carries the same.
+    fake_dream_db.rows["p1"]["cost_context"] = dict(entry.payload["cost_context"])
     seen = []
 
     async def handle(_entry, _rows):
@@ -2111,10 +2266,104 @@ async def test_dispatch_invalid_attribution_closes_job_without_billing(
     assert string_store["dream:inflight:u1"] == "unrelated-token"
     row = fake_dream_db.rows["p1"]
     assert row["status"] is DreamPassStatus.ERRORED
-    assert row["error"] == "batch usage attribution unavailable"
+    assert row["error"] == "batch: usage_attribution_unavailable"
     assert input_bundle_key("p1") not in string_store
     assert "dream:batch:state:p1" not in state_store
     bill.assert_not_called()
     submit.assert_not_called()
     apply.assert_not_called()
     capture.assert_not_called()
+
+
+async def _a_pass_with_consolidate_landed(fake_redis) -> None:
+    """Pass ``p1`` of u1 at sanitize: its bundle, its lock, its admin job and
+    consolidate landed in its state."""
+    _, state_store, string_store = fake_redis
+    now = datetime.now(timezone.utc)
+    await persist_input_bundle(
+        "p1",
+        DreamInput(user_id="u1", group_id="user_u1", window_start=now, window_end=now),
+        lock_token="tok-u1",
+    )
+    await write_initial_status(kind="dream_pass", job_id="j1", user_id="u1")
+    string_store[MemoryScope.for_user("u1").redis_key("dream_lock")] = "tok-u1"
+    state_store["dream:batch:state:p1"] = {
+        "consolidate": json.dumps({"input_tokens": 10, "output_tokens": 20})
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "row_attribution",
+    [None, {"user_id": "u1", "trial_id": "trial-other", "generation": None}],
+    ids=["row_kept_none", "row_disagrees"],
+)
+async def test_a_result_its_row_does_not_attribute_ends_the_pass(
+    fake_redis, fake_dream_db, row_attribution
+):
+    """The row is the source of the pass's attribution: a row that carries
+    none (written before it kept one) or another than the batch's copy ends
+    the pass unapplied. Its landed phase is charged only by the row: never
+    when it carries none, and under the row's own when the copy differs."""
+    await _a_pass_with_consolidate_landed(fake_redis)
+    fake_dream_db.rows["p1"]["cost_context"] = row_attribution
+    seen = []
+
+    async def bill(ctx, usage):
+        seen.append(get_trial_cost_context("u1"))
+
+    with (
+        patch("backend.copilot.dream.batch_costs.record_phase_cost", bill),
+        patch(
+            "backend.copilot.dream.cleanup.provider_batch_stopped",
+            AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.dream.batch_callbacks.submit_phase") as submit,
+        patch("backend.copilot.dream.apply.apply_operations") as apply,
+    ):
+        with pytest.raises(UsageActivationUnavailable):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+    row = fake_dream_db.rows["p1"]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["error"] == "batch: usage_attribution_unavailable"
+    assert [c.trial_id if c else None for c in seen] == (
+        [] if row_attribution is None else ["trial-other"]
+    )
+    submit.assert_not_called()
+    apply.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stopped", [False, True], ids=["running", "stopped"])
+async def test_an_unattributed_result_stops_its_batch_before_the_mark_goes(
+    fake_redis, fake_dream_db, stopped
+):
+    """The executor gave up waiting on a batch (its lifetime timeout) whose
+    result carries no attribution: the pass ends, and its cleanup asks the
+    provider to stop the batch the result came from. The row stays marked
+    for the reaper until the provider says that batch has stopped."""
+    await _a_pass_with_consolidate_landed(fake_redis)
+    entry = _entry(phase="recombine")
+    del entry.payload["cost_context"]
+    stop = AsyncMock(return_value=stopped)
+    charge = AsyncMock()
+
+    with (
+        patch("backend.copilot.dream.cleanup.provider_batch_stopped", stop),
+        patch("backend.copilot.dream.batch_costs.record_phase_cost", charge),
+    ):
+        with pytest.raises(UsageActivationUnavailable):
+            await handle_dream_batch_result(
+                entry, [_row(custom_id="p1:recombine", content="", error="expired")]
+            )
+
+    stop.assert_awaited_once_with("msgbatch_recombine")
+    charge.assert_awaited_once()
+    assert charge.await_args.args[0].job.phase == "consolidate"
+    row = fake_dream_db.rows["p1"]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert (row["cleanup_pending_at"] is None) is stopped

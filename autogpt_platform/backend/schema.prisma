@@ -34,6 +34,7 @@ model AuthUser {
 
   sessions AuthSession[]
   accounts AuthAccount[]
+  ipEvents AuthIPEvent[]
 
   @@map("UserAuthIdentity")
 }
@@ -97,6 +98,52 @@ model AuthJwks {
 }
 
 // ============ End auth service (Better Auth) tables ============ //
+
+// Written and enforced by the frontend's Better Auth hooks over raw SQL (hence
+// the database-generated ids); read by the admin users page.
+
+// Where each sign-up and sign-in came from. Sessions can't answer that: a ban
+// deletes them and they expire. Kept `auth_ip_event_retention_days`.
+model AuthIPEvent {
+  id        String          @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String
+  kind      AuthIPEventKind
+  // As Better Auth records a session's IP: an IPv6 address masked to its /64.
+  ipAddress String
+  userAgent String?
+  createdAt DateTime        @default(now())
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@map("UserAuthIPEvent")
+}
+
+enum AuthIPEventKind {
+  SIGN_UP
+  SIGN_IN
+}
+
+// An IP refused at sign-up and sign-in, or an email domain refused at sign-up.
+model AuthAccessBlock {
+  id          String              @id @default(dbgenerated("gen_random_uuid()"))
+  kind        AuthAccessBlockKind
+  value       String
+  reason      String
+  createdById String?
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime?
+
+  @@unique([kind, value])
+  @@map("UserAuthAccessBlock")
+}
+
+enum AuthAccessBlockKind {
+  IP
+  EMAIL_DOMAIN
+}
 
 // User model to mirror Auth provider users
 model User {
@@ -606,12 +653,19 @@ model DreamPass {
 
   // The provider batch of the phase in flight (batch route only).
   providerBatchId String?
-  // The dream lock's ownership token, and when the lock lapses unless renewed.
+  // The dream lock's ownership token, and when the lock lapses unless renewed:
+  // written with the row, renewed at each step, emptied when the row closes,
+  // or, for a row closed with a cleanup pending, once that cleanup is done.
   leaseToken      String?
   leaseExpiresAt  DateTime?
 
+  // Set by a close that leaves a cleanup behind (a stop from outside, a batch
+  // pass's end, the reaper's) and cleared once every step of that cleanup has
+  // finished, so the reaper resumes whatever the pass left undone.
+  cleanupPendingAt DateTime?
+
   // The pass's DreamInput, in the format the batch path already persists to
-  // Redis (batch route only).
+  // Redis (batch route only), emptied when the row closes.
   inputBundle  Json?
   // Each phase's validated output, keyed by phase.
   phaseOutputs Json?
@@ -619,11 +673,29 @@ model DreamPass {
   operations   Json?
   // DreamPassUsage: tokens and cost, per phase and in total.
   usage        Json?
+  // The usage attribution (TrialCostContext) the pass started under, which
+  // every charge of its phases goes by. A row without one is never charged.
+  costContext  Json?
 
   // The episode window the pass gathered.
   windowStart DateTime?
   windowEnd   DateTime?
   error       String?
+
+  // Set by a hard forget that may have reached the pass, and never cleared:
+  // the dream's text in the row is blanked, by the forget if the pass is
+  // closed, else by the transition that closes it, and its narrative is
+  // written blanked (backend/copilot/dream/forget_copies.py).
+  erasedAt  DateTime?
+  // Every fact and episode the pass gathered, recorded before its first
+  // model call and never cleared: a hard forget marks a pass that read what
+  // it reached however long ago the pass closed, and its narrative's session
+  // keeps a copy for once the row has aged out. A pass's create states it
+  // (empty until the pass gathers); a row whose writer did not (one from
+  // before this column, or written by a release without it during a rollout)
+  // holds "*": it may have read anything, and any hard forget in its scope
+  // reaches it (backend/data/dream_pass_models.UNKNOWN_READS).
+  readUuids String[]  @default(["*"])
 
   createdAt   DateTime  @default(now())
   startedAt   DateTime?
@@ -636,6 +708,10 @@ model DreamPass {
   @@index([userId, createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
+  // The reaper's scans: open passes whose lease lapsed, oldest first, and
+  // closed passes whose cleanup has not finished.
+  @@index([status, leaseExpiresAt])
+  @@index([status, cleanupPendingAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1475,8 +1551,8 @@ enum ExpertRoutineSession {
   PINNED
   // One durable thread of its own, minted at the first fire and reused after.
   // Per routine, not per expert, so two routines on the same cadence never
-  // interleave into one conversation. With `graphiti-memory` off this thread
-  // IS the routine's memory, which is why it is the default.
+  // interleave into one conversation. Its conversation history preserves
+  // continuity between runs, which is why it is the default.
   THREAD
 }
 

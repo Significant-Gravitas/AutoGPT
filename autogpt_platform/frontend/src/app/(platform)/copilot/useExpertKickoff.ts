@@ -2,15 +2,14 @@ import {
   useGetV2ListChatTransports,
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useRef, useState } from "react";
 import {
   clearKickoffPending,
   getKickoffStatus,
   markKickoffDone,
   markKickoffPending,
-  type KickoffAttemptToken,
   withKickoffLock,
+  type KickoffAttemptToken,
 } from "./expertKickoff";
 import { latestExpertSessionParams } from "./expertSessionQuery";
 
@@ -44,7 +43,6 @@ export function useExpertKickoff({
   onKickoff,
   onSettled,
 }: Args) {
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const firedRef = useRef(false);
   const settledRef = useRef(false);
   const attemptTokenRef = useRef<KickoffAttemptToken | null>(null);
@@ -52,7 +50,7 @@ export function useExpertKickoff({
     userId: string;
     expertId: string;
   } | null>(null);
-  const isArmed = isExpertsEnabled && kickoff && !!userId && !!expertId;
+  const isArmed = kickoff && !!userId && !!expertId;
   const wantsSession = isArmed && !sessionId && !!expertId;
   const wantsCreatePath =
     wantsSession &&
@@ -207,7 +205,6 @@ export function useExpertKickoff({
 
   return {
     isKickoffStarting:
-      isExpertsEnabled &&
       kickoff &&
       !!userId &&
       !!expertId &&

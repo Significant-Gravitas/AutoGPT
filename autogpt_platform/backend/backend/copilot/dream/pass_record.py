@@ -3,9 +3,18 @@ the row reads back as.
 
 Pure: how a route, a trigger and a step are named on the row, the insert or
 update each transition makes (``store.py`` writes them, bounded), including
-the two that stop a pass from outside (a cancel, an expiry), and what a row
-reads back as: the ``DreamPassResult`` it describes, for the admin API and the
-eval driver, and whether it says its pass was stopped.
+the lease renewal and the two that stop a pass from outside (a cancel, an
+expiry), and what a row reads back as: the ``DreamPassResult`` it describes,
+for the admin API and the eval driver, and whether it says its pass was
+stopped.
+
+Every transition that closes a row drops its input bundle. One that may
+leave a cleanup behind (Redis state, a provider batch, a lock) also marks
+the row for it (``cleanup_pending_at``) and keeps its lease until the cleanup
+has finished (``cleanup_finished``): every stop from outside (a cancel, an
+expiry, the reaper's) and every end of a batch pass. The sync route's own
+end drops its lease with its bundle: its lock goes with the pass, and it has
+no batch to leave behind.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -20,8 +29,11 @@ from prisma.enums import (
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
+    CLOSED_ROW_CLEARS,
     INITIAL_CANCEL_GENERATION,
+    MARKED_ROW_CLEARS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -31,6 +43,8 @@ from backend.data.dream_pass_models import (
 )
 
 from .fetch import DreamInput
+from .locks import DEFAULT_LOCK_TTL_SECONDS
+from .pass_errors import is_pass_error, pass_error
 from .routing import ExecutionPath
 from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
 
@@ -73,8 +87,14 @@ def new_pass(
     route: ExecutionPath,
     trigger: DreamTrigger,
     started_at: datetime,
+    lease_token: str,
+    cost_context: TrialCostContext | None,
 ) -> DreamPassDraft:
-    """A pass's first row: running, gathering its input."""
+    """A pass's first row: running, gathering its input, with the lease of
+    the lock it is about to take under *lease_token* (the sync TTL from its
+    start) and the usage attribution it runs under, *cost_context*: the one
+    every charge of its phases goes by, whoever makes it. ``None`` leaves the
+    pass with none, never to be charged."""
     return DreamPassDraft(
         id=pass_id,
         user_id=scope.owner_user_id,
@@ -83,15 +103,42 @@ def new_pass(
         route=_ROUTES[route],
         trigger=_TRIGGERS[trigger],
         started_at=started_at,
+        lease_token=lease_token,
+        lease_expires_at=started_at + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+        cost_context=(
+            cost_context.model_dump(mode="json") if cost_context is not None else None
+        ),
+    )
+
+
+def lease(lease_token: str, ttl_seconds: int) -> DreamPassUpdate:
+    """The pass renewed its lock under *lease_token* for *ttl_seconds*."""
+    return DreamPassUpdate(
+        lease_token=lease_token,
+        lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
     )
 
 
 def gathered(input_bundle: DreamInput) -> DreamPassUpdate:
-    """The input is in: the window it covers; consolidate is next."""
+    """The input is in: the window it covers and every fact and episode it
+    read, which the row keeps for a hard forget; consolidate is next."""
     return DreamPassUpdate(
         phase=DreamPassPhase.CONSOLIDATE,
         window_start=input_bundle.window_start,
         window_end=input_bundle.window_end,
+        read_uuids=read_uuids(input_bundle),
+    )
+
+
+def read_uuids(input_bundle: DreamInput) -> list[str]:
+    """Every fact and episode *input_bundle* holds, sorted."""
+    return sorted(
+        {
+            *input_bundle.known_fact_uuids,
+            *input_bundle.known_episode_uuids,
+            *(fact.uuid for fact in input_bundle.facts),
+            *(episode.uuid for episode in input_bundle.episodes),
+        }
     )
 
 
@@ -150,17 +197,21 @@ def handed_to_batch(result: DreamPassResult) -> bool:
     )
 
 
-def outcome(result: DreamPassResult, usage: DreamPassUsage | None) -> DreamPassUpdate:
-    """How a pass ended: skipped, failed, or applied."""
+def outcome(
+    result: DreamPassResult, usage: DreamPassUsage | None, *, marked: bool = False
+) -> DreamPassUpdate:
+    """How a pass ended: skipped, failed, or applied; a failure or an apply
+    *marked* for the cleanup after it (a batch pass's end)."""
     finished = result.completed_at or datetime.now(timezone.utc)
     if result.skipped:
         return DreamPassUpdate(
             status=DreamPassStatus.SKIPPED,
             skip_reason=result.skip_reason,
             completed_at=finished,
+            clear=CLOSED_ROW_CLEARS,
         )
     if result.error is not None:
-        return failed(result.error, usage, finished)
+        return failed(result.error, usage, finished, marked=marked)
     return DreamPassUpdate(
         status=DreamPassStatus.COMPLETE,
         phase=DreamPassPhase.DONE,
@@ -168,55 +219,128 @@ def outcome(result: DreamPassResult, usage: DreamPassUsage | None) -> DreamPassU
         usage=usage,
         applied_at=finished,
         completed_at=finished,
+        cleanup_pending_at=finished if marked else None,
+        clear=MARKED_ROW_CLEARS if marked else CLOSED_ROW_CLEARS,
     )
 
 
 def failed(
-    error: str, usage: DreamPassUsage | None, finished: datetime
+    error: str,
+    usage: DreamPassUsage | None,
+    finished: datetime,
+    *,
+    marked: bool = False,
 ) -> DreamPassUpdate:
+    """The pass failed with *error*; *marked* for the cleanup after it (a
+    batch pass's end)."""
     return DreamPassUpdate(
         status=DreamPassStatus.ERRORED,
         error=error[:MAX_ERROR_CHARS],
         usage=usage,
         completed_at=finished,
+        cleanup_pending_at=finished if marked else None,
+        clear=MARKED_ROW_CLEARS if marked else CLOSED_ROW_CLEARS,
+    )
+
+
+def taken_back(
+    error: str, *, provider_batch_id: str, lease_token: str
+) -> DreamPassUpdate:
+    """A pass took back the batch it had just submitted and the provider did
+    not confirm its stop: ERRORED with *error*, the batch on the row and the
+    row marked, so the reaper's cleanup keeps asking the provider to stop it
+    until it has stopped or ended. The lease token stays, the key to release
+    the lock with should the pass not have."""
+    now = datetime.now(timezone.utc)
+    return DreamPassUpdate(
+        status=DreamPassStatus.ERRORED,
+        phase=_PHASE_STEPS["consolidate"],
+        provider_batch_id=provider_batch_id,
+        lease_token=lease_token,
+        error=error[:MAX_ERROR_CHARS],
+        completed_at=now,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
     )
 
 
 def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
     """A cancel: the owner's open pass closes CANCELLED with *reason* as its
     error, its cancel generation bumped so the running pass stops at its next
-    check. Written only while the row is open and the owner's."""
+    check, marked for the cleanup after it. Written only while the row is
+    open and the owner's."""
+    now = datetime.now(timezone.utc)
     return DreamPassUpdate(
         status=DreamPassStatus.CANCELLED,
         error=reason[:MAX_ERROR_CHARS],
-        completed_at=datetime.now(timezone.utc),
+        completed_at=now,
         bump_cancel_generation=True,
         owner_user_id=owner_user_id,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
     )
 
 
 def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpdate:
-    """A newer pass's guard closing an open pass EXPIRED, its cancel
-    generation bumped like a cancel's. Written only while the row is open and,
-    given *not_updated_since* (the stale row as the guard read it), only if
-    nothing has written it since; an admin's forced expiry gives ``None``."""
+    """An open pass closed EXPIRED from outside (a newer pass's guard, a
+    duplicate delivery), its cancel generation bumped like a cancel's and
+    the row marked for the cleanup after it. Written only while the row is
+    open and, given *not_updated_since* (the stale row as it was read), only
+    if nothing has written it since. Only an admin forcing out a fresh row,
+    and a duplicate delivery, give ``None``: a forced expiry of a stale row
+    keeps the compare-and-set."""
+    now = datetime.now(timezone.utc)
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
         error=reason[:MAX_ERROR_CHARS],
-        completed_at=datetime.now(timezone.utc),
+        completed_at=now,
         bump_cancel_generation=True,
         not_updated_since=not_updated_since,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
+    )
+
+
+def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
+    """The reaper closes an open pass that outlived its lease: EXPIRED like
+    ``expired``, only if nothing has written the row since *not_updated_since*,
+    and marked for the cleanup the reaper is about to do, so a cleanup it
+    cannot finish is resumed on its next run. The lease token stays until then,
+    the key to release the dead pass's lock by compare-and-delete; the lease
+    expiry goes, the pass being dead, so that cleanup is due at once."""
+    now = datetime.now(timezone.utc)
+    return DreamPassUpdate(
+        status=DreamPassStatus.EXPIRED,
+        error=reason[:MAX_ERROR_CHARS],
+        completed_at=now,
+        bump_cancel_generation=True,
+        not_updated_since=not_updated_since,
+        cleanup_pending_at=now,
+        clear=frozenset({"lease_expires_at", "input_bundle"}),
+    )
+
+
+def cleanup_finished() -> DreamPassUpdate:
+    """The cleanup after a closed pass has finished: the mark and the lease
+    the row kept for it go. The one write a closed row takes."""
+    return DreamPassUpdate(
+        closed_row=True,
+        clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),
     )
 
 
 def stop_error(row: DreamPassRecord) -> str | None:
     """Why the row says its pass was stopped from outside, as the pass's
-    error (``cancelled: <reason>``, ``expired: <reason>``); ``None`` while its
+    error: the stop's own (``cancelled: by_admin``, ``expired: forced``,
+    ``consolidate: reaped``), else ``<status>: stopped``; ``None`` while its
     cancel generation is still the one a new row starts at."""
     if row.cancel_generation == INITIAL_CANCEL_GENERATION:
         return None
-    how = row.status.value.lower()
-    return f"{how}: {row.error}" if row.error else how
+    if row.error is not None and is_pass_error(row.error):
+        return row.error
+    if row.status == DreamPassStatus.CANCELLED:
+        return pass_error("cancelled", "stopped")
+    return pass_error("expired", "stopped")
 
 
 def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
@@ -240,6 +364,12 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
         dropped_forgotten=applied.dropped_forgotten,
         pending_writes=applied.pending_writes,
         failed_writes=applied.failed_writes,
+        provenance_pending=applied.provenance_pending,
+        uncited_writes_dropped=applied.uncited_writes_dropped,
+        cross_scope_citations_dropped=applied.cross_scope_citations_dropped,
+        protected_demotions=applied.protected_demotions,
+        indeterminate_demotion_writes=applied.indeterminate_demotion_writes,
+        demotion_accounting_complete=applied.demotion_accounting_complete,
         summary_for_user=applied.summary_for_user,
         dream_session_id=applied.dream_session_id,
         ingestion_drain_status=applied.ingestion_drain_status,
@@ -260,6 +390,12 @@ def _applied(result: DreamPassResult) -> DreamPassApplied:
         dropped_forgotten=result.dropped_forgotten,
         pending_writes=result.pending_writes,
         failed_writes=result.failed_writes,
+        provenance_pending=result.provenance_pending,
+        uncited_writes_dropped=result.uncited_writes_dropped,
+        cross_scope_citations_dropped=result.cross_scope_citations_dropped,
+        protected_demotions=result.protected_demotions,
+        indeterminate_demotion_writes=result.indeterminate_demotion_writes,
+        demotion_accounting_complete=result.demotion_accounting_complete,
         summary_for_user=result.summary_for_user,
         dream_session_id=result.dream_session_id,
         ingestion_drain_status=result.ingestion_drain_status,
