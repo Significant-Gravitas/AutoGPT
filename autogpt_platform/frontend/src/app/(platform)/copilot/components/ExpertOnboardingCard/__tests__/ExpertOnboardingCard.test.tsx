@@ -111,10 +111,34 @@ function isChecked(name: RegExp) {
   return screen.getByRole("radio", { name }).getAttribute("aria-checked");
 }
 
-// A tap on a non-final step moves on by itself after a short beat.
+// A tap moves on by itself after a short beat.
 async function answerFirstStep() {
   fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
   await screen.findByText("Which service should I be connected to?");
+}
+
+async function answerAllSteps() {
+  await answerFirstStep();
+  fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+  await screen.findByText("Check your answers");
+}
+
+function multiSelectPart() {
+  return onboardingPart({
+    steps: [
+      {
+        question: "Which services should I be connected to?",
+        keyword: "services",
+        options: ["Linear", "GitHub", "Figma"],
+        allow_multiple: true,
+      },
+      {
+        question: "Which outcome should I start with?",
+        keyword: "outcome",
+        options: ["Social listening", "Campaign briefs"],
+      },
+    ],
+  });
 }
 
 describe("ExpertOnboardingCard", () => {
@@ -171,16 +195,39 @@ describe("ExpertOnboardingCard", () => {
     expect(questionNumber()).toBe("Question 1 of 2");
   });
 
-  it("will not send until the last step is answered", async () => {
-    renderCard(onboardingPart());
+  it("shows every answer for review before anything is sent", async () => {
+    const { onSend } = renderCard(onboardingPart());
     await answerFirstStep();
 
-    expect(actionButton("Send answers").disabled).toBe(true);
+    expect(actionButton("Review answers").disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    await answerAllSteps();
 
-    // The last tap only selects: sending waits for the button.
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /Which outcome.*Social listening/ }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Which service.*Linear/ }),
+    ).toBeDefined();
     expect(actionButton("Send answers").disabled).toBe(false);
+  });
+
+  it("jumps from the review to a question and straight back", async () => {
+    renderCard(onboardingPart());
+    await answerAllSteps();
+
+    fireEvent.click(screen.getByRole("button", { name: /Which outcome/ }));
+
+    expect(questionNumber()).toBe("Question 1 of 2");
+    expect(isChecked(/Social listening/)).toBe("true");
+
+    // The changed answer goes back to the review, not to question two.
+    fireEvent.click(screen.getByRole("radio", { name: /Campaign briefs/ }));
+    await screen.findByText("Check your answers");
+    expect(
+      screen.getByRole("button", { name: /Which outcome.*Campaign briefs/ }),
+    ).toBeDefined();
   });
 
   it("keeps the Next button for a typed answer, which cannot auto-advance", () => {
@@ -199,11 +246,10 @@ describe("ExpertOnboardingCard", () => {
     expect(questionNumber()).toBe("Question 2 of 2");
   });
 
-  it("sends every answer as one message on the last step", async () => {
+  it("sends every answer as one message from the review", async () => {
     const { onSend } = renderCard(onboardingPart());
-    await answerFirstStep();
+    await answerAllSteps();
 
-    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
     fireEvent.click(actionButton("Send answers"));
 
     expect(onSend).toHaveBeenCalledTimes(1);
@@ -321,8 +367,7 @@ describe("ExpertOnboardingCard", () => {
     onSend.mockResolvedValue(undefined);
     renderCard(onboardingPart(), CALL_ID, onSend);
 
-    await answerFirstStep();
-    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    await answerAllSteps();
     fireEvent.click(actionButton("Send answers"));
     await waitFor(() =>
       expect(screen.getByText(/Setup questions from/)).toBeDefined(),
@@ -340,13 +385,162 @@ describe("ExpertOnboardingCard", () => {
     onSend.mockRejectedValue(new Error("no session"));
     renderCard(onboardingPart(), CALL_ID, onSend);
 
-    await answerFirstStep();
-    fireEvent.click(screen.getByRole("radio", { name: /Linear/ }));
+    await answerAllSteps();
     fireEvent.click(actionButton("Send answers"));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
-    // Still the live form, with the answer intact — not a settled history row.
-    await waitFor(() => expect(isChecked(/Linear/)).toBe("true"));
+    // Still the live form, with the answers intact — not a settled history row.
+    await waitFor(() =>
+      expect(actionButton("Send answers").disabled).toBe(false),
+    );
+    expect(
+      screen.getByRole("button", { name: /Which service.*Linear/ }),
+    ).toBeDefined();
     expect(screen.queryByText(/Setup questions from/)).toBeNull();
+  });
+
+  describe("multi-select questions", () => {
+    it("ticks several options without moving on", async () => {
+      renderCard(multiSelectPart());
+
+      expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+      fireEvent.click(screen.getByRole("checkbox", { name: /Linear/ }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /Figma/ }));
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(questionNumber()).toBe("Question 1 of 2");
+      expect(
+        screen
+          .getByRole("checkbox", { name: /Linear/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      expect(
+        screen
+          .getByRole("checkbox", { name: /Figma/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+
+      fireEvent.click(actionButton("Next question"));
+      expect(questionNumber()).toBe("Question 2 of 2");
+    });
+
+    it("sends the ticks and the typed text as a list", async () => {
+      const { onSend } = renderCard(multiSelectPart());
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /Linear/ }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /GitHub/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Other" }));
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "Notion" },
+      });
+      fireEvent.click(actionButton("Next question"));
+      fireEvent.click(screen.getByRole("radio", { name: /Campaign briefs/ }));
+      await screen.findByText("Check your answers");
+
+      expect(
+        screen.getByRole("button", {
+          name: /Which services.*Linear, GitHub, Notion/,
+        }),
+      ).toBeDefined();
+
+      fireEvent.click(actionButton("Send answers"));
+
+      expect(onSend.mock.calls[0][0]).toContain(
+        "> Which services should I be connected to?\n\n- Linear\n- GitHub\n- Notion",
+      );
+    });
+
+    it("keeps the ticks after a reload", () => {
+      renderCard(multiSelectPart());
+      fireEvent.click(screen.getByRole("checkbox", { name: /GitHub/ }));
+      cleanup();
+
+      renderCard(multiSelectPart());
+
+      expect(
+        screen
+          .getByRole("checkbox", { name: /GitHub/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+  });
+
+  describe("keyboard", () => {
+    it("puts the first question in focus", () => {
+      renderCard(onboardingPart());
+
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: /Social listening/ }),
+      );
+    });
+
+    it("picks by letter from anywhere in the card", async () => {
+      renderCard(onboardingPart());
+
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: "Skip questions" }),
+        {
+          key: "b",
+        },
+      );
+
+      expect(isChecked(/Campaign briefs/)).toBe("true");
+      await screen.findByText("Which service should I be connected to?");
+    });
+
+    it("goes back with Backspace", async () => {
+      renderCard(onboardingPart());
+      await answerFirstStep();
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: /Linear/ }), {
+        key: "Backspace",
+      });
+
+      expect(questionNumber()).toBe("Question 1 of 2");
+    });
+
+    it("skips with Escape", () => {
+      const { onSend } = renderCard(onboardingPart());
+
+      fireEvent.keyDown(
+        screen.getByRole("radio", { name: /Social listening/ }),
+        { key: "Escape" },
+      );
+
+      expect(onSend).toHaveBeenCalledWith(
+        "Let's skip the setup questions for now.",
+      );
+    });
+
+    it("leaves letters and Backspace to the Other text box", () => {
+      const { onSend } = renderCard(onboardingPart());
+      fireEvent.click(screen.getByRole("button", { name: "Other" }));
+      const textarea = screen.getByRole("textbox");
+
+      fireEvent.keyDown(textarea, { key: "a" });
+      fireEvent.keyDown(textarea, { key: "Backspace" });
+      fireEvent.keyDown(textarea, { key: "Escape" });
+
+      expect(screen.queryByRole("radio", { checked: true })).toBeNull();
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("ignores keys while an IME is composing", () => {
+      renderCard(onboardingPart());
+
+      fireEvent.keyDown(
+        screen.getByRole("radio", { name: /Social listening/ }),
+        { key: "b", isComposing: true },
+      );
+
+      expect(screen.queryByRole("radio", { checked: true })).toBeNull();
+    });
+
+    it("moves focus to Send on the review", async () => {
+      renderCard(onboardingPart());
+      await answerAllSteps();
+
+      expect(document.activeElement).toBe(actionButton("Send answers"));
+    });
   });
 });
