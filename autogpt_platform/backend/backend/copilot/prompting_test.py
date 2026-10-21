@@ -256,7 +256,7 @@ class TestChatPlatformSupplement:
 
     def test_posting_on_the_platform_goes_through_the_bridge_tool(self):
         rule = prompting.get_chat_platform_supplement("discord")
-        assert "use `post_to_chat_platform` with the `channel` value" in rule
+        assert "use `tool:post_to_chat_platform` with the `channel` value" in rule
         assert (
             "the platform's bot-token blocks (e.g. `SendDiscordMessageBlock`)" in rule
         )
