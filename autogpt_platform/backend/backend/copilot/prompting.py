@@ -220,6 +220,10 @@ user): it posts as the AutoGPT bot with no credential into a linked server's
 channels or the user's own DMs. For anywhere else, or with nothing linked, use
 the user's connected block, or tell them they can link the platform.
 
+To email the user themselves ("email me", a digest to their inbox), use
+`block:38997608-a57a-4e11-971c-b83a5332e80b` (SendEmailToMeBlock): it sends to
+their account address with no sign-in. Use Gmail only to email someone else.
+
 If `find_capability` without `kind` returns nothing for a named service,
 `web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,

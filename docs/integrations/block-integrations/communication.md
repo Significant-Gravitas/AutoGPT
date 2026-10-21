@@ -1,0 +1,40 @@
+# Communication
+<!-- MANUAL: file_description -->
+Blocks that send messages from the platform itself, with no account of your own to connect.
+<!-- END MANUAL -->
+
+## Send Email To Me
+
+### What it is
+Email yourself: sends a message to your own inbox, at your account's email address, from the platform, with no email account to sign in to. Use it for "email me" or "send it to myself": a result, a summary or a recurring digest. It can't send to anyone else; to email other people, use Gmail or SMTP.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The block hands the subject, body and optional link to the platform's notification service. The service looks up the email address of the account the workflow or chat is running for, checks that the address is verified and that today's limit (20 emails a day by default) isn't reached, and sends the email through the platform's mail provider. There is no recipient input, so the email can only reach the account owner.
+
+A refusal (an unverified address, the daily limit, or no mail set up on the server) comes back on the `error` output.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subject | Subject of the email | str | Yes |
+| body | Body of the email, plain text. Blank lines separate paragraphs. | str | Yes |
+| link | Optional web link to show as a button, e.g. to the full result | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| status | Status of the email sending operation | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Weekly digest**: a scheduled workflow researches the week's news every Monday and emails you the summary, with no Google account connected.
+
+**Result by email**: you ask Otto to "email me the result", and the finished report lands in your inbox.
+<!-- END MANUAL -->
+
+---

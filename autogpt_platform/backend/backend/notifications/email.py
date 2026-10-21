@@ -112,6 +112,21 @@ class EmailSender:
             MessageStream=settings.config.postmark_transactional_stream,
         )
 
+    async def send_owner_email(self, user_email: str, email: RenderedEmail) -> None:
+        """Raises when Postmark is not configured: the run that asked for this
+        reports a failure instead of a send that never happened."""
+        if not self.postmark:
+            raise RuntimeError("Email sending isn't set up on this server.")
+        await self._send(
+            user_email=user_email,
+            sender=_sender_for(DeliveryStream.PRODUCT),
+            reply_to=_reply_to_for(DeliveryStream.PRODUCT),
+            subject=email.subject,
+            html_body=email.html,
+            text_body=email.text,
+            headers=None,
+        )
+
     async def _send(
         self,
         user_email: str,

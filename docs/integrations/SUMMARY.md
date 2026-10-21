@@ -47,6 +47,7 @@
 * [Baas Bots](block-integrations/baas/bots.md)
 * [Bannerbear Text Overlay](block-integrations/bannerbear/text_overlay.md)
 * [Basic](block-integrations/basic.md)
+* [Communication](block-integrations/communication.md)
 * [Compass Triggers](block-integrations/compass/triggers.md)
 * [Conductor Account](block-integrations/conductor/account.md)
 * [Conductor Create Session](block-integrations/conductor/create_session.md)

@@ -674,6 +674,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.

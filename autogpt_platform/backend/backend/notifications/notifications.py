@@ -35,7 +35,7 @@ from backend.data.user import (
     generate_preference_link,
     generate_unsubscribe_link,
 )
-from backend.notifications import briefing_runner, mailerlite
+from backend.notifications import briefing_runner, mailerlite, owner_email
 from backend.notifications.consent import log_kept_out_skip
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
@@ -282,6 +282,19 @@ class NotificationManager(AppService):
         delivery failure must reach the RPC caller."""
         await asyncio.to_thread(
             self.email_sender.send_email_or_raise, to, subject, body, text_body
+        )
+
+    @expose
+    async def send_owner_email(
+        self, user_id: str, subject: str, body: str, link: str | None = None
+    ) -> None:
+        """Email a message one of the user's own runs composed to that user's
+        own address. Not gated by ENABLE_USER_NOTIFICATIONS: like the auth mail
+        above, the user asked for it."""
+        await owner_email.send_owner_email(
+            self.email_sender,
+            user_id,
+            owner_email.parse_owner_email(subject, body, link),
         )
 
     # ── consumers ───────────────────────────────────────────────────────
@@ -821,3 +834,4 @@ class NotificationManagerClient(AppServiceClient):
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)
+    send_owner_email = NotificationManager.send_owner_email

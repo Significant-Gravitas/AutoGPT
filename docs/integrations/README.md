@@ -530,6 +530,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
+| [Send Email To Me](block-integrations/communication.md#send-email-to-me) | Email yourself: sends a message to your own inbox, at your account's email address, from the platform, with no email account to sign in to |
 
 ## Developer Tools
 
