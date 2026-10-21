@@ -131,6 +131,7 @@ def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) 
             "source": "chat_copilot",
         },
         uuid=None,
+        timestamp=None,
     )
 
 

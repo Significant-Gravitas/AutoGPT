@@ -25,7 +25,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { AnsweredQuestions } from "../AnsweredQuestions/AnsweredQuestions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
+import { AnsweredQuestionsContext } from "../QuestionDock/AnsweredQuestionsContext";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
@@ -41,6 +43,7 @@ import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
+  getAskedQuestions,
   getChainHeading,
   isLiftedSetupRow,
   isToolCallPending,
@@ -67,6 +70,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
+  const answeredQuestions = useContext(AnsweredQuestionsContext);
   const heldOutcomes = useContext(HeldOutcomesContext);
   const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
@@ -186,7 +190,25 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   );
   if (rows.length === 0) return null;
 
-  const shownRows = rows.filter((row) => !row.lifted);
+  const askedRecords = rows.flatMap((row) => {
+    const questions = getAskedQuestions(row);
+    if (questions.length === 0) return [];
+    const answers = answeredQuestions.get(row.key);
+    return [
+      {
+        key: row.key,
+        items: questions.map((q) => ({
+          key: q.keyword,
+          question: q.question,
+          answer: answers?.get(q.keyword),
+        })),
+      },
+    ];
+  });
+  const shownRows = rows.filter(
+    (row) =>
+      !row.lifted && !askedRecords.some((record) => record.key === row.key),
+  );
   const liftedRows = rows.filter((row) => row.lifted);
 
   const expanded = manualExpanded === true;
@@ -387,6 +409,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Questions the user has moved past stay where their card was,
+            with the answers given, instead of folding away with the chain. */}
+        {askedRecords.length > 0 && (
+          <div className="mt-1 flex flex-col gap-2">
+            {askedRecords.map((record) => (
+              <AnsweredQuestions key={record.key} items={record.items} />
+            ))}
+          </div>
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
