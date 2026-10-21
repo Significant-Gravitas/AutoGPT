@@ -15,6 +15,7 @@ from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
 from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
+from .falkordb_projection import without_embeddings
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -244,6 +245,7 @@ class AutoGPTFalkorDriver(FalkorDriver):
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
         """
+        cypher_query_ = without_embeddings(cypher_query_)
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
