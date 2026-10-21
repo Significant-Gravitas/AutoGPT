@@ -102,18 +102,21 @@ describe("useSendMessage with local attachments", () => {
     });
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
-    expect(sendMessage).toHaveBeenCalledWith({
-      text: "tell me about this",
-      files: [
-        {
-          type: "file",
-          mediaType: "application/pdf",
-          filename: "talk.pdf",
-          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
-        },
-      ],
-      metadata: undefined,
-    });
+    expect(sendMessage).toHaveBeenCalledWith(
+      {
+        text: "tell me about this",
+        files: [
+          {
+            type: "file",
+            mediaType: "application/pdf",
+            filename: "talk.pdf",
+            url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+          },
+        ],
+        metadata: undefined,
+      },
+      undefined,
+    );
     // The placeholder and the upload lock both clear once the real message
     // is handed to the SDK — not when the whole stream ends.
     await waitFor(() => expect(result.current.pendingSend).toBeNull());
@@ -189,18 +192,21 @@ describe("useSendMessage with local attachments", () => {
     });
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
-    expect(sendMessage).toHaveBeenCalledWith({
-      text: "compare",
-      files: [
-        {
-          type: "file",
-          mediaType: "text/plain",
-          filename: "notes.txt",
-          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
-        },
-      ],
-      metadata: undefined,
-    });
+    expect(sendMessage).toHaveBeenCalledWith(
+      {
+        text: "compare",
+        files: [
+          {
+            type: "file",
+            mediaType: "text/plain",
+            filename: "notes.txt",
+            url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+          },
+        ],
+        metadata: undefined,
+      },
+      undefined,
+    );
     await waitFor(() => expect(result.current.pendingSend).toBeNull());
     expect(result.current.isUploadingFiles).toBe(false);
   });
@@ -450,6 +456,65 @@ describe("useSendMessage first send failing after the session exists", () => {
       ]),
     );
     expect(useCopilotUIStore.getState().initialPrompt).toBe("compare");
+  });
+});
+
+describe("useSendMessage reply timing", () => {
+  const timing = {
+    startedAt: 1234.5,
+    timeOrigin: performance.timeOrigin,
+    isNewChat: true,
+    isExpert: false,
+  };
+
+  it("hands an existing chat's send its timing as it dispatches", async () => {
+    const { result, sendMessage } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend(
+        "next",
+        undefined,
+        undefined,
+        undefined,
+        timing,
+      );
+    });
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage).toHaveBeenCalledWith(
+      { text: "next", files: undefined, metadata: undefined },
+      timing,
+    );
+  });
+
+  it("carries a new chat's timing to the host that dispatches it", async () => {
+    const newChat = renderSendMessage(null);
+    newChat.createSession.mockImplementation(async () => {
+      useCopilotStreamStore
+        .getState()
+        .bindPendingFirstSendToSession(SESSION_ID);
+      return SESSION_ID;
+    });
+
+    await act(async () => {
+      await newChat.result.current.onSend(
+        "first",
+        undefined,
+        undefined,
+        undefined,
+        timing,
+      );
+    });
+    expect(newChat.sendMessage).not.toHaveBeenCalled();
+    newChat.unmount();
+
+    // Creating the session remounts the chat host under it.
+    const created = renderSendMessage(SESSION_ID);
+    await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
+    expect(created.sendMessage).toHaveBeenCalledWith(
+      { text: "first", files: undefined, metadata: undefined },
+      timing,
+    );
   });
 });
 
