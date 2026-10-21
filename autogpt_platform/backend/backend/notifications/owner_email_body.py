@@ -80,17 +80,35 @@ ALLOWED_PROTOCOLS = frozenset({"http", "https", "mailto", "workspace", "data"})
 LINK_SCHEMES = ("http://", "https://", "mailto:")
 IMAGE_SCHEMES = ("https://", "workspace://", "data:image/")
 # bleach strips a disallowed tag but keeps its text, which for these is code.
-_DROPPED_WITH_CONTENT = re.compile(
-    r"<(script|style|head|title|template|noscript|iframe|object|svg|math|form|button|select|textarea)\b",
-    re.IGNORECASE,
+_DROPPED_TAGS = (
+    "script",
+    "style",
+    "head",
+    "title",
+    "template",
+    "noscript",
+    "iframe",
+    "object",
+    "svg",
+    "math",
+    "form",
+    "button",
+    "select",
+    "textarea",
 )
+# ASCII-only, like HTML's own tag names, so "ſcript" isn't read as "script".
+_DROPPED_WITH_CONTENT = re.compile(
+    rf"<({'|'.join(_DROPPED_TAGS)})\b", re.IGNORECASE | re.ASCII
+)
+_CLOSING_TAGS = {
+    name: re.compile(rf"</{name}\b", re.IGNORECASE | re.ASCII) for name in _DROPPED_TAGS
+}
 _VOID_TAGS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta"}
     | {"param", "source", "track", "wbr"}
 )
 # Opening one of these closes its open sibling, so they never stack up.
 _CLOSED_BY_SIBLINGS = frozenset({"p", "li", "dt", "dd", "tr", "td", "th", "option"})
-_TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9-]*)")
 MAX_NESTING = 100
 
 _BODY = "font-size:15px; line-height:24px; color:#2D2A3E;"
@@ -131,9 +149,10 @@ def _plain_to_html(body: str) -> str:
 
 
 def _sanitize(fragment: str) -> str:
+    fragment = _drop_with_content(fragment)
     _refuse_deep_nesting(fragment)
     return bleach.clean(
-        _drop_with_content(fragment),
+        fragment,
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
         protocols=ALLOWED_PROTOCOLS,
@@ -144,28 +163,24 @@ def _sanitize(fragment: str) -> str:
 
 def _refuse_deep_nesting(fragment: str) -> None:
     """bleach's parser slows with the square of the nesting depth (20,000 nested
-    divs took 13 s), so count it first, in one forward pass."""
-    depth = 0
-    for tag in _TAG.finditer(fragment):
-        name = tag.group(2).lower()
-        if name in _VOID_TAGS or name in _CLOSED_BY_SIBLINGS:
-            continue
-        depth = max(depth - 1, 0) if tag.group(1) else depth + 1
-        if depth > MAX_NESTING:
-            raise ValueError(f"The HTML is nested more than {MAX_NESTING} levels deep.")
+    divs took 13 s), so count it first with a linear parser that reads quoted
+    attribute values the way bleach's does."""
+    counter = _NestingCounter()
+    counter.feed(fragment)
+    counter.close()
 
 
 def _drop_with_content(fragment: str) -> str:
     """Removes each dropped element with everything inside it, scanning forward
     only: a lazy regex rescanned the rest of the body for every unclosed tag.
     An unclosed one takes the rest of the body, as an unclosed script does."""
-    lower = fragment.lower()
     kept: list[str] = []
     position = 0
     while opening := _DROPPED_WITH_CONTENT.search(fragment, position):
         kept.append(fragment[position : opening.start()])
-        closing = lower.find(f"</{opening.group(1).lower()}", opening.end())
-        end = lower.find(">", closing) if closing != -1 else -1
+        closing_tag = _CLOSING_TAGS[opening.group(1).lower()]
+        closing = closing_tag.search(fragment, opening.end())
+        end = fragment.find(">", closing.end()) if closing else -1
         if end == -1:
             return "".join(kept)
         position = end + 1
@@ -230,6 +245,26 @@ class _Restyler(HTMLParser):
             f'<img src="cid:{html.escape(content_id, quote=True)}" '
             f'alt="{html.escape(alt, quote=True)}" style="{_STYLES["img"]}">'
         )
+
+
+class _NestingCounter(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _VOID_TAGS or tag in _CLOSED_BY_SIBLINGS:
+            return
+        self.depth += 1
+        if self.depth > MAX_NESTING:
+            raise ValueError(f"The HTML is nested more than {MAX_NESTING} levels deep.")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        pass
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in _VOID_TAGS and tag not in _CLOSED_BY_SIBLINGS:
+            self.depth = max(self.depth - 1, 0)
 
 
 class _ImageSources(HTMLParser):

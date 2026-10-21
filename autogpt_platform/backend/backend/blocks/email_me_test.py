@@ -337,8 +337,13 @@ async def test_a_blank_subject_or_body_is_refused(postmark, subject, body, refus
     assert sent_to(postmark) == []
 
 
-async def test_html_nested_too_deeply_is_refused(postmark):
-    body = "<div>" * 150 + "deep" + "</div>" * 150
+@pytest.mark.parametrize(
+    "opening, closing",
+    # The second hides a closing tag in an attribute value, where bleach keeps it.
+    [("<div>", "</div>"), ("<div title='</div>'>", "</div>")],
+)
+async def test_html_nested_too_deeply_is_refused(postmark, opening, closing):
+    body = opening * 150 + "deep" + closing * 150
 
     response = await run({"subject": "s", "body": body, "body_format": "html"})
 
@@ -353,6 +358,17 @@ async def test_an_unclosed_script_takes_the_rest_of_the_body_with_it(postmark):
 
     html = _sent(postmark)["HtmlBody"]
     assert "Before" in html
+    assert "steal(" not in html
+
+
+async def test_a_dropped_element_after_wide_unicode_is_cut_where_it_ends(postmark):
+    # "İ" lowercases to two characters, which shifts any offset taken from .lower().
+    body = "İstanbul " * 5 + "<script>steal()</script><p>after the script</p>"
+
+    await run({"subject": "s", "body": body, "body_format": "html"})
+
+    html = _sent(postmark)["HtmlBody"]
+    assert "after the script" in html
     assert "steal(" not in html
 
 
