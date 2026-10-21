@@ -16,4 +16,5 @@ The generic `database.png` and `generic_webhook.png` icons are rendered from `Da
 | `posthog.png`     | [PostHog brand logomark](https://github.com/PostHog/posthog.com/blob/master/static/brand/posthog-logomark%402x.png)                                                              |
 | `rmfg.png`        | [RMFG app icon](https://rmfg.com/apple-icon.png)                                                                                                                                 |
 | `stripe_link.png` | [Link app icon](https://images.stripeassets.com/fzn2n1nzq965/35yClx6UuTze6h851WsJqW/18da88ac03bd96140d16bdac62b94578/app-icon.png), linked from [link.com](https://www.link.com) |
+| `tenki.png`       | [Tenki site icon](https://bcdn.tenki.cloud/images/favicon-tenki.png), linked from [tenki.cloud](https://tenki.cloud)                                                             |
 | `typesafe.png`    | [TypeSafe app icon](https://framerusercontent.com/images/kcuF2BEp5XaVfkmFB634IPRKQH0.png), linked from [typesafe.ai](https://typesafe.ai)                                        |
