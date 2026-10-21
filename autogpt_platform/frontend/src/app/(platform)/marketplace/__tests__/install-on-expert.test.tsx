@@ -22,18 +22,6 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
-  };
-});
-
 const hiredMaria: Expert = {
   id: "expert-maria",
   name: "Maria",
