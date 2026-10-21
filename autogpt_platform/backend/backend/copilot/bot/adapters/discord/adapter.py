@@ -567,7 +567,7 @@ class DiscordAdapter(SocketAdapter):
 
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
-            replied_to_bot = self._replied_to_bot(message)
+            replied_to_bot = await self._replied_to_bot(message)
 
             # Channels require an @mention or a reply to the bot; DMs and
             # threads always forward (handler checks thread subscription).
@@ -680,16 +680,14 @@ class DiscordAdapter(SocketAdapter):
             return False
         return any(user.id == bot_user.id for user in message.mentions)
 
-    def _replied_to_bot(self, message: discord.Message) -> bool:
-        """The message is a reply to one of the bot's own messages."""
+    async def _replied_to_bot(self, message: discord.Message) -> bool:
+        """The message is a reply to one of the bot's own messages, fetching
+        the replied-to message when Discord didn't include it."""
         bot_user = self._client.user
-        ref = message.reference
-        if bot_user is None or ref is None:
+        if bot_user is None:
             return False
-        resolved = ref.resolved
-        return (
-            isinstance(resolved, discord.Message) and resolved.author.id == bot_user.id
-        )
+        replied = await self._resolve_reply(message)
+        return replied is not None and replied.author.id == bot_user.id
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
@@ -760,9 +758,12 @@ class DiscordAdapter(SocketAdapter):
         ):
             return None
         try:
-            return await message.channel.fetch_message(ref.message_id)
+            fetched = await message.channel.fetch_message(ref.message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
+        # Keep it so the reply context doesn't fetch the same message again.
+        ref.resolved = fetched
+        return fetched
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:

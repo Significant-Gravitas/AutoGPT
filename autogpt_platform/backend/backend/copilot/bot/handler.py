@@ -94,13 +94,14 @@ class MessageHandler:
 
         # In a thread we only auto-reply when we own it (= we created it in
         # response to an @mention in a channel). For any other existing
-        # thread we'd been added to, require an explicit @mention each turn
-        # so we don't hijack ongoing team conversations.
+        # thread we'd been added to, require an explicit @mention
+        # (or a reply to the bot) each turn so we don't hijack ongoing team
+        # conversations.
         include_thread_history = False
         if ctx.channel_type == "thread":
             is_subscribed = await threads.is_subscribed(ctx.platform, ctx.channel_id)
             if not is_subscribed:
-                if not ctx.bot_mentioned:
+                if not ctx.bot_mentioned and not ctx.replied_to_bot:
                     return
                 # First time we're @-ed into this thread — pull the recent
                 # thread history into the prompt so AutoGPT has context,

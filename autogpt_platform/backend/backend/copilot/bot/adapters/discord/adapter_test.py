@@ -253,24 +253,42 @@ class TestLocationFields:
 class TestRepliedToBot:
     def _reply_to(self, author_id: int) -> MagicMock:
         msg = MagicMock()
+        msg.message_snapshots = []
         replied = MagicMock(spec=discord.Message)
         replied.author = MagicMock(id=author_id)
         msg.reference = MagicMock(resolved=replied)
         return msg
 
-    def test_reply_to_the_bot_counts(self):
+    @pytest.mark.asyncio
+    async def test_reply_to_the_bot_counts(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        assert adapter._replied_to_bot(self._reply_to(1000)) is True
+        assert await adapter._replied_to_bot(self._reply_to(1000)) is True
 
-    def test_reply_to_someone_else_does_not(self):
+    @pytest.mark.asyncio
+    async def test_reply_to_someone_else_does_not(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        assert adapter._replied_to_bot(self._reply_to(5)) is False
+        assert await adapter._replied_to_bot(self._reply_to(5)) is False
 
-    def test_no_reply_does_not(self):
+    @pytest.mark.asyncio
+    async def test_no_reply_does_not(self):
         adapter, _ = _bare_adapter(bot_id=1000)
         msg = MagicMock()
         msg.reference = None
-        assert adapter._replied_to_bot(msg) is False
+        assert await adapter._replied_to_bot(msg) is False
+
+    @pytest.mark.asyncio
+    async def test_an_unresolved_reply_is_fetched(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.channel = MagicMock(spec=discord.TextChannel)
+        replied = MagicMock(spec=discord.Message)
+        replied.author = MagicMock(id=1000)
+        msg.channel.fetch_message = AsyncMock(return_value=replied)
+        msg.reference = MagicMock(resolved=None, message_id=77)
+        assert await adapter._replied_to_bot(msg) is True
+        msg.channel.fetch_message.assert_awaited_once_with(77)
+        assert msg.reference.resolved is replied
 
 
 class TestChannelType:
@@ -1315,6 +1333,7 @@ class TestLockedThread:
         msg.content = "and now?"
         msg.mentions = []
         msg.attachments = []
+        msg.message_snapshots = []
         if replied_author_id is None:
             msg.reference = None
         else:

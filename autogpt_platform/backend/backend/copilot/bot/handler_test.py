@@ -252,6 +252,27 @@ class TestEnsureLinked:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_reply_to_the_bot_in_an_unsubscribed_thread_is_answered(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(channel_type="thread")
+        ctx.replied_to_bot = True
+        with (
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(ctx, adapter)
+
+        subscribe.assert_not_awaited()
+        api.resolve_server.assert_awaited()
+
+    @pytest.mark.asyncio
     async def test_unlinked_mentioned_thread_tells_user_to_setup(self):
         api = _api(server_linked=False)
         handler = MessageHandler(api)
