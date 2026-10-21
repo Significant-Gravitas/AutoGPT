@@ -135,6 +135,54 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 _webhook_bot_backend = BotBackend()
 
 
+# Do-not-merge probe (#15739 integration preview): previews skip the deploy's
+# `publish-skills-catalog`, so their marketplace is empty and no turn ever reads
+# the slug -> active version map. Publish the catalog's main once, skills only,
+# so the preview has prod's marketplace to measure #15871 on.
+_perf_catalog_tasks: set[asyncio.Task] = set()
+
+
+async def _perf_publish_skills_catalog() -> None:
+    import tempfile
+    from pathlib import Path
+
+    import prisma.models
+
+    from backend.api.features.store.skill_catalog import publish_catalog
+    from backend.api.features.store.skill_catalog_release import (
+        fetch_catalog,
+        load_release,
+    )
+
+    try:
+        existing = await prisma.models.SkillListing.prisma().count()
+        if existing:
+            logger.info(f"perf-step catalog publish skipped: {existing} listings")
+            return
+        with tempfile.TemporaryDirectory(prefix="skills-catalog-") as tmp:
+            source = await asyncio.to_thread(
+                fetch_catalog,
+                Path(tmp),
+                repo="Significant-Gravitas/skills-catalog",
+                ref="main",
+            )
+            loaded = await asyncio.to_thread(load_release, source.root)
+            summary = await publish_catalog(
+                loaded,
+                repository=source.repository,
+                revision=source.revision,
+                seed_experts=False,
+            )
+        count = await prisma.models.SkillListing.prisma().count()
+        logger.info(
+            f"perf-step catalog published {source.revision[:12]}: "
+            f"{len(loaded.packages)} packages, {count} listings; "
+            f"{summary.model_dump_json()[:400]}"
+        )
+    except Exception:
+        logger.exception("perf-step catalog publish failed")
+
+
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
@@ -198,6 +246,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     backend.data.llm_registry.load_catalog()
 
     freeze_startup_heap()
+
+    _perf_catalog_tasks.add(asyncio.create_task(_perf_publish_skills_catalog()))
 
     yield
 
