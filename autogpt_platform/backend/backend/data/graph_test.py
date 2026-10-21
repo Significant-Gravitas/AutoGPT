@@ -777,15 +777,15 @@ def _sub_agent_node(user_id: str) -> Node:
     )
 
 
-def test_stripped_for_export_drops_a_sub_agent_nodes_user_id():
+def test_stripped_for_export_blanks_a_sub_agent_nodes_user_id():
     """A sub-agent node holds the id of the account that saved the graph. An
-    export leaves it out, and the copy still works: saving it stamps the id of
+    export blanks it, and the copy still works: saving it stamps the id of
     whoever saves it."""
     graph = _graph_of(_sub_agent_node("owner-user"))
 
     exported = graph.nodes[0].stripped_for_export()
 
-    assert "user_id" not in exported.input_default
+    assert exported.input_default["user_id"] == ""
     assert exported.input_default["graph_id"] == "child-graph"
     assert graph.nodes[0].input_default["user_id"] == "owner-user"
 
@@ -834,7 +834,7 @@ def test_shared_copy_strips_every_node_and_names_no_owner():
     assert [node.webhook_id for node in shared.nodes] == [None, None, None]
     assert shared.nodes[0].input_default == {"constants": {"k": "v"}}
     assert shared.nodes[1].input_default == {"code": "print('hi')"}
-    assert "user_id" not in shared.nodes[2].input_default
+    assert shared.nodes[2].input_default["user_id"] == ""
     assert shared.sub_graphs[0].nodes[0].input_default == {
         "database": "app",
         "query": "select 1",

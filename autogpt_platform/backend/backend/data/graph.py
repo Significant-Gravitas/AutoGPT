@@ -161,12 +161,14 @@ class Node(BaseDbModel):
           are nulled rather than removed: an explicit None tells the executor the
           file was cleared, so importers and forks pick their own.
         - a sub-agent node's `user_id`, which `reassign_ids` stamps with the
-          owner's id on save and stamps again with the importer's
+          owner's id on save and stamps again with the importer's. It is
+          blanked rather than removed: the field is required, and the agent
+          generator validates an edited copy before its save stamps the id.
         """
         stripped_node = self.model_copy(deep=True)
 
         if self.block_id == AgentExecutorBlock().id:
-            stripped_node.input_default.pop("user_id", None)
+            stripped_node.input_default["user_id"] = ""
 
         if stripped_node.input_default:
             for field_name in self.block.input_schema.get_credentials_fields():
