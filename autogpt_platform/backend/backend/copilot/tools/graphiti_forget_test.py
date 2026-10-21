@@ -469,11 +469,21 @@ class TestBuildConfirmMessage:
         assert message.startswith("1 memory edge(s) had already been erased.")
         assert "0 memory edge(s) retracted from memory" not in message
 
-    def test_derived_only_followup_leads_with_erased_sources(self) -> None:
-        message = _build_confirm_message(0, False, [], 2)
-        assert message.startswith("Previously erased memory edge(s) were revisited.")
-        assert "2 derived fact(s) retracted and erased." in message
-        assert "0 memory edge(s) retracted from memory" not in message
+    def test_derived_only_followup_leads_with_its_sources(self) -> None:
+        hard = _build_confirm_message(0, True, [], 2)
+        assert hard == (
+            "Memory edge(s) already erased were revisited. "
+            "2 derived fact(s) retracted and erased."
+        )
+
+    def test_a_soft_derived_only_followup_never_claims_erasure(self) -> None:
+        """A soft forget retracts what was derived; it erases nothing."""
+        soft = _build_confirm_message(0, False, [], 2)
+        assert soft == (
+            "Memory edge(s) already retracted were revisited. "
+            "2 derived fact(s) retracted."
+        )
+        assert "erased" not in soft
 
     def test_a_soft_forget_says_it_is_not_a_permanent_deletion(self) -> None:
         """A model told a user who had asked for a permanent delete that a soft

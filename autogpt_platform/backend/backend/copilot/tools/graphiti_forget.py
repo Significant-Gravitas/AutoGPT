@@ -338,13 +338,21 @@ def _build_confirm_message(
                 "was derived from them was retracted and erased."
             )
     elif resumed_count or derived_count:
+        # An edge an earlier hard forget erased takes what was derived from
+        # it with it; a soft forget only retracts.
+        erased = hard or bool(resumed_count)
         summary = (
             f"{resumed_count} memory edge(s) had already been erased."
             if resumed_count
-            else "Previously erased memory edge(s) were revisited."
+            else f"Memory edge(s) already {'erased' if hard else 'retracted'} "
+            "were revisited."
         )
         if derived_count:
-            summary += f" {derived_count} derived fact(s) retracted and erased."
+            summary += (
+                f" {derived_count} derived fact(s) retracted and erased."
+                if erased
+                else f" {derived_count} derived fact(s) retracted."
+            )
     else:
         summary = f"0 memory edge(s) {mode}."
     if deleted_count and not hard:
