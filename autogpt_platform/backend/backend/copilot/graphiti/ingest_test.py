@@ -214,6 +214,16 @@ class TestIngestionCompletion:
         c.complete_one()
         assert await c.wait(0.01) is True
 
+    def test_pending_is_what_was_neither_written_dropped_nor_failed(self) -> None:
+        """Apart from the drain: an episode finished by the worker is not
+        written unless graphiti saved it."""
+        c = ingest.IngestionCompletion()
+        for _ in range(4):
+            c.register()
+        c.written, c.dropped_forgotten, c.failed = 1, 1, 1
+
+        assert c.pending == 1
+
 
 class TestWaitForIngestion:
     """``wait_for_ingestion`` — the drain barrier dream-pass apply uses so
@@ -646,8 +656,12 @@ class TestDerivedFindingLane:
             # Should have 2 items: user episode + derived finding
             assert q.qsize() == 2
 
-        q.get_nowait()
+        user_payload = q.get_nowait()
         finding_payload = q.get_nowait()
+        # Only the user's own words promote the tentative facts they state:
+        # the finding is the assistant's, on probation like a dream proposal.
+        assert user_payload["_restatement"] is True
+        assert "_restatement" not in finding_payload
         # CUSTOM_EXTRACTION_INSTRUCTIONS tells the extractor to always make an
         # entity of the envelope's "user"; a null one leaves the finding with
         # nothing to attach to.
@@ -1008,6 +1022,8 @@ class TestEnqueueEpisodeEdgeMetadata:
             assert payload["_edge_metadata"] is None
             # Non-scoped-drain writes carry no completion tracker.
             assert payload["_completion"] is None
+            # Memory-store calls and dream writes are no user's restatement.
+            assert "_restatement" not in payload
 
     @pytest.mark.asyncio
     async def test_completion_rides_payload_sidecar(self) -> None:

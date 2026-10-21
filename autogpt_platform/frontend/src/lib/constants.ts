@@ -15,8 +15,5 @@ export const CLIENT_COUNTRY_TOKEN_HEADER_NAME = "X-Client-Country-Token";
 export const CLIENT_IP_TOKEN_HEADER_NAME = "X-Client-IP-Token";
 export const VERCEL_COUNTRY_HEADER_NAME = "x-vercel-ip-country";
 
-// Layout
-export const NAVBAR_HEIGHT_PX = 60;
-
 // Routes
 export const MARKETPLACE_EXPERTS_HREF = "/marketplace#experts";

@@ -30,6 +30,7 @@ from websockets.exceptions import InvalidStatus
 
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
+from backend.api.features.integrations import router as integrations_router
 from backend.api.test_helpers import override_config
 from backend.util import logging as service_logging
 from backend.util import metrics
@@ -109,6 +110,11 @@ async def test_websocket_server_logs_no_session_token(
 async def test_rest_server_logs_no_credentials_from_request_urls(
     service_output: io.StringIO, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        integrations_router,
+        "get_webhook",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
     async with (
         _serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
@@ -118,10 +124,9 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
             f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
             params={"limit": "many", "token": SESSION_TOKEN},
         )
-        # No webhook manager handles this provider, so the request fails
-        # server-side and the 500 handler logs the request path.
+        # The webhook lookup fails server-side, so the 500 handler logs the path.
         ingress = await client.post(
-            f"/api/integrations/unregistered/webhooks/{WEBHOOK_ID}/ingress",
+            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
             params={"token": SESSION_TOKEN},
             json={},
         )
@@ -133,7 +138,7 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
     shared_chat = f"/api/public/shared/chats/{REDACTED}/messages"
     assert f"GET {shared_chat}?limit={REDACTED}&token={REDACTED} HTTP/1.1" in logs
     assert f"Validation failed for GET {shared_chat}" in logs
-    webhook = f"/api/integrations/unregistered/webhooks/{REDACTED}/ingress"
+    webhook = f"/api/integrations/github/webhooks/{REDACTED}/ingress"
     assert f"POST {webhook}?token={REDACTED} HTTP/1.1" in logs
     assert f"POST {webhook} failed." in logs
 

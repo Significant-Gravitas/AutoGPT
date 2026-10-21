@@ -771,12 +771,12 @@ def _out_of_budget_message(pause: "TurnPause") -> str:
     allowance = "the trial's" if pause.reason == "trial" else "your plan's"
     credits_url = f"{Settings().config.frontend_base_url.rstrip('/')}/profile/credits"
     message = (
-        f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up, "
+        f"Out of budget: {allowance} allowance is used up, "
         "and your credit balance doesn't cover a run (it needs at least "
         f"${PER_TURN_SPEND_FLOOR_USD:.2f}). Add credits at {credits_url} to "
         "run it on credits."
         if credits_can_pay_block_turns()
-        else f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up."
+        else f"Out of budget: {allowance} allowance is used up."
     )
     if pause.resets_at is None:
         return message

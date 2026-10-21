@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { initMock } = vi.hoisted(() => ({ initMock: vi.fn() }));
 
 const BODY_MARKER = "marker-4f1c";
+const URL_MARKER = "marker-u-7d3b";
 
 vi.mock("@sentry/nextjs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@sentry/nextjs")>();
@@ -139,6 +140,182 @@ describe.each([
     };
     expect(beforeSend(withCredentials(), {}).request).toEqual(stripped);
     expect(beforeSendTransaction(withCredentials()).request).toEqual(stripped);
+  });
+
+  it("masks the credentials in the URLs of errors, transactions and spans", async () => {
+    await load();
+
+    const { beforeSend, beforeSendTransaction, beforeSendSpan } =
+      initMock.mock.calls[0][0];
+    function onATokenPage() {
+      return {
+        type: "transaction",
+        transaction: "GET /reset-password",
+        request: {
+          url: `https://platform.agpt.co/reset-password?token=${URL_MARKER}`,
+          query_string: `token=${URL_MARKER}`,
+          headers: {
+            referer: `https://platform.agpt.co/link/${URL_MARKER}`,
+            "user-agent": "ua",
+          },
+        },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "http.target": `/reset-password?token=${URL_MARKER}`,
+              "http.route": "/reset-password",
+            },
+          },
+        },
+        spans: [
+          {
+            trace_id: "a".repeat(32),
+            span_id: "c".repeat(16),
+            start_timestamp: 1,
+            description: `GET https://backend.agpt.co/api/platform-linking/tokens/${URL_MARKER}/info`,
+            data: {
+              "http.url": `https://backend.agpt.co/api/platform-linking/tokens/${URL_MARKER}/info`,
+              "server.address": "backend.agpt.co",
+            },
+          },
+        ],
+      };
+    }
+
+    for (const event of [
+      beforeSend(onATokenPage(), {}),
+      beforeSendTransaction(onATokenPage()),
+    ]) {
+      expect(event.transaction).toBe("GET /reset-password");
+      expect(event.request).toEqual({
+        url: "https://platform.agpt.co/reset-password?token=[REDACTED]",
+        query_string: "[REDACTED]",
+        headers: {
+          referer: "https://platform.agpt.co/link/[REDACTED]",
+          "user-agent": "ua",
+        },
+      });
+      expect(event.contexts.trace.data).toEqual({
+        "http.target": "/reset-password?token=[REDACTED]",
+        "http.route": "/reset-password",
+      });
+      expect(event.spans[0].description).toBe(
+        "GET https://backend.agpt.co/api/platform-linking/tokens/[REDACTED]/info",
+      );
+      expect(event.spans[0].data).toEqual({
+        "http.url":
+          "https://backend.agpt.co/api/platform-linking/tokens/[REDACTED]/info",
+        "server.address": "backend.agpt.co",
+      });
+    }
+
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      description: `GET /link/${URL_MARKER}`,
+      data: {
+        "http.target": `/link/${URL_MARKER}`,
+        "http.route": "/link/[token]",
+      },
+    });
+    expect(span.description).toBe("GET /link/[REDACTED]");
+    expect(span.data).toEqual({
+      "http.target": "/link/[REDACTED]",
+      "http.route": "/link/[token]",
+    });
+  });
+
+  it("masks the page a request's headers name, as headers and as span attributes", async () => {
+    await load();
+
+    const { beforeSend, beforeSendTransaction, beforeSendSpan } =
+      initMock.mock.calls[0][0];
+    const routerState = encodeURIComponent(
+      JSON.stringify(["", { children: ["link", ["token", URL_MARKER, "d"]] }]),
+    );
+    function duringANavigation() {
+      return {
+        type: "transaction",
+        transaction: "GET /library",
+        request: {
+          url: "https://platform.agpt.co/library",
+          headers: {
+            "next-url": `/link/${URL_MARKER}`,
+            "Next-Router-State-Tree": routerState,
+            "user-agent": "ua",
+          },
+        },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "http.request.header.referer": `https://platform.agpt.co/reset-password?token=${URL_MARKER}`,
+              "http.request.header.next_url": `/link/${URL_MARKER}`,
+              "http.request.header.next_router_state_tree": routerState,
+              "http.request.header.user_agent": "ua",
+              "http.route": "/library",
+            },
+          },
+        },
+      };
+    }
+
+    for (const event of [
+      beforeSend(duringANavigation(), {}),
+      beforeSendTransaction(duringANavigation()),
+    ]) {
+      expect(event.request.headers).toEqual({
+        "next-url": "/link/[REDACTED]",
+        "Next-Router-State-Tree": "[REDACTED]",
+        "user-agent": "ua",
+      });
+      expect(event.contexts.trace.data).toEqual({
+        "http.request.header.referer":
+          "https://platform.agpt.co/reset-password?token=[REDACTED]",
+        "http.request.header.next_url": "/link/[REDACTED]",
+        "http.request.header.next_router_state_tree": "[REDACTED]",
+        "http.request.header.user_agent": "ua",
+        "http.route": "/library",
+      });
+    }
+
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      data: { "http.request.header.referer": `/link/${URL_MARKER}` },
+    });
+    expect(span.data).toEqual({
+      "http.request.header.referer": "/link/[REDACTED]",
+    });
+  });
+
+  it("masks a span's query and fragment whether or not they keep their ? or #", async () => {
+    await load();
+
+    const { beforeSendSpan } = initMock.mock.calls[0][0];
+    const span = beforeSendSpan({
+      trace_id: "a".repeat(32),
+      span_id: "c".repeat(16),
+      start_timestamp: 1,
+      data: {
+        "url.query": `token=${URL_MARKER}&page=2`,
+        "url.fragment": `access_token=${URL_MARKER}`,
+        "http.query": `?token=${URL_MARKER}`,
+        "http.fragment": "#section",
+      },
+    });
+
+    expect(span.data).toEqual({
+      "url.query": "token=[REDACTED]&page=[REDACTED]",
+      "url.fragment": "access_token=[REDACTED]",
+      "http.query": "?token=[REDACTED]",
+      "http.fragment": "#section",
+    });
   });
 
   it("sends no user email or IP address", async () => {

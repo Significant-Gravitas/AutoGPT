@@ -73,7 +73,6 @@ describe("useAgentRunModal", () => {
     });
     expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
       id: "graph-xyz",
-      name: "My agent",
       surface: "library",
     });
   });

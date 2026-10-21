@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot import pending_messages as pm_module
+from backend.copilot.gate.held import HeldResult
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -242,6 +243,22 @@ def test_pending_message_metadata_survives_json() -> None:
     # A human message carries none, and a pre-metadata payload still parses.
     assert PendingMessage(content="hi").metadata is None
     assert PendingMessage.model_validate_json('{"content": "old"}').metadata is None
+
+
+@pytest.mark.asyncio
+async def test_a_long_held_result_requeued_into_the_buffer_drains_whole(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A rolled-back save re-queues held results here; one past a typed
+    follow-up's 32,000 characters must still drain, as its action already ran."""
+    result = HeldResult(content="x" * 40_000, metadata={"held_call": {"r": "1"}})
+    await push_pending_message("sess-held", result)
+
+    drained = await drain_pending_messages("sess-held")
+
+    assert len(drained) == 1
+    assert isinstance(drained[0], HeldResult)
+    assert drained[0].content == result.content
 
 
 @pytest.mark.asyncio
