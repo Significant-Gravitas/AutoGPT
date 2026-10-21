@@ -39,7 +39,7 @@ export function useExperiment(experiment: Experiment) {
   );
   const variant = data?.variant ?? null;
 
-  useReportExposure(experiment, variant);
+  useReportExposure({ experiment, variant, userID });
 
   return {
     variant,
@@ -47,14 +47,21 @@ export function useExperiment(experiment: Experiment) {
   };
 }
 
-// PostHog's experiment results count this event. Held until PostHog captures, so
-// an arm that loads before the consent answer still counts.
-function useReportExposure(experiment: Experiment, variant: string | null) {
+interface ExposureArgs {
+  experiment: Experiment;
+  variant: string | null;
+  userID: string | null;
+}
+
+// Counted by PostHog's experiment results. Held until PostHog captures, and sent
+// once per user per tab, so a remount bills no second event.
+function useReportExposure({ experiment, variant, userID }: ExposureArgs) {
   useEffect(() => {
     if (!variant || !environment.isPostHogEnabled()) return;
-    capturePostHogEvent("$feature_flag_called", {
-      $feature_flag: experiment,
-      $feature_flag_response: variant,
-    });
-  }, [experiment, variant]);
+    capturePostHogEvent(
+      "$feature_flag_called",
+      { $feature_flag: experiment, $feature_flag_response: variant },
+      { oncePerTabKey: `posthog_exposure_${experiment}_${variant}_${userID}` },
+    );
+  }, [experiment, variant, userID]);
 }

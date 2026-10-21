@@ -85,13 +85,19 @@ async def test_no_server_read_of_an_experiment_reports_its_exposure(
     capture.assert_not_called()
 
 
+@pytest.mark.parametrize("definitions", [[], None], ids=["loaded-empty", "not-loaded"])
 async def test_without_local_definitions_nobody_is_enrolled_rather_than_asking_posthog(
-    mocker, posthog_client
+    mocker, posthog_client, definitions
 ):
-    posthog_client.feature_flags = []
+    """Nor does the read wait on a definitions fetch, which the SDK starts itself
+    when it has never loaded any."""
+    # The public setter turns None into []; None is the SDK's state before a load.
+    posthog_client._feature_flags = definitions
+    load = mocker.spy(posthog_client, "load_feature_flags")
     remote = _remote_flags_request(mocker)
 
     assert await evaluate_experiment_variant(PRICING, "u-1") is None
+    load.assert_not_called()
     remote.assert_not_called()
 
 

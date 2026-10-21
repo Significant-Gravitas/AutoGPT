@@ -176,7 +176,8 @@ async def evaluate_variant(
     (no ``POSTHOG_SECRET_KEY``) nobody is enrolled.
     """
     client = get_flag_client()
-    if client is None:
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
         return None
     try:
         result = await asyncio.get_running_loop().run_in_executor(

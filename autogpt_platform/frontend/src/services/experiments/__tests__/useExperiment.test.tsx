@@ -31,6 +31,7 @@ beforeEach(() => {
   signIn("user-1");
   posthogJS.capture.mockClear();
   posthogJS.capturing = true;
+  sessionStorage.clear();
   vi.spyOn(environment, "isPostHogEnabled").mockReturnValue("phc_test");
 });
 
@@ -86,6 +87,34 @@ describe("useExperiment", () => {
         { timestamp: expect.any(Date) },
       ),
     );
+  });
+
+  it("reports the exposure once per tab, however often the page remounts", async () => {
+    serveArms(["yearly-pro", "yearly-pro"]);
+
+    const first = renderHook(() => useExperiment(PRICING), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() => expect(posthogJS.capture).toHaveBeenCalledTimes(1));
+    first.unmount();
+    const second = renderHook(() => useExperiment(PRICING), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() =>
+      expect(second.result.current.variant).toBe("yearly-pro"),
+    );
+
+    expect(posthogJS.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports each user's exposure, even when they share an arm", async () => {
+    serveArms(["control", "control"]);
+
+    renderHook(() => useExperiment(PRICING), { wrapper: withQueryClient() });
+    await waitFor(() => expect(posthogJS.capture).toHaveBeenCalledTimes(1));
+    act(() => signIn("user-2"));
+
+    await waitFor(() => expect(posthogJS.capture).toHaveBeenCalledTimes(2));
   });
 
   it("resolves to no arm, and reports nothing, for a user it did not enrol", async () => {
