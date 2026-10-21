@@ -48,8 +48,28 @@ def split_chat_platform_header(message: str) -> tuple[str, str]:
     return header.group(0), message[header.end() :]
 
 
-def strip_chat_platform_header(message: str) -> str:
-    """The user's own words: ``message`` without the bot's header and labels."""
+def label_covering(body: str, position: int) -> tuple[str, int]:
+    """The last per-message label in ``body`` that starts before ``position``,
+    with the offset its message starts at; ``("", 0)`` when there is none."""
+    covering = None
+    for label in _LABEL_LINE_RE.finditer(body):
+        if label.start() >= position:
+            break
+        covering = label
+    if covering is None:
+        return "", 0
+    text = covering.group(0)
+    return (text if text.endswith("\n") else text + "\n"), covering.end()
+
+
+def strip_chat_platform_header(message: str, *, bridge_origin: bool = False) -> str:
+    """The user's own words: ``message`` without the bot's header and labels.
+
+    Only a session the bridge started carries a real header; anyone can type
+    one on the web, so ``message`` is returned as is unless ``bridge_origin``.
+    """
+    if not bridge_origin:
+        return message
     without_header = _HEADER_RE.sub("", message, count=1)
     if without_header == message:
         return message
@@ -59,14 +79,17 @@ def strip_chat_platform_header(message: str) -> str:
 _SENDER_RE = re.compile(r'message from "([^"\n]*)"')
 
 
-def attribute_chat_platform_speakers(message: str) -> str | None:
+def attribute_chat_platform_speakers(
+    message: str, *, bridge_origin: bool = False
+) -> str | None:
     """A bot turn as ``Speaker: words`` lines, one per message, without the
     bot's routing and mention fields; None when ``message`` is not a bot turn.
 
     In a linked server the executing user is the server owner, not the sender,
-    so memory must take each speaker from the bot's own labels.
+    so memory must take each speaker from the bot's own labels. A message
+    from a session the bridge did not start is never a bot turn.
     """
-    header = _HEADER_RE.match(message)
+    header = _HEADER_RE.match(message) if bridge_origin else None
     if header is None:
         return None
     body = message[header.end() :]

@@ -567,10 +567,11 @@ class DiscordAdapter(SocketAdapter):
 
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
+            replied_to_bot = self._replied_to_bot(message)
 
-            # Channels require an explicit @mention; DMs and threads always forward
-            # (handler checks thread subscription).
-            if channel_type == "channel" and not bot_mentioned:
+            # Channels require an @mention or a reply to the bot; DMs and
+            # threads always forward (handler checks thread subscription).
+            if channel_type == "channel" and not bot_mentioned and not replied_to_bot:
                 return
 
             thread_history = ()
@@ -612,7 +613,7 @@ class DiscordAdapter(SocketAdapter):
                 thread_name=location.thread_name,
                 public_thread_id=location.public_thread_id,
                 post_channel_id=location.post_channel_id,
-                replied_to_bot=self._replied_to_bot(message),
+                replied_to_bot=replied_to_bot,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,

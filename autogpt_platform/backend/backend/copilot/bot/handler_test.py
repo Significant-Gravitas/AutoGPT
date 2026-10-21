@@ -344,8 +344,32 @@ class TestResolveTarget:
         handler = MessageHandler(_api())
         adapter = _adapter()
         adapter.create_thread = AsyncMock(return_value=None)
-        result = await handler._resolve_target(_ctx(channel_id="parent-chan"), adapter)
+        ctx = _ctx(channel_id="parent-chan")
+        ctx.post_channel_id = "parent-chan"
+        result = await handler._resolve_target(ctx, adapter)
         assert result == "parent-chan"
+        assert ctx.post_channel_id == "parent-chan"
+
+    @pytest.mark.asyncio
+    async def test_a_new_thread_becomes_the_post_target(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        adapter.create_thread = AsyncMock(return_value="thread-created")
+        ctx = _ctx(channel_id="parent-chan")
+        ctx.post_channel_id = "parent-chan"
+        with patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()):
+            await handler._resolve_target(ctx, adapter)
+        assert ctx.post_channel_id == "thread-created"
+
+    @pytest.mark.asyncio
+    async def test_a_platform_that_cannot_post_keeps_no_post_target(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        adapter.create_thread = AsyncMock(return_value="thread-created")
+        ctx = _ctx()
+        with patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()):
+            await handler._resolve_target(ctx, adapter)
+        assert ctx.post_channel_id is None
 
 
 class TestThreadAdoption:
@@ -486,7 +510,7 @@ class TestBatching:
         handler = MessageHandler(_api())
         adapter = _adapter()
         state = TargetState(processing=True)
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
 
         await handler._enqueue_and_process(_ctx(text="second"), adapter, "target-1")
 
@@ -499,7 +523,7 @@ class TestBatching:
     async def test_queued_message_keeps_whether_it_mentioned_the_bot(self):
         handler = MessageHandler(_api())
         state = TargetState(processing=True)
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
 
         await handler._enqueue_and_process(
             _ctx(text="@bot hi", bot_mentioned=True), _adapter(), "target-1"
@@ -526,7 +550,7 @@ class TestBatching:
             [PendingMessage(username="Bently", user_id="user-1", text="hello")]
         ]
         # Dict entry should be gone once processing finishes with empty pending.
-        assert "target-1" not in handler._targets
+        assert ("discord", "target-1") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_drain_loop_picks_up_appended_messages(self):
@@ -535,7 +559,7 @@ class TestBatching:
         adapter = _adapter()
 
         state = TargetState()
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
 
         seen: list[list] = []
 
@@ -556,7 +580,7 @@ class TestBatching:
             [PendingMessage(username="Bently", user_id="user-1", text="first")],
             [PendingMessage(username="Later", user_id="u2", text="follow-up")],
         ]
-        assert "target-1" not in handler._targets
+        assert ("discord", "target-1") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_a_drained_batch_uses_the_queued_messages_context(self):
@@ -580,7 +604,7 @@ class TestBatching:
     async def test_a_turn_a_card_woke_mid_reply_streams_after_that_reply(self):
         handler = MessageHandler(_api())
         state = TargetState()
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
         woken = ChatTurnHandle(session_id="s", turn_id="woken", user_id="u")
         streamed: list[tuple[list, ChatTurnHandle | None]] = []
 
@@ -596,7 +620,7 @@ class TestBatching:
             ([PendingMessage(username="Bently", user_id="user-1", text="first")], None),
             ([], woken),
         ]
-        assert "target-1" not in handler._targets
+        assert ("discord", "target-1") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_duplicate_message_is_silently_dropped(self):
@@ -1405,9 +1429,35 @@ class TestAttachments:
         # Concurrent attachment messages on the same target serialise on one
         # lock (so they converge on one session); different targets don't block.
         handler = MessageHandler(_api())
-        lock = handler._session_lock("t-1")
-        assert handler._session_lock("t-1") is lock
-        assert handler._session_lock("t-2") is not lock
+        ctx = _ctx()
+        lock = handler._session_lock(ctx, "t-1")
+        assert handler._session_lock(ctx, "t-1") is lock
+        assert handler._session_lock(ctx, "t-2") is not lock
+
+    def test_session_locks_do_not_collide_across_platforms(self):
+        handler = MessageHandler(_api())
+        telegram = _ctx()
+        telegram.platform = "telegram"
+        assert handler._session_lock(_ctx(), "42") is not handler._session_lock(
+            telegram, "42"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_same_target_id_on_two_platforms_queues_separately(self):
+        handler = MessageHandler(_api())
+        handler._targets[("discord", "42")] = TargetState(processing=True)
+        telegram = _ctx(text="from telegram")
+        telegram.platform = "telegram"
+        streamed: list[str] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, **_):
+            streamed.append(ctx.platform)
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        await handler._enqueue_and_process(telegram, _adapter(), "42")
+
+        assert streamed == ["telegram"]
+        assert handler._targets[("discord", "42")].pending == []
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):

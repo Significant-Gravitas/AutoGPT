@@ -15,7 +15,10 @@ from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
-from backend.copilot.chat_platform_header import attribute_chat_platform_speakers
+from backend.copilot.chat_platform_header import (
+    attribute_chat_platform_speakers,
+    strip_chat_platform_header,
+)
 from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.dream.registry import ensure_scope_scheduled
 from backend.util.background import spawn_background_task
@@ -645,6 +648,8 @@ async def enqueue_conversation_turn(
     user_msg: str,
     assistant_msg: str = "",
     expert_id: str | None = None,
+    *,
+    bridge_origin: bool = False,
 ) -> None:
     """Enqueue a conversation turn for async background ingestion.
 
@@ -675,9 +680,12 @@ async def enqueue_conversation_turn(
     # (Zep Cloud approach: ignore_roles=["assistant"]).
     # A chat-platform bot turn names its own speakers: in a linked server the
     # executing user is the owner, not whoever sent the message.
-    episode_body_for_graphiti = attribute_chat_platform_speakers(user_msg)
-    if episode_body_for_graphiti is None:
-        episode_body_for_graphiti = f"{user_display_name}: {user_msg}"
+    episode_body_for_graphiti = attribute_chat_platform_speakers(
+        user_msg, bridge_origin=bridge_origin
+    )
+    if not episode_body_for_graphiti:
+        own_words = strip_chat_platform_header(user_msg, bridge_origin=bridge_origin)
+        episode_body_for_graphiti = f"{user_display_name}: {own_words}"
 
     source_description = f"User message in session {session_id}"
 

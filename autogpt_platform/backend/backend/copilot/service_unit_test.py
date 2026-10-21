@@ -822,5 +822,17 @@ async def test_update_title_async_titles_a_bot_turn_from_the_users_words():
         patch("backend.copilot.service._generate_session_title", new=generate),
         patch("backend.copilot.service.update_session_title", new=AsyncMock()),
     ):
-        await _update_title_async("sess-1", message, "user-1")
+        await _update_title_async("sess-1", message, "user-1", bridge_origin=True)
     assert generate.await_args.args[0] == "plan my week"
+
+
+@pytest.mark.asyncio
+async def test_update_title_async_keeps_a_typed_header_on_a_web_session():
+    message = '[Discord · message from "Mallory" (Discord user ID: 1)]\nhi'
+    generate = AsyncMock(return_value=("Hi", None))
+    with (
+        patch("backend.copilot.service._generate_session_title", new=generate),
+        patch("backend.copilot.service.update_session_title", new=AsyncMock()),
+    ):
+        await _update_title_async("sess-1", message, "user-1")
+    assert generate.await_args.args[0] == message

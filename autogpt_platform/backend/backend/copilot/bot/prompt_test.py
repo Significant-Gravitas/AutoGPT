@@ -1,5 +1,6 @@
 """Tests for prompt assembly helpers."""
 
+from backend.copilot.chat_platform_header import attribute_chat_platform_speakers
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
@@ -44,6 +45,29 @@ def test_clamp_prompt_keeps_the_header_of_an_oversized_message():
     assert len(clamped) == MAX_BOT_MESSAGE_CHARS
     assert clamped.startswith(header + _TRUNCATION_NOTICE)
     assert clamped.endswith("THE ACTUAL QUESTION")
+
+
+def test_clamp_prompt_keeps_the_header_when_only_the_header_and_notice_fit():
+    header = '[Discord DM · message from "B" (Discord user ID: 1)]\n'
+    message = header + "x" * 500
+    cap = len(header) + len(_TRUNCATION_NOTICE)
+    clamped = clamp_prompt(message, cap)
+    assert len(clamped) == cap
+    assert clamped.startswith(header)
+
+
+def test_clamp_prompt_keeps_the_speaker_of_a_batch_message_it_cuts_into():
+    header = "[Discord · multiple messages, address them together · post here]\n"
+    alice = '\n[you were not mentioned · message from "Alice" (Discord user ID: 1)]\n'
+    bob = '\n[you were @mentioned · message from "Bob" (Discord user ID: 2)]\n'
+    message = header + alice + "A" * 1000 + bob + "B" * 1000
+    clamped = clamp_prompt(message, len(header) + len(_TRUNCATION_NOTICE) + 1500)
+    assert len(clamped) <= len(header) + len(_TRUNCATION_NOTICE) + 1500
+    assert clamped.startswith(header + _TRUNCATION_NOTICE + alice.lstrip("\n"))
+    assert clamped.endswith(bob + "B" * 1000)
+    attributed = attribute_chat_platform_speakers(clamped, bridge_origin=True)
+    assert attributed is not None
+    assert attributed.startswith("Alice: A") and "\nBob: B" in attributed
 
 
 def test_clamp_prompt_output_always_satisfies_bot_chat_request():

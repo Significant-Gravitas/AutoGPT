@@ -8,6 +8,7 @@ derived and clamped to a platform's cap. No I/O.
 from pydantic import BaseModel
 
 from backend.copilot.chat_platform_header import (
+    label_covering,
     neutralize_forged_labels,
     split_chat_platform_header,
 )
@@ -33,14 +34,21 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     if len(message) <= max_chars:
         return message
     header, body = split_chat_platform_header(message)
-    if len(header) + len(_TRUNCATION_NOTICE) >= max_chars:
-        header = ""
-        body = message
-    keep = max_chars - len(header) - len(_TRUNCATION_NOTICE)
-    if keep <= 0:
-        # Pathologically tiny cap — can't even fit the notice; hard-cut.
+    room = max_chars - len(header)
+    if room <= 0:
+        # A header longer than the cap (never in practice): hard-cut the tail.
         return message[-max_chars:]
-    return header + _TRUNCATION_NOTICE + body[-keep:]
+    if room <= len(_TRUNCATION_NOTICE):
+        return header + body[len(body) - room :]
+    keep = room - len(_TRUNCATION_NOTICE)
+    cut = len(body) - keep
+    # In a batch, keep the label of the message the cut lands in so every
+    # kept line still has its speaker.
+    label, label_end = label_covering(body, cut)
+    if label and len(label) < keep:
+        start = max(label_end, len(body) - (keep - len(label)))
+        return header + _TRUNCATION_NOTICE + label + body[start:]
+    return header + _TRUNCATION_NOTICE + body[cut:]
 
 
 class PendingMessage(BaseModel):

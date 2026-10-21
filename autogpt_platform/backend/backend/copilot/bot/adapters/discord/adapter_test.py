@@ -1302,6 +1302,51 @@ class TestLockedThread:
 
         callback.assert_awaited_once()
 
+    def _channel_message(self, replied_author_id: int | None) -> MagicMock:
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 222
+        channel.name = "general"
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = MagicMock(id=111)
+        msg.guild.name = "SG"
+        msg.channel = channel
+        msg.content = "and now?"
+        msg.mentions = []
+        msg.attachments = []
+        if replied_author_id is None:
+            msg.reference = None
+        else:
+            replied = MagicMock(spec=discord.Message)
+            replied.author = MagicMock(id=replied_author_id)
+            msg.reference = MagicMock(resolved=replied)
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_a_channel_reply_to_the_bot_is_processed(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        await handlers["on_message"](self._channel_message(replied_author_id=1000))
+
+        callback.assert_awaited_once()
+        assert callback.await_args.args[0].replied_to_bot is True
+
+    @pytest.mark.asyncio
+    async def test_a_channel_message_neither_mentioning_nor_replying_is_dropped(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        await handlers["on_message"](self._channel_message(replied_author_id=None))
+        await handlers["on_message"](self._channel_message(replied_author_id=3000))
+
+        callback.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_on_message_rewrites_referenced_links_in_text(self):
         # End-to-end through on_message: a channel @mention linking another
