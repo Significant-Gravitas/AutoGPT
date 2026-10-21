@@ -336,7 +336,9 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     report = await routine.erase_account(user_id, dry_run=False)
 
     assert report.complete, report
-    outside_services.assert_awaited_once_with(email)
+    outside_services.assert_awaited_once_with(
+        email, prisma.enums.AccountDeletionSource.SETTINGS
+    )
     assert set((await _left_of(user_id)).values()) == {0}
     done = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
