@@ -41,28 +41,15 @@ def _make_session(
 
 
 @pytest.mark.asyncio
-async def test_fetch_graphiti_context_returns_disabled_when_flag_off():
-    """When LD flag is off, return (False, "") without fetching warm context."""
-    session = _make_session("user-1")
-    with patch(
-        "backend.copilot.sdk.service.is_enabled_for_user",
-        new=AsyncMock(return_value=False),
-    ):
-        enabled, ctx = await _fetch_graphiti_context("user-1", session, "hello")
-    assert enabled is False
-    assert ctx == ""
-
-
-@pytest.mark.asyncio
 async def test_fetch_graphiti_context_skips_warm_for_anonymous_users():
     """Anonymous turns (no user_id) skip warm context even when enabled."""
     session = _make_session("user-1")
     with patch(
-        "backend.copilot.sdk.service.is_enabled_for_user",
-        new=AsyncMock(return_value=True),
-    ):
+        "backend.copilot.sdk.service.fetch_warm_context", new=AsyncMock()
+    ) as fetch:
         enabled, ctx = await _fetch_graphiti_context(None, session, "hello")
-    assert enabled is True
+    fetch.assert_not_awaited()
+    assert enabled is False
     assert ctx == ""
 
 
@@ -70,11 +57,7 @@ async def test_fetch_graphiti_context_skips_warm_for_anonymous_users():
 async def test_fetch_graphiti_context_skips_warm_on_followup_turns():
     """Sessions with prior history skip warm context — it's a turn-1 only feature."""
     session = _make_session("user-1", n_messages=3)
-    with patch(
-        "backend.copilot.sdk.service.is_enabled_for_user",
-        new=AsyncMock(return_value=True),
-    ):
-        enabled, ctx = await _fetch_graphiti_context("user-1", session, "follow-up")
+    enabled, ctx = await _fetch_graphiti_context("user-1", session, "follow-up")
     assert enabled is True
     assert ctx == ""
 
@@ -85,10 +68,6 @@ async def test_fetch_graphiti_context_loads_warm_context_on_first_turn():
     session = _make_session("user-1")
     fetch_mock = AsyncMock(return_value="<warm_facts>important fact</warm_facts>")
     with (
-        patch(
-            "backend.copilot.sdk.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
         patch(
             "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
@@ -105,10 +84,6 @@ async def test_fetch_graphiti_context_uses_expert_session_scope():
     session = _make_session("user-1", expert_id="expert-1")
     fetch_mock = AsyncMock(return_value="expert context")
     with (
-        patch(
-            "backend.copilot.sdk.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
         patch(
             "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
@@ -195,10 +170,6 @@ async def test_fetch_graphiti_context_handles_empty_warm_context():
     session = _make_session("user-1")
     with (
         patch(
-            "backend.copilot.sdk.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
-        patch(
             "backend.copilot.sdk.service.fetch_warm_context",
             new=AsyncMock(return_value=None),
         ),
@@ -215,10 +186,6 @@ async def test_fetch_graphiti_context_handles_none_message():
     session = _make_session("user-1")
     fetch_mock = AsyncMock(return_value="ctx")
     with (
-        patch(
-            "backend.copilot.sdk.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
         patch(
             "backend.copilot.sdk.service.fetch_warm_context",
             new=fetch_mock,
