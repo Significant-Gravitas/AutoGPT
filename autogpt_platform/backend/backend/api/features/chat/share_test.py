@@ -136,7 +136,7 @@ class TestEnableChatSharing:
     def test_enables_share_without_posthog(self, client):
         with (
             patch(
-                "backend.util.feature_flag.get_client",
+                "backend.util.feature_flag.posthog.get_flag_client",
                 side_effect=RuntimeError("PostHog unavailable"),
             ),
             patch(

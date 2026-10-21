@@ -1,14 +1,14 @@
 import logging
 import os
 import uuid
-from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, Mapping, TypeVar
+from typing import Any, Awaitable, Callable, TypeVar
 
 import sentry_sdk.feature_flags
 from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
@@ -208,17 +208,18 @@ def shutdown_feature_flags() -> None:
     posthog.shutdown_posthog_flags()
 
 
-@dataclass(frozen=True)
-class _UserContext:
+class _UserContext(BaseModel):
     """Who a flag read is for, as the targeting rules see them.
 
     ``attributes`` holds the targeted facts (role, email, signup date and any
     per-request ones such as the country); an anonymous context carries none.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     key: str
     anonymous: bool = True
-    attributes: Mapping[str, Any] = field(default_factory=dict)
+    attributes: dict[str, Any] = Field(default_factory=dict)
 
 
 async def _fetch_user_context_status(user_id: str) -> tuple[_UserContext, bool]:
@@ -267,7 +268,9 @@ def _with_request_attributes(
     A copy is returned; the cached context is never modified. An anonymous
     context still sends none of them (see ``_context_properties``).
     """
-    return replace(context, attributes={**context.attributes, **attributes})
+    return context.model_copy(
+        update={"attributes": {**context.attributes, **attributes}}
+    )
 
 
 def _anonymous_context(user_id: str) -> _UserContext:
