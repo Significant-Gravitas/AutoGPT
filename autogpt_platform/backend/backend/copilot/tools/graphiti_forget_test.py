@@ -473,10 +473,44 @@ class TestBuildConfirmMessage:
         assert "derived" not in none_derived
 
         derived = _build_confirm_message(1, True, [], 2, 1)
-        assert derived.endswith(
-            "1 memory edge(s) had already been erased; the facts derived "
-            "from them were retracted and erased."
+        assert derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased. "
+            "2 fact(s) derived from these edges were retracted and erased."
         )
+
+    def test_one_derived_count_is_credited_to_every_kind_of_edge(self) -> None:
+        """The count covers what the deleted and the already-erased edges
+        derived, so it is never credited to the deleted ones alone. A soft
+        forget erases only the already-erased edges' derived facts."""
+        hard = _build_confirm_message(2, True, [], 5, 1)
+        assert "derived from them" not in hard
+        assert hard.endswith(
+            "5 fact(s) derived from these edges were retracted and erased."
+        )
+
+        soft = _build_confirm_message(2, False, [], 5, 1)
+        assert soft.startswith(
+            "2 memory edge(s) retracted from memory. "
+            "1 memory edge(s) had already been erased. "
+            "5 fact(s) derived from these edges were retracted, and those "
+            "derived from the already-erased edges were erased too."
+        )
+        assert "retracted and erased" not in soft
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-3",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        failed = _build_confirm_message(2, False, failures, 5, 1)
+        assert (
+            "erasing those derived from the already-erased edges may not have "
+            "finished (see below)."
+        ) in failed
+        assert "erased too" not in failed
 
     def test_erasure_is_claimed_only_when_nothing_failed(self) -> None:
         """A derived fact is counted once retracted, before its text is erased,
@@ -502,7 +536,7 @@ class TestBuildConfirmMessage:
         assert "retracted and erased" not in resumed
 
         mixed = _build_confirm_message(1, True, failures, 2, 1)
-        assert "the facts derived from them were retracted; erasing" in mixed
+        assert "derived from these edges were retracted; erasing" in mixed
         assert "retracted and erased" not in mixed
 
     def test_a_soft_derived_only_result_never_claims_erasure(self) -> None:

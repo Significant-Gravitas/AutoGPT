@@ -302,7 +302,9 @@ def _build_confirm_message(
     The facts the dream had derived from the forgotten ones, retracted with
     them (``graphiti/recall_cascade.py``), are counted so the user hears of
     them too, and so are the edges an earlier hard forget had already erased,
-    whose derived facts this forget went on to retract and erase. A soft
+    whose derived facts this forget went on to retract and erase. With both
+    kinds of edge, one count covers what they derived, so the message credits
+    it to all of them. A soft
     forget that retracted anything says it was not a permanent deletion, what
     it did instead, and how to delete permanently (``SOFT_FORGET_NOTE``).
 
@@ -320,19 +322,33 @@ def _build_confirm_message(
         if not failures
         else "retracted; erasing their text may not have finished (see below)"
     )
-    if deleted_count:
+    if deleted_count and resumed_count:
+        summary = (
+            f"{deleted_count} memory edge(s) {mode}. {resumed_count} memory "
+            "edge(s) had already been erased."
+        )
+        if derived_count:
+            # A resumed edge's cascade always erases (``recall_forget._forget``);
+            # a soft forget's own only retracts.
+            summary += f" {derived_count} fact(s) derived from these edges were "
+            if hard:
+                summary += f"{erased}."
+            elif not failures:
+                summary += (
+                    "retracted, and those derived from the already-erased "
+                    "edges were erased too."
+                )
+            else:
+                summary += (
+                    "retracted; erasing those derived from the already-erased "
+                    "edges may not have finished (see below)."
+                )
+    elif deleted_count:
         summary = f"{deleted_count} memory edge(s) {mode}."
         if derived_count:
             summary = (
                 f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
                 "derived from them retracted too."
-            )
-        if resumed_count:
-            summary += f" {resumed_count} memory edge(s) had already been erased"
-            summary += (
-                f"; the facts derived from them were {erased}."
-                if derived_count
-                else "."
             )
     elif resumed_count:
         summary = f"{resumed_count} memory edge(s) had already been erased."
