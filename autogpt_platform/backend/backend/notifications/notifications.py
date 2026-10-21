@@ -39,6 +39,7 @@ from backend.notifications import briefing_runner, mailerlite, owner_email
 from backend.notifications.consent import log_kept_out_skip
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
+from backend.notifications.owner_email_body import BodyFormat
 from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
 from backend.notifications.queue import (
     AUDIENCE_QUEUE,
@@ -286,7 +287,12 @@ class NotificationManager(AppService):
 
     @expose
     async def send_owner_email(
-        self, user_id: str, subject: str, body: str, link: str | None = None
+        self,
+        user_id: str,
+        subject: str,
+        body: str,
+        link: str | None = None,
+        body_format: BodyFormat = BodyFormat.MARKDOWN,
     ) -> None:
         """Email a message one of the user's own runs composed to that user's
         own address. Not gated by ENABLE_USER_NOTIFICATIONS: like the auth mail
@@ -294,7 +300,7 @@ class NotificationManager(AppService):
         await owner_email.send_owner_email(
             self.email_sender,
             user_id,
-            owner_email.parse_owner_email(subject, body, link),
+            owner_email.parse_owner_email(subject, body, link, body_format),
         )
 
     # ── consumers ───────────────────────────────────────────────────────

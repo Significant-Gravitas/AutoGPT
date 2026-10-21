@@ -9,9 +9,9 @@
 {{ ui.sheet_open() }}
 {% call ui.eyebrow(top=28) %}FROM OTTO{% endcall %}
 {% call ui.headline() %}{{ subject }}{% endcall %}
-{% for paragraph in paragraphs %}
-{% call ui.para() %}{% for line in paragraph.splitlines() %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% endcall %}
-{% endfor %}
+        <tr><td class="gutter" style="padding:18px 48px 0;">
+          <div style="font-size:15px; line-height:24px; color:#2D2A3E; overflow-wrap:anywhere; word-break:break-word;">{{ content }}</div>
+        </td></tr>
 {% if link %}
 {{ ui.cta('Open the link', link, micro='Button not working? Copy this link into your browser:') }}
 {% call ui.para(top=6, size=12, lh=18) %}

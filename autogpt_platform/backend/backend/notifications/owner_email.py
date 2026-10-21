@@ -5,12 +5,17 @@ here from the user id, so nothing upstream of this call can redirect it.
 """
 
 import logging
+from collections.abc import Awaitable
 from datetime import UTC, datetime
+from typing import Any, cast
 
+from postmarker.exceptions import ClientError
 from pydantic import BaseModel, Field, ValidationError, field_validator
+from requests import RequestException
 
 from backend.data.redis_client import get_redis_async
 from backend.notifications.email import EmailSender
+from backend.notifications.owner_email_body import BodyFormat, render_body
 from backend.notifications.renderer import RenderedEmail, build_urls
 from backend.notifications.template_env import create_body_environment
 from backend.util.clients import get_database_manager_async_client
@@ -27,8 +32,9 @@ _COUNTER_TTL_SECONDS = 60 * 60 * 48
 
 class OwnerEmail(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=50_000)
+    body: str = Field(min_length=1, max_length=100_000)
     link: str | None = None
+    body_format: BodyFormat = BodyFormat.MARKDOWN
 
     @field_validator("subject")
     @classmethod
@@ -43,11 +49,15 @@ class OwnerEmail(BaseModel):
         return link or None
 
 
-def parse_owner_email(subject: str, body: str, link: str | None) -> OwnerEmail:
+def parse_owner_email(
+    subject: str, body: str, link: str | None, body_format: BodyFormat
+) -> OwnerEmail:
     """A ValidationError's type is not one the RPC client can rebuild, so it
     crosses as the ValueError the block reports."""
     try:
-        return OwnerEmail(subject=subject, body=body, link=link)
+        return OwnerEmail(
+            subject=subject, body=body, link=link, body_format=body_format
+        )
     except ValidationError as e:
         raise ValueError(
             "; ".join(
@@ -61,7 +71,8 @@ def parse_owner_email(subject: str, body: str, link: str | None) -> OwnerEmail:
 async def send_owner_email(
     email_sender: EmailSender, user_id: str, message: OwnerEmail
 ) -> None:
-    """Raises ValueError when the send is refused, so the caller can say why."""
+    """Raises ValueError when the send is refused and TimeoutError when its
+    outcome is unknown, so the caller can say which."""
     db = get_database_manager_async_client(should_retry=False)
     address = await db.get_user_email_by_id(user_id)
     if not address:
@@ -72,6 +83,7 @@ async def send_owner_email(
             "sent to it. Verify it from the sign-in email, then try again."
         )
 
+    email = render_owner_email(message)
     counter = f"owner_email:daily:{user_id}:{_utc_today()}"
     limit = settings.config.owner_email_daily_limit
     if not await _take_daily_send(counter, limit):
@@ -79,18 +91,30 @@ async def send_owner_email(
             f"Already sent {limit} emails to this account today, the most "
             "allowed in a day. Try again tomorrow."
         )
+    # Only a send that certainly went nowhere gives its slot back: one that
+    # timed out may have arrived, and refunding it lets a looping run past the cap.
     try:
-        await email_sender.send_owner_email(address, render_owner_email(message))
-    except Exception:
+        await email_sender.send_owner_email(address, email)
+    except ClientError as e:
+        await _give_back(counter)
+        raise ValueError(f"The email service refused this email: {e}") from e
+    except RuntimeError:
         await _give_back(counter)
         raise
+    except RequestException as e:
+        raise TimeoutError(
+            "The email service didn't confirm the send, so it may still arrive. "
+            "Check your inbox before sending it again."
+        ) from e
     logger.info(f"Sent an owner email for user {user_id}")
 
 
 def render_owner_email(message: OwnerEmail) -> RenderedEmail:
+    body = render_body(message.body, message.body_format)
     context = {
         "subject": message.subject,
-        "paragraphs": [p.strip() for p in message.body.split("\n\n") if p.strip()],
+        "content": body.html,
+        "content_text": body.text,
         "link": message.link,
         "assets": settings.config.email_asset_base_url.rstrip("/"),
         "urls": build_urls(""),
@@ -112,15 +136,21 @@ async def _take_daily_send(counter: str, limit: int) -> bool:
     looping run, and a run can retry where a lost payment notice cannot."""
     try:
         redis_client = await get_redis_async()
-        sent = await redis_client.incr(counter)
-        if sent == 1:
-            await redis_client.expire(counter, _COUNTER_TTL_SECONDS)
+        async with redis_client.pipeline(transaction=True) as pipe:
+            pipe.incr(counter)
+            pipe.expire(counter, _COUNTER_TTL_SECONDS)
+            sent, _ = await cast(Awaitable[list[Any]], pipe.execute())
     except Exception as e:
         raise RuntimeError(
             "Couldn't check today's email count, so nothing was sent. "
             "Try again in a minute."
         ) from e
-    return sent <= limit
+    if sent <= limit:
+        return True
+    # A refused send gives its slot back too, or a later failed send's give-back
+    # leaves the count above what was really sent.
+    await _give_back(counter)
+    return False
 
 
 async def _give_back(counter: str) -> None:
