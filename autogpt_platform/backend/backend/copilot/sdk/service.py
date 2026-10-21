@@ -120,7 +120,7 @@ from ..constants import (
     is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
-from ..context import encode_cwd_for_cli, get_workspace_manager
+from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
 from ..graphiti.config import is_enabled_for_user
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
@@ -5390,7 +5390,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
             await active_mode(user_id, session),
-            interactive=session.metadata.origin == "interactive",
+            interactive=not is_unattended_turn(),
         )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the

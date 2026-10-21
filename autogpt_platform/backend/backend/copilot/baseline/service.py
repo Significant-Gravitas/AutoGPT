@@ -48,7 +48,11 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.context import (
+    get_workspace_manager,
+    is_unattended_turn,
+    set_execution_context,
+)
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
@@ -2060,7 +2064,7 @@ async def stream_chat_completion_baseline(
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     auto_mode_supplement = approval_mode_supplement(
         await active_mode(user_id, session),
-        interactive=session.metadata.origin == "interactive",
+        interactive=not is_unattended_turn(),
     )
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the

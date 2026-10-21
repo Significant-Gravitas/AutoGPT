@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.context import is_unattended_turn, set_turn_unattended
 from backend.copilot.gate import (
     LINKED_CHAT_PLATFORMS,
     RUN_FILES_KEY,
@@ -613,9 +614,9 @@ async def test_an_unattended_turn_is_told_to_act_not_wait(gate_on, mode):
     """A scheduled or routine turn has no gate, and nobody can answer a chat
     question, so its approval section tells it to carry the work out."""
     session = _session(mode, origin="automation")
+    set_turn_unattended(session, scheduled=False)
     supplement = approval_mode_supplement(
-        await active_mode("u", session),
-        interactive=session.metadata.origin == "interactive",
+        await active_mode("u", session), interactive=not is_unattended_turn()
     )
     assert "## Unattended run" in supplement
     assert "ask for their OK" not in supplement
@@ -629,3 +630,24 @@ async def test_a_watched_chat_with_the_gate_off_asks_in_chat():
         mode = await active_mode("u", session)
     supplement = approval_mode_supplement(mode, interactive=True)
     assert "ask for their OK in chat" in supplement
+
+
+@pytest.mark.parametrize(
+    "origin, scheduled, unattended",
+    [
+        ("interactive", False, False),
+        (None, False, False),
+        ("interactive", True, True),
+        ("automation", False, True),
+    ],
+)
+def test_who_is_watching_follows_the_turn_not_only_the_origin(
+    origin, scheduled, unattended
+):
+    """A scheduled turn into the user's own chat is unattended, and a legacy
+    chat with no origin is watched, so the approval section follows the turn."""
+    set_turn_unattended(_session(origin=origin), scheduled=scheduled)
+    section = approval_mode_supplement(None, interactive=not is_unattended_turn())
+    set_turn_unattended(_session(), scheduled=False)
+    assert ("## Unattended run" in section) is unattended
+    assert ("## Approvals" in section) is not unattended
