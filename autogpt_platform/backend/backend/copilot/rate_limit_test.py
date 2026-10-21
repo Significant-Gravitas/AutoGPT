@@ -6,6 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot import rate_limit, usage_activation
+from backend.copilot.trial_cost_context import TrialCostContext
+from backend.data import pro_activation
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
 from .rate_limit import (
@@ -48,6 +52,44 @@ from .rate_limit import (
 )
 
 _USER = "test-user-rl"
+
+
+@pytest.fixture(autouse=True)
+def usage_state_boundary(mocker, request):
+    """Rate arithmetic tests use legacy generation; activation has integration coverage."""
+
+    async def state(user_id):
+        tier = await rate_limit._fetch_user_tier(user_id)
+        return UsageActivationState(user_id=user_id, tier=tier, ready=True)
+
+    # Each tier-specific test can still override the lower boundary explicitly.
+    if not (
+        request.cls
+        and request.cls.__name__
+        in {
+            "TestFetchUserTierErrorPropagation",
+            "TestGetUserTier",
+            "TestSetUserTier",
+            "TestMaybeReconcileStripeTier",
+        }
+    ):
+        mocker.patch.object(
+            rate_limit,
+            "_fetch_user_tier",
+            AsyncMock(
+                return_value=(
+                    SubscriptionTier.NO_TIER
+                    if request.cls and request.cls.__name__ == "TestGetUsageStatus"
+                    else SubscriptionTier.PRO
+                )
+            ),
+        )
+    mocker.patch.object(rate_limit, "get_ready_usage_state", side_effect=state)
+    mocker.patch.object(
+        rate_limit,
+        "capture_cost_context",
+        AsyncMock(return_value=TrialCostContext(user_id=_USER, trial_id=None)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +161,22 @@ class TestGetUsageStatus:
 
         assert status.daily.used == 0
         assert status.weekly.used == 0
+
+    @pytest.mark.asyncio
+    async def test_fails_closed_when_asked_and_redis_unavailable(self):
+        # A caller that acts on the figures mustn't read "no usage" off an
+        # outage.
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await get_usage_status(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    fail_closed=True,
+                )
 
     @pytest.mark.asyncio
     async def test_partial_none_daily_counter(self):
@@ -266,6 +324,24 @@ class TestCheckRateLimit:
             assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
+    async def test_both_windows_used_up_names_the_one_that_refills_last(self):
+        """Regression: with both caps hit the user is blocked until the weekly
+        reset, not the next midnight the daily check used to report."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["10000", "50000"])
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+        assert exc_info.value.window == "weekly"
+        assert exc_info.value.resets_at == _weekly_reset_time()
+
+    @pytest.mark.asyncio
     async def test_raises_unavailable_when_redis_connection_error(self):
         """Fail-closed: ConnectionError must surface as RateLimitUnavailable so
         the API layer can map it to HTTP 503 instead of silently letting the
@@ -360,7 +436,8 @@ class TestCheckRateLimit:
         ):
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
-            assert exc_info.value.window == "daily"
+            # Both windows are used up, so the one that refills last is named.
+            assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
     async def test_negative_limit_disables_the_window(self):
@@ -451,9 +528,8 @@ class TestCoPilotUsagePublicFromStatus:
 
 
 class TestEnforcePaymentPaywall:
-    """The dep bypasses ``get_user_tier``'s fail-open default and goes
-    through ``_fetch_user_tier`` directly so a transient DB blip raises
-    503 instead of silently 402-ing every paid user."""
+    """The dependency requires a ready entitlement snapshot and maps lookup
+    failures to 503 rather than treating unknown entitlement as NO_TIER."""
 
     @pytest.mark.asyncio
     async def test_blocks_no_tier_user_when_flag_on(self, mocker):
@@ -524,7 +600,7 @@ class TestIsUserPaywalled:
     """``is_user_paywalled`` is the shared core check used by both the
     route-level dep and the function-level gate inside ``add_graph_execution``.
     Strict: propagates lookup failures so the caller decides how to respond
-    (route → 503; background job → fail-open)."""
+    (route → 503; background job → fail or retry without spending)."""
 
     @pytest.mark.asyncio
     async def test_no_tier_with_flag_on_is_paywalled(self, mocker):
@@ -583,7 +659,7 @@ class TestIsUserPaywalled:
     async def test_propagates_lookup_failure(self, mocker):
         """The helper does NOT swallow generic tier-lookup errors — callers
         decide. The route-dep maps to 503; background callers
-        (add_graph_execution) fail open."""
+        (add_graph_execution) fail or retry without spending."""
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(side_effect=RuntimeError("DB down")),
@@ -594,38 +670,29 @@ class TestIsUserPaywalled:
             await is_user_paywalled(_USER)
 
     @pytest.mark.asyncio
-    async def test_user_not_found_treated_as_no_tier_when_flag_on(self, mocker):
-        """``_UserNotFoundError`` (no DB row, or no ``subscription_tier``
-        set yet on a fresh signup) is treated as NO_TIER so callers without
-        a generic ``except`` (e.g. the external API ``execute_graph_block``
-        route) get a real 402 instead of a leaked 500."""
-        from .rate_limit import _UserNotFoundError, is_user_paywalled
+    @pytest.mark.parametrize("payment_enabled", [True, False])
+    async def test_user_not_found_fails_closed(self, mocker, payment_enabled):
+        """Missing users cannot establish entitlement, regardless of payment flags."""
+        accessor = MagicMock()
+        accessor.get_usage_activation_state = pro_activation.get_usage_activation_state
+        mocker.patch.object(
+            usage_activation, "pro_activation_db", return_value=accessor
+        )
+        mocker.patch.object(
+            pro_activation, "query_raw_with_schema", AsyncMock(return_value=[])
+        )
+        mocker.patch.object(
+            rate_limit, "get_ready_usage_state", usage_activation.get_ready_usage_state
+        )
+        flag = mocker.patch.object(
+            rate_limit, "is_feature_enabled", AsyncMock(return_value=payment_enabled)
+        )
 
-        mocker.patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
-        )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
-        assert await is_user_paywalled(_USER) is True
+        with pytest.raises(RateLimitUnavailable) as error:
+            await rate_limit.is_user_paywalled(_USER)
 
-    @pytest.mark.asyncio
-    async def test_user_not_found_treated_as_no_tier_when_flag_off(self, mocker):
-        """Beta cohort: missing tier + flag off → not paywalled (same
-        passthrough as a real NO_TIER user with the flag off)."""
-        from .rate_limit import _UserNotFoundError, is_user_paywalled
-
-        mocker.patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
-        )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        )
-        assert await is_user_paywalled(_USER) is False
+        assert isinstance(error.value.__cause__, ValueError)
+        flag.assert_not_awaited()
 
 
 class TestUserPaywalledError:
@@ -1364,28 +1431,28 @@ class TestGetUserTier:
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_returns_default_when_user_not_found(self):
-        """Should return DEFAULT_TIER when user is not in the DB."""
+    async def test_unavailable_user_fails_closed(self):
+        """Missing users must fail closed while their entitlement is unknown."""
         mock_db = self._mock_user_db(raises=Exception("not found"))
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
-    async def test_returns_default_when_tier_is_none(self):
-        """Should return DEFAULT_TIER when subscription_tier is None."""
+    async def test_unknown_tier_fails_closed(self):
+        """A missing subscription tier must fail closed."""
         mock_db = self._mock_user_db(subscription_tier=None)
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
-    async def test_returns_default_on_db_error(self):
-        """Should fall back to DEFAULT_TIER when DB raises."""
+    async def test_db_error_fails_closed(self):
+        """Database errors must fail closed rather than grant a fallback tier."""
         mock_db = self._mock_user_db(raises=Exception("DB down"))
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
     async def test_db_error_is_not_cached(self):
@@ -1396,8 +1463,8 @@ class TestGetUserTier:
         """
         failing_db = self._mock_user_db(raises=Exception("DB down"))
         with patch("backend.copilot.rate_limit.user_db", return_value=failing_db):
-            tier1 = await get_user_tier(_USER)
-        assert tier1 == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
         # Now DB recovers and returns PRO
         ok_db = self._mock_user_db(subscription_tier="PRO")
@@ -1408,12 +1475,12 @@ class TestGetUserTier:
         assert tier2 == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_returns_default_on_invalid_tier_value(self):
-        """Should fall back to DEFAULT_TIER when stored value is invalid."""
+    async def test_invalid_tier_fails_closed(self):
+        """An invalid stored tier must fail closed."""
         mock_db = self._mock_user_db(subscription_tier="invalid-tier")
         with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
-            tier = await get_user_tier(_USER)
-        assert tier == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
     @pytest.mark.asyncio
     async def test_user_not_found_is_not_cached(self):
@@ -1427,8 +1494,8 @@ class TestGetUserTier:
         # First call: user does not exist yet
         missing_db = self._mock_user_db(raises=Exception("not found"))
         with patch("backend.copilot.rate_limit.user_db", return_value=missing_db):
-            tier1 = await get_user_tier(_USER)
-        assert tier1 == DEFAULT_TIER
+            with pytest.raises(Exception):
+                await get_user_tier(_USER)
 
         # Second call: user now exists with PRO tier
         ok_db = self._mock_user_db(subscription_tier="PRO")
@@ -1520,7 +1587,7 @@ class TestMaybeReconcileStripeTier:
         still resolves the DB-confirmed NO_TIER instead of raising."""
         get_user_tier.cache_clear()  # type: ignore[attr-defined]
         mock_user = MagicMock()
-        mock_user.subscription_tier = None
+        mock_user.subscription_tier = "NO_TIER"
         mock_db = AsyncMock()
         mock_db.get_user_by_id = AsyncMock(return_value=mock_user)
         redis = self._mock_redis()
@@ -2883,12 +2950,15 @@ class TestGetRemainingUsdBudget:
         assert result == 0.5
 
     @pytest.mark.asyncio
-    async def test_an_active_trial_gets_the_same_failure_sentinel(self, mocker):
-        """Every tier answers a brown-out with ``floor_usd``. A trial that
-        returned a hardcoded 0.0 instead was indistinguishable from a trial
-        that had genuinely spent its last cent."""
+    async def test_trial_with_tighter_windows_gets_the_same_failure_sentinel(
+        self, mocker
+    ):
+        """A trial requiring Redis windows answers a brown-out with ``floor_usd``.
+        A hardcoded 0.0 would be indistinguishable from exhausted allowance.
+        """
         trial = MagicMock(spec=TrialState)
         trial.active = True
+        trial.offer = MagicMock(total_cost_limit=100_000_000)
         store = MagicMock()
         store.get_subscription_trial = AsyncMock(return_value=trial)
         mocker.patch("backend.copilot.rate_limit.credit_db", return_value=store)
@@ -2936,7 +3006,7 @@ class TestBuildBudgetCtx:
     def paid_user_tier(self, mocker):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.PRO),
+            new=AsyncMock(return_value=DEFAULT_TIER),
         )
 
     """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``

@@ -7,7 +7,6 @@ describe("signupFormSchema", () => {
       email: "not-an-email",
       password: "short",
       confirmPassword: "different",
-      agreeToTerms: false,
     });
 
     expect(result.success).toBe(false);
@@ -23,19 +22,47 @@ describe("signupFormSchema", () => {
       "Password must contain at least 12 characters",
     );
     expect(fieldErrors.confirmPassword).toContain("Passwords don't match");
-    expect(fieldErrors.agreeToTerms).toContain(
-      "You must agree to the Terms of Use and Privacy Policy",
-    );
   });
 
-  test("accepts a valid signup payload", () => {
+  test("accepts a valid signup payload without a terms checkbox", () => {
     const result = signupFormSchema.safeParse({
       email: "valid@example.com",
       password: "validpassword123",
       confirmPassword: "validpassword123",
-      agreeToTerms: true,
     });
 
     expect(result.success).toBe(true);
+  });
+
+  test("defaults to not opted out of marketing emails", () => {
+    const result = signupFormSchema.parse({
+      email: "valid@example.com",
+      password: "validpassword123",
+      confirmPassword: "validpassword123",
+    });
+
+    expect(result.marketingOptOut).toBe(false);
+  });
+
+  test("keeps a marketing opt-out", () => {
+    const result = signupFormSchema.parse({
+      email: "valid@example.com",
+      password: "validpassword123",
+      confirmPassword: "validpassword123",
+      marketingOptOut: true,
+    });
+
+    expect(result.marketingOptOut).toBe(true);
+  });
+
+  test("rejects a non-boolean marketing opt-out", () => {
+    const result = signupFormSchema.safeParse({
+      email: "valid@example.com",
+      password: "validpassword123",
+      confirmPassword: "validpassword123",
+      marketingOptOut: "yes",
+    });
+
+    expect(result.success).toBe(false);
   });
 });

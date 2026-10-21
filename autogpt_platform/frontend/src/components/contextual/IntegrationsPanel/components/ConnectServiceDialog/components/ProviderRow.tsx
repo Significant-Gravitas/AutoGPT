@@ -14,9 +14,7 @@ interface Props {
 }
 
 export function ProviderRow({ provider, onSelect }: Props) {
-  const src = integrationIconSrc(
-    provider.mcpServer?.icon_id ?? (provider.mcpServer ? "mcp" : provider.id),
-  );
+  const src = integrationIconSrc(provider.iconId ?? provider.id);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 
   return (
@@ -46,11 +44,6 @@ export function ProviderRow({ provider, onSelect }: Props) {
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-medium leading-[22px] text-zinc-800">
           <span>{provider.name}</span>
-          {provider.mcpServer && (
-            <Badge variant="info" size="small">
-              MCP
-            </Badge>
-          )}
           {provider.mcpServer &&
             provider.mcpServer.connection_mode !== "hosted" && (
               <Badge variant="warning" size="small">

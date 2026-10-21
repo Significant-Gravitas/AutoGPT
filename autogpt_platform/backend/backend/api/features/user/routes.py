@@ -8,17 +8,23 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Body, HTTPException, Query, Response, Security
 from prisma.enums import BriefingFrequency
 
-from backend.api.model import TimezoneResponse, UpdateTimezoneRequest
+from backend.api.model import (
+    RecordUserConsentRequest,
+    TimezoneResponse,
+    UpdateTimezoneRequest,
+    UserConsentResponse,
+)
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.user import (
     get_or_create_user,
     get_or_create_user_with_status,
     get_user_notification_preference,
-    update_user_email,
+    record_signup_consent,
     update_user_notification_preference,
     update_user_timezone,
     verify_preference_token,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -76,20 +82,6 @@ async def get_or_create_user_route(
     return user.model_dump()
 
 
-@router.post(
-    "/auth/user/email",
-    summary="Update user email",
-    tags=["auth"],
-    dependencies=[Security(requires_user)],
-)
-async def update_user_email_route(
-    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
-) -> dict[str, str]:
-    await update_user_email(user_id, email)
-
-    return {"email": email}
-
-
 @router.get(
     "/auth/user/timezone",
     summary="Get user timezone",
@@ -116,6 +108,28 @@ async def update_user_timezone_route(
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
     return TimezoneResponse(timezone=user.timezone)
+
+
+@router.post(
+    "/auth/user/consent",
+    summary="Record user consent",
+    tags=["auth"],
+    dependencies=[Security(requires_user)],
+)
+async def record_user_consent_route(
+    user_id: Annotated[str, Security(get_user_id)], request: RecordUserConsentRequest
+) -> UserConsentResponse:
+    """Record the terms version accepted at signup and, if the user refused
+    marketing email, the opt-out. Idempotent; never clears an opt-out."""
+    user = await record_signup_consent(
+        user_id, request.terms_version, request.marketing_opt_out
+    )
+    return UserConsentResponse(
+        terms_accepted_at=user.terms_accepted_at,
+        terms_version=user.terms_version,
+        marketing_opt_out_at=user.marketing_opt_out_at,
+        marketing_opt_out_source=user.marketing_opt_out_source,
+    )
 
 
 @router.get(
@@ -167,11 +181,15 @@ async def apply_email_preference_choice(
     if user_id is None:
         raise HTTPException(status_code=400, detail="Invalid or expired link")
 
-    current = await get_user_notification_preference(user_id)
-    updated = _preference_with_choice(current, choice)
-    if updated is None:
-        raise HTTPException(status_code=400, detail="Unknown preference choice")
-    return await update_user_notification_preference(user_id, updated)
+    try:
+        current = await get_user_notification_preference(user_id)
+        updated = _preference_with_choice(current, choice)
+        if updated is None:
+            raise HTTPException(status_code=400, detail="Unknown preference choice")
+        return await update_user_notification_preference(user_id, updated)
+    except NotFoundError:
+        # A deleted user's link is refused like a forged one.
+        raise HTTPException(status_code=400, detail="Invalid or expired link") from None
 
 
 def _preference_with_choice(

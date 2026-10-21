@@ -1,5 +1,7 @@
 import base64
 import json
+import logging
+import re
 from time import perf_counter
 from typing import Any
 
@@ -9,9 +11,11 @@ from typesafe_sdk._core.errors import (
     TypeSafeAPIConnectionError,
     TypeSafeAPIError,
     TypeSafeAPIResponseValidationError,
+    extract_message,
 )
 from typesafe_sdk._core.json import serialize
 from typesafe_sdk._core.response_types import SystemOneResponse
+from typesafe_sdk.constants import DEFAULT_MODEL
 
 from backend.util.settings import Settings
 
@@ -19,6 +23,10 @@ from ._budget import PreparedState, prepare_state
 from ._wire import WireCapture, capture_wire
 
 settings = Settings()
+logger = logging.getLogger(__name__)
+# Pins TypeSafe has answered "Unknown model" for; later calls skip straight to the alias.
+_retired_models: set[str] = set()
+_PINNED_VERSION = re.compile(r"jev-\d+\.\d+\.\d+")
 
 
 class JevCallResult(BaseModel):
@@ -41,6 +49,29 @@ async def call_jev(
     *,
     model: str | None = None,
     timeout: float | None = None,
+) -> JevCallResult:
+    """A pinned ``model`` that TypeSafe has retired runs on ``jev-latest``
+    instead, with one ERROR per process naming the pin to update."""
+    if model in _retired_models:
+        model = DEFAULT_MODEL
+    try:
+        return await _call_jev(api_key, state, questions, model, timeout)
+    except _RetiredModel as retired:
+        if retired.model not in _retired_models:
+            _retired_models.add(retired.model)
+            logger.error(
+                f"TypeSafe no longer serves Jev model {retired.model}; calls pinned "
+                f"to it now run on {DEFAULT_MODEL}. Pin a current Jev version."
+            )
+        return await _call_jev(api_key, state, questions, DEFAULT_MODEL, timeout)
+
+
+async def _call_jev(
+    api_key: str,
+    state: Any,
+    questions: dict[str, Choice | Score | Noul],
+    model: str | None,
+    timeout: float | None,
 ) -> JevCallResult:
     prepared = prepare_state(state, questions)
     async with AsyncTypeSafeClient(
@@ -66,6 +97,8 @@ async def call_jev(
                     error.request_id or "",
                 )
             except TypeSafeAPIError as error:
+                if model and _is_retired(model, error):
+                    raise _RetiredModel(model) from error
                 return _failure(
                     wire,
                     prepared,
@@ -91,6 +124,21 @@ async def call_jev(
                     wire.request_id,
                 )
             return _success(result, wire, prepared, started)
+
+
+class _RetiredModel(Exception):
+    def __init__(self, model: str) -> None:
+        super().__init__(model)
+        self.model = model
+
+
+def _is_retired(model: str, error: TypeSafeAPIError) -> bool:
+    # A concrete version only: an alias such as jev-preview fails as before.
+    return (
+        _PINNED_VERSION.fullmatch(model) is not None
+        and error.status == 400
+        and extract_message(error.body) == f"Unknown model: {model}"
+    )
 
 
 def _success(

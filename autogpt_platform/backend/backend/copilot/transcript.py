@@ -20,7 +20,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.data.db_accessors import chat_db
@@ -29,6 +29,9 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .hidden_rows import visible_to_model
+from .legacy_first_turn_memory import without_stored_first_turn_memory
+from .legacy_session_file import restore_session_file
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -656,6 +659,32 @@ def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
 
+def cli_session_cost_usd(content: str, session_id: str) -> float:
+    """The running cost the CLI restores on ``--resume`` from this session file.
+
+    The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
+    so its ``total_cost_usd`` counts on from this figure (0 with no such row).
+    """
+    entry = cli_session_cost_state(content, session_id)
+    return float(entry["totalCostUSD"]) if entry else 0.0
+
+
+def cli_session_cost_state(content: str, session_id: str) -> dict[str, Any] | None:
+    """Return the last matching native CLI cost snapshot, including model usage."""
+    for line in reversed(content.splitlines()):
+        if "cost-state" not in line:
+            continue
+        entry = json.loads(line, fallback=None)
+        if (
+            isinstance(entry, dict)
+            and entry.get("type") == "cost-state"
+            and entry.get("sessionId") == session_id
+            and isinstance(entry.get("totalCostUSD"), (int, float))
+        ):
+            return entry
+    return None
+
+
 def _cli_session_storage_path_parts(
     user_id: str, session_id: str
 ) -> tuple[str, str, str]:
@@ -756,8 +785,14 @@ async def download_transcript(
     Pure GCS operation — no disk I/O.  The caller is responsible for writing
     content to disk if --resume is needed.
 
-    Returns a TranscriptDownload with the raw content, message_count watermark,
-    and mode on success, or None if not available (first turn or upload failed).
+    Returns a TranscriptDownload with the content as stored, message_count
+    watermark, and mode on success, or None if not available (first turn or
+    upload failed). Every restore, on either engine, comes through here, and
+    a file an older session uploaded is restored without the first-turn
+    memory block the old code stored in it (``legacy_session_file.py``): the
+    block is taken out of the first user entry, or, when the file holds a
+    copy that cannot be taken out, None is returned as if there were no
+    file, so the turn rebuilds from the database and its upload replaces it.
     """
     storage = await get_workspace_storage()
     path = _build_path_from_parts(
@@ -814,7 +849,21 @@ async def download_transcript(
         message_count,
         mode,
     )
-    return TranscriptDownload(content=content, message_count=message_count, mode=mode)
+    restored = restore_session_file(content)
+    if restored.content is None:
+        logger.warning(
+            "%s Not resuming from the stored CLI session: %s",
+            log_prefix,
+            restored.reason,
+        )
+        return None
+    if restored.stripped:
+        logger.info(
+            "%s Removed the first-turn memory block the session stored", log_prefix
+        )
+    return TranscriptDownload(
+        content=restored.content, message_count=message_count, mode=mode
+    )
 
 
 def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
@@ -1028,22 +1077,25 @@ async def extract_context_messages(
       preserving structured ``tool_calls``.
 
     Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.
+    transcript is available.  Excludes ``role="reasoning"`` rows, and rows
+    posted for the user only (``hidden_rows``).  The current user turn at
+    ``session_messages[-1]`` is excluded — callers append it themselves.
+    Database messages are stripped of legacy first-turn memory blocks.
     """
     # Drop reasoning rows — their content lives in transcript paths,
     # not the public turn list.  Queue lifecycle is tracked on the
     # owning ChatSession, not per message, so no per-row filtering
     # for queued/running rows is needed here.
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
+    session_messages = without_stored_first_turn_memory(
+        [m for m in session_messages if m.role != "reasoning"]
+    )
     prior = session_messages[:-1]
 
     if download is None:
-        return prior
+        return visible_to_model(prior)
     transcript_msgs = _parse_transcript_to_messages(download)
     if transcript_msgs is None:
-        return prior
+        return visible_to_model(prior)
 
     gap = detect_gap(download, session_messages)
     hole: list[ChatMessage] = []
@@ -1051,7 +1103,8 @@ async def extract_context_messages(
         hole = await fill_hole_between_transcript_and_gap(
             session_id, download.message_count, gap
         )
-    return transcript_msgs + hole + gap
+    # After the watermark slicing above, which counts hidden rows too.
+    return transcript_msgs + visible_to_model(hole + gap)
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

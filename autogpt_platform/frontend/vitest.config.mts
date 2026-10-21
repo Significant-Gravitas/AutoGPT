@@ -6,7 +6,12 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
-    include: ["src/**/*.test.tsx", "src/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: [
+      "src/**/*.test.tsx",
+      "src/**/*.test.ts",
+      "scripts/**/*.test.ts",
+      "scripts/**/*.test.tsx",
+    ],
     setupFiles: ["./src/tests/integrations/vitest.setup.tsx"],
     coverage: {
       provider: "v8",

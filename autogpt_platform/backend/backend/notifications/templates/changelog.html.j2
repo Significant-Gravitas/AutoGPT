@@ -12,7 +12,7 @@
     ============================================================ -#}
 {%- import "_email_ui.j2" as ui with context -%}
 <!doctype html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 {{ ui.head_block(subject) }}
 </head>
@@ -21,7 +21,7 @@
 {{ ui.page_open() }}
 {{ ui.masthead() }}
 {{ ui.hero('changelog') }}
-    <tr><td bgcolor="#ffffff" style="border-radius:0 0 16px 16px;">
+    <tr><td bgcolor="#ffffff" class="corner" style="border-radius:0 0 16px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
 {% call ui.eyebrow(tone='brand') %}AUTOGPT UPDATE · {{ edition_label | upper }}{% endcall %}
 {% call ui.headline() %}What's new: {{ period_label }}{% endcall %}

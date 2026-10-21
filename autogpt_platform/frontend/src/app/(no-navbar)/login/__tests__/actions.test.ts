@@ -1,3 +1,4 @@
+import { TERMS_VERSION } from "@/lib/legal";
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +9,7 @@ const getOnboardingStatusMock = vi.fn();
 const captureExceptionMock = vi.fn();
 const scheduleAccountCreatedGoalMock = vi.fn();
 const markAccountCreatedMock = vi.fn();
+const recordUserConsentMock = vi.fn();
 
 vi.mock("@/lib/auth/auth", () => ({
   auth: {
@@ -23,6 +25,8 @@ vi.mock("@/lib/auth/server/rollbackSession", () => ({
 
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   postV1GetOrCreateUser: (...args: unknown[]) => createUserMock(...args),
+  postV1RecordUserConsent: (...args: unknown[]) =>
+    recordUserConsentMock(...args),
 }));
 
 vi.mock("@/services/analytics/datafast-server", async (importOriginal) => ({
@@ -69,6 +73,7 @@ beforeEach(() => {
   captureExceptionMock.mockReset();
   scheduleAccountCreatedGoalMock.mockReset();
   markAccountCreatedMock.mockReset();
+  recordUserConsentMock.mockReset().mockResolvedValue({ status: 200 });
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -97,14 +102,14 @@ describe("login", () => {
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
-  it("sends returning users to copilot when onboarding is already complete", async () => {
+  it("sends returning users to /home when onboarding is already complete", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
     createUserMock.mockResolvedValue(userResponse(false));
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
     const result = await login("user@example.com", "hunter2-password");
 
-    expect(result).toEqual({ success: true, next: "/copilot" });
+    expect(result).toEqual({ success: true, next: "/home" });
   });
 
   it("returns the Better Auth error message when sign-in fails with an APIError", async () => {
@@ -192,7 +197,7 @@ describe("login", () => {
     const result = await login("user@example.com", "hunter2-password");
 
     expect(rollbackSessionMock).not.toHaveBeenCalled();
-    expect(result).toEqual({ success: true, next: "/copilot" });
+    expect(result).toEqual({ success: true, next: "/home" });
   });
 
   it("counts the sign-up when this login is the call that created the account", async () => {
@@ -209,6 +214,34 @@ describe("login", () => {
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
+  it("records the terms when this login is the call that created the account", async () => {
+    // A mail scanner opened the verification link first, so the owner's own
+    // sign-in is what sets the account up.
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue(userResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await login("user@example.com", "hunter2-password");
+
+    expect(recordUserConsentMock).toHaveBeenCalledTimes(1);
+    expect(recordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: false,
+    });
+  });
+
+  it("still signs the new account in when the consent write fails", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue(userResponse(true));
+    recordUserConsentMock.mockRejectedValue(new Error("backend down"));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const result = await login("user@example.com", "hunter2-password");
+
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, next: "/onboarding" });
+  });
+
   it("does not count a login into an account that already existed", async () => {
     signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
     createUserMock.mockResolvedValue(userResponse(false));
@@ -218,6 +251,7 @@ describe("login", () => {
 
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
     expect(markAccountCreatedMock).not.toHaveBeenCalled();
+    expect(recordUserConsentMock).not.toHaveBeenCalled();
   });
 
   it("rolls back and counts nothing when provisioning answers an error status", async () => {

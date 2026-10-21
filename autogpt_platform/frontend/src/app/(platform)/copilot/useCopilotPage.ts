@@ -1,4 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -6,7 +7,6 @@ import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import {
   forgetHeldFollowUp,
@@ -28,10 +28,12 @@ import {
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
+import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -67,7 +69,9 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-export function useCopilotPage() {
+export function useCopilotPage({
+  isStreamRuntime = false,
+}: { isStreamRuntime?: boolean } = {}) {
   const { user, isUserLoading, isLoggedIn } = useAuth();
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
@@ -122,14 +126,18 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const isDryRun = useCopilotUIStore((s) => s.isDryRun);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
     setSessionId,
+    sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -174,10 +182,33 @@ export function useCopilotPage() {
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
+  const streamArgs = {
+    userId: user?.id ?? null,
+    sessionId,
+    sessionView,
+    hydratedMessages,
+    rawSessionMessages,
+    sessionAuthProvider: sessionLlmAuthProvider,
+    sessionCredentialId: sessionLlmCredentialId,
+    activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
+    hasActiveStream,
+    refetchSession,
+    // Sent whenever the picker can set it. The tier control is not behind
+    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
+    // so gating the value on that flag silently ran the turn on the tier the
+    // user had not chosen. Entitlement is the server's call, not the flag's.
+    copilotModel: copilotLlmModel,
+  };
+  // The host keys its mount by the flag, so this never changes within one.
+  const useStream = isStreamRuntime
+    ? useCopilotRuntimeStream
+    : useCopilotStream;
+  const stream = useStream(streamArgs);
+  const runtimeStream = "appendLocalUserRows" in stream ? stream : null;
   const {
     followBackendTurn,
     messages: currentMessages,
-    setMessages,
     sendMessage,
     stop,
     status,
@@ -192,39 +223,29 @@ export function useCopilotPage() {
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
-  } = useCopilotStream({
-    userId: user?.id ?? null,
-    sessionId,
-    hydratedMessages,
-    rawSessionMessages,
-    sessionAuthProvider: sessionLlmAuthProvider,
-    sessionCredentialId: sessionLlmCredentialId,
-    activeTurnStartMessageId,
-    hasActiveStream,
-    refetchSession,
-    // Sent whenever the picker can set it. The tier control is not behind
-    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
-    // so gating the value on that flag silently ran the turn on the tier the
-    // user had not chosen. Entitlement is the server's call, not the flag's.
-    copilotModel: copilotLlmModel,
-  });
+  } = stream;
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
-      initialOldestSequence: oldestSequence,
+      initialOldestSequence: runtimeStream
+        ? runtimeStream.oldestSequence
+        : oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
     });
 
   // Merge the older-pages and current-page stat maps; current-page (historical)
   // wins on overlap since it was persisted more recently.
+  const currentTurnStats = runtimeStream
+    ? runtimeStream.turnStats
+    : historicalTurnStats;
   const turnStats = useMemo(() => {
     const merged = new Map(pagedTurnStats);
-    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    currentTurnStats?.forEach((v, k) => merged.set(k, v));
     return merged;
-  }, [pagedTurnStats, historicalTurnStats]);
+  }, [pagedTurnStats, currentTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -245,29 +266,11 @@ export function useCopilotPage() {
   // turn — see onSend.
   const isLocalStreamSettled =
     !isInflightRef.current && !isFinishProbing && !isReconnecting;
-  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
-  isLocalStreamSettledRef.current = isLocalStreamSettled;
-  // Each waiter learns whether the stream settled (send now) or the hook
-  // went away first (the chat host unmounts on a chat switch and on reload;
-  // the follow-up then stays in sessionStorage, see below).
-  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
-  useEffect(() => {
-    if (!isLocalStreamSettled) return;
-    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
-  }, [isLocalStreamSettled]);
-  useEffect(
-    () => () => {
-      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
-    },
-    [],
-  );
-
-  function waitForLocalSettle() {
-    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      settleWaitersRef.current.push(resolve);
-    });
-  }
+  // A held follow-up learns whether the stream settled (send now) or the
+  // hook went away first (the chat host unmounts on a chat switch and on
+  // reload; the follow-up then stays in sessionStorage, see below).
+  const { waitUntilSettled: waitForLocalSettle, markUnsettled } =
+    useSettleGate(isLocalStreamSettled);
 
   // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
   // the backend-buffered ones, since from the user's side they are the same
@@ -301,7 +304,13 @@ export function useCopilotPage() {
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  // Memoised on their inputs so the stripReplayPrefix memos below only re-run
+  // when the messages actually change, not on every render once older pages
+  // are loaded.
+  const rawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, currentMessages),
+    [pagedMessages, currentMessages],
+  );
   const cachedSessionMessages = useMemo(
     () =>
       sessionId
@@ -309,9 +318,9 @@ export function useCopilotPage() {
         : [],
     [sessionId],
   );
-  const cachedRawMessages = concatWithAssistantMerge(
-    pagedMessages,
-    cachedSessionMessages,
+  const cachedRawMessages = useMemo(
+    () => concatWithAssistantMerge(pagedMessages, cachedSessionMessages),
+    [pagedMessages, cachedSessionMessages],
   );
 
   // Drop / trim assistant messages whose leading text is a replay of an
@@ -322,18 +331,13 @@ export function useCopilotPage() {
     () => stripReplayPrefix(cachedRawMessages),
     [cachedRawMessages],
   );
-  const restoreStatusMessage = useMemo(
-    () =>
-      isRestoringActiveSession
-        ? getLatestAssistantStatusMessage(messages)
-        : null,
-    [isRestoringActiveSession, messages],
-  );
+  // The runtime's restore state is a passive notice; it never trims the list.
+  const restoreStatusMessage = runtimeStream?.restoreStatusMessage ?? null;
   const displayMessages = useMemo(() => {
-    if (!isRestoringActiveSession) return messages;
+    if (!isRestoringActiveSession || runtimeStream) return messages;
     if (hasAssistantTail(cachedMessages)) return cachedMessages;
     return trimVisibleMessagesForActiveRestore(messages);
-  }, [isRestoringActiveSession, messages, cachedMessages]);
+  }, [isRestoringActiveSession, runtimeStream, messages, cachedMessages]);
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
@@ -341,7 +345,12 @@ export function useCopilotPage() {
     sessionId,
     status,
     messages,
-    setMessages,
+    ...("setMessages" in stream
+      ? { setMessages: stream.setMessages }
+      : {
+          appendLocalUserRows: stream.appendLocalUserRows,
+          drainedCount: stream.drainedCount,
+        }),
   });
 
   useCopilotNotifications(sessionId);
@@ -361,7 +370,7 @@ export function useCopilotPage() {
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(
+  async function sendOrQueue(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
@@ -439,7 +448,7 @@ export function useCopilotPage() {
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
-      isLocalStreamSettledRef.current = false;
+      markUnsettled();
     }
     if (heldForLocalSettle && sessionId) {
       releaseFollowUp(sessionId, trimmed);
@@ -453,9 +462,14 @@ export function useCopilotPage() {
     }
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }
+  // One function for the host's lifetime that runs the latest `sendOrQueue`,
+  // so the chat actions and the composer keep their props across flushes.
+  const onSend = useStableCallback(sendOrQueue);
 
   useWorkflowImportAutoSubmit({
-    onSend,
+    // This render's function on purpose: its effect lists `onSend` as a
+    // dependency and re-checks the URL for a prompt every time it changes.
+    onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
   });
@@ -534,6 +548,7 @@ export function useCopilotPage() {
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

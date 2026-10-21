@@ -10,9 +10,10 @@ import {
 interface Args {
   email: string;
   next?: string | null;
+  marketingOptOut?: boolean;
 }
 
-export function useCheckYourInbox({ email, next }: Args) {
+export function useCheckYourInbox({ email, next, marketingOptOut }: Args) {
   const { toast } = useToast();
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [isResending, setIsResending] = useState(false);
@@ -34,7 +35,7 @@ export function useCheckYourInbox({ email, next }: Args) {
       // per-IP rate limit applies.
       const { error } = await authClient.sendVerificationEmail({
         email,
-        callbackURL: getEmailVerificationCallbackURL(next),
+        callbackURL: getEmailVerificationCallbackURL({ next, marketingOptOut }),
       });
       if (error) {
         showResendFailed(error.status === 429);

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -8,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -217,7 +219,7 @@ describe("SubscriptionStep", () => {
     expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Role on success, paywall on cancel)", async () => {
+  test("selecting Pro persists selectedPlan and returns to Preparing on success, paywall on cancel", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
@@ -247,21 +249,19 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
-    // Success moves on to the step after the paywall (step 2) to begin
-    // onboarding; cancel returns to the paywall (step 1).
+    // Checkout returns to semantic steps so optional layout changes are safe.
     expect(capturedTierBody!.success_url).toContain(
-      "/onboarding?step=2&subscription=success",
+      "/onboarding?step=preparing&subscription=success",
     );
     expect(capturedTierBody!.cancel_url).toContain(
-      "/onboarding?step=1&subscription=cancelled",
+      "/onboarding?step=subscription&subscription=cancelled",
     );
     // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
     // report the subscription value to Google Ads.
     expect(capturedTierBody!.success_url).toContain(
       "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
     );
-    // Nothing is POSTed here — the profile is collected after payment and
-    // the Preparing step submits it.
+    // Answers have already been collected; Preparing submits the final profile.
     expect(profileCalled).toBe(false);
   });
 
@@ -295,6 +295,74 @@ describe("SubscriptionStep", () => {
       expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
     );
   });
+
+  test("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const location = stubLocation();
+    let posts = 0;
+    server.use(
+      http.post("*/api/credits/subscription", () => {
+        posts += 1;
+        return HttpResponse.json({
+          url: "https://checkout.stripe.com/pay/cs_test",
+        });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    const pro = screen.getByRole("button", { name: /Get Pro/i });
+    fireEvent.click(pro);
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(pro.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(pro);
+    expect(posts).toBe(1);
+
+    restoreFromBackForwardCache();
+
+    expect(pro.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(pro);
+    await waitFor(() => expect(posts).toBe(2));
+  });
+
+  test.each(["https://checkout.stripe.com/pay/old_account", null])(
+    "ignores an old account's checkout response with URL %s",
+    async (url) => {
+      const location = stubLocation();
+      let resolveResponse: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        resolveResponse = resolve;
+      });
+      const received = vi.fn();
+      server.use(
+        http.post("*/api/credits/subscription", async () => {
+          received();
+          await pending;
+          return HttpResponse.json({ url });
+        }),
+      );
+      useOnboardingWizardStore.setState({ userID: "previous-user" });
+      render(<SubscriptionStep />);
+      fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+      await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      act(() => {
+        useOnboardingWizardStore.setState({
+          userID: "next-user",
+          currentStep: 1,
+        });
+        resolveResponse?.();
+      });
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /Upgrade to Max/i })
+            .hasAttribute("disabled"),
+        ).toBe(false),
+      );
+      expect(location.href).toBe("http://localhost/");
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    },
+  );
 
   test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");

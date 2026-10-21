@@ -4,7 +4,6 @@ export const DATAFAST_SCRIPT_SRC = "https://datafa.st/js/script.js";
 
 interface LoadingArgs {
   host: string;
-  pathname: string | null;
   isLocal: boolean;
   isConsentManaged: boolean;
   consent: ConsentState;
@@ -12,7 +11,6 @@ interface LoadingArgs {
 
 export function resolveAnalyticsLoading({
   host,
-  pathname,
   isLocal,
   isConsentManaged,
   consent,
@@ -24,33 +22,13 @@ export function resolveAnalyticsLoading({
     // keeps it cookieless where consent is required (see consent-mode.ts) and
     // Cookiebot sends the answer once there is one. Without a banner nothing
     // could ever answer, so the tag stays off. Open-source developers running
-    // locally only send analytics after opting in.
+    // locally only send analytics after opting in. DataFast waits for consent
+    // everywhere, the public tour included.
     googleTag:
       (isProductionDomain && isConsentManaged) ||
       (isLocal && consent.analytics),
-    dataFast:
-      isProductionDomain &&
-      (consent.analytics ||
-        isDataFastConsentExempt(pathname, isConsentManaged)),
+    dataFast: isProductionDomain && consent.analytics,
   };
-}
-
-// TODO(SECRT-2713): the public tour loads DataFast without the consent gate
-// so tour funnel events fire for first-touch visitors. The old banner stayed
-// hidden on /tour; Cookiebot's does not, so revisit this exemption there.
-// Without a banner nothing optional loads, the tour included.
-export function isDataFastConsentExempt(
-  pathname: string | null,
-  isConsentManaged: boolean,
-): boolean {
-  return isConsentManaged && isTourPath(pathname);
-}
-
-// Segment-boundary match: /tourism must not inherit the tour's consent
-// exemption.
-function isTourPath(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return pathname === "/tour" || pathname.startsWith("/tour/");
 }
 
 const PRODUCTION_HOST = "platform.agpt.co";

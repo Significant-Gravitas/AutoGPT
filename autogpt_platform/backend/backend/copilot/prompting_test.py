@@ -34,6 +34,15 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
+            0
+        ]
+        assert "`read_tool_result`" in guidance
+        assert "`Read`" not in guidance
+
 
 class TestComputerNote:
     """A plain chat on E2B is told it has a screen; an expert session is told
@@ -117,6 +126,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "Connecting is not running" in result
         assert "The card asks for credentials, not inputs" in result
 
+    def test_prompt_states_the_one_connect_convention(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert 'input={"connect": true}' in result
+        assert "for any capability" in result
+
+    def test_prompt_tells_experts_the_vendor_integration_comes_first(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "own integration is listed first" in result
+        assert "only for an action it does not offer" in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Discovery section must forbid claiming a capability gap without
@@ -150,6 +169,13 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 
 class TestGraphitiMemoryScope:
+    def test_supplement_keeps_tentative_memories_unconfirmed(self):
+        assert (
+            "Treat any memory marked tentative as an unconfirmed inference: "
+            "state that uncertainty before mentioning it, "
+            "and do not strengthen it or add details."
+        ) in prompting.get_graphiti_supplement()
+
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement()
 
@@ -305,8 +331,83 @@ class TestSchedulingGuidance:
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
 
 
+class TestReplyStyle:
+    # The base prompt comes from Langfuse in production, so the style rules
+    # ride SHARED_TOOL_NOTES, which both engines append for Otto and experts.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_reply_style_rules(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "### Reply style" in result
+        assert "Default to 1 to 3 sentences." in result
+        assert "Never write an em dash or an en dash" in result
+
+    def test_baseline_mode_gets_the_same_rules(self):
+        assert "### Reply style" in prompting.SHARED_TOOL_NOTES
+        assert "never its length" in prompting.SHARED_TOOL_NOTES
+
+    def test_the_rules_do_not_model_the_dashes_they_forbid(self):
+        start = prompting.SHARED_TOOL_NOTES.index("### Reply style")
+        end = prompting.SHARED_TOOL_NOTES.index("### Math")
+        section = prompting.SHARED_TOOL_NOTES[start:end]
+        assert "—" not in section and "–" not in section
+
+
 class TestMathGuidance:
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
         assert "`$…$` inline, `$$…$$` for display" in result
+
+
+class TestConnectedAccountNotes:
+    """What the model is told about connected accounts: that they are
+    placeholders behind the swap proxy, and which a restricted run may use."""
+
+    @pytest.fixture(autouse=True)
+    def fresh_supplements(self):
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+        yield
+        prompting.get_sdk_supplement.cache_clear()
+        prompting._get_cloud_sandbox_supplement.cache_clear()
+
+    def test_behind_the_proxy_the_sandbox_notes_say_where_placeholders_work(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value="p:1080"):
+            text = prompting.get_sdk_supplement(use_e2b=True)
+        assert "hsurr:" in text
+        assert "`GH_TOKEN`/`GITHUB_TOKEN` (GitHub): github.com, api.github.com" in text
+
+    def test_without_the_proxy_nothing_is_said(self):
+        from unittest.mock import patch
+
+        with patch("backend.util.e2b_network.proxy_address", return_value=None):
+            assert "hsurr:" not in prompting.get_sdk_supplement(use_e2b=True)
+
+    def test_an_unrestricted_run_gets_no_ceiling_note(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        assert prompting.get_provider_ceiling_supplement(None) == ""
+        assert prompting.get_provider_ceiling_supplement(CopilotPermissions()) == ""
+
+    def test_a_run_allowed_some_accounts_is_told_which(self):
+        """The branch that names them: unreachable while GitHub is the only
+        provider in the table, so pinned here with a stubbed ceiling."""
+        from unittest.mock import patch
+
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.permissions.allowed_providers", return_value=("github",)
+        ):
+            note = prompting.get_provider_ceiling_supplement(CopilotPermissions())
+        assert "only these of the user's connected accounts: GitHub" in note
+
+    def test_a_restricted_run_is_told_what_it_may_use(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        none = prompting.get_provider_ceiling_supplement(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        assert "none of the user's connected accounts" in none

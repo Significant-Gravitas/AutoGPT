@@ -15,14 +15,22 @@ interface Props {
   email: string;
   reason: CheckYourInboxReason;
   next?: string | null;
+  marketingOptOut?: boolean;
   onBack: () => void;
 }
 
-export function CheckYourInbox({ email, reason, next, onBack }: Props) {
+export function CheckYourInbox({
+  email,
+  reason,
+  next,
+  marketingOptOut,
+  onBack,
+}: Props) {
   const copy = CHECK_YOUR_INBOX_COPY[reason];
   const { cooldown, isResending, canResend, handleResend } = useCheckYourInbox({
     email,
     next,
+    marketingOptOut,
   });
 
   return (
@@ -41,7 +49,7 @@ export function CheckYourInbox({ email, reason, next, onBack }: Props) {
         {copy.title}
       </Text>
 
-      <Text variant="body" tone="secondary" unmask={false} className="mt-3">
+      <Text variant="body" tone="secondary" className="mt-3">
         We sent an email to{" "}
         <span className="break-all font-medium text-slate-950">{email}</span>.
         Open the link in it to {copy.action}.

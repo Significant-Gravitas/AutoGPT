@@ -6,6 +6,7 @@ import {
   cleanup,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import { SubscriptionTierSection } from "../SubscriptionTierSection";
 
 // Mock next/navigation
@@ -305,6 +306,39 @@ describe("SubscriptionTierSection", () => {
       expect(mockLocation.href).toBe("https://checkout.stripe.com/pay/cs_test");
     });
 
+    vi.unstubAllGlobals();
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const mockLocation = { href: "" };
+    vi.stubGlobal("location", mockLocation);
+    const mutateFn = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { url: "https://checkout.stripe.com/pay/cs_test" },
+    });
+    setupMocks({ mutateFn });
+    render(<SubscriptionTierSection />);
+
+    const upgrade = screen.getByRole("button", { name: /upgrade to pro/i });
+    fireEvent.click(upgrade);
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue to checkout/i }),
+    );
+    await waitFor(() =>
+      expect(mockLocation.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+
+    restoreFromBackForwardCache();
+
+    expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue to checkout/i }),
+    );
+    await waitFor(() => expect(mutateFn).toHaveBeenCalledTimes(2));
     vi.unstubAllGlobals();
   });
 

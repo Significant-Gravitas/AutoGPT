@@ -19,8 +19,8 @@
 ## Self-Hosting
 
 * [Setting Up AutoGPT (Self-Host)](getting-started.md)
+* [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
-* [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
 * [Advanced Setup](advanced_setup.md)
 
 ## Tutorials
@@ -42,6 +42,7 @@
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 
@@ -58,6 +59,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [A new sidebar, a smarter composer, and Otto on Telegram](changelog/july-15-july-22-2026.md)
   * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
   * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)
   * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)

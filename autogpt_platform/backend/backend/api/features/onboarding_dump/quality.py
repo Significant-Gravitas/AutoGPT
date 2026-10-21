@@ -40,7 +40,7 @@ NO_USABLE_SPEECH = "no_usable_speech"
 INSUFFICIENT_CONTENT = "insufficient_content"
 QUALITY_ERROR_CODES = frozenset({NO_USABLE_SPEECH, INSUFFICIENT_CONTENT})
 
-_MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-5.5")
 # The gate runs inside the finalize request, after transcription already
 # spent part of the frontend proxy's 30s budget. A 100-token Haiku verdict
 # typically lands in a couple of seconds; a stalled provider must degrade
