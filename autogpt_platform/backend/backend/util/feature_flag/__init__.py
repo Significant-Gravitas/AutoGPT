@@ -484,9 +484,13 @@ async def get_feature_flag_value(
 async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
     """The arm PostHog buckets *user_id* into for an experiment, or None.
 
-    Experiments live in PostHog whichever vendor answers feature flags.
+    Experiments live in PostHog whichever vendor answers feature flags. None
+    too when the user lookup failed: the first arm is stored for good, and one
+    read without the user's properties can be the wrong one.
     """
-    user_context, _ = await _fetch_user_context_status(user_id)
+    user_context, resolved = await _fetch_user_context_status(user_id)
+    if not resolved:
+        return None
     return await posthog.evaluate_variant(
         flag_key, user_id, _person_properties(user_context)
     )

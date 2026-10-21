@@ -1,5 +1,6 @@
 """Server-side experiment assignment."""
 
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -92,6 +93,16 @@ async def test_without_local_definitions_nobody_is_enrolled_rather_than_asking_p
 
     assert await evaluate_experiment_variant(PRICING, "u-1") is None
     remote.assert_not_called()
+
+
+async def test_a_failed_user_lookup_enrols_nobody(mocker, posthog_client):
+    """The first arm is stored for good, so it is never read without the user's
+    properties: an email- or role-targeted arm would be missed."""
+    mocker.patch.object(
+        ff, "_fetch_user_context", AsyncMock(side_effect=ConnectionError("db down"))
+    )
+
+    assert await evaluate_experiment_variant(PRICING, str(uuid.uuid4())) is None
 
 
 async def test_a_stored_arm_wins_over_posthogs_current_bucket(mocker):

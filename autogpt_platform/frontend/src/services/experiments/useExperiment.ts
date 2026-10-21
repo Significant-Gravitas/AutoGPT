@@ -6,8 +6,8 @@ import {
 } from "@/app/api/__generated__/endpoints/experiments/experiments";
 import type { Experiment } from "@/app/api/__generated__/models/experiment";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { environment } from "@/services/environment";
-import posthog from "posthog-js";
 import { useEffect } from "react";
 
 /**
@@ -47,12 +47,12 @@ export function useExperiment(experiment: Experiment) {
   };
 }
 
-// PostHog's experiment results count this event; posthog-js drops it until the
-// visitor allows analytics.
+// PostHog's experiment results count this event. Held until PostHog captures, so
+// an arm that loads before the consent answer still counts.
 function useReportExposure(experiment: Experiment, variant: string | null) {
   useEffect(() => {
     if (!variant || !environment.isPostHogEnabled()) return;
-    posthog.capture("$feature_flag_called", {
+    capturePostHogEvent("$feature_flag_called", {
       $feature_flag: experiment,
       $feature_flag_response: variant,
     });

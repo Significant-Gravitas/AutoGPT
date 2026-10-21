@@ -2,14 +2,27 @@ import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/_
 import { Experiment } from "@/app/api/__generated__/models/experiment";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
+import { resetPostHogCaptureQueueForTests } from "@/services/analytics/posthog-capture";
 import { environment } from "@/services/environment";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useExperiment } from "../useExperiment";
 
-const posthogJS = vi.hoisted(() => ({ capture: vi.fn() }));
+const posthogJS = vi.hoisted(() => ({
+  __loaded: true,
+  capturing: true,
+  capture: vi.fn(),
+  is_capturing() {
+    return this.capturing;
+  },
+}));
 vi.mock("posthog-js", () => ({ default: posthogJS }));
 
 const PRICING = Experiment.SUBSCRIPTION_PRICING;
@@ -17,10 +30,14 @@ const PRICING = Experiment.SUBSCRIPTION_PRICING;
 beforeEach(() => {
   signIn("user-1");
   posthogJS.capture.mockClear();
+  posthogJS.capturing = true;
   vi.spyOn(environment, "isPostHogEnabled").mockReturnValue("phc_test");
 });
 
 afterEach(() => {
+  resetPostHogCaptureQueueForTests();
+  removeCookiebot();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   useAuthStore.setState({ user: null });
 });
@@ -44,6 +61,31 @@ describe("useExperiment", () => {
       $feature_flag: PRICING,
       $feature_flag_response: "yearly-pro",
     });
+  });
+
+  // On a full page load the arm can arrive before PostHog has opted in,
+  // when posthog-js would drop the event.
+  it("holds the exposure of a consented user until PostHog captures", async () => {
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    posthogJS.capturing = false;
+    serveArms(["yearly-pro"]);
+
+    const { result } = renderHook(() => useExperiment(PRICING), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() => expect(result.current.variant).toBe("yearly-pro"));
+    expect(posthogJS.capture).not.toHaveBeenCalled();
+
+    posthogJS.capturing = true;
+
+    await waitFor(() =>
+      expect(posthogJS.capture).toHaveBeenCalledExactlyOnceWith(
+        "$feature_flag_called",
+        { $feature_flag: PRICING, $feature_flag_response: "yearly-pro" },
+        { timestamp: expect.any(Date) },
+      ),
+    );
   });
 
   it("resolves to no arm, and reports nothing, for a user it did not enrol", async () => {
