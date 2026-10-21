@@ -460,10 +460,33 @@ class TestBasePromptApprovalFallback:
         assert "When an Auto or Ask First mode section below is present" in (
             CACHEABLE_SYSTEM_PROMPT
         )
-        assert "With no mode section, ask for the user's OK in chat first." in (
-            CACHEABLE_SYSTEM_PROMPT
-        )
+        assert "don't wait in chat for an OK" in CACHEABLE_SYSTEM_PROMPT
+        assert "ask for the user's OK in chat first" not in CACHEABLE_SYSTEM_PROMPT
 
     def test_greeting_offers_one_thing_like_the_reply_style(self):
         assert "offer one concrete thing you could do" in CACHEABLE_SYSTEM_PROMPT
         assert "one thing you can do" in prompting.SHARED_TOOL_NOTES
+
+
+class TestGuardrailsReachEveryBasePrompt:
+    """The deployed base prompt comes from Langfuse, not CACHEABLE_SYSTEM_PROMPT,
+    so rules every turn needs live in the supplements appended to it."""
+
+    @pytest.mark.parametrize(
+        "supplement",
+        [
+            prompting.SHARED_TOOL_NOTES,
+            prompting.get_sdk_supplement(use_e2b=False),
+            prompting.get_sdk_supplement(use_e2b=True),
+        ],
+    )
+    def test_supplement_carries_the_turn_and_card_guardrails(self, supplement):
+        assert "End every turn with visible text" in supplement
+        assert "Only say a card is showing when a tool in this turn returned" in (
+            supplement
+        )
+        assert "Run the capability that needs it straight away" in supplement
+
+    def test_base_prompt_does_not_repeat_them(self):
+        assert "End every turn with visible text" not in CACHEABLE_SYSTEM_PROMPT
+        assert "Only say a card is showing" not in CACHEABLE_SYSTEM_PROMPT

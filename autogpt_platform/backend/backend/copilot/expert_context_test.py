@@ -69,7 +69,7 @@ def hire_experts_flag_on():
 # Last re-pinned for the say-each-rule-once rewrite (workflow wording, the
 # approval-card fallback and the one-thing greeting).
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "e82f0eddd9fff3b98e92786ddf0818364c8e5dd8d47996492d8378d6e21eea89"
+    "c7434dea51b2eb29c01e46fa1b98838a7e7e42d46cb8d947e692bbba9b8c820a"
 )
 
 

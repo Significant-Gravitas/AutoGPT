@@ -37,6 +37,8 @@ from backend.copilot.model import (
     ChatSessionMetadata,
     ChatSessionOrigin,
 )
+from backend.copilot.prompting import approval_mode_supplement
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 from backend.copilot.trial_cost_context import TrialCostContext
 
 _GATE = "backend.copilot.gate"
@@ -604,3 +606,13 @@ async def test_the_judge_is_handed_every_message_the_user_typed(
         "Use that method for Leiden too",
         "carry on",
     ]
+
+
+@pytest.mark.parametrize("mode", _MODES)
+async def test_an_unattended_turn_is_not_told_to_wait_for_a_chat_ok(gate_on, mode):
+    """A scheduled or routine turn gets no mode section, so the base prompt's
+    fallback must let it act instead of waiting for an answer nobody gives."""
+    session = _session(mode, origin="automation")
+    supplement = approval_mode_supplement(await active_mode("u", session))
+    assert supplement == ""
+    assert "don't wait in chat for an OK" in CACHEABLE_SYSTEM_PROMPT
