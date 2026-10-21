@@ -24,16 +24,22 @@ export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
   const accountWord = dialog.banCount === 1 ? "account" : "accounts";
   const confirmLabel = dialog.isRetry
     ? `Retry ${dialog.banCount} failed`
-    : [
-        `Ban ${dialog.banCount} ${accountWord}`,
-        dialog.blockCount > 0 ? `block ${dialog.blockCount}` : null,
-      ]
-        .filter(Boolean)
-        .join(", ");
+    : dialog.isBlockOnly
+      ? `Block ${dialog.blockSummary}`
+      : [
+          `Ban ${dialog.banCount} ${accountWord}`,
+          dialog.blockCount > 0 ? `block ${dialog.blockCount}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
 
   return (
     <Dialog
-      title={`Ban ${pluralize(dialog.banCount, "account")}?`}
+      title={
+        dialog.isBlockOnly
+          ? `Block ${dialog.blockSummary}?`
+          : `Ban ${pluralize(dialog.banCount, "account")}?`
+      }
       styling={{ maxWidth: "520px" }}
       controlled={{ isOpen: dialog.isOpen, set: dialog.handleOpenChange }}
     >
@@ -44,11 +50,14 @@ export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-600">
-            They&apos;re signed out and can&apos;t sign in again until the ban
-            ends, but for up to 5 minutes they can still get a token that works
-            for an hour. Their API keys, schedules and triggers keep running.
-          </Text>
+          {dialog.isBlockOnly ? null : (
+            <Text variant="body" className="text-zinc-600">
+              They&apos;re signed out and can&apos;t sign in again until the ban
+              ends, but for up to 5 minutes they can still get a token that
+              works for an hour. Their API keys, schedules and triggers keep
+              running.
+            </Text>
+          )}
           {dialog.tickedAdmins > 0 ? (
             <Alert variant="warning">
               <AlertDescription>
@@ -100,7 +109,7 @@ export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
             Cancel
           </Button>
           <Button
-            variant="destructive"
+            variant={dialog.isBlockOnly ? "primary" : "destructive"}
             size="small"
             loading={dialog.isSubmitting}
             disabled={

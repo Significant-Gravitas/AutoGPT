@@ -21,6 +21,7 @@ import {
 } from "../helpers";
 import {
   type AlsoBlockOption,
+  describeBlocks,
   getAlsoBlockOptions,
   getBanAllAccounts,
 } from "./helpers";
@@ -56,6 +57,8 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
   const toBlock = blockOptions.filter(
     (option) => blocksTicked.has(option.key) && !blocksDone.has(option.key),
   );
+  const isBlockOnly = toBan.length === 0 && toBlock.length > 0;
+  const blockSummary = describeBlocks(toBlock);
 
   function handleOpenChange(open: boolean) {
     setIsOpen(open);
@@ -123,6 +126,10 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
       return;
     }
     setIsOpen(false);
+    if (total === 0) {
+      toast({ title: `Blocked ${blockSummary}`, variant: "success" });
+      return;
+    }
     const bans = `Banned ${pluralize(total, "account")}`;
     toast({
       title:
@@ -150,6 +157,8 @@ export function useBanAllDialog({ user, report, signedInUserId }: Args) {
     results,
     banCount: toBan.length,
     blockCount: toBlock.length,
+    isBlockOnly,
+    blockSummary,
     tickedAdmins: accounts.filter(
       (account) => account.role === "admin" && toBan.includes(account.id),
     ).length,

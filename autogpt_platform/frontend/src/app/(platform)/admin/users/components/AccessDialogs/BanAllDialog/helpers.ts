@@ -51,6 +51,18 @@ export interface AlsoBlockOption {
   disabledReason?: string;
 }
 
+// What a block-only confirm names: "2 addresses", "example.com", or both.
+export function describeBlocks(options: AlsoBlockOption[]) {
+  const addresses = options.filter((option) => option.kind === "IP").length;
+  const domain = options.find((option) => option.kind === "EMAIL_DOMAIN");
+  return [
+    addresses > 0 ? pluralize(addresses, "address", "addresses") : null,
+    domain?.label ?? null,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+}
+
 export function getAlsoBlockOptions(
   report: AccountIPReport,
 ): AlsoBlockOption[] {

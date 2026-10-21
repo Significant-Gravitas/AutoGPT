@@ -189,6 +189,38 @@ describe("Ban all", () => {
     );
   });
 
+  it("names what it blocks, and bans nobody, once every account is unticked", async () => {
+    const bans = mockBanAccounts();
+    const blocks = mockCreateBlock();
+    renderPage(`?user=${ALEX.id}`);
+
+    const dialog = await openBanAll();
+    for (const email of [ALEX.email, "sam@example.com"]) {
+      fireEvent.click(
+        within(dialog).getByRole("checkbox", { name: `Ban ${email}` }),
+      );
+    }
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: /block 203\.0\.113\.7/i }),
+    );
+    expect(within(dialog).getByText("Block 1 address?")).toBeDefined();
+    expect(within(dialog).queryByText(/Ban 0/)).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText(/reason/i), {
+      target: { value: "Signup farm" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Block 1 address" }),
+    );
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Blocked 1 address" }),
+      ),
+    );
+    expect(blocks).toHaveLength(1);
+    expect(bans).toEqual([]);
+  });
+
   it("after a partial failure, says which block failed too and retries only the failed accounts still ticked", async () => {
     const bans = mockBanAccounts((userIds) =>
       userIds.map((userId) =>
