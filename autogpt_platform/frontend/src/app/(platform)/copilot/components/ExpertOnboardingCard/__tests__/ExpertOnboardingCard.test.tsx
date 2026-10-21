@@ -8,6 +8,7 @@ import {
 import type { ToolUIPart } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
 import { ExpertOnboardingCard } from "../ExpertOnboardingCard";
 import { PendingOnboardingContext } from "../PendingOnboardingContext";
 
@@ -240,6 +241,40 @@ describe("ExpertOnboardingCard", () => {
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip questions" })).toBeNull();
     expect(screen.getByText(/Setup questions from/)).toBeDefined();
+  });
+
+  it("keeps each question and the answer given once it is history", () => {
+    render(
+      <CopilotChatActionsProvider onSend={createSendMock()}>
+        <AnsweredQuestionsContext.Provider
+          value={
+            new Map([
+              [
+                CALL_ID,
+                new Map([
+                  ["Which outcome should I start with?", "Campaign briefs"],
+                  ["Which service should I be connected to?", "Linear, GitHub"],
+                ]),
+              ],
+            ])
+          }
+        >
+          <PendingOnboardingContext.Provider value={null}>
+            <ExpertOnboardingCard part={onboardingPart()} />
+          </PendingOnboardingContext.Provider>
+        </AnsweredQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(
+      screen.getByText("Which outcome should I start with?"),
+    ).toBeDefined();
+    expect(screen.getByText("Campaign briefs")).toBeDefined();
+    expect(
+      screen.getByText("Which service should I be connected to?"),
+    ).toBeDefined();
+    expect(screen.getByText("Linear, GitHub")).toBeDefined();
   });
 
   it("shows a pending line while the card is still streaming", () => {

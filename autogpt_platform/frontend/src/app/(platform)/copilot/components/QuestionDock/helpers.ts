@@ -8,6 +8,7 @@ import {
   isAnswered,
   normalizeClarifyingQuestions,
 } from "../../tools/clarifying-questions";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import type { ChainActionEntry } from "../ToolChain/chainActions";
 
 export interface PendingQuestions {
@@ -35,6 +36,17 @@ function outputType(output: unknown): string | null {
   return typeof type === "string" ? type : null;
 }
 
+/** Whether a tool call asked the user clarifying questions. `toolName` is the
+ *  name without the part's `tool-` prefix. */
+export function isQuestionTool(
+  toolName: string | undefined,
+  output: unknown,
+): boolean {
+  return (
+    toolName === "ask_question" || outputType(output) === QUESTION_RESPONSE_TYPE
+  );
+}
+
 // Questions are pending only while the asking assistant message is the last
 // message — any user reply (answers, skip, or a fresh request) supersedes it.
 export function getPendingQuestions(
@@ -49,10 +61,7 @@ export function getPendingQuestions(
     if (!part.type.startsWith("tool-")) continue;
     if (!("state" in part) || part.state !== "output-available") continue;
     const tool = part as ToolUIPart;
-    const isQuestionPart =
-      part.type === "tool-ask_question" ||
-      outputType(tool.output) === QUESTION_RESPONSE_TYPE;
-    if (!isQuestionPart) continue;
+    if (!isQuestionTool(part.type.slice("tool-".length), tool.output)) continue;
     const extracted = extractClarifyingQuestions(tool);
     if (extracted.length === 0) continue;
     questions.push(...extracted);
@@ -65,6 +74,72 @@ export function getPendingQuestions(
     questions: normalizeClarifyingQuestions(questions),
     callIds,
   };
+}
+
+const ANSWERS_HEADER = "**Here are my answers:**\n\n";
+const ANSWERS_FOOTER = "\n\nPlease proceed";
+
+/** The answers in a reply sent from a question card, by question text. The
+ *  reply quotes each question and puts its answer under it; a chain's reply
+ *  can carry several cards' sections, each with its own header. */
+export function parseAnswersMessage(text: string): Map<string, string> {
+  const answers = new Map<string, string>();
+  for (const section of text.split(ANSWERS_HEADER).slice(1)) {
+    const body = section.split(ANSWERS_FOOTER)[0];
+    for (const block of body.split(/\n\n(?=> )/)) {
+      const match = block.match(/^> (.+)\n\n([\s\S]*)$/);
+      if (!match) continue;
+      // Several picks went out as a bullet list; read back, they fit a line.
+      const answer = match[2]
+        .split("\n")
+        .map((line) => line.replace(/^- /, "").trim())
+        .filter(Boolean)
+        .join(", ");
+      if (answer) answers.set(match[1].trim(), answer);
+    }
+  }
+  return answers;
+}
+
+/** Answers by question text, keyed by the tool-call id that asked. */
+export type AnsweredQuestions = ReadonlyMap<
+  string,
+  ReadonlyMap<string, string>
+>;
+
+function messageText(message: Message): string {
+  return message.parts
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n");
+}
+
+/** What the user answered to each question card they have moved past, read
+ *  from the first user message after the asking one, so a reload shows the
+ *  same answers the user sent. */
+export function getAnsweredQuestions(messages: Message[]): AnsweredQuestions {
+  const answered = new Map<string, ReadonlyMap<string, string>>();
+  let nextReply: Message | null = null;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "user") {
+      nextReply = message;
+      continue;
+    }
+    if (message.role !== "assistant" || !nextReply) continue;
+    const callIds = message.parts.flatMap((part) => {
+      if (!part.type.startsWith("tool-")) return [];
+      const tool = part as ToolUIPart;
+      const asks =
+        part.type === EXPERT_ONBOARDING_PART_TYPE ||
+        isQuestionTool(part.type.slice("tool-".length), tool.output);
+      return asks ? [tool.toolCallId] : [];
+    });
+    if (callIds.length === 0) continue;
+    const answers = parseAnswersMessage(messageText(nextReply));
+    if (answers.size === 0) continue;
+    for (const callId of callIds) answered.set(callId, answers);
+  }
+  return answered;
 }
 
 export function buildAnswersMessage(
