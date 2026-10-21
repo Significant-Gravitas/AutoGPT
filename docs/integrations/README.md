@@ -643,7 +643,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
 | [Notion Read Page Markdown](block-integrations/notion/read_page_markdown.md#notion-read-page-markdown) | Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text |
 | [Notion Search](block-integrations/notion/search.md#notion-search) | Search your Notion workspace for pages and databases by text query |
-| [Notion Update Page](block-integrations/notion/update_page.md#notion-update-page) | Update an existing Notion page: its title, its properties, its icon or cover, or whether it is in the trash |
+| [Notion Update Page Properties](block-integrations/notion/update_page_properties.md#notion-update-page-properties) | Update an existing Notion page's properties, its title among them, its icon or cover, or whether it is in the trash |
 | [Todoist Close Task](block-integrations/todoist/tasks.md#todoist-close-task) | Closes a task in Todoist |
 | [Todoist Create Comment](block-integrations/todoist/comments.md#todoist-create-comment) | Creates a new comment on a Todoist task or project |
 | [Todoist Create Label](block-integrations/todoist/labels.md#todoist-create-label) | Creates a new label in Todoist, It will not work if same name already exists |

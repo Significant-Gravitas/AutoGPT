@@ -1,7 +1,7 @@
 import pytest
 
 from backend.blocks.notion._auth import TEST_CREDENTIALS
-from backend.blocks.notion.update_page import NotionUpdatePageBlock
+from backend.blocks.notion.update_page_properties import NotionUpdatePagePropertiesBlock
 
 PAGE_ID = "12345678-1234-1234-1234-123456789012"
 PAGE_URL = f"https://api.notion.com/v1/pages/{PAGE_ID}"
@@ -27,7 +27,7 @@ async def test_properties_are_written_as_the_types_the_page_already_has(notion_a
     }
     sent = notion_api(schema, UPDATED)
 
-    result = await NotionUpdatePageBlock.update_page(
+    result = await NotionUpdatePagePropertiesBlock.update_page(
         TEST_CREDENTIALS,
         PAGE_ID,
         title="Renamed",
@@ -75,7 +75,7 @@ async def test_properties_are_written_as_the_types_the_page_already_has(notion_a
 async def test_trash_state_is_sent_only_when_asked(notion_api, in_trash: bool | None):
     sent = notion_api(UPDATED)
 
-    await NotionUpdatePageBlock.update_page(
+    await NotionUpdatePagePropertiesBlock.update_page(
         TEST_CREDENTIALS, PAGE_ID, title="Renamed", in_trash=in_trash
     )
 
@@ -89,7 +89,7 @@ async def test_an_unknown_property_is_refused_before_anything_is_written(notion_
     sent = notion_api({"properties": {"Name": {"id": "title", "type": "title"}}})
 
     with pytest.raises(ValueError, match="no property named 'Stauts'"):
-        await NotionUpdatePageBlock.update_page(
+        await NotionUpdatePagePropertiesBlock.update_page(
             TEST_CREDENTIALS, PAGE_ID, properties={"Stauts": "Done"}
         )
 

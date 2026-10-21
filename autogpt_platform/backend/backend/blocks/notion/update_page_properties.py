@@ -24,8 +24,8 @@ from ._auth import (
 )
 
 
-class NotionUpdatePageBlock(Block):
-    """Update an existing Notion page's title, properties, icon, cover or trash state."""
+class NotionUpdatePagePropertiesBlock(Block):
+    """Set an existing Notion page's properties, icon, cover or trash state."""
 
     class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
@@ -72,10 +72,10 @@ class NotionUpdatePageBlock(Block):
     def __init__(self):
         super().__init__(
             id="c80f7468-58e5-4638-a82e-bddf3bf2d383",
-            description="Update an existing Notion page: its title, its properties, its icon or cover, or whether it is in the trash.",
+            description="Update an existing Notion page's properties, its title among them, its icon or cover, or whether it is in the trash. The page's content is left as it is.",
             categories={BlockCategory.PRODUCTIVITY},
-            input_schema=NotionUpdatePageBlock.Input,
-            output_schema=NotionUpdatePageBlock.Output,
+            input_schema=NotionUpdatePagePropertiesBlock.Input,
+            output_schema=NotionUpdatePagePropertiesBlock.Output,
             disabled=not NOTION_OAUTH_IS_CONFIGURED,
             test_input={
                 "page_id": "12345678-1234-1234-1234-123456789012",

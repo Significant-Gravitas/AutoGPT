@@ -132,7 +132,7 @@
 * [Notion Read Page](block-integrations/notion/read_page.md)
 * [Notion Read Page Markdown](block-integrations/notion/read_page_markdown.md)
 * [Notion Search](block-integrations/notion/search.md)
-* [Notion Update Page](block-integrations/notion/update_page.md)
+* [Notion Update Page Properties](block-integrations/notion/update_page_properties.md)
 * [Nvidia Deepfake](block-integrations/nvidia/deepfake.md)
 * [Replicate Flux Advanced](block-integrations/replicate/flux_advanced.md)
 * [Replicate Replicate Block](block-integrations/replicate/replicate_block.md)
