@@ -1,5 +1,6 @@
 import { usePostAccountDeleteAccount } from "@/app/api/__generated__/endpoints/account/account";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { markAccountDeletedHere } from "@/lib/auth/account-banned";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,6 +27,7 @@ export function useDeleteAccount({ source, onBusyChange }: Args) {
       toast({ title: getDeletionErrorMessage(error), variant: "destructive" });
       return;
     }
+    markAccountDeletedHere();
     setIsLeaving(true);
     toast({ title: "Your account is deleted." });
     // Signing out here would clear the user while the page behind still

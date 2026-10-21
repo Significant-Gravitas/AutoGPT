@@ -2,10 +2,17 @@ import {
   CLOSED_ACCOUNT_ERROR_CODE,
   CLOSED_ACCOUNT_MESSAGE,
 } from "@/lib/auth/closed-account";
+import type { AccountRefusal } from "@/lib/auth/account-banned";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 
-export const ACCOUNT_BANNED_NOTICE_COPY =
+const ACCOUNT_BANNED_NOTICE_COPY =
   "This account has been banned. If you think this is a mistake, please contact support.";
+
+// Shown after a refused account was signed out (lib/auth/account-banned.ts).
+export const ACCOUNT_NOTICE_COPY: Record<AccountRefusal, string> = {
+  banned: ACCOUNT_BANNED_NOTICE_COPY,
+  closed: CLOSED_ACCOUNT_MESSAGE,
+};
 
 export const EMAIL_VERIFICATION_NOTICE_COPY: Record<
   EmailVerificationNotice,
