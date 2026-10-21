@@ -2,11 +2,7 @@ import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import {
-  advanceToRoleStep,
-  dismissTabIntros,
-  skipOnboardingIfPresent,
-} from "./utils/onboarding";
+import { advanceToRoleStep, skipOnboardingIfPresent } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 test("auth happy path: user can sign up with a fresh account", async ({
@@ -87,8 +83,6 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
 
   const page1 = await context.newPage();
   const page2 = await context.newPage();
-  await dismissTabIntros(page1);
-  await dismissTabIntros(page2);
   const buildPage = new BuildPage(page1);
 
   const recordWebSocketErrors =
