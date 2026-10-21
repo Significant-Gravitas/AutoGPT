@@ -64,7 +64,7 @@ from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
 from backend.util.cache import cached
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
@@ -908,7 +908,7 @@ class UserCredit(UserCreditBase):
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
     ) -> int:
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
+        transaction = await CreditTransaction.prisma().find_first(
             where={
                 "transactionKey": transaction_key,
                 "userId": user_id,
@@ -916,6 +916,8 @@ class UserCredit(UserCreditBase):
                 "type": CreditTransactionType.TOP_UP,
             }
         )
+        if transaction is None:
+            raise NotFoundError(f"Top-up {transaction_key} not found")
         balance = await self.get_credits(user_id)
         amount = transaction.amount
         refund_key_format = settings.config.refund_request_time_key_format

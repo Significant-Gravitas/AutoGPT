@@ -1,11 +1,13 @@
-"""Integration tests for the P-1.3 demotion helpers, against live FalkorDB.
+"""Integration tests for the dream's single-hop entity invalidation
+(``guarded_writes.invalidate_entity_direct_neighbors``), against live FalkorDB.
 
-The unit-test sibling (``backend/copilot/tools/graphiti_forget_test.py``)
-pins the Cypher strings and call signatures via mock drivers; those run
-fast but don't catch Cypher that's syntactically valid yet semantically
-wrong on FalkorDB (different graph engines have slightly different
-behavior around relationship variable scoping, ``MATCH`` semantics with
-property-only patterns, etc.).
+The unit-test sibling (``guarded_writes_test.py``) pins the Cypher strings and
+call signatures via mock drivers; those run fast but don't catch Cypher
+that's syntactically valid yet semantically wrong on FalkorDB (different
+graph engines have slightly different behavior around relationship variable
+scoping, ``MATCH`` semantics with property-only patterns, etc.). What the
+recall guard in the same statement spares is
+``recall_guard_integration_test.py``.
 
 This file is the regression net that catches those. For every P-1.3
 behavior, seed a known graph, run the helper, query the resulting
@@ -19,10 +21,7 @@ runaway-demotion footgun.
 
 import pytest
 
-from backend.copilot.tools.graphiti_forget import (
-    invalidate_entity_direct_neighbors,
-    mark_edges_superseded,
-)
+from .guarded_writes import NeighbourWrites, invalidate_entity_direct_neighbors
 
 
 async def _select_edge(driver, uuid: str) -> dict | None:
@@ -42,53 +41,6 @@ async def _select_edge(driver, uuid: str) -> dict | None:
 
 # The user-forget retraction (``expired_at`` + ``status='retracted'``,
 # never ``invalid_at``) is pinned live in ``recall_integration_test.py``.
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_mark_edges_superseded_writes_status_and_reason(
-    seeded_graph,
-) -> None:
-    """`status` + `expiration_reason` survive on the durable edge for audit."""
-    driver, group_id = seeded_graph
-
-    deleted, failed = await mark_edges_superseded(
-        driver,
-        ["e1"],
-        reason="stale_fact",
-        new_status="superseded",
-        user_id="test-user",
-    )
-    assert deleted == ["e1"]
-    assert failed == []
-
-    row = await _select_edge(driver, "e1")
-    assert row is not None
-    assert row["expired_at"] is not None
-    assert row["status"] == "superseded"
-    assert row["expiration_reason"] == "stale_fact"
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_mark_edges_superseded_supports_contradicted_status(
-    seeded_graph,
-) -> None:
-    """`contradicted` is the other allowed status — used by P0.5 web fact-check."""
-    driver, group_id = seeded_graph
-
-    await mark_edges_superseded(
-        driver,
-        ["e2"],
-        reason="web_contradicted:https://example.com",
-        new_status="contradicted",
-        user_id="test-user",
-    )
-
-    row = await _select_edge(driver, "e2")
-    assert row is not None
-    assert row["status"] == "contradicted"
-    assert row["expiration_reason"].startswith("web_contradicted:")
 
 
 @pytest.mark.integration
@@ -122,9 +74,11 @@ async def test_invalidate_entity_direct_neighbors_is_single_hop(
         gid=group_id,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="B", reason="dead_client"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="B", reason="dead_client"
+        )
+    ).changed
 
     assert set(demoted) == {
         "AB",
@@ -172,9 +126,11 @@ async def test_invalidate_entity_direct_neighbors_handles_both_edge_directions(
         gid=group_id,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="B", reason="x"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="B", reason="x"
+        )
+    ).changed
     assert set(demoted) == {"AB", "CB"}
 
 
@@ -205,11 +161,33 @@ async def test_invalidate_entity_does_not_affect_other_users(
         g2=other_group,
     )
 
-    demoted = await invalidate_entity_direct_neighbors(
-        driver, group_id=group_id, entity_uuid="shared", reason="test"
-    )
+    demoted = (
+        await invalidate_entity_direct_neighbors(
+            driver, group_id=group_id, entity_uuid="shared", reason="test"
+        )
+    ).changed
     assert demoted == ["e_self"]
 
     other_row = await _select_edge(driver, "e_other")
     assert other_row is not None
     assert other_row["expired_at"] is None, "other user's edge must not be touched"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entity", ["nobody", "lonely"], ids=["missing", "no-facts"])
+async def test_an_entity_with_no_live_neighbour_is_an_acknowledged_empty_set(
+    clean_graph, entity: str
+) -> None:
+    """The aggregate statement still answers, with an empty set: known to
+    have changed nothing, unlike a statement that raised."""
+    driver, group_id = clean_graph
+    await driver.execute_query(
+        "CREATE (:Entity {uuid: 'lonely', name: 'lonely', group_id: $g})", g=group_id
+    )
+
+    writes = await invalidate_entity_direct_neighbors(
+        driver, group_id=group_id, entity_uuid=entity, reason="stale_fact"
+    )
+
+    assert writes == NeighbourWrites()
