@@ -281,7 +281,8 @@ async def get_graph_meta_by_store_listing_version_id(
 ) -> backend.data.graph.GraphModelWithoutNodes:
     """Get outline of graph belonging to a specific marketplace listing version"""
     graph = await store_db.get_available_graph(store_listing_version_id)
-    return graph
+    # Public outline: it names the workflow, not the account that published it.
+    return graph.shared_copy()
 
 
 @router.get(
