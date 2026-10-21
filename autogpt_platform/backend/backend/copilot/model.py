@@ -35,7 +35,9 @@ from backend.util.exceptions import (
     NotFoundError,
     RedisError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
+from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,6 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
-AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -227,6 +228,11 @@ class ChatMessage(BaseModel):
     # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
+    # PostHog trace of the turn that wrote this assistant or reasoning row
+    # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
+    # rating of the reply carries. Internal and persisted like the above.
+    trace_id: str | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -295,6 +301,7 @@ class ChatMessage(BaseModel):
             ),
             llm_credential_id=prisma_message.llmCredentialId,
             langfuse_trace_id=prisma_message.langfuseTraceId,
+            trace_id=prisma_message.traceId,
         )
 
 
@@ -521,6 +528,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -541,6 +549,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1169,6 +1178,7 @@ async def _save_session_to_db(
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
                     "langfuse_trace_id": msg.langfuse_trace_id,
+                    "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
             )
@@ -1223,6 +1233,7 @@ async def _save_session_to_db(
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
                 langfuse_trace_id=msg.langfuse_trace_id,
+                trace_id=msg.trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1380,6 +1391,8 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+    inherited_autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1404,6 +1417,17 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the chat starts on. An explicit
+            value wins; otherwise an expert session starts on the expert's
+            own default, and anything else on the platform default. Stored
+            on the session, so a later change to the expert's default never
+            rewrites an open thread. Ignored while the approval-mode flag
+            is off, like the per-thread override.
+        inherited_autopilot_mode: The mode a delegated thread must start on,
+            already decided by the caller from the parent chat and the
+            target expert (``gate.child_autopilot_mode``). Stored
+            as-is: it is a constraint rather than a pick, so the flag does
+            not drop it and the expert is not read a second time.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1414,6 +1438,9 @@ async def create_chat_session(
         organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
             user_id, expert_id
         )
+    autopilot_mode = await _resolve_new_session_autopilot_mode(
+        user_id, expert_id, autopilot_mode, origin, inherited_autopilot_mode
+    )
 
     session = ChatSession.new(
         user_id,
@@ -1430,6 +1457,7 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
     )
 
     # Create in database first - fail fast if this fails
@@ -1463,6 +1491,30 @@ async def create_chat_session(
     return session
 
 
+async def _resolve_new_session_autopilot_mode(
+    user_id: str,
+    expert_id: str | None,
+    requested: AutopilotMode | None,
+    origin: ChatSessionOrigin,
+    inherited: AutopilotMode | None = None,
+) -> AutopilotMode | None:
+    """Inherited > explicit request > the expert's default > None (platform default).
+
+    The expert default is for threads a person drives: a routine, a
+    scheduled follow-up or a block-opened session is not gated, so it is
+    not looked up for one.
+    """
+    if inherited is not None:
+        return inherited
+    if requested is None and (expert_id is None or origin != "interactive"):
+        return None
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return None
+    if requested is not None or expert_id is None:
+        return requested
+    return await experts_db().get_autopilot_mode(user_id, expert_id)
+
+
 def expert_kickoff_session_id(
     user_id: str,
     expert_id: str,
@@ -1486,8 +1538,13 @@ async def get_or_create_expert_kickoff_session(
     team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
-    """Atomically create or adopt the canonical expert kickoff session."""
+    """Atomically create or adopt the canonical expert kickoff session.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted
+    kickoff keeps the mode it already has.
+    """
     sessions, _ = await get_user_sessions(
         user_id,
         limit=1,
@@ -1515,6 +1572,7 @@ async def get_or_create_expert_kickoff_session(
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
     except DatabaseError:
         existing = await get_chat_session(session_id, user_id)
@@ -1523,11 +1581,104 @@ async def get_or_create_expert_kickoff_session(
         raise
 
 
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted one
+    keeps the mode it started on, even if the expert's default changed since.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
+    """
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
+        or metadata.handed_off_from_expert_id
+    ):
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1570,6 +1721,7 @@ async def get_or_create_builder_session(
             builder_graph_id=graph_id,
             organization_id=organization_id,
             team_id=team_id,
+            autopilot_mode=autopilot_mode,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,

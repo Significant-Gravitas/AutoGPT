@@ -64,7 +64,7 @@ from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
 from backend.util.cache import cached
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
@@ -908,7 +908,7 @@ class UserCredit(UserCreditBase):
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
     ) -> int:
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
+        transaction = await CreditTransaction.prisma().find_first(
             where={
                 "transactionKey": transaction_key,
                 "userId": user_id,
@@ -916,6 +916,8 @@ class UserCredit(UserCreditBase):
                 "type": CreditTransactionType.TOP_UP,
             }
         )
+        if transaction is None:
+            raise NotFoundError(f"Top-up {transaction_key} not found")
         balance = await self.get_credits(user_id)
         amount = transaction.amount
         refund_key_format = settings.config.refund_request_time_key_format
@@ -972,13 +974,9 @@ class UserCredit(UserCreditBase):
             )
             return
 
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(request.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(request)
+        if not transaction:
+            return
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
                 f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
@@ -1018,13 +1016,9 @@ class UserCredit(UserCreditBase):
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(dispute.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(dispute)
+        if not transaction:
+            return
         user_id = transaction.userId
         amount = dispute.amount
         balance = await self.get_credits(user_id)
@@ -1079,6 +1073,47 @@ class UserCredit(UserCreditBase):
             "uncategorized_text": evidence_text[:20000],
         }
         await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+    async def _find_top_up(
+        self, request: stripe.Refund | stripe.Dispute
+    ) -> CreditTransaction | None:
+        transaction = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": str(request.payment_intent),
+                "isActive": True,
+                "type": CreditTransactionType.TOP_UP,
+            }
+        )
+        if transaction:
+            return transaction
+        # A Checkout top-up stays keyed by its session until fulfilled, so a miss
+        # raises (Stripe retries) unless the payment cannot have bought credits.
+        if not request.payment_intent or not await self._paid_invoice_without_credits(
+            str(request.payment_intent)
+        ):
+            raise RuntimeError(
+                f"No active top-up matches {request.id} (payment intent "
+                f"{request.payment_intent}); retrying until one is fulfilled"
+            )
+        # A dispute is a chargeback someone must answer in Stripe; only ERROR reaches Sentry.
+        log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+        log(
+            f"Ignoring {request.id} (${request.amount / 100:.2f}): payment intent "
+            f"{request.payment_intent} paid a subscription invoice, which grants no credits"
+        )
+        return None
+
+    async def _paid_invoice_without_credits(self, payment_intent_id: str) -> bool:
+        # With the grant on, a paid subscription invoice buys credits too.
+        if settings.config.enable_subscription_credit_grant:
+            return False
+        # Pinned: 2025-03-31.basil dropped PaymentIntent.invoice for InvoicePayment.
+        payment_intent = await stripe_call(
+            stripe.PaymentIntent.retrieve_async,
+            payment_intent_id,
+            stripe_version="2025-02-24.acacia",
+        )
+        return bool(payment_intent.invoice)
 
     async def _top_up_credits(
         self,

@@ -4,11 +4,7 @@ import { AccountMenuRow } from "./AccountMenuRow";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-interface Props {
-  weight?: "bold" | "regular";
-}
-
-export function AccountLogoutOption({ weight = "bold" }: Props) {
+export function AccountLogoutOption() {
   const router = useRouter();
 
   function handleLogout() {
@@ -20,7 +16,6 @@ export function AccountLogoutOption({ weight = "bold" }: Props) {
       as="button"
       destructive
       label="Log out"
-      newLayout={weight === "regular"}
       icon={<Icon icon={Logout03Icon} className="h-[18px] w-[18px] shrink-0" />}
       onClick={handleLogout}
     />

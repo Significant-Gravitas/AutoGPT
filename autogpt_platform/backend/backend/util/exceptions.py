@@ -144,6 +144,11 @@ class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
 
 
+class UserBannedError(NotAuthorizedError):
+    """The owner's account is banned. Raised where new work would start for it;
+    background callers skip the run."""
+
+
 class GraphNotAccessibleError(NotAuthorizedError):
     """Raised when attempting to execute a graph that is not accessible to the user."""
 
