@@ -222,9 +222,6 @@ interface CopilotUIState {
   isSoundEnabled: boolean;
   toggleSound: () => void;
 
-  showNotificationDialog: boolean;
-  setShowNotificationDialog: (show: boolean) => void;
-
   // Artifact panel
   artifactPanel: ArtifactPanelState;
   // `persist: false` skips the localStorage write — used by the public
@@ -382,9 +379,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
-
-  showNotificationDialog: false,
-  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
   artifactPanel: {

@@ -10,16 +10,11 @@ import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
   onComplete: () => void;
-  isBrainDumpEnabled?: boolean;
 }
 
-export function PreparingStep({
-  onComplete,
-  isBrainDumpEnabled = false,
-}: Props) {
+export function PreparingStep({ onComplete }: Props) {
   const { started, progress, completedItems, checklist } = usePreparingStep({
     onComplete,
-    isBrainDumpEnabled,
   });
 
   return (

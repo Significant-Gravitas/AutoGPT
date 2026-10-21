@@ -1504,8 +1504,8 @@ enum ExpertRoutineSession {
   PINNED
   // One durable thread of its own, minted at the first fire and reused after.
   // Per routine, not per expert, so two routines on the same cadence never
-  // interleave into one conversation. With `graphiti-memory` off this thread
-  // IS the routine's memory, which is why it is the default.
+  // interleave into one conversation. Its conversation history preserves
+  // continuity between runs, which is why it is the default.
   THREAD
 }
 

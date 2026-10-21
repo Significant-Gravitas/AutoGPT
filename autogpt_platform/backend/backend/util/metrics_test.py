@@ -634,10 +634,11 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     def notify_user():
         email = "ada@example.com"
         user_email = "ada.lovelace@example.com"
+        recipient = "ada@example.org"
         ip = "203.0.113.7"
         ip_address = "198.51.100.4"
         email_count = 1
-        if email and user_email and ip and ip_address and email_count:
+        if email and user_email and recipient and ip and ip_address and email_count:
             raise RuntimeError("could not send the notification")
 
     try:
@@ -665,7 +666,7 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     }
     assert body["extra"]["ip_address"] == "[Filtered]"
     frame_vars = body["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
-    for name in ("email", "user_email", "ip", "ip_address"):
+    for name in ("email", "user_email", "recipient", "ip", "ip_address"):
         assert frame_vars[name] == "[Filtered]", name
     # Keys that only mention an email or IP stay readable for debugging.
     assert frame_vars["email_count"] == "1"

@@ -2,17 +2,17 @@ import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2
 import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
+import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
-import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
@@ -41,7 +41,6 @@ export const MainSearchResultPage = ({
     showSkills,
     showExperts,
     isExpertsVisible,
-    isSkillsHubEnabled,
     isAgentsLoading,
     isCreatorsLoading,
     isExpertsLoading,
@@ -106,7 +105,7 @@ export const MainSearchResultPage = ({
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
-                skillsCount={isSkillsHubEnabled ? skillsCount : undefined}
+                skillsCount={skillsCount}
                 expertsCount={isExpertsVisible ? expertsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
