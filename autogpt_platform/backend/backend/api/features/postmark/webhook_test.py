@@ -143,6 +143,34 @@ def test_a_redelivered_webhook_is_the_same_event(posthog: Mock, lookup: AsyncMoc
     assert later["uuid"] != first["uuid"]
 
 
+@pytest.mark.parametrize("failing", ["lookup", "unverify"])
+def test_a_failure_asks_postmark_to_retry_without_the_address(
+    failing: str,
+    posthog: Mock,
+    lookup: AsyncMock,
+    unverify: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Not raised: Sentry would send the frames' locals, which hold the
+    webhook and so the address."""
+    error = RuntimeError(f"connection reset while reading {RECIPIENT}")
+    (lookup if failing == "lookup" else unverify).side_effect = error
+
+    response = client.post(
+        "/",
+        json=_bounce(type_name="HardBounce", type_code=1),
+        headers={"X-Postmark-Webhook-Token": TOKEN},
+    )
+
+    assert response.status_code == 503
+    assert RECIPIENT not in response.text
+    failures = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(failures) == 1
+    assert failures[0].exc_info is None
+    assert MESSAGE_ID in failures[0].getMessage()
+    assert RECIPIENT not in caplog.text
+
+
 def test_two_links_clicked_at_once_are_two_events(posthog: Mock, lookup: AsyncMock):
     _post(_click("https://platform.agpt.co/copilot"))
     _post(_click("https://platform.agpt.co/library"))

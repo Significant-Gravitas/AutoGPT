@@ -60,6 +60,22 @@ async def postmark_webhook_handler(
         webhook.RecordType,
         webhook.MessageID,
     )
+    try:
+        await _handle(webhook)
+    except Exception as error:  # noqa: BLE001 — any failure, see below
+        # Neither re-raised nor logged with its traceback: Sentry would send
+        # every frame's locals, and the webhook in them holds the recipient's
+        # address. Postmark retries anything but a 200.
+        logger.error(
+            "Postmark %s webhook for message %s failed: %s",
+            webhook.RecordType,
+            webhook.MessageID,
+            type(error).__name__,
+        )
+        return JSONResponse(status_code=503, content={"status": "retry"})
+
+
+async def _handle(webhook: PostmarkWebhook) -> None:
     match webhook:
         case PostmarkDeliveryWebhook():
             await delivery_handler(webhook)
@@ -78,7 +94,6 @@ async def postmark_webhook_handler(
                 "Unhandled Postmark webhook type %s. Update handler mappings.",
                 type(webhook),
             )
-            return
 
 
 async def _user_id_for(recipient: str, message_id: str) -> str | None:
