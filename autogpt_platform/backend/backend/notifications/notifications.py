@@ -59,6 +59,7 @@ from backend.util.service import (
     AppService,
     AppServiceClient,
     UnhealthyServiceError,
+    endpoint_to_async,
     endpoint_to_sync,
     expose,
 )
@@ -841,4 +842,4 @@ class NotificationManagerClient(AppServiceClient):
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)
-    send_owner_email = NotificationManager.send_owner_email
+    send_owner_email = endpoint_to_async(NotificationManager.send_owner_email)

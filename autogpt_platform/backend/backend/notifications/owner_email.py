@@ -64,7 +64,7 @@ class OwnerEmail(BaseModel):
     @classmethod
     def _web_link(cls, link: str | None) -> str | None:
         if link and not link.startswith(("https://", "http://")):
-            raise ValueError("The link must be a web address (https://...).")
+            raise ValueError("The link must be a web address (https:// or http://).")
         return link or None
 
 
@@ -117,7 +117,7 @@ async def send_owner_email(
     if not await _take_daily_send(counter, limit):
         raise ValueError(
             f"Already sent {limit} emails to this account today, the most "
-            "allowed in a day. Try again tomorrow."
+            "allowed in a day. Try again after midnight UTC."
         )
     # Only a send that certainly went nowhere gives its slot back: one that
     # timed out may have arrived, and refunding it lets a looping run past the cap.

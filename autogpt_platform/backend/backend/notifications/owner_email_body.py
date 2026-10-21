@@ -171,9 +171,8 @@ def _refuse_deep_nesting(fragment: str) -> None:
 
 
 def _drop_with_content(fragment: str) -> str:
-    """Removes each dropped element with everything inside it, scanning forward
-    only: a lazy regex rescanned the rest of the body for every unclosed tag.
-    An unclosed one takes the rest of the body, as an unclosed script does."""
+    """Removes each dropped element with everything inside it, in one forward
+    scan. An unclosed one takes the rest of the body, as an unclosed script does."""
     kept: list[str] = []
     position = 0
     while opening := _DROPPED_WITH_CONTENT.search(fragment, position):
