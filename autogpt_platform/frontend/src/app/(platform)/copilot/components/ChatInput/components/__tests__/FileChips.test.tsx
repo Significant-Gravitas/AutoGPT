@@ -52,6 +52,33 @@ describe("FileChips", () => {
     expect(onRemove).toHaveBeenCalledWith(1);
   });
 
+  it("shows a thumbnail of an attached image in place of its icon", () => {
+    const photo: Attachment = {
+      kind: "local",
+      file: new File(["jpg"], "photo.jpg", { type: "image/jpeg" }),
+    };
+    const stored: Attachment = {
+      kind: "workspace",
+      fileId: "file-2",
+      name: "shot.png",
+      mimeType: "image/png",
+    };
+    const { container } = render(
+      <FileChips
+        attachments={[photo, stored, localAttachment]}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    const sources = Array.from(container.querySelectorAll("img")).map((img) =>
+      img.getAttribute("src"),
+    );
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toMatch(/^blob:/);
+    expect(sources[1]).toBe("/api/proxy/api/workspace/files/file-2/download");
+    expect(screen.getByText("photo.jpg")).toBeTruthy();
+  });
+
   it("shows a spinner instead of a remove button for local files while uploading", () => {
     render(
       <FileChips

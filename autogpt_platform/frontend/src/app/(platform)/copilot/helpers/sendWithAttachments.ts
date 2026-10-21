@@ -142,6 +142,7 @@ export function describePendingUpload(
           name: part.filename ?? "file",
           mediaType: part.mediaType,
           isUploading: false,
+          url: part.url,
         },
   );
   const local: PendingUploadAttachment[] = message.files.map((file) => ({
@@ -149,6 +150,7 @@ export function describePendingUpload(
     mediaType: file.type || "application/octet-stream",
     sizeBytes: file.size,
     isUploading: true,
+    file,
   }));
   return { text: message.text, attachments: [...stored, ...local] };
 }

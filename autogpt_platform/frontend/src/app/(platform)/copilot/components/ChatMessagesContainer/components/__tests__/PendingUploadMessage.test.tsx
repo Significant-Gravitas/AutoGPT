@@ -56,6 +56,28 @@ describe("PendingUploadMessage", () => {
     );
   });
 
+  it("shows a picked image as a picture while it uploads", () => {
+    const photo = new File(["jpg"], "photo.jpg", { type: "image/jpeg" });
+    render(
+      <PendingUploadMessage
+        pendingSend={{
+          text: "",
+          attachments: [
+            {
+              name: "photo.jpg",
+              mediaType: "image/jpeg",
+              isUploading: true,
+              file: photo,
+            },
+          ],
+        }}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "photo.jpg" });
+    expect(image.getAttribute("src")).toMatch(/^blob:/);
+  });
+
   it("carries the message id the tail spacer measures", () => {
     render(<PendingUploadMessage pendingSend={{ text: "hi", attachments }} />);
 
