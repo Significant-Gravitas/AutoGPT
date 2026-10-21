@@ -9,6 +9,7 @@ from backend.blocks.dataforb2b._config import (
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -87,6 +88,7 @@ class ProfileEnrichmentBlock(Block):
                     "work_email": "john@acme.com",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -155,6 +157,7 @@ class CompanyEnrichmentBlock(Block):
                     "domain": "google.com",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -392,7 +392,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for payload in decoded:
         try:
-            messages.append(PendingMessage.model_validate(json.loads(payload)))
+            messages.append(_from_buffer(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
@@ -407,6 +407,17 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             session_id,
         )
     return messages
+
+
+def _from_buffer(data: Any) -> PendingMessage:
+    # Deferred: the gate's held result is built on this module's message.
+    from backend.copilot.gate.held import HeldResult
+
+    # A held call's result, re-queued by a save that rolled back, keeps the
+    # larger cap it was built with; the action behind it has already run.
+    if isinstance(data, dict) and HeldResult.carried_by(data):
+        return HeldResult.model_validate(data)
+    return PendingMessage.model_validate(data)
 
 
 async def peek_pending_count(session_id: str) -> int:
@@ -457,6 +468,19 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
 # 100 KB MCP tool-output truncation boundary.
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
 _FOLLOWUP_TOTAL_MAX_CHARS = 6_000
+
+# The follow-up block's tags. The Codex gateway finds the block by them, to
+# pass on the user's words without the CLI's own notes around them.
+FOLLOW_UP_OPEN_TAG = "<user_follow_up>"
+FOLLOW_UP_CLOSE_TAG = "</user_follow_up>"
+
+
+def _escape_follow_up_tags(text: str) -> str:
+    """A message quoting the tags can't open or close the block early: the
+    block's own tags stay the only raw ones in it."""
+    return text.replace(FOLLOW_UP_OPEN_TAG, "&lt;user_follow_up&gt;").replace(
+        FOLLOW_UP_CLOSE_TAG, "&lt;/user_follow_up&gt;"
+    )
 
 
 def _persist_queue_key(session_id: str) -> str:
@@ -548,7 +572,7 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     total_chars = 0
     dropped = 0
     for idx, pm in enumerate(pending, start=1):
-        text = pm.content
+        text = _escape_follow_up_tags(pm.content)
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
         entry = f"Message {idx}:\n{text}"
@@ -565,12 +589,12 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
         rendered.append(f"… [{dropped} more message(s) truncated]")
     body = "\n\n".join(rendered)
     return (
-        "<user_follow_up>\n"
+        f"{FOLLOW_UP_OPEN_TAG}\n"
         "The user sent the following message(s) while this tool was running. "
         "Treat them as a continuation of their current request — acknowledge "
         "and act on them in your next response. Do not echo these tags back.\n\n"
         f"{body}\n"
-        "</user_follow_up>"
+        f"{FOLLOW_UP_CLOSE_TAG}"
     )
 
 

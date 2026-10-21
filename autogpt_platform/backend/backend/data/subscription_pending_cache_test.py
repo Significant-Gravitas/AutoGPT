@@ -256,6 +256,9 @@ async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
             wallet_payment, "find_wallet_payment", AsyncMock(return_value=None)
         ),
         patch.object(wallet_payment, "UserCredit", MagicMock(return_value=balance)),
+        patch.object(
+            payment_failure, "get_subscription_trial", AsyncMock(return_value=None)
+        ),
     ):
         await payment_failure.handle_subscription_payment_failure(renewal)
 

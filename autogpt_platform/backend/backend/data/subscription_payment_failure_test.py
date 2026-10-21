@@ -59,6 +59,7 @@ class FakeStripe:
         status: str,
         latest_invoice: str = "",
         price: str = "price_pro",
+        created: int | None = None,
     ):
         self.subscriptions[sub_id] = {
             "id": sub_id,
@@ -68,6 +69,10 @@ class FakeStripe:
             "metadata": {},
             "items": {"data": [{"price": {"id": price}}]},
         }
+        # Stripe stamps every subscription; by default, in the order added.
+        self.subscriptions[sub_id]["created"] = (
+            created if created is not None else len(self.subscriptions)
+        )
 
     def add_invoice(
         self,
@@ -269,7 +274,17 @@ class World:
         await sync_subscription_from_stripe(subscription, **kwargs)
 
     async def _find_user(self, **kwargs):
-        return MagicMock(id=USER, subscriptionTier=self.tier)
+        return MagicMock(id=USER, subscriptionTier=self.tier, stripeCustomerId=CUSTOMER)
+
+    async def _locked_user(self, user_id: str, tx):
+        return await self._find_user()
+
+    async def _tx_update(self, where, data):
+        await self._set_tier(where["id"], data["subscriptionTier"])
+
+    @asynccontextmanager
+    async def _transaction(self):
+        yield MagicMock(user=MagicMock(update=self._tx_update))
 
     async def _set_tier(self, user_id: str, tier: SubscriptionTier, **kwargs):
         self.tier = tier
@@ -295,6 +310,25 @@ class World:
                 ),
             ),
             patch("backend.data.credit._track_billing_event"),
+            # Paid-tier writes go through #15208's activation boundary; its
+            # evidence and locks are tested in subscription_activation_*.
+            patch("backend.data.credit.transaction", self._transaction),
+            patch(
+                "backend.data.credit.subscription_activation.lock_activation_user",
+                self._locked_user,
+            ),
+            patch(
+                "backend.data.credit.subscription_activation.publish_initial_pro_activation",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "backend.data.credit.get_subscription_trial",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.data.subscription_payment_failure.get_subscription_trial",
+                new=AsyncMock(return_value=None),
+            ),
             patch("backend.data.credit.schedule_posthog_lifecycle_sync"),
             patch(
                 "backend.data.credit.get_pending_subscription_change",
@@ -400,18 +434,58 @@ async def test_each_failed_retry_keeps_access_cut_without_cancelling():
 
 
 @pytest.mark.asyncio
-async def test_retry_after_a_top_up_is_paid_from_the_wallet():
+async def test_retry_after_access_was_cut_is_not_paid_from_the_wallet():
+    """Once the tier is cut the user has no paid plan to keep, so a later
+    retry waits for the card or payment link even after a top-up (#15208)."""
     with World(balance=0) as world:
         event = _renewal_failed(world)
         await handle_subscription_payment_failure(event)
         world.ledger.balance = 5000
         world.stripe.card_fails("in_1")
         await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == []
+    assert world.stripe.invoices["in_1"]["status"] == "open"
+    assert world.tier == SubscriptionTier.NO_TIER
+
+
+@pytest.mark.asyncio
+async def test_a_started_wallet_payment_is_finished_after_access_was_cut():
+    """The guard only stops a new debit: one taken before the tier was cut
+    still pays the invoice it was taken for."""
+    with World(balance=5000) as world:
+        event = _renewal_failed(world)
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.StripeError):
+            await handle_subscription_payment_failure(event)
+        world.tier = SubscriptionTier.NO_TIER
+        await handle_subscription_payment_failure(event)
         await world.subscription_updated("sub_1")
 
     assert world.ledger.transactions == {"in_1": -2000}
     assert world.stripe.paid_out_of_band == ["in_1"]
     assert world.tier == SubscriptionTier.PRO
+
+
+@pytest.mark.asyncio
+async def test_an_unconverted_trials_first_invoice_is_not_paid_from_the_wallet():
+    """The trial's conversion invoice stays open for authentication or a card
+    fix; it never spends wallet credit (#15208)."""
+    with World(balance=50000) as world:
+        event = _renewal_failed(world)
+        trial = MagicMock(converted_at=None, subscription_id="sub_1")
+        with patch(
+            "backend.data.subscription_payment_failure.get_subscription_trial",
+            new=AsyncMock(return_value=trial),
+        ):
+            await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == []
+    assert world.stripe.invoices["in_1"]["status"] == "open"
 
 
 @pytest.mark.asyncio
@@ -436,16 +510,19 @@ async def test_old_failure_never_cancels_a_newer_active_subscription():
     assert world.tier_writes == []
 
 
-def _superseded_by_a_newer_plan(world: World, balance: int) -> dict:
+def _superseded_by_a_newer_plan(
+    world: World, balance: int, newer_price: str = "price_max"
+) -> dict:
     """An old PRO subscription went past due, and the customer then bought
     MAX through Checkout, whose cleanup skips past-due subscriptions."""
     world.ledger.balance = balance
     world.tier = SubscriptionTier.MAX
     world.stripe.add_subscription(
-        "sub_new", "active", latest_invoice="in_new", price="price_max"
+        "sub_new", "active", latest_invoice="in_new", price=newer_price, created=2
     )
     world.stripe.add_invoice("in_new", "sub_new", status="paid")
-    return _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
+    world.stripe.add_subscription("sub_old", "past_due", "in_old", created=1)
+    return world.stripe.add_invoice("in_old", "sub_old")
 
 
 @pytest.mark.asyncio
@@ -468,6 +545,70 @@ async def test_replaced_subscription_is_cancelled_and_voided_never_paid():
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
     assert world.tier == SubscriptionTier.MAX
     assert world.tier_writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "newer_price,tier",
+    [("price_max", SubscriptionTier.MAX), ("price_pro", SubscriptionTier.PRO)],
+)
+async def test_old_plan_paid_after_a_newer_plan_replaced_it_is_ended(
+    newer_price: str, tier: SubscriptionTier
+):
+    """Stripe's card retry can pay an old past-due plan before any failure
+    event reaches us. Its update event ends the old plan, instead of
+    cancelling the newer one as a stale duplicate (or, on the same tier,
+    billing the customer for both)."""
+    with World() as world:
+        _superseded_by_a_newer_plan(world, balance=0, newer_price=newer_price)
+        world.tier = tier
+        world.stripe.card_pays("in_old")
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_old"))
+        await world.subscription_updated("sub_old")
+        # Stripe's events for the cancel.
+        await world.subscription_updated("sub_old")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_old"]["cancellation_details"] == {
+        "comment": REPLACED_PLAN_CANCELLATION_COMMENT
+    }
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+    assert world.tier == tier
+    assert world.tier_writes == []
+
+
+@pytest.mark.asyncio
+async def test_a_newer_plans_own_update_still_ends_the_older_plan():
+    """The check looks for a newer plan only: the newer plan's own update
+    still cleans up an older active one, as a Checkout upgrade does."""
+    with World() as world:
+        world.stripe.add_subscription("sub_old", "active", "in_old", created=1)
+        world.stripe.add_subscription(
+            "sub_new", "active", "in_new", price="price_max", created=2
+        )
+        await world.subscription_updated("sub_new")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.tier == SubscriptionTier.MAX
+
+
+@pytest.mark.asyncio
+async def test_an_older_plan_left_active_does_not_replace_a_newer_failing_one():
+    """If a Checkout cleanup failed and left the older plan active, a failure
+    on the newer plan must not end the newer plan as replaced."""
+    with World(balance=0) as world:
+        world.tier = SubscriptionTier.MAX
+        world.stripe.add_subscription("sub_old", "active", "in_old", created=1)
+        world.stripe.add_subscription(
+            "sub_new", "past_due", "in_new", price="price_max", created=2
+        )
+        event = world.stripe.add_invoice("in_new", "sub_new")
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.stripe.subscriptions["sub_new"]["status"] == "past_due"
+    assert world.stripe.invoices["in_new"]["status"] == "open"
 
 
 @pytest.mark.asyncio
@@ -610,7 +751,7 @@ async def test_a_trial_converted_to_another_plan_loses_it_when_its_renewal_fails
             return dict(world.stripe.subscriptions[sub_id]), None
 
         with patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.subscription_trial_stripe.reconcile_trial_subscription",
             side_effect=converted_trial,
         ):
             await handle_subscription_payment_failure(event)
@@ -821,7 +962,7 @@ async def test_trial_first_invoice_takes_the_same_path():
             return dict(sub), SubscriptionTier.NO_TIER
 
         with patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.subscription_trial_stripe.reconcile_trial_subscription",
             side_effect=reconcile_trial,
         ), patch("backend.data.credit.invalidate_subscription_caches"):
             await handle_subscription_payment_failure(event)

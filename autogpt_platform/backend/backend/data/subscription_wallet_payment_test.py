@@ -224,6 +224,7 @@ def _stale_delivery(world: World, stale_invoice: dict):
     subscription after: ``open`` but ``active``, so it will not pay."""
     stale = FailedInvoice(
         user_id=USER,
+        user_tier=world.tier,
         customer_id=CUSTOMER,
         invoice=stale_invoice,
         subscription=dict(world.stripe.subscriptions["sub_1"]),

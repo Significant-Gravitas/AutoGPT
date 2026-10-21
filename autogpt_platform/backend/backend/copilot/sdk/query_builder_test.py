@@ -187,6 +187,68 @@ async def test_build_query_resume_stale_transcript():
 
 
 @pytest.mark.asyncio
+async def test_build_query_resume_stale_transcript_leaves_out_a_note_for_the_user():
+    """A card posted into the chat between turns is in the gap the watermark
+    counts, but it is the user's, not something the model said."""
+    note = ChatMessage(
+        role="assistant",
+        content="Skipped: daily usage limit reached. Connect Discord.",
+        metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+    )
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="turn 1"),
+            ChatMessage(role="assistant", content="reply 1"),
+            note,
+            ChatMessage(role="user", content="turn 2"),
+            ChatMessage(role="assistant", content="reply 2"),
+            ChatMessage(role="user", content="turn 3"),
+        ]
+    )
+    result, _ = await _build_query_message(
+        "turn 3",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+    )
+    assert "turn 2" in result
+    assert "reply 2" in result
+    assert "Skipped" not in result
+    assert "Discord" not in result
+
+
+@pytest.mark.asyncio
+async def test_build_query_no_resume_leaves_out_a_note_for_the_user(monkeypatch):
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False, None
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages", _mock_compress
+    )
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="older question"),
+            ChatMessage(
+                role="assistant",
+                content="Skipped: daily usage limit reached",
+                metadata={"hidden_from_model": True},
+            ),
+            ChatMessage(role="user", content="new question"),
+        ]
+    )
+    result, _ = await _build_query_message(
+        "new question",
+        session,
+        use_resume=False,
+        transcript_msg_count=0,
+        session_id="test-session",
+    )
+    assert "older question" in result
+    assert "Skipped" not in result
+
+
+@pytest.mark.asyncio
 async def test_build_query_resume_zero_msg_count():
     """With --resume but transcript_msg_count=0, return raw message."""
     session = _make_session(

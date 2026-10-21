@@ -1,5 +1,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { isTouchDevice } from "@/lib/platform";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
@@ -15,6 +17,9 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  draftKey?: string;
+  /** Names what failed in the toast, e.g. a scheduled send. */
+  failureTitle?: string | ((error: unknown) => string);
 }
 
 export function useChatInput({
@@ -25,16 +30,21 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  draftKey,
+  failureTitle = "Couldn't send message",
 }: Args) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
   const [isEnqueueing, setIsEnqueueing] = useState(false);
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
   const isEnqueueingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
-    useCopilotUIStore();
+  const initialPrompt = useCopilotUIStore((s) => s.initialPrompt);
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const recoveredDraft = useCopilotUIStore((s) => s.recoveredDraft);
+  const clearRecoveredDraft = useCopilotUIStore((s) => s.clearRecoveredDraft);
+  const notifyMessageSent = useCopilotUIStore((s) => s.notifyMessageSent);
 
   useEffect(
     function consumeInitialPrompt() {
@@ -46,27 +56,34 @@ export function useChatInput({
       // Guided flows can prefill while the composer is already mounted
       // (e.g. from a copilot modal) — put the caret in the input so the
       // draft is immediately editable/sendable.
-      const textarea = document.getElementById(
-        inputId,
-      ) as HTMLTextAreaElement | null;
-      textarea?.focus();
+      if (!isTouchDevice()) document.getElementById(inputId)?.focus();
     },
-    [initialPrompt, setInitialPrompt, inputId],
+    [initialPrompt, setInitialPrompt, inputId, setValue],
   );
 
   useEffect(
+    function consumeRecoveredDraft() {
+      if (!recoveredDraft) return;
+      setValue((current) => restoreFailedDraft(current, recoveredDraft));
+      clearRecoveredDraft();
+    },
+    [recoveredDraft, clearRecoveredDraft, setValue],
+  );
+
+  // On a phone, focus opens the keyboard over half the thread, so the
+  // composer waits for a tap there.
+  useEffect(
     function focusOnMount() {
-      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
-      if (textarea) textarea.focus();
+      if (isTouchDevice()) return;
+      document.getElementById(inputId)?.focus();
     },
     [inputId],
   );
 
   useEffect(
     function focusWhenEnabled() {
-      if (disabled) return;
-      const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
-      if (textarea) textarea.focus();
+      if (disabled || isTouchDevice()) return;
+      document.getElementById(inputId)?.focus();
     },
     [disabled, inputId],
   );
@@ -82,13 +99,17 @@ export function useChatInput({
     // which would leave the sent text sitting in the composer for the entire
     // turn. On failure the draft is restored (see restoreFailedDraft).
     setValue("");
+    dismissKeyboard();
     try {
       await onSend(trimmedMessage);
       notifyMessageSent();
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
       toastSendFailure({
-        title: "Couldn't send message",
+        title:
+          typeof failureTitle === "function"
+            ? failureTitle(error)
+            : failureTitle,
         error,
         recovery: "your message is back in the composer",
       });
@@ -110,6 +131,7 @@ export function useChatInput({
     isEnqueueingRef.current = true;
     setIsEnqueueing(true);
     setValue("");
+    dismissKeyboard();
     try {
       await onEnqueue(trimmedMessage);
     } catch (error) {
@@ -123,6 +145,13 @@ export function useChatInput({
       isEnqueueingRef.current = false;
       setIsEnqueueing(false);
     }
+  }
+
+  // A phone keyboard covers the reply that is about to stream in.
+  function dismissKeyboard() {
+    if (!isTouchDevice()) return;
+    const input = document.getElementById(inputId);
+    if (input === document.activeElement) input?.blur();
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
