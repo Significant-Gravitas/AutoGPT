@@ -85,6 +85,7 @@ from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _MAX_STREAM_ATTEMPTS,
     _build_query_message,
+    _fetch_graphiti_context,
     _maybe_prepend_skills_update,
     _reduce_context,
     _seed_transcript,
@@ -1069,6 +1070,11 @@ def _make_sdk_patches(
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
         (
+            f"{_SVC}._fetch_graphiti_context",
+            {"new": AsyncMock(side_effect=lambda user_id, *_: (bool(user_id), ""))},
+        ),
+        (f"{_SVC}._enqueue_graphiti_turn", {"new_callable": AsyncMock}),
+        (
             f"{_SVC}.download_transcript",
             dict(
                 new_callable=AsyncMock,
@@ -1313,7 +1319,6 @@ class TestFollowUpWarmContextCallSite:
                 "backend.copilot.graphiti.context_refresh.refresh_warm_context",
                 dict(new=refresh),
             ),
-            (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
             # The turn's own memory ingestion is not under test here. It runs
             # as a task the turn's finally block spawns, which can outlive
             # these patches, so it is not spawned at all.
@@ -1844,12 +1849,12 @@ class TestFirstTurnWarmContextIsEphemeral:
                 "backend.copilot.graphiti.context_refresh.refresh_warm_context",
                 dict(new=refresh),
             ),
-            # The first turn's setup fetch (``_fetch_graphiti_context``).
+            # Exercise the real setup fetch instead of the shared empty stub.
+            (f"{_SVC}._fetch_graphiti_context", dict(new=_fetch_graphiti_context)),
             (
                 f"{_SVC}.fetch_warm_context",
                 dict(new=AsyncMock(return_value=first_block)),
             ),
-            (f"{_SVC}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
             (f"{_SVC}._graphiti_ingest_allowed", dict(return_value=False)),
             # The rest of the first turn's prefix, without its network reads.
             (

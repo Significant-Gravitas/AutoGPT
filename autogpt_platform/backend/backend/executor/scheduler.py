@@ -1543,32 +1543,17 @@ def execute_community_rebuild(user_id: str, expert_id: str | None = None):
     if not _memory_scope_may_fire(scope):
         return
     result = _rebuild_scope_communities(scope)
-    if result is not None and not result.get("error"):
+    if not result.get("error"):
         _stamp_scope_run(scope, "community")
 
 
-def _rebuild_scope_communities(scope: MemoryScope) -> dict | None:
-    """Flag-gated community rebuild of one scope, with its outcome logged.
+def _rebuild_scope_communities(scope: MemoryScope) -> dict:
+    """Community rebuild of one scope, with its outcome logged.
 
     Sync wrapper around the async ``rebuild_communities_for_user`` so it
     can run on the APScheduler thread pool. Failures are caught inside
     the coroutine; this wrapper logs the outcome.
-
-    Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
-    on→off after the schedule was registered, this returns None instead
-    of running. Registration-time gating is in
-    ``add_scope_community_rebuild_schedule``; this is the third layer of
-    defense (see ``copilot/dream/scheduling.py`` module docstring).
     """
-    from backend.copilot.graphiti.config import is_communities_enabled_for_user
-
-    if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
-        logger.info(
-            "Community rebuild skipped for %s — flag flipped off post-registration",
-            scope_label(scope),
-        )
-        return None
-
     result = run_async(
         rebuild_communities_for_user(scope.owner_user_id, expert_id=scope.expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
@@ -1659,32 +1644,8 @@ def execute_morning_briefing(user_id: str) -> None:
             timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
         )
         logger.info("Morning briefing for user %s: %s", user_id[:12], result)
-        if result.get("reason") == "flag_disabled":
-            run_async(
-                _self_delete_morning_briefing_schedule(user_id),
-                timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
-            )
     except Exception as e:
         logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
-
-
-async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
-    """Drop a briefing cron whose feature flag has since been turned off.
-
-    The registration marker goes with it: left set, it would suppress lazy
-    re-registration for the rest of its TTL if the flag comes back on.
-    Best-effort — the next daily fire retries the cleanup.
-    """
-    from backend.copilot.briefing.scheduling import clear_briefing_registration_marker
-
-    try:
-        await get_scheduler_client().remove_morning_briefing_schedule(user_id=user_id)
-        await clear_briefing_registration_marker(user_id)
-    except Exception:
-        logger.warning(
-            f"Failed to remove morning briefing job for user {user_id[:12]}",
-            exc_info=True,
-        )
 
 
 def execute_nightly_batch_sync(
@@ -4266,9 +4227,7 @@ class Scheduler(AppService):
 
     # --- Graphiti community detection (P-1.7) ---
     #
-    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``.
-    # Registration checks the flag here too (defense in depth: the registry
-    # gates first). Rebuilds run weekly at owner-local 04:00 on Mondays
+    # Rebuilds run weekly at owner-local 04:00 on Mondays
     # (``0 4 * * 0``: APScheduler counts weekdays from 0 = Monday) to avoid
     # the Leiden cost spike during active hours and to stagger from the
     # nightly dream at 03:00.
@@ -4293,24 +4252,10 @@ class Scheduler(AppService):
     ) -> dict:
         """Register the weekly community rebuild of one memory scope.
 
-        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` for the scope's
-        owner. When the flag is off the call is a no-op — returns a
-        structured "skipped" dict so callers see the same shape as a
-        successful registration. Only adds the job: the registry row that
+        Only adds the job: the registry row that
         lets it fire is ``copilot/dream/registry.py``'s to write.
         """
-        from backend.copilot.graphiti.config import is_communities_enabled_for_user
-
         user_timezone = user_timezone or "UTC"
-        if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
-            logger.info(
-                "Community rebuild registration skipped for %s — "
-                "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
-                scope_label(scope),
-            )
-            return memory_job_skipped(
-                scope, user_timezone, "graphiti_communities_disabled"
-            )
         job = self._add_memory_job(
             *_MEMORY_CRONS[COMMUNITY_REBUILD_JOB_PREFIX],
             dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),

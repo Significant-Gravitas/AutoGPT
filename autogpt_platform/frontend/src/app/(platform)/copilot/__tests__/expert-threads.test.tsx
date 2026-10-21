@@ -47,10 +47,6 @@ function funnelEventNames() {
   return capture.mock.calls.map(([event]) => event as string);
 }
 
-const flagState = vi.hoisted(() => ({
-  values: { "hire-experts": true } as Record<string, boolean>,
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -58,7 +54,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flagState.values[flag] ?? false,
+    useGetFlag: () => false,
   };
 });
 
@@ -194,7 +190,6 @@ function makeSession(overrides: Record<string, unknown>) {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
-  flagState.values = { "hire-experts": true };
   useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
 });
 

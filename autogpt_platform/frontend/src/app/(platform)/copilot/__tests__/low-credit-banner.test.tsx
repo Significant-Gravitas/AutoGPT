@@ -18,9 +18,6 @@ vi.mock("../components/ChatContainer/ChatContainer", () => ({
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
 }));
-vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
-  NotificationDialog: () => null,
-}));
 vi.mock("../components/RateLimitResetDialog/RateLimitGate", () => ({
   RateLimitGate: () => null,
 }));
