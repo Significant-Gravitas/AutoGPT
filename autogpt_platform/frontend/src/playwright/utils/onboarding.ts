@@ -1,26 +1,27 @@
-import { Page, expect } from "@playwright/test";
+import { type ElementHandle, Page, expect } from "@playwright/test";
 
 export async function dismissTabIntros(page: Page) {
   await page.addLocatorHandler(
     page.getByTestId("tab-intro-overlay"),
     async (intro) => {
-      const [button] = await intro
-        .getByRole("button", { name: "Got it", exact: true })
-        .elementHandles();
-      if (!button) return;
+      let button: ElementHandle<Node> | undefined;
       try {
+        [button] = await intro
+          .getByRole("button", { name: "Got it", exact: true })
+          .elementHandles();
+        if (!button) return;
         // A click can intercept its own handler after the outer wait expires.
         await button.press("Enter");
       } catch (error) {
         if (
           !(error instanceof Error) ||
-          !/Element is not attached to the DOM|Execution context was destroyed/.test(
+          !/Element is not attached to the DOM|Execution context was destroyed|Unable to adopt element handle from a different document/.test(
             error.message,
           )
         )
           throw error;
       } finally {
-        await button.dispose();
+        await button?.dispose();
       }
     },
   );
