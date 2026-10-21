@@ -849,6 +849,43 @@ def test_shared_copy_strips_every_node_and_names_no_owner():
     assert shared.trigger_setup_info == graph.trigger_setup_info
 
 
+def test_only_known_block_fields_are_marked_secret():
+    """Guard on what `stripped_for_export` strips. It finds secret inputs by
+    the `secret` flag in the block's current schema, so a value saved under a
+    field (or block) that has since been renamed or removed is no longer
+    recognised, and exports and shared copies would carry it. Before removing
+    or renaming one of these, scrub the stored values with a data migration;
+    a newly added one only needs adding here."""
+    from backend.blocks import load_all_blocks
+
+    secret_fields = set()
+    construction_failures: list[str] = []
+    for block_cls in load_all_blocks().values():
+        try:
+            block = block_cls()
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        properties = block.input_schema.jsonschema().get("properties", {})
+        for name, field_schema in properties.items():
+            if isinstance(field_schema, dict) and field_schema.get("secret") is True:
+                secret_fields.add((block.name, name))
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+    assert secret_fields == {
+        ("AllQuietIncidentTriggerBlock", "signing_secret"),
+        ("AutoPilotBlock", "codex_credentials"),
+        ("GenericWebhookTriggerBlock", "secret_token"),
+        ("PublishToMediumBlock", "author_id"),
+        ("SQLQueryBlock", "host"),
+    }
+
+
 def _sheets_graph_row(owner_id: str) -> AgentGraph:
     return AgentGraph(
         id="g-1",
