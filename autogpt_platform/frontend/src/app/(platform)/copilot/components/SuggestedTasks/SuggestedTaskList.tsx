@@ -24,7 +24,7 @@ interface Props {
 }
 
 const ROW_CLASSES =
-  "flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors duration-150";
+  "flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left";
 
 export function SuggestedTaskList({
   tasks,
@@ -55,13 +55,13 @@ export function SuggestedTaskList({
                 prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
               }
               transition={{ duration: 0.15 }}
-              className="group/row flex items-center"
+              className="group/row flex items-center transition-colors duration-150 hover:bg-zinc-50"
               data-testid="suggested-task"
             >
               {isSent && task.session_id ? (
                 <NextLink
                   href={getChatHref(task.session_id)}
-                  className={cn(ROW_CLASSES, "hover:bg-zinc-50")}
+                  className={ROW_CLASSES}
                 >
                   <Icon
                     icon={promptIcon}
@@ -90,7 +90,7 @@ export function SuggestedTaskList({
                   onClick={() => onSend(task)}
                   className={cn(
                     ROW_CLASSES,
-                    "group cursor-pointer hover:bg-zinc-50 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent",
+                    "group cursor-pointer disabled:cursor-default disabled:opacity-60",
                   )}
                 >
                   <Icon
