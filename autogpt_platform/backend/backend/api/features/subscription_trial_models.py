@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_hold import CARD_HOLD_AMOUNT
 from backend.data.subscription_trial_invoice import TrialPaymentDue
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 
@@ -17,10 +18,13 @@ class TrialOfferResponse(BaseModel):
     unit_amount: int
     currency: str
     onboarding_credit_amount: int
+    card_hold_amount: int
 
     @classmethod
     def from_offer(cls, offer: AcceptedTrialOffer) -> "TrialOfferResponse":
-        return cls(**offer.model_dump(), token=offer.token)
+        return cls(
+            **offer.model_dump(), token=offer.token, card_hold_amount=CARD_HOLD_AMOUNT
+        )
 
 
 class TrialStatusResponse(BaseModel):

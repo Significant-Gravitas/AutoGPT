@@ -43,12 +43,23 @@ function getTrialCadence(offer: TrialOfferResponse) {
 }
 
 // What Stripe charges per billing cycle once the trial ends, in major units.
-// Zero-decimal currencies (JPY) carry no minor unit.
 export function getTrialChargeAmount(offer: TrialOfferResponse) {
+  return toMajorUnits(offer.unit_amount, offer.currency);
+}
+
+export function getCardHoldNotice(offer: TrialOfferResponse) {
+  const hold = formatWholeMoney(
+    toMajorUnits(offer.card_hold_amount, offer.currency),
+    offer.currency,
+  );
+  return `A ${hold} hold checks your card and is released right away. Your bank may show it as pending for a few days.`;
+}
+
+// Zero-decimal currencies (JPY) carry no minor unit.
+function toMajorUnits(amount: number, currency: string) {
   const decimals =
-    currencyFormatter(offer.currency).resolvedOptions().maximumFractionDigits ??
-    2;
-  return offer.unit_amount / 10 ** decimals;
+    currencyFormatter(currency).resolvedOptions().maximumFractionDigits ?? 2;
+  return amount / 10 ** decimals;
 }
 
 function currencyFormatter(currency: string) {

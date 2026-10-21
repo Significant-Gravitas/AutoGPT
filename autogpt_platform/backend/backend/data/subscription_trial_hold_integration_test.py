@@ -30,14 +30,7 @@ pytestmark = fixtures.pytestmark
 async def test_declined_hold_leaves_the_trial_for_a_retry_with_another_card(
     started, stripe_trial
 ):
-    stripe_trial.hold.side_effect = stripe.CardError(
-        "Your card has insufficient funds.",
-        None,
-        "card_declined",
-        json_body={
-            "error": {"code": "card_declined", "decline_code": "insufficient_funds"}
-        },
-    )
+    stripe_trial.hold.side_effect = insufficient_funds()
     result = await reconcile_trial_subscription(started.user_id, "sub_declined")
     assert result is not None and result[1] == SubscriptionTier.NO_TIER
 
@@ -69,6 +62,39 @@ async def test_declined_hold_leaves_the_trial_for_a_retry_with_another_card(
     retry = stripe_trial.create_session.await_args.kwargs
     assert retry["idempotency_key"] == f"trial-checkout-{trial.id}-1"
     assert retry["metadata"]["trial_checkout_attempt"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_same_account_retries_the_declined_card_once_it_has_funds(
+    started, stripe_trial
+):
+    stripe_trial.hold.side_effect = insufficient_funds()
+    await reconcile_trial_subscription(started.user_id, "sub_declined")
+    declined = await get_subscription_trial(started.user_id)
+    assert declined is not None
+    await checkout.create_trial_checkout(
+        started.user_id,
+        declined.offer.token,
+        "https://example.com/ok",
+        "https://example.com/no",
+        {},
+    )
+
+    # Topped up, the user completes the new Checkout with the same card.
+    stripe_trial.hold.side_effect = None
+    stripe_trial.subscription.update(
+        id="sub_retry", status="trialing", cancellation_details=None, ended_at=None
+    )
+    stripe_trial.subscription["metadata"]["trial_checkout_attempt"] = "1"
+    stripe_trial.session.update(id="cs_attempt_1", subscription="sub_retry")
+    result = await reconcile_trial_subscription(started.user_id, "sub_retry")
+
+    assert result is not None and result[1] == SubscriptionTier.TRIAL
+    card = stripe_trial.subscription["default_payment_method"]["card"]
+    assert card["fingerprint"] == stripe_trial.fingerprint
+    assert stripe_trial.hold.await_count == 2
+    trial = await get_subscription_trial(started.user_id)
+    assert trial is not None and trial.active and trial.rejection_reason is None
 
 
 @pytest.mark.asyncio
@@ -239,7 +265,20 @@ def stripe_trial(started: TrialState, enrollment_offer: AcceptedTrialOffer):
             release=release,
             create_session=create_session,
             fingerprint=fingerprint,
+            subscription=subscription,
+            session=session,
         )
+
+
+def insufficient_funds() -> stripe.CardError:
+    return stripe.CardError(
+        "Your card has insufficient funds.",
+        None,
+        "card_declined",
+        json_body={
+            "error": {"code": "card_declined", "decline_code": "insufficient_funds"}
+        },
+    )
 
 
 def _intent(status: str) -> stripe.PaymentIntent:

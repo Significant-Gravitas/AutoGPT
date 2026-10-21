@@ -19,6 +19,7 @@ const meta = {
         unit_amount: 2000,
         currency: "usd",
         onboarding_credit_amount: 300,
+        card_hold_amount: 100,
       },
     },
     isCanceling: false,

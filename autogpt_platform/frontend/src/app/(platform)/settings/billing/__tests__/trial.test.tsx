@@ -14,6 +14,7 @@ const offer = {
   unit_amount: 2000,
   currency: "usd",
   onboarding_credit_amount: 300,
+  card_hold_amount: 100,
 };
 
 beforeEach(() => {
@@ -73,6 +74,7 @@ describe("trial billing", () => {
     ).toBeDefined();
     expect(screen.getByText(/card required/i)).toBeDefined();
     expect(screen.getByText(/\$20\.00.*month/i)).toBeDefined();
+    expect(screen.getByText(/A \$1 hold checks your card/)).toBeDefined();
     expect(
       screen.queryByText(/onboarding credits|one-time onboarding/i),
     ).toBeNull();

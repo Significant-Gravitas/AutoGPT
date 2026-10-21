@@ -1,7 +1,11 @@
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatTrialPrice, trialPlanLabels } from "./helpers";
+import {
+  formatTrialPrice,
+  getCardHoldNotice,
+  trialPlanLabels,
+} from "./helpers";
 import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
@@ -30,6 +34,9 @@ export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
           Card required. No subscription charge today. Then{" "}
           {formatTrialPrice(offer)}, plus applicable tax, unless you cancel
           before the trial ends.
+        </Text>
+        <Text variant="small" className="!text-zinc-500">
+          {getCardHoldNotice(offer)}
         </Text>
         <Text variant="small" className="!text-zinc-500">
           Trial usage is limited. If you cancel, you keep access until the trial

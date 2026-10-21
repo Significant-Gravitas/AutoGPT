@@ -288,6 +288,7 @@ test("uses the server's duration, currency, renewal cycle, and terms", async () 
   expect(details).toMatch(/¥1,234\s*\/\s*year/);
   expect(details).toMatch(/card required/i);
   expect(details).toMatch(/applicable tax/i);
+  expect(details).toMatch(/A ¥100 hold checks your card/);
   expect(details).toMatch(/cancel/i);
 });
 

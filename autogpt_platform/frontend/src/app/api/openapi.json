@@ -36245,7 +36245,8 @@
           "onboarding_credit_amount": {
             "type": "integer",
             "title": "Onboarding Credit Amount"
-          }
+          },
+          "card_hold_amount": { "type": "integer", "title": "Card Hold Amount" }
         },
         "type": "object",
         "required": [
@@ -36256,7 +36257,8 @@
           "billing_cycle",
           "unit_amount",
           "currency",
-          "onboarding_credit_amount"
+          "onboarding_credit_amount",
+          "card_hold_amount"
         ],
         "title": "TrialOfferResponse"
       },

@@ -1,6 +1,9 @@
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatTrialPrice } from "@/components/organisms/TrialCard/helpers";
+import {
+  formatTrialPrice,
+  getCardHoldNotice,
+} from "@/components/organisms/TrialCard/helpers";
 import { formatPlanAmount } from "../../../helpers";
 
 interface Props {
@@ -35,6 +38,9 @@ export function TrialDetails({ offer }: Props) {
         Card required. No subscription charge today. Your paid subscription
         starts automatically after the trial, plus applicable tax, unless you
         cancel before it ends.
+      </Text>
+      <Text variant="small" tone="muted">
+        {getCardHoldNotice(offer)}
       </Text>
       <Text variant="body" tone="secondary">
         Trial usage is limited. If you cancel, you keep access until the trial
