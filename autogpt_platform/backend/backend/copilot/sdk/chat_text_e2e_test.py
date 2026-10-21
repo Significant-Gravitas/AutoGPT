@@ -54,7 +54,7 @@ def ledger(monkeypatch: pytest.MonkeyPatch) -> PlatformLedger:
 def _memory_off(monkeypatch: pytest.MonkeyPatch) -> None:
     """Memory is not under test here, and its ingest needs a database."""
     monkeypatch.setattr(
-        sdk_service, "is_enabled_for_user", AsyncMock(return_value=False)
+        sdk_service, "_fetch_graphiti_context", AsyncMock(return_value=(False, ""))
     )
 
 
