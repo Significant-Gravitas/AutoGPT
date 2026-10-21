@@ -332,9 +332,10 @@ changelog) is not covered.
   and **`message_id`** Postmark's message id, which ties the events of one
   email together.
 - **`link`** is the clicked link's scheme, host and path only: the query
-  string and fragment are dropped, and a path segment that looks like an id or
-  a token becomes `:id` (`https://platform.agpt.co/library/agents/:id`). A
-  link that is not `http(s)` keeps only its scheme (`mailto:`).
+  string and fragment are dropped, and a path segment that isn't a plain
+  lower-case word, or that looks like an id or a token, becomes `:id`
+  (`https://platform.agpt.co/library/agents/:id`). A link that is not
+  `http(s)` keeps only its scheme (`mailto:`).
 - **`bounce_type`** is Postmark's bounce type (`HardBounce`, `SoftBounce`,
   `Transient`, `SpamNotification`, ...).
 - **`first_open`** is whether Postmark counts it as the first open of that
@@ -343,8 +344,8 @@ changelog) is not covered.
   user id is the `distinct_id`. An address with no account (such as the Ops
   inbox) sends nothing. The address is never sent or logged.
 - **When.** The event carries Postmark's own time, not the time the webhook
-  arrived, and is deduplicated on message id, record type and that time, so a
-  webhook Postmark redelivers counts once.
+  arrived, and is deduplicated on message id, record type and that time (and
+  the link, for a click), so a webhook Postmark redelivers counts once.
 - **Opens and clicks need tracking on.** Each notification email asks
   Postmark to track opens and to rewrite links in its HTML part only when
   `POSTMARK_TRACK_OPENS_AND_CLICKS` is true (off by default). Auth email is
