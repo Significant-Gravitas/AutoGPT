@@ -668,18 +668,31 @@ class CoPilotProcessor:
                 ),
             )
 
-            session = await _normalize_private_expert_session_tenancy(session)
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.
             trial_reads = cost_context_stack.enter_context(trial_reads_shared())
-            if entry.llm_auth_provider == "platform":
-                # Every platform-billed turn passes the allowance here, from
-                # whichever path queued it (see backend.copilot.budget_gate).
+            # Every platform-billed turn passes the allowance here, from
+            # whichever path queued it (see backend.copilot.budget_gate). The
+            # gate needs only the user, so it reads beside the expert check;
+            # the check still answers first.
+            refusal = (
+                asyncio.create_task(refusal_for(entry.user_id))
+                if entry.llm_auth_provider == "platform"
+                else None
+            )
+            try:
+                session = await _normalize_private_expert_session_tenancy(session)
+            except BaseException:
+                if refusal is not None:
+                    refusal.cancel()
+                    await asyncio.gather(refusal, return_exceptions=True)
+                raise
+            if refusal is not None:
                 # An AutoPilot block turn the allowance can't cover may run on
                 # the credit balance instead (see backend.copilot.credit_billing).
                 try:
-                    pause = await refusal_for(entry.user_id)
+                    pause = await refusal
                     if pause is not None:
                         # Billed to the tenancy the turn runs under (as
                         # streamed below), as the graph's other blocks are.

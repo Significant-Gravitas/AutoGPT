@@ -1630,6 +1630,62 @@ class TestExpertTurnsCheckTheirExpert:
         assert "<expert_identity>" in identities[0]
 
     @pytest.mark.asyncio
+    async def test_the_expert_check_and_the_allowance_gate_read_side_by_side(
+        self,
+    ) -> None:
+        """Neither needs the other's answer, so an expert turn's two reads
+        before its engine run at the same time, not one after the other."""
+        started = {"check": asyncio.Event(), "gate": asyncio.Event()}
+
+        async def both_started() -> None:
+            waits = asyncio.gather(*(event.wait() for event in started.values()))
+            await asyncio.wait_for(waits, 2)
+
+        async def check(user_id: str, expert_id: str):
+            started["check"].set()
+            await both_started()
+            return _checked_expert("personal-org", "personal-team")
+
+        async def gate(user_id: str | None):
+            started["gate"].set()
+            await both_started()
+            return None
+
+        identities: list[str] = []
+        with patch("backend.copilot.executor.processor.refusal_for", new=gate):
+            await self._run_turn(self._session(), self._store(check), identities)
+
+        assert len(identities) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_gone_expert_stops_the_allowance_gate_read_beside_it(
+        self,
+    ) -> None:
+        """The check still answers first: a turn whose expert is gone is
+        refused for that, and the gate's read, still running, is stopped."""
+        gate_started, gate_stopped = asyncio.Event(), asyncio.Event()
+
+        async def check(user_id: str, expert_id: str):
+            await asyncio.wait_for(gate_started.wait(), 2)
+            raise ExpertNotFoundError(expert_id)
+
+        async def gate(user_id: str | None):
+            gate_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                gate_stopped.set()
+                raise
+
+        with (
+            patch("backend.copilot.executor.processor.refusal_for", new=gate),
+            pytest.raises(ExpertSessionUnavailableError),
+        ):
+            await self._run_turn(self._session(), self._store(check), [])
+
+        assert gate_stopped.is_set()
+
+    @pytest.mark.asyncio
     async def test_a_fresh_hire_still_waits_for_its_setup(self) -> None:
         async def check(user_id: str, expert_id: str):
             return _checked_expert(
