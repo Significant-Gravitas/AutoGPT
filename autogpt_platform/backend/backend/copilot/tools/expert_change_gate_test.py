@@ -311,7 +311,10 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             patch(f"{_GATE}.held.review_db", return_value=reviews),
             patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
         ):
-            [row] = await held.resolve_answered(_USER, session)
+            rows: list[Any] = []
+            async for _status in held.resolve_answered(_USER, session, rows.append):
+                pass
+            [row] = rows
 
     assert row.metadata["held_call"]["outcome"] == "approved"
     part = {

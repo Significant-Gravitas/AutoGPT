@@ -228,6 +228,19 @@ async def edge_row(driver: AutoGPTFalkorDriver, edge_uuid: str) -> dict[str, Any
     return found[0] if found else {}
 
 
+async def edge_properties(driver: AutoGPTFalkorDriver, uuid: str) -> dict[str, Any]:
+    """Every property of the fact ``uuid`` but its embedding, or ``{}`` once
+    it is gone."""
+    found = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() RETURN properties(e) AS p",
+        uuid=uuid,
+    )
+    props = dict(found[0]["p"]) if found else {}
+    props.pop("fact_embedding", None)
+    return props
+
+
 async def episode_row(driver: AutoGPTFalkorDriver, episode_uuid: str) -> dict[str, Any]:
     """The stored episode, redacted or not, or ``{}`` once it is gone."""
     found = await rows(

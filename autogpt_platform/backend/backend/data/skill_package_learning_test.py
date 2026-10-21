@@ -10,7 +10,8 @@ from uuid import uuid4
 import pytest
 
 from backend.copilot import db as chats
-from backend.copilot.dream.llm import CompletionUsage, StructuredCompletion
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import InferenceUsage
 from backend.copilot.learning import nightly
 from backend.copilot.learning.chat_source import record_chat_turn
 from backend.copilot.learning.owner_actions import restore_version
@@ -61,8 +62,13 @@ def proposal(revision: int):
             supported_by=[ref],
             verification="The saved script exited 0 and printed 3 rows validated",
         ),
-        usage=CompletionUsage(
-            model="fixture-model", input_tokens=10, output_tokens=10, cost_usd=0
+        usage=InferenceUsage(
+            model="fixture-model",
+            input_tokens=10,
+            output_tokens=10,
+            cost_usd=0,
+            cost_source="provider",
+            payer="platform_allowance",
         ),
     )
 
