@@ -50,6 +50,9 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   const { mutate } = useUpdateBrainDumpSuggestedTasks({
     mutation: {
       scope: { id: "brain-dump-suggested-tasks" },
+      // Each write sets a state, so a retry is safe; giving up on a sent row
+      // would reopen it and let the next click start a second chat.
+      retry: 3,
       onSuccess: (result, { data }) => {
         if (result.status !== 200) return;
         updateCache(

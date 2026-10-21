@@ -179,6 +179,38 @@ describe("Suggested first tasks — the greeting page", () => {
     ]);
   });
 
+  it("retries a failed sent write with the same chat instead of reopening the row", async () => {
+    withGreeting();
+    let failures = 1;
+    server.use(
+      http.post(URL, async ({ request }) => {
+        const update = (await request.json()) as SuggestedTasksUpdate;
+        writes.push(update);
+        if (failures > 0) {
+          failures -= 1;
+          return HttpResponse.json({ detail: "busy" }, { status: 503 });
+        }
+        stored = stored.map((task) =>
+          update.task_ids.includes(task.id)
+            ? { ...task, state: update.state, session_id: update.session_id }
+            : task,
+        );
+        return HttpResponse.json({ tasks: stored, stored: true });
+      }),
+    );
+    renderHome();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: TASKS[0].title }),
+    );
+
+    const sent = { task_ids: ["0"], state: "sent", session_id: "session-1" };
+    await waitFor(() => expect(writes).toEqual([sent, sent]), {
+      timeout: 4000,
+    });
+    expect(stored[0].state).toBe("sent");
+  });
+
   it("keeps a row open when its send never started a chat", async () => {
     withGreeting();
     renderHome({
