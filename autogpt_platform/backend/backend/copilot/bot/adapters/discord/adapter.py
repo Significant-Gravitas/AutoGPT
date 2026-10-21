@@ -575,7 +575,7 @@ class DiscordAdapter(SocketAdapter):
                 return
 
             thread_history = ()
-            if channel_type == "thread" and bot_mentioned:
+            if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
 
             own_text = self._strip_mentions(message)

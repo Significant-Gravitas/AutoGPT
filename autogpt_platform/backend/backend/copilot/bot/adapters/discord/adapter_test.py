@@ -1367,6 +1367,26 @@ class TestLockedThread:
         callback.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_thread_reply_to_the_bot_carries_the_thread_history(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+        msg = self._channel_message(replied_author_id=1000)
+        thread = _thread(555)
+        thread.locked = False
+        msg.channel = thread
+        history = (MagicMock(),)
+
+        with patch.object(
+            adapter, "_thread_history", new=AsyncMock(return_value=history)
+        ) as fetch:
+            await handlers["on_message"](msg)
+
+        fetch.assert_awaited_once_with(msg)
+        assert callback.await_args.args[0].thread_history == history
+
+    @pytest.mark.asyncio
     async def test_on_message_rewrites_referenced_links_in_text(self):
         # End-to-end through on_message: a channel @mention linking another
         # channel attaches that conversation and rewrites the raw link into a
