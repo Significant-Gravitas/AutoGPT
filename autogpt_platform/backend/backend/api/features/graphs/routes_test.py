@@ -18,6 +18,7 @@ from backend.blocks.basic import StoreValueBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel, NodeModel
@@ -280,16 +281,33 @@ def test_get_graph(
 
 
 def _graph_owned_by(owner_id: str) -> GraphModel:
+    owner = {
+        "user_id": owner_id,
+        "organization_id": "owner-org",
+        "team_id": "owner-team",
+        "created_at": datetime(2025, 9, 4, 13, 37),
+    }
+    sub_graph = GraphModel(
+        id="sub-graph",
+        name="Sub",
+        description="",
+        nodes=[
+            NodeModel(
+                id="query",
+                block_id=SQLQueryBlock().id,
+                graph_id="sub-graph",
+                graph_version=1,
+                input_default={"host": "db.internal", "query": "select 1"},
+            )
+        ],
+        **owner,
+    )
     return GraphModel(
         id="graph-123",
         version=1,
         is_active=True,
         name="Shared",
         description="",
-        user_id=owner_id,
-        organization_id="owner-org",
-        team_id="owner-team",
-        created_at=datetime(2025, 9, 4, 13, 37),
         nodes=[
             NodeModel(
                 id="trigger",
@@ -300,6 +318,8 @@ def _graph_owned_by(owner_id: str) -> GraphModel:
                 webhook_id="owner-webhook",
             )
         ],
+        sub_graphs=[sub_graph],
+        **owner,
     )
 
 
@@ -334,6 +354,11 @@ def test_get_graph_gives_someone_who_isnt_the_owner_an_export(
     [trigger] = graph["nodes"]
     assert trigger["webhook_id"] is None
     assert "secret_token" not in trigger["input_default"]
+    [sub_graph] = graph["sub_graphs"]
+    assert not any(
+        sub_graph.get(key) for key in ("user_id", "organization_id", "team_id")
+    )
+    assert "host" not in sub_graph["nodes"][0]["input_default"]
 
 
 def test_get_graph_gives_the_owner_their_graph_as_saved(
@@ -354,6 +379,7 @@ def test_get_graph_gives_the_owner_their_graph_as_saved(
     [trigger] = graph["nodes"]
     assert trigger["webhook_id"] == "owner-webhook"
     assert trigger["input_default"]["secret_token"] == "owner-token"
+    assert graph["sub_graphs"][0]["nodes"][0]["input_default"]["host"] == "db.internal"
 
 
 def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
