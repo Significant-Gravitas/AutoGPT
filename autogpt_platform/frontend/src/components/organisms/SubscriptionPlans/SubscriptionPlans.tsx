@@ -5,20 +5,18 @@ import { PlanDetailsDialog } from "./components/PlanDetailsDialog/PlanDetailsDia
 import { PlanFooter } from "./components/PlanFooter";
 import { PlanHeader } from "./components/PlanHeader";
 import { SubscriptionOffer } from "./components/SubscriptionOffer";
-import { DEFAULT_GOAL_SURFACE, type SubscriptionPlansProps } from "./helpers";
+import type { SubscriptionPlansProps } from "./helpers";
 import { useSubscriptionPlans } from "./useSubscriptionPlans";
 
 export function SubscriptionPlans({
   trialStatus,
   header,
-  goalSurface = DEFAULT_GOAL_SURFACE,
-  ...rest
+  ...props
 }: SubscriptionPlansProps & {
   trialStatus?: ReactNode;
   header?: ReactNode;
 }) {
   const { dialog, setDialog, setDialogOpen } = useSubscriptionPlans();
-  const props = { ...rest, goalSurface };
   return (
     <div className="mx-auto w-full max-w-7xl px-5 font-sans sm:px-8">
       <section aria-label="Choose your AutoGPT plan">

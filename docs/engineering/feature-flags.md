@@ -1,84 +1,108 @@
 # Feature flags
 
 Which vendor answers a flag read is set per deployment by `FEATURE_FLAG_BACKEND`:
-`launchdarkly` (the default), `posthog`, or `dual` — evaluate both, serve
-LaunchDarkly's answer, and log every disagreement. Call sites are unaffected by
+`posthog` (the default), `launchdarkly`, or `dual` — evaluate both, serve
+LaunchDarkly's answer, and log every disagreement. Without `POSTHOG_API_KEY`
+the default reads every flag as its code default, which is what a self-hosted
+install and CI get. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
-## One set of flags, separate reporting
+## Retired product rollout flags
 
-Flags are defined once, in the **prod** PostHog project. Dev reads those
-definitions, while every event and person they produce
-goes to the **dev** project, so prod's analytics never mix with dev's.
+The following features are permanent product paths. The backend and browser no
+longer evaluate these keys, and their former `FORCE_FLAG_*` /
+`NEXT_PUBLIC_FORCE_FLAG_*` overrides have no effect:
 
-Only the backend reads flag definitions. The browser gets its flags from the
-backend's `GET /api/feature-flags` (`NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server`),
-which evaluates them through the same path as the backend's own reads. So the
-split below covers the browser's flags too, with no PostHog flags client in
-the browser.
+- `artifacts-page`
+- `hire-experts`
+- `skills-hub`
+- `onboarding-brain-dump`
+- `onboarding-expert-team`
+- `graphiti-memory`
+- `graphiti-communities-enabled`
+- `expert-spend-approval`
+- `ai-agent-execution-summary`
 
-> **`server` mode arrives with #15383.** Until that PR is merged, the browser's
-> backend selector (`frontend/src/services/feature-flags/flag-backend.ts`)
-> knows only `launchdarkly`, `posthog` and `dual`, and treats any other value,
-> `server` included, as `launchdarkly`. Set `server` on dev only once #15383 is
-> deployed there; before that, the split covers the backend's reads only.
+The sidebar and search flags, `autogpt-new-layout` and `chat-search`, were
+retired separately. Authentication, ownership, user preferences, billing
+configuration and provider requirements still apply. Spend approval is bypassed
+when `ENABLE_CREDIT=false`. Dream passes, skill learning, voice mode, payments and
+other independent rollout controls retain their existing gates.
 
-| Setting | Prod | Dev |
+Memory still requires FalkorDB and configured embedding/model endpoints. The
+standard compose and single-container stacks include FalkorDB; custom installs
+must provide it. Memory operations can fail when these services are unavailable;
+removing the rollout flags does not make missing services a supported no-op.
+Community rebuilds and execution summaries can perform model work.
+
+Retired provider definitions can remain during a rolling deployment for older
+releases. Removing code consumers does not delete PostHog or LaunchDarkly
+configuration. Use the [Tuesday audit prompt](feature-flag-audit-prompt.md) to
+identify further retirement candidates.
+
+## One PostHog project per environment
+
+Dev and Prod each have their own PostHog project, and each project holds its
+own flags. A deployment reads its flags from the same project its analytics go
+to, the one `POSTHOG_API_KEY` names, and evaluates them locally with that
+project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
+evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
+instead, unless the read is local-only, as a signed-out visitor's own read is.
+
+A flag the code reads but the project doesn't have is served its code default.
+The backend still asks `/flags` about it once, because PostHog answers some
+flags there that it leaves out of the definitions (one in its newer config
+format, for instance). Once `/flags` has had no answer either, the backend
+serves the default without asking again for five minutes, so the read costs no
+network round trip. Creating the flag takes effect at the next definitions
+poll, or within those five minutes for a flag the definitions leave out.
+
+| | Dev | Prod |
 |---|---|---|
-| `POSTHOG_API_KEY` (backend) | prod project API key | dev project API key |
-| `POSTHOG_FLAGS_API_KEY` (backend) | blank | prod project API key |
-| `POSTHOG_SECRET_KEY` (backend) | prod Feature Flags Secure API Key | prod Feature Flags Secure API Key |
-| `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | prod project API key | dev project API key |
+| PostHog project | [281733](https://eu.posthog.com/project/281733/feature_flags) | [117338](https://eu.posthog.com/project/117338/feature_flags) |
+| `POSTHOG_API_KEY`, `POSTHOG_SECRET_KEY` (backend) | Dev project's | Prod project's |
+| `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | Dev project's | Prod project's |
 
-This applies to flags PostHog answers, so dev needs `FEATURE_FLAG_BACKEND=posthog`
-(under `dual`, LaunchDarkly's answer is served and PostHog's is only compared),
-and `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server` (once #15383 is deployed) so the
-browser asks the backend.
+PostHog has no environments within a project, so a flag both deployments read
+is defined in each project. The **Projects** tab on the
+[flag list](https://eu.posthog.com/project/281733/feature_flags?tab=projects)
+and on each flag's page shows a flag across both projects side by side.
 
-A blank flags key reads flags from the analytics project, which is what prod
-and every self-hosted deployment do. `POSTHOG_SECRET_KEY` always belongs to the
-project flags are read from. All projects must be in the one region
-`POSTHOG_HOST` names.
+Dev and Prod both run `FEATURE_FLAG_BACKEND=posthog`, so a flag is changed in
+that environment's PostHog project and LaunchDarkly answers nothing there.
 
-**Backend.** The flag client uses the flags key and the secret key, so it polls
-prod's definitions and evaluates in-process. When the flags key names another
-project it is built with `send=False`, so its `$feature_flag_called` events
-never leave the process, and every read is local only
-(`only_evaluate_locally`): a flag local evaluation cannot answer serves its
-default rather than asking prod's `/flags` with the user's email. That makes
-the secret key required on dev; without it every read serves its default, and
-the client logs a warning at startup. The analytics client
-(`backend/util/posthog_client.py`) keeps `POSTHOG_API_KEY`.
+**The browser.** With `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server`, the default,
+the browser gets its flags from the backend's `GET /api/feature-flags`, which evaluates
+them through the same path as the backend's own reads, so the browser and the
+backend give one answer from one project. A Vercel preview in `server` mode
+gets the answer of the backend it calls, and a backend with no vendor answers
+`configured: false`, so the browser serves its own defaults and stops asking.
+The other values read flags in the browser itself: `launchdarkly` from
+LaunchDarkly, and `posthog` /
+`dual` from the project `NEXT_PUBLIC_POSTHOG_KEY` names. `useExperiment` reads
+posthog-js in every mode.
 
-This covers every PostHog flag read the backend makes: its own
-(`evaluate_feature_flag`, `get_feature_flag_value`, route gates) and the
-browser's through `/api/feature-flags`.
+**The `environment` property.** Every PostHog flag read the backend makes, its
+own and the browser's in `server` mode, carries the person property
+`environment`: the backend's `APP_ENV` (`local`, `dev` or `prod`), the same
+value its analytics events carry. A release condition can use it in either
+project like any other person property. It is only an evaluation input, never
+stored on a person. Browser reads through posthog-js (`posthog` / `dual` mode)
+don't carry it: they send `buildFlagPersonProperties` (email, email domain,
+role, created at) only, so a condition on `environment` matches only the
+backend's reads there.
 
-**Browser.** In `server` mode the browser asks the backend and nothing else
-for its flags, so on dev it gets prod's definitions with no change of its own.
-posthog-js still talks only to the analytics project. The other
-`NEXT_PUBLIC_FEATURE_FLAG_BACKEND` values read flags in the browser itself:
-`launchdarkly` (the default) from LaunchDarkly, and `posthog` / `dual` from the
-project `NEXT_PUBLIC_POSTHOG_KEY` names. So dev must run `server` mode to share
-prod's flags. The one browser read left is `useExperiment`, which reads posthog-js and
-so, on dev, the dev project's experiment flags, until experiment arms are
-assigned on the backend.
-
-**Rolling out to dev only.** Every PostHog flag read the backend makes, its own
-and the browser's in `server` mode, carries the person property `environment`,
-the backend's `APP_ENV`: `local`, `dev` or `prod`, the same value the analytics
-events carry. A release condition `environment = dev` turns a flag on for dev
-alone; prod never matches it. A Vercel preview in `server` mode gets the answer
-of the backend it calls. The property is only an evaluation input: it is never
-stored on a person.
-
-Browser reads through posthog-js (`posthog` / `dual` mode, which is prod today)
-don't carry `environment`: they send `buildFlagPersonProperties` (email, email
-domain, role, created at) only. So use `environment` only in positive
-dev-only conditions like `environment = dev`. A condition like
-`environment = prod` or "`environment` is not `dev`" would turn on in prod's
-backend reads but stay off in prod's browser until prod runs `server` mode.
+**Splitting signed-out visitors.** A visitor who allowed analytics is bucketed
+under `visitor:<their PostHog id>`, but only by conditions their read can
+decide: a rollout percentage, `environment` and `is_anonymous`, with no email.
+A condition group on another person property or a cohort (the migrated
+"email in employees", for one) can't be decided for a visitor, so a visitor
+whom no decidable group matches gets the shared signed-out answer instead.
+"Employees OR 20%" is then all or nothing for visitors, whichever side the
+shared `anonymous` key lands on. For a real 20% of visitors, add
+`is_anonymous` is not `true` to the rollout group: the shared answer is then
+off, and only each visitor's own bucket turns the flag on.
 
 ## Sharing PostHog's flag definitions
 
@@ -112,8 +136,7 @@ wire and has no definitions to share.
 
 **Per environment.** Leave the defaults on `dev` and `prod`: both run several
 replicas against a shared Redis, which is what the cache is for. Local
-development and CI run `FEATURE_FLAG_BACKEND=launchdarkly`, so none of this is
-reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
+development and CI have no PostHog keys, so none of this is reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
 PostHog locally without Redis.
 
 ### What the refresher is
@@ -162,5 +185,6 @@ process, `cached` once per poll on each of the other N−1, and `empty` and
 | The refresher dies | Its lock expires and another process takes the job on its next poll. |
 | A definitions fetch fails | The definitions already in memory stay in use, and the refresher keeps writing that copy to the cache. |
 
-Nothing here can make a flag read wait on Redis or on PostHog: flag evaluation
-only ever reads the definitions already in the process.
+Nothing here can make a flag read wait on Redis: evaluation reads the
+definitions already in the process, and only a read they can't decide waits on
+PostHog's `/flags`.

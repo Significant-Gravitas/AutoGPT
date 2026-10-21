@@ -94,7 +94,6 @@ export function CategoryChip({
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
-      unmask={false}
       style={color ? glossyChipStyle(color, isSelected) : undefined}
       leftIcon={
         icon ? (

@@ -420,7 +420,7 @@ def sdk_disallowed_tools() -> list[str]:
     # which every block load should not have to pay for.
     from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
 
-    return [*get_sdk_builtin_tools(), "NotebookEdit"]
+    return get_sdk_builtin_tools()
 
 
 class OrchestratorBlock(Block):

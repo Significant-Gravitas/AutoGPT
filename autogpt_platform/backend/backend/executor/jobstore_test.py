@@ -1,12 +1,18 @@
+import logging
 import os
 import pickle
 import tempfile
+import threading
+import time
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
 import pytest
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.util import datetime_to_utc_timestamp
 from sqlalchemy import select
 
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
@@ -107,10 +113,9 @@ def test_scheduler_listing_path_parks_an_unrestorable_schedule():
         assert sched.get_parked_jobs()[Jobstores.EXECUTION.value] == ["poisoned"]
 
 
-def test_repaired_job_can_be_resumed_and_then_fires():
-    """Park, repair, resume, run. Parking can only clear the COLUMN, so without
-    reconciliation the repaired row is stranded: it reports healthy, never comes
-    due, and resume refuses it because the pickled copy is still set."""
+def test_manual_repair_can_pause_before_a_listing_resumes_the_job():
+    """The explicit repair path can normalize both copies to paused before
+    any automatic listing restores the serialized next run."""
     with _store() as (store, scheduler):
         scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
         healthy_state = _job_state(store, "poisoned")
@@ -122,7 +127,6 @@ def test_repaired_job_can_be_resumed_and_then_fires():
         # which is exactly what jobstore_backfill does.
         _set_job_state(store, "poisoned", healthy_state)
         assert store.get_parked_job_ids() == []
-        assert store._get_jobs()[0].next_run_time is not None  # stranded
         assert _next_run_time(store, "poisoned") is None
 
         assert store.reconcile_repaired_jobs() == ["poisoned"]
@@ -143,6 +147,90 @@ def test_reconcile_leaves_a_user_paused_job_alone():
         assert _next_run_time(store, "paused") is None
 
 
+@pytest.mark.parametrize("prefix", [None, "ordinary_"])
+def test_listing_unparks_a_restorable_job_once(caplog, prefix):
+    with _store() as (store, scheduler):
+        job_id = "ordinary_job"
+        job = scheduler.add_job(
+            noop,
+            "interval",
+            seconds=60,
+            id=job_id,
+            next_run_time=datetime.now(timezone.utc) - timedelta(minutes=2),
+        )
+        healthy = _job_state(store, job_id)
+        _poison(store, job_id)
+        store.get_all_jobs()
+        _set_job_state(store, job_id, healthy)
+        caplog.clear()
+        conditions = (store.jobs_t.c.id.startswith(prefix),) if prefix else ()
+
+        with caplog.at_level(logging.INFO):
+            assert [j.id for j in store._get_jobs(*conditions)] == [job_id]
+            store._get_jobs(*conditions)
+
+        assert _next_run_time(store, job_id) == datetime_to_utc_timestamp(
+            job.next_run_time
+        )
+        assert _job_state(store, job_id) == healthy
+        assert store._parked_ids == set()
+        assert caplog.text.count('Resuming restored job "ordinary_job"') == 1
+        assert [j.id for j in store.get_due_jobs(datetime.now(timezone.utc))] == [
+            job_id
+        ]
+
+
+def test_listing_does_not_unpark_a_user_paused_job():
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=60, id="paused")
+        scheduler.pause_job("paused")
+        healthy = _job_state(store, "paused")
+
+        [job] = store.get_all_jobs()
+
+        assert job.next_run_time is None
+        assert _next_run_time(store, "paused") is None
+        assert _job_state(store, "paused") == healthy
+
+
+@pytest.mark.parametrize("changed", ["job_state", "next_run_time"])
+def test_listing_does_not_unpark_a_row_changed_since_the_scan(changed):
+    with _store() as (store, scheduler):
+        scheduler.add_job(noop, "interval", seconds=60, id="parked")
+        healthy = _job_state(store, "parked")
+        _poison(store, "parked")
+        store.get_all_jobs()
+        _set_job_state(store, "parked", healthy)
+        restore = store._reconstitute_job
+        state = pickle.loads(healthy)
+        state["next_run_time"] = None
+        paused_state = pickle.dumps(state, store.pickle_protocol)
+
+        def change_midway(job_state):
+            values = (
+                {"job_state": paused_state}
+                if changed == "job_state"
+                else {"next_run_time": 1.0}
+            )
+            with store.engine.begin() as connection:
+                connection.execute(
+                    store.jobs_t.update()
+                    .where(store.jobs_t.c.id == "parked")
+                    .values(**values)
+                )
+            return restore(job_state)
+
+        with patch.object(store, "_reconstitute_job", side_effect=change_midway):
+            store.get_all_jobs()
+
+        assert _next_run_time(store, "parked") == (
+            None if changed == "job_state" else 1.0
+        )
+        assert _job_state(store, "parked") == (
+            paused_state if changed == "job_state" else healthy
+        )
+
+
 def test_reconcile_leaves_a_still_broken_job_parked():
     with _store() as (store, scheduler):
         scheduler.add_job(noop, "interval", seconds=3600, id="poisoned")
@@ -157,12 +245,14 @@ def test_reconcile_walks_past_its_batch_size():
     """Batching bounds the transaction, not the work: every stranded row must
     still be reached, which a plain cap would not do."""
     with _store() as (store, scheduler):
+        healthy = {}
         for i in range(7):
             scheduler.add_job(noop, "interval", seconds=3600, id=f"j{i}")
-            healthy = _job_state(store, f"j{i}")
+            healthy[f"j{i}"] = _job_state(store, f"j{i}")
             _poison(store, f"j{i}")
-            store._get_jobs()
-            _set_job_state(store, f"j{i}", healthy)
+        store._get_jobs()
+        for job_id, state in healthy.items():
+            _set_job_state(store, job_id, state)
 
         healed = store.reconcile_repaired_jobs(batch_size=2)
 
@@ -293,6 +383,48 @@ def test_strip_enums_recurses_through_containers():
 def test_strip_enums_leaves_plain_values_alone():
     payload = {"user_id": "u1", "graph_version": 3, "cron": "0 * * * *"}
     assert _strip_enums(payload) == payload
+
+
+def test_a_held_wake_is_one_job_per_chat_and_runs_after_its_scheduler_is_lost():
+    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    os.close(fd)
+    url = f"sqlite:///{path}"
+    wake = MagicMock()
+    ran = threading.Event()
+    try:
+        lost = _production_like(url)
+        lost.start(paused=True)
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler.scheduler = lost
+        scheduler.schedule_held_wake("user-1", "chat-1", 0.05)
+        scheduler.schedule_held_wake("user-1", "chat-1", 0.05)
+        assert [job.id for job in lost.get_jobs()] == ["held_wake_chat-1"]
+        lost.shutdown(wait=False)
+        time.sleep(0.3)
+
+        with (
+            patch("backend.copilot.gate.held.wake", wake),
+            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=lambda _: ran.set()),
+        ):
+            restarted = _production_like(url)
+            restarted.start()
+            try:
+                assert ran.wait(5)
+            finally:
+                restarted.shutdown(wait=False)
+        wake.assert_called_once_with("user-1", "chat-1")
+    finally:
+        os.unlink(path)
+
+
+def _production_like(url: str) -> BackgroundScheduler:
+    return BackgroundScheduler(
+        jobstores={
+            Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(url=url),
+            Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
+        },
+        job_defaults={"coalesce": True, "misfire_grace_time": None},
+    )
 
 
 @contextmanager

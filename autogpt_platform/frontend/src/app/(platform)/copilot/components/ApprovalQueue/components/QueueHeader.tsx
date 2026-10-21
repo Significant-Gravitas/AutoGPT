@@ -5,11 +5,20 @@ interface Props {
   count: number;
   mode: string | null;
   approveAll: { count: number; busy: boolean; onClick: () => void } | null;
+  onReviewAll: (() => void) | null;
+  // Collapsed after Close and continue: the header alone, and a way back.
+  onShow: (() => void) | null;
 }
 
-export function QueueHeader({ count, mode, approveAll }: Props) {
+export function QueueHeader({
+  count,
+  mode,
+  approveAll,
+  onReviewAll,
+  onShow,
+}: Props) {
   return (
-    <div className="flex min-h-11 items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50/60 px-4 py-2">
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-100 bg-zinc-50/60 px-4 py-2">
       <span className="flex items-baseline gap-2 text-sm font-medium text-zinc-900">
         Waiting for you
         <span className="tabular-nums text-zinc-500">{count}</span>
@@ -18,16 +27,45 @@ export function QueueHeader({ count, mode, approveAll }: Props) {
         {modeLabel(mode) && (
           <span className="text-xs text-zinc-500">{modeLabel(mode)}</span>
         )}
-        {approveAll && (
+        {onShow ? (
           <Button
+            type="button"
             size="small"
             variant="secondary"
             className="min-w-0"
-            disabled={approveAll.busy}
-            onClick={approveAll.onClick}
+            aria-label="Show waiting cards"
+            aria-expanded={false}
+            // Close and continue removed the button that had focus.
+            autoFocus
+            onClick={onShow}
           >
-            {approveAllLabel(approveAll.count)}
+            Show
           </Button>
+        ) : (
+          <>
+            {onReviewAll && (
+              <Button
+                type="button"
+                size="small"
+                variant="secondary"
+                className="min-w-0"
+                onClick={onReviewAll}
+              >
+                Review all
+              </Button>
+            )}
+            {approveAll && (
+              <Button
+                size="small"
+                variant="secondary"
+                className="min-w-0"
+                disabled={approveAll.busy}
+                onClick={approveAll.onClick}
+              >
+                {approveAllLabel(approveAll.count)}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>

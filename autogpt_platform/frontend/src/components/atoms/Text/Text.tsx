@@ -17,8 +17,8 @@ type CustomProps = {
   tone?: Tone;
   className?: string;
   /**
-   * Adds the sentry-unmask class for static text visibility in replays.
-   * Disable when rendering user-provided or dynamic content.
+   * Shows the text in session replays, which mask all text by default.
+   * Only for static copy that is the same for every user.
    */
   unmask?: boolean;
 };
@@ -34,7 +34,7 @@ export function Text({
   size,
   tone,
   className = "",
-  unmask = true,
+  unmask = false,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;

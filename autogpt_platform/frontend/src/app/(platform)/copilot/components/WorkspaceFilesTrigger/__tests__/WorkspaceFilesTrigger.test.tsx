@@ -1,7 +1,6 @@
 import { render, screen, fireEvent } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../../store";
-import { MobileHeader } from "../../MobileHeader/MobileHeader";
 import { WorkspaceFilesTrigger } from "../WorkspaceFilesTrigger";
 
 beforeEach(() => {
@@ -47,10 +46,7 @@ describe("WorkspaceFilesTrigger", () => {
   });
 });
 
-describe.each([
-  ["classic layout", MobileHeader],
-  ["new layout", WorkspaceFilesTrigger],
-] as const)("workspace files button in the %s", (_layout, Controls) => {
+describe("workspace files button", () => {
   it.each([true, false])(
     "opens files after integrations when the panel is open: %s",
     (isOpen) => {
@@ -60,7 +56,7 @@ describe.each([
       });
       if (!isOpen)
         useCopilotUIStore.getState().toggleContextPanelTab("integrations");
-      render(<Controls />);
+      render(<WorkspaceFilesTrigger />);
 
       fireEvent.click(
         screen.getByRole("button", { name: /open workspace files/i }),
@@ -74,7 +70,7 @@ describe.each([
   );
 
   it("closes files when clicked again", () => {
-    render(<Controls />);
+    render(<WorkspaceFilesTrigger />);
     const button = screen.getByRole("button", {
       name: /open workspace files/i,
     });

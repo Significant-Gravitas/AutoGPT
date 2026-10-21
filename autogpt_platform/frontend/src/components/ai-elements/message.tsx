@@ -15,7 +15,7 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
-import { mermaid } from "@streamdown/mermaid";
+import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
@@ -23,6 +23,10 @@ import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import type { LinkSafetyModalProps } from "streamdown";
 import { Streamdown } from "streamdown";
+import {
+  createComponentsMerger,
+  type StreamdownComponents,
+} from "./streamdown-components";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -83,10 +87,18 @@ export const MessageAction = ({
   label,
   variant = "ghost",
   size = "icon-sm",
+  className,
   ...props
 }: MessageActionProps) => {
   const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
+    <Button
+      size={size}
+      type="button"
+      variant={variant}
+      // A finger needs a bigger target than the 32px icon box.
+      className={cn("[@media(pointer:coarse)]:size-10", className)}
+      {...props}
+    >
       {children}
       <span className="sr-only">{label || tooltip}</span>
     </Button>
@@ -367,6 +379,43 @@ const math: MathPlugin = {
   ],
 };
 
+// Streamdown re-parses every block of a message when the identity of a
+// component in `components` changes, and React remounts any element whose
+// component type changes, so everything handed to Streamdown is built once.
+function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
+  // Tables can be wider than the chat column (long URLs, many columns).
+  // Wrap in an overflow-x-auto div so the page never grows past the
+  // chat container — the table scrolls internally instead.
+  return (
+    <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
+      <table {...tableProps}>{children}</table>
+    </div>
+  );
+}
+
+function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
+  return <ExternalLinkModal {...modalProps} />;
+}
+
+const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+
+const LINK_SAFETY = {
+  enabled: true,
+  onLinkCheck: isSameOriginLink,
+  renderModal: renderExternalLinkModal,
+};
+
+const TABLE_COMPONENT: StreamdownComponents = { table: MessageTable };
+
+const mergeTableComponent = createComponentsMerger((components) => ({
+  ...TABLE_COMPONENT,
+  ...components,
+}));
+
+function withTableComponent(components: StreamdownComponents | undefined) {
+  return components ? mergeTableComponent(components) : TABLE_COMPONENT;
+}
+
 export const MessageResponse = memo(
   ({ className, children, components, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -386,23 +435,9 @@ export const MessageResponse = memo(
         "[&_tbody_tr:hover_td]:bg-zinc-50",
         className,
       )}
-      components={{
-        // Tables can be wider than the chat column (long URLs, many columns).
-        // Wrap in an overflow-x-auto div so the page never grows past the
-        // chat container — the table scrolls internally instead.
-        table: ({ children, ...tableProps }) => (
-          <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-message-table">
-            <table {...tableProps}>{children}</table>
-          </div>
-        ),
-        ...components,
-      }}
-      plugins={{ code, mermaid, math, cjk }}
-      linkSafety={{
-        enabled: true,
-        onLinkCheck: isSameOriginLink,
-        renderModal: (modalProps) => <ExternalLinkModal {...modalProps} />,
-      }}
+      components={withTableComponent(components)}
+      plugins={STREAMDOWN_PLUGINS}
+      linkSafety={LINK_SAFETY}
       {...props}
     >
       {typeof children === "string"

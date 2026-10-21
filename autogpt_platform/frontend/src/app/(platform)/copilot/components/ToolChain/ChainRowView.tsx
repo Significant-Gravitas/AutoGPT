@@ -3,6 +3,7 @@
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
@@ -12,6 +13,7 @@ import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
+import { hidesOutputFromReplay } from "./replayPrivacy";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
@@ -214,7 +216,11 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             className="min-h-0 overflow-hidden"
           >
             <div
-              className={cn("px-px pb-px pt-1.5", showContent && PANEL_REVEAL)}
+              className={cn(
+                "px-px pb-px pt-1.5",
+                showContent && PANEL_REVEAL,
+                hidesOutputFromReplay(row) && HIDDEN_FROM_REPLAY,
+              )}
             >
               {isReasoning ? (
                 <ReasoningStream

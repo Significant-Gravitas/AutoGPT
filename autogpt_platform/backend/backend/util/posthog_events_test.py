@@ -23,6 +23,7 @@ LIVE_EVENT_NAMES = {
     "writing_style_added",
     "workflow_installed_on_expert",
     "expert_fired",
+    "expert_mode_set_unsupervised",
     "briefing_generated",
     "briefing_delivered",
     "chat_tool_called",
@@ -42,12 +43,18 @@ LIVE_EVENT_NAMES = {
     "payment_failed",
     "$set",
     "$ai_metric",
+    "$ai_trace",
+    "$ai_span",
     "signup_completed",
     "onboarding_completed",
     "checkout_started",
     "subscription_ended",
     "listing_added_to_library",
     "listing_downloaded",
+    "email_delivered",
+    "email_opened",
+    "email_clicked",
+    "email_bounced",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

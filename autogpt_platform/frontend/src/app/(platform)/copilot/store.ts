@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -173,6 +173,12 @@ interface CopilotUIState {
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
 
+  /** Text of a message that never went out. Unlike `initialPrompt`, the
+   *  composer adds it to whatever the user has typed since. */
+  recoveredDraft: string | null;
+  restoreDraft: (text: string) => void;
+  clearRecoveredDraft: () => void;
+
   /**
    * Bumped every time the composer actually sends a message. Chain action
    * cards draft into the input rather than sending themselves, so this is
@@ -215,9 +221,6 @@ interface CopilotUIState {
 
   isSoundEnabled: boolean;
   toggleSound: () => void;
-
-  showNotificationDialog: boolean;
-  setShowNotificationDialog: (show: boolean) => void;
 
   // Artifact panel
   artifactPanel: ArtifactPanelState;
@@ -295,6 +298,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
 
+  recoveredDraft: null,
+  restoreDraft: (text) =>
+    set((state) => ({
+      recoveredDraft: state.recoveredDraft
+        ? `${state.recoveredDraft}\n\n${text}`
+        : text,
+    })),
+  clearRecoveredDraft: () => set({ recoveredDraft: null }),
+
   sentMessageCount: 0,
   notifyMessageSent: () =>
     set((state) => ({ sentMessageCount: state.sentMessageCount + 1 })),
@@ -367,9 +379,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
-
-  showNotificationDialog: false,
-  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
   artifactPanel: {
@@ -754,8 +763,5 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmAuth: null,
       isDryRun: false,
     });
-    if (isClient) {
-      document.title = ORIGINAL_TITLE;
-    }
   },
 }));

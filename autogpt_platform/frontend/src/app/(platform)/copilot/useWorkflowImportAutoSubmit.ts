@@ -103,7 +103,7 @@ export function useWorkflowImportAutoSubmit({
   setPendingFileParts: (parts: FileUIPart[]) => void;
   isSendLocked?: boolean;
 }) {
-  const { setInitialPrompt } = useCopilotUIStore();
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const hasProcessedUrlPrompt = useRef(false);
 
   useEffect(() => {

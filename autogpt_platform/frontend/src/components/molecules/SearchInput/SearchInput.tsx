@@ -17,6 +17,9 @@ interface Props {
   disabled?: boolean;
   loading?: boolean;
   maxLength?: number;
+  name?: string;
+  autoComplete?: string;
+  spellCheck?: boolean;
   size?: "xsmall" | "small" | "medium";
   className?: string;
 }
@@ -43,6 +46,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
       disabled,
       loading,
       maxLength,
+      name,
+      autoComplete,
+      spellCheck,
       size = "medium",
       className,
     },
@@ -68,6 +74,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           aria-label={ariaLabel ?? placeholder}
           disabled={disabled}
           maxLength={maxLength}
+          name={name}
+          autoComplete={autoComplete}
+          spellCheck={spellCheck}
           className={cn(
             "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],

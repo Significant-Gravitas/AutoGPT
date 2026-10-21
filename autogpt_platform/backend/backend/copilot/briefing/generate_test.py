@@ -3,13 +3,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation
 from backend.copilot.briefing import generate as generate_module
+from backend.copilot.briefing import narrative
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.pro_activation import UsageActivationState
 from backend.util import posthog_client
-from backend.util.feature_flag import Flag
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 
@@ -24,6 +26,13 @@ def stub_narrative(monkeypatch):
     """
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr(generate_module, "compose_narrative", mock)
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def paid_user(monkeypatch):
+    mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(generate_module, "is_user_paywalled", mock)
     return mock
 
 
@@ -265,29 +274,16 @@ def test_markdown_has_three_sections_and_links():
 
 
 @pytest.mark.asyncio
-async def test_generate_skips_when_flag_off(monkeypatch):
-    from backend.copilot.briefing import generate
-
-    async def flag_off(*a, **kw):
-        return False, True
-
-    monkeypatch.setattr(generate, "evaluate_feature_flag", flag_off)
-    result = await generate.generate_and_deliver_briefing("user-1")
-    assert result == {"status": "skipped", "reason": "flag_disabled"}
-
-
-@pytest.mark.asyncio
-async def test_generate_reports_an_unevaluated_flag_separately(monkeypatch):
-    """A flag read that FAILED yields False, same as a real "off". Only the
-    latter may unregister the cron, so the two must not share a reason."""
-    from backend.copilot.briefing import generate
-
-    async def flag_unreadable(*a, **kw):
-        return False, False
-
-    monkeypatch.setattr(generate, "evaluate_feature_flag", flag_unreadable)
-    result = await generate.generate_and_deliver_briefing("user-1")
-    assert result == {"status": "skipped", "reason": "flag_unavailable"}
+async def test_generate_skips_a_paywalled_user_before_reading_anything(
+    monkeypatch, paid_user
+):
+    paid_user.return_value = True
+    db = MagicMock()
+    monkeypatch.setattr(generate_module, "user_db", lambda: db)
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "paywalled"}
+    paid_user.assert_awaited_once_with("user-1")
+    db.get_user_by_id.assert_not_called()
 
 
 @pytest.fixture
@@ -299,15 +295,28 @@ def funnel(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_skips_a_banned_owner_before_any_work(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.copilot.briefing import generate
+
+    monkeypatch.setattr(generate, "is_user_banned", AsyncMock(return_value=True))
+    get_user = AsyncMock()
+    monkeypatch.setattr(generate, "user_db", lambda: MagicMock(get_user_by_id=get_user))
+
+    result = await generate.generate_and_deliver_briefing("user-1")
+
+    # Not "flag_disabled": the cron stays registered for if the ban is lifted.
+    assert result == {"status": "skipped", "reason": "banned"}
+    get_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_generate_skips_when_already_delivered(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
 
     from backend.copilot.briefing import generate
 
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
     user = MagicMock()
     user.timezone = "UTC"
     monkeypatch.setattr(
@@ -336,11 +345,6 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -428,6 +432,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         "content": render_briefing_markdown(expected_content),
         "message_id": expected_message_id,
         "metadata": {"kind": "morning_briefing", "briefing_id": "briefing-1"},
+        "title": "Morning briefing — 2026-08-07",
     }
     client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
 
@@ -439,10 +444,6 @@ def _patch_generate_env(monkeypatch, generate, client):
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
     user = MagicMock()
     user.timezone = "UTC"
     monkeypatch.setattr(
@@ -567,11 +568,6 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -770,10 +766,6 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -840,10 +832,6 @@ async def test_generate_stops_reprocessing_an_unreadable_row_with_nothing_to_say
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -911,10 +899,6 @@ async def test_generate_bounds_the_execution_query(monkeypatch):
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = NOW
     monkeypatch.setattr(generate, "datetime", fake_datetime)
-    monkeypatch.setattr(generate, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(
-        generate, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
 
     user = MagicMock()
     user.timezone = "UTC"
@@ -1035,6 +1019,46 @@ async def test_narrative_failure_still_delivers_the_template_briefing(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("lookup_fails", [False, True])
+async def test_unavailable_narrative_attribution_still_delivers_template(
+    monkeypatch, lookup_fails
+):
+    client = MagicMock(
+        get_briefing_for_date=AsyncMock(return_value=None),
+        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
+        append_plain_session_message=AsyncMock(return_value="session-1"),
+        mark_briefing_delivered=AsyncMock(),
+    )
+    _patch_fresh_compose_env(monkeypatch, generate_module, client)
+    monkeypatch.setattr(
+        generate_module, "compose_narrative", narrative.compose_narrative
+    )
+    lookup = AsyncMock(
+        return_value=UsageActivationState(user_id="user-1", tier="PRO", ready=False),
+        side_effect=RuntimeError("database unavailable") if lookup_fails else None,
+    )
+    monkeypatch.setattr(
+        usage_activation,
+        "pro_activation_db",
+        lambda: MagicMock(get_usage_activation_state=lookup),
+    )
+    provider = AsyncMock()
+    monkeypatch.setattr(narrative, "structured_complete", provider)
+
+    result = await generate_module.generate_and_deliver_briefing("user-1")
+
+    assert result["status"] == "delivered"
+    stored = client.create_briefing.await_args.args[2]
+    assert stored["narrative"] is None
+    assert client.append_plain_session_message.await_args.kwargs[
+        "content"
+    ] == render_briefing_markdown(BriefingContent.model_validate(stored))
+    client.mark_briefing_delivered.assert_awaited_once_with("user-1", "briefing-1")
+    lookup.assert_awaited_once_with("user-1")
+    provider.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_narrative_is_not_regenerated_when_redelivering(
     monkeypatch, stub_narrative
 ):
@@ -1100,43 +1124,6 @@ def test_briefing_without_a_narrative_renders_unchanged():
     assert content is not None
     assert content.narrative is None
     assert render_briefing_markdown(content).splitlines()[2] == "**What ran**"
-
-
-@pytest.mark.asyncio
-async def test_ai_summary_flag_off_skips_generation_entirely(
-    monkeypatch, stub_narrative
-):
-    """The gate is on generation, not just on display.
-
-    Home's `without_summaries` hides the lede from the card, but the thread
-    post reads the same stored row — so a flag-off user must never be billed
-    for a narrative, nor have one posted to them.
-    """
-    stub_narrative.return_value = "Should never be written."
-    client = MagicMock(
-        get_briefing_for_date=AsyncMock(return_value=None),
-        create_briefing=AsyncMock(return_value=MagicMock(id="briefing-1")),
-        append_plain_session_message=AsyncMock(return_value="session-1"),
-        mark_briefing_delivered=AsyncMock(),
-    )
-    _patch_fresh_compose_env(monkeypatch, generate_module, client)
-    monkeypatch.setattr(
-        generate_module,
-        "is_feature_enabled",
-        AsyncMock(side_effect=lambda flag, *a, **k: flag is Flag.HIRE_EXPERTS),
-    )
-    monkeypatch.setattr(
-        generate_module, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
-
-    result = await generate_module.generate_and_deliver_briefing("user-1")
-
-    assert result["status"] == "delivered"
-    stub_narrative.assert_not_awaited()
-    assert client.create_briefing.await_args.args[2]["narrative"] is None
-    posted = client.append_plain_session_message.await_args.kwargs["content"]
-    assert "Should never be written." not in posted
-    assert "**What ran**" in posted
 
 
 @pytest.mark.parametrize(

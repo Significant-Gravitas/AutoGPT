@@ -1,9 +1,4 @@
-"""Onboarding brain-dump endpoints.
-
-Everything here is user-scoped and gated on ``ONBOARDING_BRAIN_DUMP`` — a
-stale frontend must not be able to start writing recordings after the flag
-is turned back off.
-"""
+"""Authenticated, user-scoped onboarding brain-dump endpoints."""
 
 import logging
 from typing import Annotated
@@ -11,7 +6,7 @@ from typing import Annotated
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from fastapi import APIRouter, Depends, Form, Security, UploadFile
+from fastapi import APIRouter, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
@@ -31,26 +26,8 @@ from backend.api.features.onboarding_dump.models import (
     UploadPartResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
-
-
-async def require_brain_dump_flag(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> None:
-    """Gate every endpoint on the brain-dump flag, fail-closed.
-
-    Deliberately not ``create_feature_flag_dependency``: that helper
-    short-circuits to 404 whenever LaunchDarkly has no SDK key, which is
-    every local dev and test environment — and it does so *before*
-    consulting the ``FORCE_FLAG_ONBOARDING_BRAIN_DUMP`` override, so the
-    documented way to switch the feature on locally could never work.
-    ``is_feature_enabled`` checks the env override first and still
-    defaults to False when LaunchDarkly is unreachable.
-    """
-    if not await is_feature_enabled(Flag.ONBOARDING_BRAIN_DUMP, user_id):
-        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
 
 
 router = APIRouter(
@@ -58,7 +35,6 @@ router = APIRouter(
     tags=["onboarding", "brain-dump"],
     dependencies=[
         Security(autogpt_auth_lib.requires_user),
-        Depends(require_brain_dump_flag),
     ],
 )
 
@@ -98,8 +74,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -119,8 +94,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -256,14 +230,37 @@ async def complete_brain_dump_greeting(
 async def download_brain_dump_recording(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> RedirectResponse:
-    """Hand back the user's own recording.
+    """Hand back the user's own recording, for as long as it is kept.
 
-    Kept working even when ``status`` is ``failed`` — "your recording is
-    safe" has to be true, and this is what makes it checkable.
+    Meant for a take that failed: "your recording is safe" has to be
+    true, and this is what makes it checkable. A transcribed take has no
+    recording left, since only the transcript is kept. A failed take's
+    recording is deleted within 48 hours (see ``retention.py``), and one
+    that is due is refused even before the sweep reaches it; a signed URL
+    for one that is gone would only fail at the bucket, so say so here
+    instead.
     """
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:
         raise fastapi.HTTPException(status_code=404, detail="No recording found")
+    try:
+        available = await storage.audio_available(dump.audioPath)
+    except Exception as e:
+        # Type only: a GCS error carries the object URL, which holds the
+        # user ID, and so would the traceback of a 500.
+        logger.warning(
+            f"Brain dump recording check failed at the bucket: {type(e).__name__}"
+        )
+        raise fastapi.HTTPException(
+            status_code=503, detail="Recording temporarily unavailable, try again"
+        ) from None
+    if not available:
+        # So ``has_audio`` stops offering it, even if the blob went some way
+        # other than the sweep, which clears the row itself.
+        await db.clear_audio_paths([dump.audioPath])
+        raise fastapi.HTTPException(
+            status_code=404, detail="Recording no longer available"
+        )
 
     url = await storage.audio_download_url(user_id, dump.audioPath)
     return RedirectResponse(url=url, status_code=307)
