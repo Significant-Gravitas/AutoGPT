@@ -39,6 +39,7 @@ const LIVE_EVENT_NAMES = [
   "hire_flow_abandoned",
   "hire_started",
   "hire_step_continued",
+  "hired_expert_chat_opened",
   "home_attention_actioned",
   "home_suggestion_clicked",
   "home_suggestion_dismissed",

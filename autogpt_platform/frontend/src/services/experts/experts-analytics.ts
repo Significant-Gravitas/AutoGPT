@@ -24,6 +24,11 @@ interface FunnelEventProperties {
     surface: NonNullable<HireRequestSurface>;
   };
   [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: { expert_id: string };
+  [ExpertsFunnelEvent.HIRED_EXPERT_CHAT_OPENED]: {
+    expert_id: string;
+    surface: "intro";
+    setup_status: "installing" | "ready" | "failed";
+  };
   [ExpertsFunnelEvent.BRIEFING_OUTCOME_CLICKED]: { status: string };
   [ExpertsFunnelEvent.HOME_ATTENTION_ACTIONED]: {
     kind: string;

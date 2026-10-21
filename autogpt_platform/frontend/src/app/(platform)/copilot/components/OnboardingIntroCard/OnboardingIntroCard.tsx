@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { IntroTeam } from "./components/IntroTeam/IntroTeam";
 
 interface Props {
   name: string;
@@ -152,6 +153,10 @@ export function OnboardingIntroCard({
         <Text variant="large" tone="secondary" className="text-pretty">
           {greeting}
         </Text>
+      </motion.div>
+
+      <motion.div {...reveal(promptsStart)}>
+        <IntroTeam />
       </motion.div>
 
       {suggestions.tasks.length > 0 && (

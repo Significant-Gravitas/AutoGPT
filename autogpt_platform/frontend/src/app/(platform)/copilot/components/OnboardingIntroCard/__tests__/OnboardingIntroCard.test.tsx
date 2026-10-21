@@ -1,4 +1,6 @@
+import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
+import { server } from "@/mocks/mock-server";
 import {
   act,
   cleanup,
@@ -68,6 +70,8 @@ function writeTextMock(impl: () => Promise<void>) {
 
 beforeEach(() => {
   toastSpy.mockReset();
+  // The team list has its own suite (intro-team.test.tsx).
+  server.use(getListExpertsMockHandler([]));
 });
 
 afterEach(() => {
