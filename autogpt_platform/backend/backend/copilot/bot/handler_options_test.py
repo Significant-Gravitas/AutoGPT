@@ -284,3 +284,30 @@ class TestOptionsOnly:
         assert calls == []
         api.ensure_session.assert_not_awaited()
         assert "mode=smart fix the build" in adapter.send_message.await_args.args[1]
+
+
+class TestBatchSplitting:
+    @pytest.mark.asyncio
+    async def test_files_sent_without_the_batch_expert_get_their_own_batch(self):
+        handler = MessageHandler(_api())
+        calls = _capture(handler)
+        state = TargetState(processing=True)
+        handler._targets["t"] = state
+        await handler._enqueue_and_process(
+            _ctx("one").with_changes(options=TurnOptions(expert_id="e1")),
+            _adapter(),
+            "t",
+        )
+        await handler._enqueue_and_process(
+            _ctx("file"), _adapter(), "t", file_ids=["f1"], session_id="otto-session"
+        )
+
+        state.processing = False
+        await handler._process(_ctx("x"), _adapter(), "t", state)
+
+        assert len(calls) == 2
+        assert calls[0]["options"].expert_id == "e1"
+        assert calls[0]["session_id"] is None
+        assert calls[1]["session_id"] == "otto-session"
+        assert calls[1]["file_ids"] == ["f1"]
+        assert calls[1]["options"].expert_id is None

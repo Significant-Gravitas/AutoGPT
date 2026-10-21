@@ -65,7 +65,12 @@ class PendingBatch(BaseModel):
             and options.expert_id != self.options.expert_id
         ):
             return False
-        return not (session_id and self.session_id and session_id != self.session_id)
+        if not session_id:
+            return True
+        if self.session_id is not None:
+            return session_id == self.session_id
+        # Files uploaded without this batch's expert went to another session.
+        return options.expert_id == self.options.expert_id
 
     def add(
         self,
