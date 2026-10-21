@@ -1,6 +1,5 @@
 """Handler routing of ``expert=`` / ``mode=`` and slash-command options."""
 
-import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -191,8 +190,8 @@ class TestBatchedOptions:
         calls = _capture(handler)
         state = TargetState(processing=True)
         handler._targets["t"] = state
-        first = dataclasses.replace(
-            _ctx("one"), options=TurnOptions(expert_id="e1", model="advanced")
+        first = _ctx("one").with_changes(
+            options=TurnOptions(expert_id="e1", model="advanced")
         )
         await handler._enqueue_and_process(first, _adapter(), "t")
         await handler._enqueue_and_process(_ctx("two"), _adapter(), "t")

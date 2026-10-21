@@ -7,7 +7,6 @@ The streaming machinery itself lives in ``turn_stream``; prompt assembly in
 """
 
 import asyncio
-import dataclasses
 import logging
 
 from pydantic import BaseModel, Field
@@ -112,7 +111,7 @@ class MessageHandler:
         options = await resolve_turn_options(self._api, ctx, adapter)
         if options is None:
             return
-        ctx = dataclasses.replace(ctx, options=options)
+        ctx = ctx.with_changes(options=options)
 
         if not ctx.text.strip() and not ctx.attachments:
             # The content gate above guarantees skipped_attachments is
@@ -485,4 +484,4 @@ def with_typed_options(ctx: MessageContext) -> MessageContext:
     base = ctx.options
     if typed.expert_name is not None:
         base = base.model_copy(update={"expert_id": None})
-    return dataclasses.replace(ctx, text=text, options=base.merged(typed))
+    return ctx.with_changes(text=text, options=base.merged(typed))

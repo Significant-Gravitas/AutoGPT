@@ -9,7 +9,7 @@ Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
@@ -194,6 +194,9 @@ class MessageContext:
     # Expert / model tier for this turn, from a slash command's fields or the
     # message's leading ``expert=`` / ``mode=`` tokens.
     options: TurnOptions = field(default_factory=TurnOptions)
+
+    def with_changes(self, **changes) -> "MessageContext":
+        return replace(self, **changes)
 
     @property
     def is_dm(self) -> bool:
