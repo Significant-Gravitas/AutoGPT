@@ -18,7 +18,6 @@ from prometheus_client import Counter
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.context import get_current_envelope
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import SOURCE
@@ -71,15 +70,14 @@ def judge_later(
     if len(_in_flight) >= MAX_IN_FLIGHT:
         SKIPPED.inc()
         return
-    envelope = get_current_envelope()
     event = {
         "tool_name": tool_name,
         "tool_call_id": tool_call_id,
         "source_kind": source_kind,
         "chat_session_id": session.session_id,
-        # A delegated turn keeps its root's tree id but has its own turn id.
-        "turn_id": turn_trace_id(),
-        "tree_id": envelope.tree_id if envelope else None,
+        # The reply's trace, which a spawned turn shares; the tool call's
+        # $ai_span, matched on tool_call_id, names the turn that read.
+        "trace_id": turn_trace_id(),
         "expert_id": session.expert_id,
         "impersonated": is_turn_impersonated(),
         "sample_rate": config.read_screen_shadow_sample_rate,

@@ -16,7 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.context import set_execution_context
+from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.gate import held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate import shadow
@@ -24,7 +26,7 @@ from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
-from backend.copilot.tree import SpawnRequest, derive_child_envelope, root_envelope
+from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.feature_flag import Flag
 from backend.util.posthog_events import PostHogEvent
@@ -42,8 +44,7 @@ _EVENT_KEYS = {
     "tool_call_id",
     "source_kind",
     "chat_session_id",
-    "turn_id",
-    "tree_id",
+    "trace_id",
     "expert_id",
     "impersonated",
     "sample_rate",
@@ -116,9 +117,12 @@ async def _settled() -> None:
 
 
 def _recorded(capture: MagicMock) -> list[dict[str, Any]]:
-    for call in capture.call_args_list:
-        assert call.args[1] == PostHogEvent.CHAT_READ_SCREEN_SHADOW_DECISION
-    return [call.args[2] for call in capture.call_args_list]
+    """The shadow decisions among everything PostHog was sent."""
+    return [
+        call.args[2]
+        for call in capture.call_args_list
+        if call.args[1] == PostHogEvent.CHAT_READ_SCREEN_SHADOW_DECISION
+    ]
 
 
 @pytest.mark.parametrize(
@@ -183,7 +187,7 @@ async def test_an_env_override_of_off_turns_the_screen_off(rows, events, monkeyp
         await _read(_Fetch(_PAGE))
         await _settled()
     judge.assert_not_awaited()
-    events.assert_not_called()
+    assert _recorded(events) == []
 
 
 @pytest.mark.parametrize("verdict", [_HELD, _CLEAN])
@@ -233,25 +237,43 @@ async def test_the_event_names_the_decision_and_carries_none_of_the_content(
     assert isinstance(event["latency_ms"], int) and event["latency_ms"] >= 0
 
 
-async def test_a_delegated_turn_is_recorded_under_its_own_turn_and_its_root_tree(
-    rows, events
-):
-    child = derive_child_envelope(root_envelope("root-turn"), SpawnRequest())
+async def test_a_spawned_turn_records_the_trace_of_the_reply_it_works_for(rows, events):
+    # Spawned by a later reply than its tree's root: trace, tree and turn differ.
+    entry = CoPilotExecutionEntry(
+        session_id="session-1",
+        turn_id="child-turn",
+        user_id="user-1",
+        message="",
+        envelope=TurnEnvelope(
+            tree_id="root-turn", depth=1, ai_trace_id="spawning-reply"
+        ),
+    )
 
-    async def delegated_read() -> None:
-        # What the executor sets for the child's own turn, in the child's task.
-        set_execution_context("user-1", _session(), envelope=child)
-        set_turn_trace_id("child-turn")
+    async def spawned_read() -> None:
+        # What the executor sets for the turn, in the turn's own task.
+        set_execution_context("user-1", _session(), envelope=entry.envelope)
+        set_turn_trace_id(trace_id_for(entry))
+        set_turn_span(entry.turn_id)
         await _read(_Fetch(_PAGE))
 
     with _flags("shadow"), patch(
         f"{_READS}.judge_content", AsyncMock(return_value=_HELD)
     ):
-        await asyncio.create_task(delegated_read())
+        await asyncio.create_task(spawned_read())
         await _settled()
 
     (event,) = _recorded(events)
-    assert (event["turn_id"], event["tree_id"]) == ("child-turn", "root-turn")
+    assert event["trace_id"] == "spawning-reply"
+    (span,) = [
+        call.args[2]
+        for call in events.call_args_list
+        if call.args[1] == PostHogEvent.AI_SPAN
+        and call.args[2].get("tool_call_id") == event["tool_call_id"]
+    ]
+    assert (span["$ai_trace_id"], span["$ai_parent_id"]) == (
+        "spawning-reply",
+        "child-turn",
+    )
 
 
 @pytest.mark.parametrize(
@@ -295,7 +317,7 @@ async def test_a_judge_that_hangs_changes_neither_the_result_nor_its_timing(
         pending = await _cancel_once_judging(hanging)
     assert result == unjudged
     assert len(pending) == 1
-    events.assert_not_called()
+    assert _recorded(events) == []
 
 
 async def _cancel_once_judging(judge: AsyncMock) -> list[asyncio.Task]:
@@ -326,7 +348,7 @@ async def test_the_sample_rate_decides_whether_a_chat_is_judged(
         await _read(_Fetch(_PAGE))
         await _settled()
     assert judge.await_count == judged
-    assert events.call_count == judged
+    assert len(_recorded(events)) == judged
 
 
 def test_a_partial_rate_samples_whole_chats():
