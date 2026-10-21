@@ -949,9 +949,19 @@ async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
     organization and team it works in, how far its hire setup got, and the
     columns its identity prompt is built from. The latest run and the weekly
     spend that :func:`get_expert` adds for the roster are not read.
+
+    The owner's scope doesn't depend on the expert's row, so the two are read
+    side by side; when both fail, the missing expert is the error.
     """
-    row = await _active_private_expert_row(user_id, expert_id)
-    organization_id, team_id = await _private_expert_owner_scope(user_id, expert_id)
+    scope = asyncio.create_task(_private_expert_owner_scope(user_id, expert_id))
+    try:
+        row = await _active_private_expert_row(user_id, expert_id)
+    except BaseException:
+        # Let the scope read finish rather than cancel it: on a user's first
+        # touch it creates their personal organization.
+        await asyncio.gather(scope, return_exceptions=True)
+        raise
+    organization_id, team_id = await scope
     return CheckedExpert(
         expert=_to_model(row), organization_id=organization_id, team_id=team_id
     )
