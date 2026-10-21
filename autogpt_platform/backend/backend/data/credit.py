@@ -62,6 +62,7 @@ from backend.data.subscription_upgrade_models import (
     UpgradePreviewUnavailable,
 )
 from backend.data.user import get_user_by_id, get_user_email_by_id
+from backend.data.wallet_payment_state import invoice_paid_from_wallet
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
 from backend.util.cache import cached
@@ -1656,18 +1657,16 @@ def invalidate_subscription_caches(user_id: str) -> None:
     # (including the payment-failure cancel) calls invalidate_billing_lookups.
 
 
-# Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
-# any cancel made through the API, including ours after a failed renewal the
-# balance could not cover. This comment on that cancel is what lets the
-# ``customer.subscription.deleted`` handler report it as involuntary churn.
-PAYMENT_FAILURE_CANCELLATION_COMMENT = "autogpt:payment_failed"
+# Set as ``cancellation_details.comment`` when a failed renewal finds that the
+# customer replaced that subscription with another plan. The deletion webhook
+# reads it so that cancel is not reported as the customer leaving.
+REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
 
 
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
-    cancellation_comment: str | None = None,
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1681,9 +1680,6 @@ async def _cancel_customer_subscriptions(
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
 
-    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
-    immediate cancel, where the subscription's deletion webhook can read it.
-
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
     # Query active and trialing separately; Stripe's list API accepts a single status
@@ -1692,7 +1688,7 @@ async def _cancel_customer_subscriptions(
     seen_ids: set[str] = set()
     try:
         await _cancel_listed_subscriptions(
-            customer_id, seen_ids, exclude_sub_id, at_period_end, cancellation_comment
+            customer_id, seen_ids, exclude_sub_id, at_period_end
         )
     finally:
         if seen_ids:
@@ -1705,7 +1701,6 @@ async def _cancel_listed_subscriptions(
     seen_ids: set[str],
     exclude_sub_id: str | None,
     at_period_end: bool,
-    cancellation_comment: str | None,
 ) -> None:
     for status in ("active", "trialing"):
         subscriptions = await stripe_call(
@@ -1744,7 +1739,7 @@ async def _cancel_listed_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(cancellation_comment, trial=True),
+                    **_cancel_params(trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
@@ -1752,21 +1747,16 @@ async def _cancel_listed_subscriptions(
                 await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(cancellation_comment, trial=False),
+                    **_cancel_params(trial=False),
                 )
 
 
-def _cancel_params(
-    cancellation_comment: str | None, *, trial: bool
-) -> stripe.Subscription.CancelParams:
-    """A trial ends without an invoice or proration; a comment, when given,
-    becomes ``cancellation_details.comment``."""
+def _cancel_params(*, trial: bool) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration."""
     params: stripe.Subscription.CancelParams = {}
     if trial:
         params["invoice_now"] = False
         params["prorate"] = False
-    if cancellation_comment:
-        params["cancellation_details"] = {"comment": cancellation_comment}
     return params
 
 
@@ -2898,6 +2888,34 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
+async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
+    """Whether the customer has an active or trialing plan created after this one.
+
+    An older plan never replaces a newer one, even when a failed cleanup left
+    it active. A trial cancelled to end at ``trial_end`` does not count: it
+    ends without an invoice and never becomes a plan. Without a ``created``,
+    nothing is treated as newer.
+    """
+    created = subscription.get("created")
+    if not created:
+        return False
+    for status in ("active", "trialing"):
+        subscriptions = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=customer_id,
+            status=status,
+            limit=10,
+        )
+        async for other in stripe_list_items(subscriptions):
+            if other["id"] == subscription["id"]:
+                continue
+            if status == "trialing" and other.get("cancel_at_period_end"):
+                continue
+            if (other.get("created") or 0) > created:
+                return True
+    return False
+
+
 async def sync_subscription_from_stripe(
     stripe_subscription: dict, *, track_lifecycle: bool = True
 ) -> None:
@@ -3016,6 +3034,17 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             invalidate_subscription_caches(user.id)
             return
     price_id = ""
+    if status == "active" and await replaced_by_newer_plan(
+        customer_id, stripe_subscription
+    ):
+        # Paying an old past-due plan revives it next to the plan that
+        # replaced it. Keep the newer plan and its tier; end this one.
+        from backend.data.subscription_payment_failure import (  # local import avoids circular
+            end_revived_plan,
+        )
+
+        await end_revived_plan(new_sub_id)
+        return
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
@@ -3378,196 +3407,6 @@ def _invoice_subscription_metadata(invoice: dict) -> dict:
     return metadata if isinstance(metadata, dict) else {}
 
 
-async def handle_subscription_payment_failure(invoice: dict) -> None:
-    """Handle a failed Stripe subscription payment.
-
-    Tries to cover the invoice amount from the user's credit balance.
-
-    - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
-      Stripe stops retrying it. The sub stays intact and the user keeps their tier.
-    - Balance insufficient → cancel Stripe sub immediately, downgrade to BASIC.
-      Cancelling here avoids further Stripe retries on an invoice we cannot cover.
-    """
-    customer_id = invoice.get("customer")
-    if not customer_id:
-        logger.warning(
-            "handle_subscription_payment_failure: missing customer in invoice; skipping"
-        )
-        return
-
-    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
-    if not user:
-        logger.warning(
-            "handle_subscription_payment_failure: no user found for customer %s",
-            customer_id,
-        )
-        return
-
-    trial = await get_subscription_trial(user.id)
-    if (
-        trial
-        and trial.converted_at is None
-        and trial.subscription_id == _invoice_subscription_id(invoice)
-    ):
-        # Initial conversion stays on its existing invoice for authentication or
-        # card repair. Failure must not spend wallet credits or cancel the sub.
-        return
-    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
-    if current_tier in (SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL):
-        return
-    invoice_id: str = invoice.get("id") or ""
-    if not invoice_id:
-        return
-    invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
-    if invoice.get("status") != "open" or invoice.get("customer") != customer_id:
-        return
-    if current_tier == SubscriptionTier.ENTERPRISE:
-        logger.warning(
-            "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
-            " (customer %s) — tier is admin-managed",
-            user.id,
-            customer_id,
-        )
-        return
-
-    amount_due: int = invoice.get("amount_due", 0)
-    sub_id = _invoice_subscription_id(invoice)
-
-    if invoice.get("billing_reason") == "subscription_create":
-        # A new plan's first payment failed inside Checkout, which lets the
-        # customer retry; no plan lapsed.
-        logger.info(
-            "handle_subscription_payment_failure: first payment of new sub %s"
-            " failed for user %s; leaving it to Checkout",
-            sub_id,
-            user.id,
-        )
-        return
-
-    if amount_due <= 0:
-        logger.info(
-            "handle_subscription_payment_failure: amount_due=%d for user %s;"
-            " nothing to deduct",
-            amount_due,
-            user.id,
-        )
-        return
-
-    if (
-        sub_id
-        and invoice_id
-        # A pending update waits on the invoice its own change made, never on
-        # a renewal, so the common failure skips the Stripe lookup.
-        and invoice.get("billing_reason") != "subscription_cycle"
-        and await _nothing_left_to_cover(invoice_id)
-    ):
-        # Stripe applies a pending update only once its invoice is paid, and
-        # voids the invoice when the update lapses: nothing has changed. A
-        # trial converting early waits like this for the bank to confirm.
-        logger.info(
-            "handle_subscription_payment_failure: invoice %s on sub %s for user"
-            " %s waits on a pending update or is already settled; nothing to"
-            " cover",
-            invoice_id,
-            sub_id,
-            user.id,
-        )
-        return
-
-    credit_model = UserCredit()
-    try:
-        await credit_model._add_transaction(
-            user_id=user.id,
-            amount=-amount_due,
-            transaction_type=CreditTransactionType.SUBSCRIPTION,
-            fail_insufficient_credits=True,
-            # Use invoice_id as the idempotency key so that Stripe webhook retries
-            # (e.g. on a transient stripe.Invoice.pay failure) do not double-charge.
-            transaction_key=invoice_id or None,
-            metadata=SafeJson(
-                {
-                    "stripe_customer_id": customer_id,
-                    "stripe_subscription_id": sub_id,
-                    "reason": "subscription_payment_failure_covered_by_balance",
-                }
-            ),
-        )
-        # Balance covered the invoice. Pay the Stripe invoice with
-        # ``paid_out_of_band=True`` so Stripe marks the invoice paid without
-        # retrying the card charge — the card already failed and the user is
-        # paying via their AutoGPT balance, so a card retry here would
-        # double-bill the user (card charge + balance debit). Stripe still
-        # fires ``invoice.payment_succeeded`` on the transition; the success
-        # handler reads ``paid_out_of_band`` and skips its grant path so the
-        # balance debit isn't reversed if the credit-grant flag is on.
-        if invoice_id:
-            try:
-                await stripe_call(
-                    stripe.Invoice.pay_async, invoice_id, paid_out_of_band=True
-                )
-            except stripe.StripeError:
-                logger.warning(
-                    "handle_subscription_payment_failure: balance deducted for user"
-                    " %s but failed to mark invoice %s as paid; Stripe may retry",
-                    user.id,
-                    invoice_id,
-                )
-            finally:
-                # A past-due subscription is active again, also when the call
-                # timed out after Stripe applied it.
-                await invalidate_billing_lookups(customer_id)
-        logger.info(
-            "handle_subscription_payment_failure: deducted %d cents from balance"
-            " for user %s; Stripe invoice %s paid, sub %s intact, tier preserved",
-            amount_due,
-            user.id,
-            invoice_id,
-            sub_id,
-        )
-    except InsufficientBalanceError:
-        # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
-        # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
-        # user is permanently stuck on BASIC while Stripe continues billing them.
-        # Cancelling Stripe first is safe: if the DB write then fails, the webhook
-        # customer.subscription.deleted will fire and correct the tier eventually.
-        logger.info(
-            "handle_subscription_payment_failure: insufficient balance for user %s;"
-            " cancelling Stripe sub %s then downgrading to BASIC",
-            user.id,
-            sub_id,
-        )
-        try:
-            await _cancel_customer_subscriptions(
-                customer_id, cancellation_comment=PAYMENT_FAILURE_CANCELLATION_COMMENT
-            )
-        except stripe.StripeError:
-            logger.warning(
-                "handle_subscription_payment_failure: failed to cancel Stripe sub %s"
-                " for user %s (customer %s); skipping tier downgrade to avoid"
-                " inconsistency — Stripe may continue retrying the invoice",
-                sub_id,
-                user.id,
-                customer_id,
-            )
-            return
-        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
-
-
-async def _nothing_left_to_cover(invoice_id: str) -> bool:
-    """Whether a pending update still waits on this invoice, or Stripe has
-    settled it since: paid once the bank confirmed, or voided when the update
-    lapsed. The failure event can be delivered after either."""
-    invoice = await stripe_call(
-        stripe.Invoice.retrieve_async, invoice_id, expand=["subscription"]
-    )
-    if invoice.get("status") in ("paid", "void"):
-        return True
-    subscription = invoice.get("subscription") or {}
-    return bool(subscription.get("pending_update")) and (
-        subscription.get("latest_invoice") == invoice_id
-    )
-
-
 async def handle_subscription_payment_success(invoice: dict) -> None:
     """Optionally grant AutoGPT credits equal to the paid Stripe invoice amount.
 
@@ -3591,7 +3430,7 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     - Non-subscription invoices (no ``subscription`` field).
     - Zero-amount invoices (e.g. card-validation checks, $0 trials).
     - ENTERPRISE users (admin-managed; they don't pay via self-service).
-    - Invoices already covered from balance via ``paid_out_of_band``.
+    - Invoices covered from balance by the failure handler.
     """
     customer_id = invoice.get("customer")
     if not customer_id:
@@ -3638,12 +3477,14 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     # invoice from the user's balance and marked it paid out of band — the
     # balance was debited there, granting matching credits here would reverse
     # the debit and give the user a free billing period.
-    if invoice.get("paid_out_of_band"):
+    # The wallet record decides; ``paid_out_of_band`` is gone from the
+    # Invoice since Stripe API 2025-03-31.basil.
+    if invoice.get("paid_out_of_band") or await invoice_paid_from_wallet(
+        user.id, invoice_id
+    ):
         logger.info(
-            "handle_subscription_payment_success: skipping invoice %s for user %s"
-            " (paid_out_of_band — covered by balance in failure handler)",
-            invoice_id,
-            user.id,
+            f"handle_subscription_payment_success: skipping invoice {invoice_id}"
+            f" for user {user.id} (covered by balance in failure handler)"
         )
         return
 
