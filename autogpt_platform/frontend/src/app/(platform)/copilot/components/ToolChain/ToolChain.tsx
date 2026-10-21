@@ -200,7 +200,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         items: questions.map((q) => ({
           key: q.keyword,
           question: q.question,
-          answer: answers?.get(q.question),
+          answer: answers?.get(q.keyword),
         })),
       },
     ];

@@ -98,7 +98,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   if (isDone) {
     // Skipped questions have no answer to show, so only answered ones stay.
     const answered = onboarding.steps.flatMap((step) => {
-      const answer = answers?.get(step.question);
+      const answer = answers?.get(step.keyword);
       return answer
         ? [{ key: step.keyword, question: step.question, answer }]
         : [];

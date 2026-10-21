@@ -8,10 +8,8 @@ import { HeldOutcomesContext } from "../HeldOutcomesContext";
 import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
-import {
-  getAnsweredQuestions,
-  getPendingQuestions,
-} from "../../QuestionDock/helpers";
+import { getAnsweredQuestions } from "../../QuestionDock/answeredQuestions";
+import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { CurrentPauseContext } from "../../TurnPausedCard/CurrentPauseContext";
 import { getCurrentPause } from "../../TurnPausedCard/helpers";

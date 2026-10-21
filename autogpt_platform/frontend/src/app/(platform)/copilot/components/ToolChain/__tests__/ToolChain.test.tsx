@@ -446,9 +446,7 @@ describe("ToolChain", () => {
     render(
       <AnsweredQuestionsContext.Provider
         value={
-          new Map([
-            ["call-ask_question", new Map([["Which region?", "Europe"]])],
-          ])
+          new Map([["call-ask_question", new Map([["region", "Europe"]])]])
         }
       >
         <ToolChain

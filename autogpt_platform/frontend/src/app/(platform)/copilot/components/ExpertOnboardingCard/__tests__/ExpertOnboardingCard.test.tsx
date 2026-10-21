@@ -252,8 +252,8 @@ describe("ExpertOnboardingCard", () => {
               [
                 CALL_ID,
                 new Map([
-                  ["Which outcome should I start with?", "Campaign briefs"],
-                  ["Which service should I be connected to?", "Linear, GitHub"],
+                  ["outcome", "Campaign briefs"],
+                  ["service", "Linear, GitHub"],
                 ]),
               ],
             ])

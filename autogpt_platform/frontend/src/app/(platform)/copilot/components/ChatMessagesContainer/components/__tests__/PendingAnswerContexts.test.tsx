@@ -41,7 +41,14 @@ const askPart = {
   input: {},
   output: {
     type: "agent_builder_clarification_needed",
-    questions: [{ question: "Which region?", keyword: "region" }],
+    questions: [
+      {
+        question: "Which region?",
+        keyword: "region",
+        options: ["Europe", "Asia"],
+        allow_multiple: true,
+      },
+    ],
   },
 } as unknown as Part;
 
@@ -180,9 +187,7 @@ describe("PendingAnswerContexts", () => {
       },
     ]);
 
-    expect(seen[1].answered.get("ask-1")?.get("Which region?")).toBe(
-      "Europe, Asia",
-    );
+    expect(seen[1].answered.get("ask-1")?.get("region")).toBe("Europe, Asia");
   });
 
   it("shares one empty map across different messages when nothing is held", () => {
