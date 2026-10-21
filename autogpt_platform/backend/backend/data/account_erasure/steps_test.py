@@ -6,13 +6,17 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import AccountDeletionSource
 
 from backend.data.account_erasure import memory, subscriptions, work
 from backend.data.account_erasure.models import StepStatus, Subject
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 SUBJECT = Subject(
-    user_id=USER_ID, has_user_row=True, has_auth_identity=True, has_request=True
+    user_id=USER_ID,
+    has_user_row=True,
+    has_auth_identity=True,
+    request_source=AccountDeletionSource.SETTINGS,
 )
 
 

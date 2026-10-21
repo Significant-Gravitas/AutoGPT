@@ -48,7 +48,7 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    poetry run cli erase-account sam@example.com --close --apply
    ```
 
-   `--close` closes the account the way Settings does, with source `EMAIL`, then the erasure runs. The confirmation email is the one Settings sends ("You deleted your account from your AutoGPT settings"); its wording for email requests is an open question. Closing also sends the anonymous `account_deletion_completed` count, with `surface: email`, which the tracking plan does not list yet. If Stripe refuses the plan cancel, nothing is closed or erased: run it again. An account already closed (from Settings, say) is only erased; `--close` changes nothing then.
+   `--close` closes the account the way Settings does, with source `EMAIL`, then the erasure runs. The confirmation email is the one Settings sends, with its own reason line: "You asked us by email to delete your account." Closing also sends the anonymous `account_deletion_completed` count, with `surface: email`, which the tracking plan does not list yet. If Stripe refuses the plan cancel, nothing is closed or erased: run it again. An account already closed (from Settings, say) is only erased; `--close` changes nothing then.
 
    It refuses while a blocker remains, and nothing is deleted then:
    - `not_closed`: the account has no deletion request. Pass `--close` for a request made by email.

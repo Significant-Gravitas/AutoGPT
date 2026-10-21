@@ -59,9 +59,9 @@ async def close_for_email_request(user_id: str) -> None:
 
 async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
     """Send the account-deleted email closing could not send, while the
-    address still exists. A failure fails the step, so the erasure stops
+    address still exists, worded for the request's source. A failure fails the step, so the erasure stops
     before the address goes and the next run tries again."""
-    if subject.confirmation_sent or not subject.has_request:
+    if subject.confirmation_sent or subject.request_source is None:
         return StepReport(
             name="confirmation",
             status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
@@ -80,7 +80,7 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
         )
     if not dry_run:
         await asyncio.wait_for(
-            send_account_deleted_email(subject.email),
+            send_account_deleted_email(subject.email, subject.request_source),
             timeout=CONFIRMATION_TIMEOUT_SECONDS,
         )
         await mark_confirmation_sent(subject.user_id)

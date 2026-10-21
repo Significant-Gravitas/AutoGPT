@@ -5,6 +5,7 @@ and a rerun of a finished erasure is a no-op."""
 from unittest.mock import AsyncMock
 
 import pytest
+from prisma.enums import AccountDeletionSource
 
 from backend.data.account_erasure import routine
 from backend.data.account_erasure.models import (
@@ -70,7 +71,10 @@ class Steps:
 @pytest.fixture
 def account(monkeypatch):
     subject = Subject(
-        user_id=USER_ID, email="sam@example.com", has_user_row=True, has_request=True
+        user_id=USER_ID,
+        email="sam@example.com",
+        has_user_row=True,
+        request_source=AccountDeletionSource.SETTINGS,
     )
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=subject))
     monkeypatch.setattr(
@@ -157,7 +161,11 @@ async def test_a_failed_step_does_not_stop_a_dry_run(monkeypatch, account):
 
 @pytest.mark.asyncio
 async def test_a_second_run_finds_nothing_and_still_completes(monkeypatch):
-    gone = Subject(user_id=USER_ID, has_request=True, request_completed=True)
+    gone = Subject(
+        user_id=USER_ID,
+        request_source=AccountDeletionSource.SETTINGS,
+        request_completed=True,
+    )
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=gone))
     monkeypatch.setattr(
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
@@ -202,7 +210,7 @@ async def test_closing_reaches_the_blocker_check(monkeypatch, account, closing):
 async def test_a_malformed_id_runs_no_step(monkeypatch):
     """The ID check is in the preflight, so not even the work stop (which
     reaches the scheduler) sees a malformed ID."""
-    bad = Subject(user_id="../everyone", has_request=True)
+    bad = Subject(user_id="../everyone", request_source=AccountDeletionSource.SETTINGS)
     monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=bad))
     monkeypatch.setattr(
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())

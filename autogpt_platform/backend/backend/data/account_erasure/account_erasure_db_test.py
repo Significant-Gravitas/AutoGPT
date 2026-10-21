@@ -489,7 +489,7 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     # Closed for a request made by email.
     assert await close_account(user_id, prisma.enums.AccountDeletionSource.EMAIL)
     subject = await load_subject(user_id)
-    assert subject.has_request
+    assert subject.request_source == prisma.enums.AccountDeletionSource.EMAIL
     assert shared_org not in subject.sole_org_ids
     assert lapsed_org in subject.sole_org_ids
     assert sorted((await plan_transfer(user_id)).graph_ids) == sorted(

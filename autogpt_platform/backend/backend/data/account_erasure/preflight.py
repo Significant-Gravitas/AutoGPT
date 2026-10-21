@@ -41,7 +41,7 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         sole_org_ids=[org.id for org in sole_orgs],
         org_stripe_customer_ids=await _org_stripe_customers(user, sole_orgs),
         expert_ids=[expert.id for expert in experts],
-        has_request=request is not None,
+        request_source=request.source if request else None,
         confirmation_sent=bool(request and request.confirmationSentAt),
         request_completed=bool(request and request.completedAt),
     )

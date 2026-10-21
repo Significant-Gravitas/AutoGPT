@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import AccountDeletionSource
 
 from backend.data.account_erasure import preflight
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID
@@ -15,7 +16,9 @@ from backend.data.account_erasure.models import Subject
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 OTHER = "9d4e2b7a-1111-4c2a-9a51-0c6f2d8e1a77"
 THIRD = "5a6b7c8d-2222-4c2a-9a51-0c6f2d8e1a77"
-CLOSED = Subject(user_id=USER_ID, has_user_row=True, has_request=True)
+CLOSED = Subject(
+    user_id=USER_ID, has_user_row=True, request_source=AccountDeletionSource.SETTINGS
+)
 
 
 def _org(org_id: str, *, personal: bool = False, customer: str | None = None):
@@ -142,7 +145,9 @@ async def test_a_closed_account_is_erased(no_orgs):
 @pytest.mark.asyncio
 async def test_a_closed_account_whose_rows_are_gone_is_finished(no_orgs):
     """A rerun after a partial erasure: the request is still there."""
-    nothing_left = Subject(user_id=USER_ID, has_request=True)
+    nothing_left = Subject(
+        user_id=USER_ID, request_source=AccountDeletionSource.SETTINGS
+    )
 
     assert await preflight.find_blockers(nothing_left) == []
 

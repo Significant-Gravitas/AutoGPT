@@ -16,7 +16,12 @@ from backend.data.account_erasure.models import StepStatus, Subject
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 EMAIL = "sam@example.com"
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
-PENDING = Subject(user_id=USER_ID, email=EMAIL, has_user_row=True, has_request=True)
+PENDING = Subject(
+    user_id=USER_ID,
+    email=EMAIL,
+    has_user_row=True,
+    request_source=AccountDeletionSource.SETTINGS,
+)
 
 
 @pytest.fixture
@@ -59,10 +64,23 @@ def email(monkeypatch):
 async def test_a_confirmation_the_close_could_not_send_goes_out_first(email):
     report = await request.send_confirmation(PENDING, dry_run=False)
 
-    email.send.assert_awaited_once_with(EMAIL)
+    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.SETTINGS)
     email.mark.assert_awaited_once_with(USER_ID)
     assert report.counts == {"emails": 1}
     assert report.status == StepStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_the_confirmation_is_worded_for_the_request_source(email):
+    """A request made by email gets the email's own reason line, not the one
+    for deleting the account in AutoGPT."""
+    by_email = PENDING.model_copy(
+        update={"request_source": AccountDeletionSource.EMAIL}
+    )
+
+    await request.send_confirmation(by_email, dry_run=False)
+
+    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.EMAIL)
 
 
 @pytest.mark.asyncio

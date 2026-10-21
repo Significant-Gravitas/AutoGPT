@@ -1,6 +1,7 @@
 import re
 from enum import Enum
 
+from prisma.enums import AccountDeletionSource
 from pydantic import BaseModel
 
 # Account IDs are UUIDs. Anything else is refused before a step runs
@@ -75,9 +76,11 @@ class Subject(BaseModel):
     org_stripe_customer_ids: list[str] = []
     # Experts it owns, each with its own memory graph.
     expert_ids: list[str] = []
-    # Its `AccountDeletionRequest`: the account is closed, and the erasure
-    # may run. Without one it is refused (`preflight.find_blockers`).
-    has_request: bool = False
+    # The `source` of its `AccountDeletionRequest` (None without one): the
+    # account is closed, and the erasure may run. Without one it is refused
+    # (`preflight.find_blockers`). The confirmation email words its reason by
+    # it.
+    request_source: AccountDeletionSource | None = None
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False
@@ -88,6 +91,10 @@ class Subject(BaseModel):
     shared_graph_ids: list[str] = []
     # Its marketplace listings of those agents, handed over with them.
     kept_listing_ids: list[str] = []
+
+    @property
+    def has_request(self) -> bool:
+        return self.request_source is not None
 
 
 class AccountErasureBlocked(RuntimeError):
