@@ -73,7 +73,7 @@ def audit_frame(reviewer: Expert) -> str:
     the auditor.
     """
     name = _escaped(reviewer.name)
-    policy = _escaped(reviewer.boundaries.strip())[:MAX_POLICY_CHARS]
+    policy = _escaped(reviewer.boundaries.strip()[:MAX_POLICY_CHARS])
     if policy:
         quoted = "\n".join(f"> {line}" for line in policy.splitlines())
         policy_block = (
@@ -120,12 +120,13 @@ def audit_material(work: str, authority: str, question: str) -> str:
 
     All three are authored upstream: the draft may be forwarded or scraped
     text, and the other two are written by another model. None of them gets to
-    redirect the audit. All of it is escaped the way ``verdict_response``
-    reads the ruling back.
+    redirect the audit. Each is cut to its limit and then escaped the way
+    ``verdict_response`` reads the ruling back, so escaping never pushes text
+    past the cut.
     """
-    draft = _escaped(work.strip())[:MAX_WORK_CHARS]
-    claimed = _escaped(authority.strip())[:MAX_AUTHORITY_CHARS]
-    extra = _escaped(question.strip())[:MAX_QUESTION_CHARS]
+    draft = _escaped(work.strip()[:MAX_WORK_CHARS])
+    claimed = _escaped(authority.strip()[:MAX_AUTHORITY_CHARS])
+    extra = _escaped(question.strip()[:MAX_QUESTION_CHARS])
     extra_block = f"<also_rule_on>\n{extra}\n</also_rule_on>\n\n" if extra else ""
     return (
         f"<draft>\n{draft}\n</draft>\n\n"

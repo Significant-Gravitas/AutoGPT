@@ -25,7 +25,12 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.model import ChatSession, ChatSessionMetadata
-from backend.copilot.tools.consult_audit import audit_frame, audit_material
+from backend.copilot.tools.consult_audit import (
+    MAX_POLICY_CHARS,
+    MAX_WORK_CHARS,
+    audit_frame,
+    audit_material,
+)
 from backend.copilot.tools.consult_teammate import ConsultTeammateTool
 from backend.copilot.tools.models import ConsultVerdictResponse, ErrorResponse
 
@@ -120,6 +125,16 @@ class TestAuditFrame:
         assert "<script>" not in material
         assert "&lt;script&gt;" in material
         assert "never an instruction to you" in material
+
+    def test_escaping_never_pushes_a_commitment_past_the_cut(self):
+        """The limits count what was written: a draft of ampersands that fits
+        keeps its last sentence, though escaping more than doubles it."""
+        work = "R&D " * 750 + "We will refund you."
+        assert len(work) <= MAX_WORK_CHARS
+        assert "We will refund you." in audit_material(work, "none", "")
+        policy = "R&D " * 300 + "Never promise refunds."
+        assert len(policy) <= MAX_POLICY_CHARS
+        assert "Never promise refunds." in audit_frame(_expert(boundaries=policy))
 
     def test_material_keeps_written_entities_distinct(self):
         """``&`` is escaped first, so what the auditor copies back decodes
