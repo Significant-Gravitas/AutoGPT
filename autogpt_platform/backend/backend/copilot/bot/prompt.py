@@ -102,10 +102,8 @@ def _platform_tag(ctx: MessageContext) -> str:
 
 
 def _message_label(message: PendingMessage, ctx: MessageContext) -> list[str]:
-    sender = (
-        f"message from {_quote(message.username)} "
-        f"({ctx.platform.capitalize()} user ID: {message.user_id})"
-    )
+    user_id = _sanitize(message.user_id)
+    sender = f"message from {_quote(message.username)} ({ctx.platform.capitalize()} user ID: {user_id})"
     if ctx.is_dm:
         return [sender]
     if message.bot_mentioned:
@@ -148,10 +146,7 @@ def _post_hint(ctx: MessageContext) -> str:
     if ctx.is_dm:
         return "post here with target='dm'"
     if not ctx.post_channel_id:
-        return (
-            f"post_to_chat_platform can't post to {ctx.platform.capitalize()} "
-            "channels, target='dm' only"
-        )
+        return f"tool:post_to_chat_platform can't post to {ctx.platform.capitalize()} channels, target='dm' only"
     if ctx.channel_type == "thread" and ctx.post_channel_id == ctx.public_channel_id:
         return f'post to the parent channel with channel="{ctx.post_channel_id}"'
     return f'post here with channel="{ctx.post_channel_id}"'
@@ -166,10 +161,15 @@ def _field(noun: str, name: str | None, id_label: str | None) -> str:
     return " ".join(parts)
 
 
+def _sanitize(value: str) -> str:
+    """``value`` on one line with the characters that close a field escaped."""
+    printable = "".join(ch if ch.isprintable() else " " for ch in value)
+    return " ".join(printable.translate(_NAME_ESCAPES).split())
+
+
 def _quote(name: str) -> str:
     """``name`` as a quoted header value that can't break out of its field."""
-    printable = "".join(ch if ch.isprintable() else " " for ch in name)
-    cleaned = " ".join(printable.translate(_NAME_ESCAPES).split())
+    cleaned = _sanitize(name)
     if len(cleaned) > _NAME_MAX_CHARS:
         cleaned = cleaned[: _NAME_MAX_CHARS - 1] + "…"
     return f'"{cleaned}"'
