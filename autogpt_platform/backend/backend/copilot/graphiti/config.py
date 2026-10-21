@@ -141,9 +141,7 @@ class GraphitiConfig(BaseSettings):
     # A new chat's first turn waits on the slowest of those calls. OpenRouter
     # picks a model's endpoint by price unless told otherwise; the ``nitro``
     # variant sorts by throughput and lets OpenAI's priority tier serve the
-    # calls, keeping fallbacks. On bursts of 39 calls (October 2026) the
-    # slowest finished in 1.25 s instead of 2.42 s, as fast as OpenAI's own
-    # API, at twice the standard tier's token price.
+    # calls, keeping fallbacks, at twice the standard tier's token price.
     reranker_openrouter_variant: str = Field(
         default="nitro",
         description=(
