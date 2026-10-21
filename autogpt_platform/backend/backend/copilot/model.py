@@ -1341,8 +1341,13 @@ async def append_and_save_message(
         ):
             return None  # duplicate — caller should skip enqueue
 
+        held_next_sequence = _next_sequence_held(session.messages)
         session.messages.append(message)
-        existing_message_count = await chat_db().get_next_sequence(session_id)
+        existing_message_count = (
+            held_next_sequence
+            if held_next_sequence is not None
+            else await chat_db().get_next_sequence(session_id)
+        )
 
         try:
             # A session with messages has its row (they reference it), so an
@@ -1379,6 +1384,22 @@ async def append_and_save_message(
             await invalidate_session_cache(session_id)
 
         return session
+
+
+def _next_sequence_held(messages: list[ChatMessage]) -> int | None:
+    """The next message sequence, from a session read under its lock, when
+    every message in it is saved; ``None`` asks the database instead (a new
+    chat, or a message not saved yet).
+
+    Messages are never deleted on their own, so a session that was read can
+    lag the database but never lead it. One that lags collides on
+    ``(sessionId, sequence)``, and ``add_chat_messages_batch`` retries at the
+    database's next sequence.
+    """
+    saved = [m.sequence for m in messages if m.sequence is not None]
+    if not saved or len(saved) < len(messages):
+        return None
+    return max(saved) + 1
 
 
 async def create_chat_session(
