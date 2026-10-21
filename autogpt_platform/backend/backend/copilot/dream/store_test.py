@@ -623,6 +623,19 @@ class TestReadSide:
             result = dream_pass_result_from_row(row)
             assert result.ingestion_drain_status.value == "not_applied"
 
+    def test_a_pass_that_began_applying_without_an_outcome_is_unknown(self):
+        """Cancelled after its last check, or failed mid-apply: its writes may
+        have been enqueued, so neither "drained" nor "not applied" is true."""
+        planned = DreamPassOperations(planned=DreamOperations(summary_for_user="x"))
+        for status in (
+            DreamPassStatus.APPLYING,
+            DreamPassStatus.CANCELLED,
+            DreamPassStatus.ERRORED,
+        ):
+            row = _row(status=status, operations=planned)
+            result = dream_pass_result_from_row(row)
+            assert result.ingestion_drain_status.value == "unknown"
+
     def test_a_pass_in_flight_has_no_end_yet(self):
         row = _row(
             route=DreamPassRoute.ANTHROPIC_BATCH,
