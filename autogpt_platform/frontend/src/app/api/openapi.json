@@ -16417,7 +16417,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
@@ -16426,7 +16426,7 @@
         "summary": "Admin Read Skill Submission File",
         "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
         "operationId": "getV2Admin read skill submission file",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -16469,7 +16469,7 @@
         "summary": "Review Skill Submission",
         "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
         "operationId": "postV2Review skill submission",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17423,7 +17423,6 @@
         "summary": "List marketplace skills",
         "description": "Approved skill listings, most recently updated first.",
         "operationId": "getV2List marketplace skills",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "category",
@@ -17512,7 +17511,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -17554,7 +17553,7 @@
             "description": "Marketplace profile required, or slug taken"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/skills/submissions/{skill_listing_version_id}": {
@@ -17563,7 +17562,7 @@
         "summary": "Edit skill submission",
         "description": "Update a pending submission and re-snapshot the library skill.",
         "operationId": "putV2Edit skill submission",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17613,7 +17612,6 @@
         "summary": "Get marketplace skill",
         "description": "One listing with the full SKILL.md body the install will copy.",
         "operationId": "getV2Get marketplace skill",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -17717,7 +17715,7 @@
         "summary": "Install marketplace skill",
         "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -26107,19 +26105,12 @@
         "enum": [
           "marketplace-search-terms",
           "enable-platform-payment",
-          "artifacts-page",
           "chat-mode-option",
           "generic-trigger-agents",
           "chat-workspace-files",
           "chat-pinning",
           "task-progress-bar",
-          "hire-experts",
-          "skills-hub",
           "settings-notifications",
-          "onboarding-brain-dump",
-          "onboarding-expert-team",
-          "graphiti-memory",
-          "graphiti-communities-enabled",
           "dream-pass-enabled",
           "dream-pass-invalidate-entity",
           "dream-skill-learning-enabled",
@@ -26134,19 +26125,12 @@
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
           "ENABLE_PLATFORM_PAYMENT",
-          "ARTIFACTS_PAGE",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
           "CHAT_PINNING",
           "TASK_PROGRESS_BAR",
-          "HIRE_EXPERTS",
-          "SKILLS_HUB",
           "SETTINGS_NOTIFICATIONS",
-          "ONBOARDING_BRAIN_DUMP",
-          "ONBOARDING_EXPERT_TEAM",
-          "GRAPHITI_MEMORY",
-          "GRAPHITI_COMMUNITIES_ENABLED",
           "DREAM_PASS_ENABLED",
           "DREAM_PASS_INVALIDATE_ENTITY",
           "DREAM_SKILL_LEARNING_ENABLED",

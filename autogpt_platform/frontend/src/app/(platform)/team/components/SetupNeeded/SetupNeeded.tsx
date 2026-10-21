@@ -7,13 +7,9 @@ import { ExpertConnectServiceDialog } from "../../[expertId]/components/ExpertIn
 import { SetupNeededRow } from "./components/SetupNeededRow";
 import { useSetupNeeded } from "./useSetupNeeded";
 
-interface Props {
-  enabled: boolean;
-}
-
 /** Everything still standing between the team's scheduled workflows and
  *  their schedules, one row per gap with the one action that closes it. */
-export function SetupNeeded({ enabled }: Props) {
+export function SetupNeeded() {
   const {
     items,
     isConnectable,
@@ -23,7 +19,7 @@ export function SetupNeeded({ enabled }: Props) {
     handleConnected,
     allow,
     isGranting,
-  } = useSetupNeeded({ enabled });
+  } = useSetupNeeded();
 
   if (items.length === 0) return null;
 

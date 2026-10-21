@@ -408,11 +408,15 @@ class TestAddCommunityRebuildSchedule:
         fake_job = MagicMock(id="community_rebuild_abc", next_run_time=None)
         s.scheduler.add_job.return_value = fake_job
 
-        with patch("backend.executor.scheduler.run_async", return_value=True):
+        with patch(
+            "backend.executor.scheduler.run_async",
+            side_effect=RuntimeError("flag provider unavailable"),
+        ) as flag_read:
             result = s.add_community_rebuild_schedule(
                 user_id="abc", user_timezone="America/New_York"
             )
 
+        flag_read.assert_not_called()
         s.scheduler.add_job.assert_called_once()
         kwargs = s.scheduler.add_job.call_args.kwargs
         # Job id matches the documented per-user convention.
@@ -1014,7 +1018,7 @@ class TestSkillLearningScopeGate:
 
 
 class TestCommunityRebuildScopeGate:
-    def _fire(self, *, gate: bool, result: dict | None, expert_id=None):
+    def _fire(self, *, gate: bool, result: dict, expert_id=None):
         from backend.executor.scheduler import execute_community_rebuild
 
         with (
@@ -1049,10 +1053,9 @@ class TestCommunityRebuildScopeGate:
         rebuild.assert_called_once_with(scope)
         stamp.assert_awaited_once_with(scope, "community")
 
-    def test_an_errored_or_flag_skipped_rebuild_is_not_stamped(self) -> None:
-        for result in ({"error": "OpenRouterError: 502"}, None):
-            _, stamp = self._fire(gate=True, result=result)
-            stamp.assert_not_awaited()
+    def test_an_errored_rebuild_is_not_stamped(self) -> None:
+        _, stamp = self._fire(gate=True, result={"error": "OpenRouterError: 502"})
+        stamp.assert_not_awaited()
 
 
 class _SchedulerLoop:
@@ -1580,36 +1583,36 @@ class TestExecuteCommunityRebuildWithStatus:
         errored_mock.assert_not_called()
 
 
-class TestExecuteCommunityRebuildRuntimeGate:
-    def test_flag_off_short_circuits_before_rebuild_runs(self) -> None:
+class TestExecuteCommunityRebuild:
+    def test_rebuild_does_not_evaluate_a_feature_flag(self) -> None:
         from backend.executor.scheduler import _rebuild_scope_communities
 
-        # First run_async returns False (flag check). If we let the gate
-        # pass, a second call would invoke rebuild_communities_for_user;
-        # asserting that doesn't happen is the contract.
+        result = {"error": None, "communities_built": 2}
         with (
             patch(
-                "backend.executor.scheduler.run_async", return_value=False
+                "backend.executor.scheduler.run_async", return_value=result
             ) as run_async_mock,
             patch(
-                "backend.executor.scheduler.rebuild_communities_for_user"
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+            ) as flag_mock,
+            patch(
+                "backend.executor.scheduler.rebuild_communities_for_user",
+                new=MagicMock(return_value="rebuild"),
             ) as rebuild_mock,
         ):
-            assert _rebuild_scope_communities(MemoryScope.for_user("abc")) is None
+            assert _rebuild_scope_communities(MemoryScope.for_user("abc")) == result
 
         run_async_mock.assert_called_once()
-        rebuild_mock.assert_not_called()
+        rebuild_mock.assert_called_once_with("abc", expert_id=None)
+        flag_mock.assert_not_called()
 
     def test_an_expert_scope_rebuilds_the_expert_graph(self) -> None:
         from backend.executor.scheduler import _rebuild_scope_communities
 
         result = {"error": None, "communities_built": 2}
         with (
-            patch("backend.executor.scheduler.run_async", side_effect=[True, result]),
-            patch(
-                "backend.copilot.graphiti.config.is_communities_enabled_for_user",
-                new=MagicMock(return_value="flag"),
-            ),
+            patch("backend.executor.scheduler.run_async", return_value=result),
             patch(
                 "backend.executor.scheduler.rebuild_communities_for_user",
                 new=MagicMock(return_value="rebuild"),
