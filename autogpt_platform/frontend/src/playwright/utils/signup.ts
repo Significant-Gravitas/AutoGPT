@@ -3,7 +3,7 @@ import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
 import { NavBar } from "../pages/navbar.page";
-import { skipOnboardingIfPresent } from "./onboarding";
+import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
 export function isAuthenticatedAppURL(currentURL: string) {
@@ -86,6 +86,12 @@ export async function signupTestUser(
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
+    }
+
+    // skipOnboardingIfPresent covers the /onboarding landing; a wizard left
+    // open for the test must not race these writes.
+    if (!currentUrl.includes("/onboarding")) {
+      await dismissTabIntrosViaAPI(page);
     }
 
     if (withAgent) {

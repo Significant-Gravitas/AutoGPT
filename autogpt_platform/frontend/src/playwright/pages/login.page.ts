@@ -85,9 +85,10 @@ export class LoginPage {
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     // If redirected to onboarding, complete it via API so tests can proceed
+    const wasOnOnboarding = this.page.url().includes("/onboarding");
     await skipOnboardingIfPresent(this.page, "/marketplace");
     // Seeded users are past onboarding but have not seen the tab intros.
-    await dismissTabIntrosViaAPI(this.page);
+    if (!wasOnOnboarding) await dismissTabIntrosViaAPI(this.page);
 
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 20_000 });
