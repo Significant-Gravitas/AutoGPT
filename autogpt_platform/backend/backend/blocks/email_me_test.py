@@ -24,6 +24,7 @@ from backend.copilot.tools.models import BlockOutputResponse, SetupRequirementsR
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.execution import ExecutionContext
 from backend.data.workspace import WorkspaceFile
+from backend.notifications import email as email_module
 from backend.notifications import notifications, owner_email, owner_email_images
 from backend.notifications.email import EmailSender
 from backend.util import file as file_module
@@ -565,6 +566,26 @@ async def test_images_past_the_count_or_total_size_are_left_out(
     sent = _sent(postmark)
     assert [a["ContentID"] for a in sent["Attachments"]] == ["cid:image-1"]
     assert "Two" in sent["HtmlBody"]
+
+
+async def test_an_owner_email_is_tagged_and_never_tracked_with_tracking_on(
+    monkeypatch, postmark, workspace
+):
+    """Postmark tracking is on for notification mail, but this mail's links are
+    the user's own and can carry their tokens."""
+    monkeypatch.setattr(
+        email_module.settings.config, "postmark_track_opens_and_clicks", True
+    )
+    workspace["chart"] = ("ws", PNG)
+    body = "[The report](https://docs.example/d/abc?token=s3cret)\n\n![Chart](workspace://chart)"
+
+    await run({"subject": "s", "body": body})
+
+    sent = _sent(postmark)
+    assert sent["Tag"] == "owner_email"
+    assert sent["TrackOpens"] is False and sent["TrackLinks"] == "None"
+    assert [a["ContentID"] for a in sent["Attachments"]] == ["cid:image-1"]
+    assert 'href="https://docs.example/d/abc?token=s3cret"' in sent["HtmlBody"]
 
 
 def _sent(postmark) -> dict:

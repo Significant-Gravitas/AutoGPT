@@ -711,6 +711,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Must be a transactional stream, separate from marketing mail."
         ),
     )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
+        ),
+    )
     email_asset_base_url: str = Field(
         default="https://platform.agpt.co/email",
         description=(
