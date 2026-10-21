@@ -15,6 +15,7 @@ from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
 from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
+from .falkordb_origins import distinct_origins
 from .falkordb_projection import without_embeddings
 from .scope import MemoryScope
 
@@ -251,7 +252,7 @@ class AutoGPTFalkorDriver(FalkorDriver):
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
         # cast to the real awaitable/param types rather than suppress. Same
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
-        params = cast(dict[str, object], convert_datetimes_to_strings(dict(kwargs)))
+        params = cast(dict[str, object], convert_datetimes_to_strings(distinct_origins(dict(kwargs))))
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)
 
