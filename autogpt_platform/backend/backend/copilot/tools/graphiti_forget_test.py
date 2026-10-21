@@ -482,10 +482,38 @@ class TestBuildConfirmMessage:
         message = _build_confirm_message(0, True, failures, 2)
         assert message.startswith(
             "The memory edge(s) could not be permanently deleted, but 2 fact(s) "
-            "derived from them were retracted and erased."
+            "derived from them were retracted; erasing their text may not have "
+            "finished (see below)."
         )
         assert "already" not in message
         assert "uuid-1" in message
+
+    def test_erasure_is_claimed_only_when_nothing_failed(self) -> None:
+        """A derived fact is counted once retracted, before its text is erased,
+        so a failure means its text may still be there."""
+        clean = _build_confirm_message(0, True, [], 2, 1)
+        assert clean == (
+            "1 memory edge(s) had already been erased. "
+            "2 derived fact(s) retracted and erased."
+        )
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-2",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        resumed = _build_confirm_message(0, True, failures, 2, 1)
+        assert resumed.startswith(
+            "1 memory edge(s) had already been erased. 2 derived fact(s) "
+            "retracted; erasing their text may not have finished (see below)."
+        )
+        assert "retracted and erased" not in resumed
+
+        mixed = _build_confirm_message(1, True, failures, 2, 1)
+        assert "the facts derived from them were retracted; erasing" in mixed
+        assert "retracted and erased" not in mixed
 
     def test_a_soft_derived_only_result_never_claims_erasure(self) -> None:
         soft = _build_confirm_message(0, False, [], 2)

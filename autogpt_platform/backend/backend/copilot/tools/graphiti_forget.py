@@ -325,6 +325,14 @@ def _build_confirm_message(
     full per-UUID list stays available in the structured ``failures`` field.
     """
     mode = "permanently deleted" if hard else "retracted from memory"
+    # A fact counts as derived once retracted, before its text is erased
+    # (``recall_cascade._retire``), so erasure is claimed only when nothing
+    # failed.
+    erased = (
+        "retracted and erased"
+        if not failures
+        else "retracted; erasing their text may not have finished (see below)"
+    )
     if deleted_count:
         summary = f"{deleted_count} memory edge(s) {mode}."
         if derived_count:
@@ -334,18 +342,18 @@ def _build_confirm_message(
             )
         if resumed_count:
             summary += (
-                f" {resumed_count} memory edge(s) had already been erased; what "
-                "was derived from them was retracted and erased."
+                f" {resumed_count} memory edge(s) had already been erased; the "
+                f"facts derived from them were {erased}."
             )
     elif resumed_count:
         summary = f"{resumed_count} memory edge(s) had already been erased."
         if derived_count:
-            summary += f" {derived_count} derived fact(s) retracted and erased."
+            summary += f" {derived_count} derived fact(s) {erased}."
     elif derived_count:
         # Facts derived with nothing deleted or resumed: the forget's cascade
         # ran, then retracting or deleting the edges themselves failed
         # (``recall_forget._forget``). The failures below say why.
-        derived = "retracted and erased" if hard else "retracted"
+        derived = erased if hard else "retracted"
         summary = (
             f"The memory edge(s) could not be {mode}, but {derived_count} "
             f"fact(s) derived from them were {derived}."
