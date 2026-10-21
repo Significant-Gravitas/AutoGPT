@@ -173,6 +173,13 @@ RUN apt-get update \
     && npm install -g agent-browser@0.37.1 \
     && rm -rf /tmp/* /root/.npm
 
+# The Copilot browser reaches the network only through an egress proxy that
+# carries TCP. This policy stops WebRTC from sending UDP around it, in every
+# frame and window; the matching command-line switch is not honoured.
+RUN mkdir -p /etc/chromium/policies/managed \
+    && echo '{"WebRtcIPHandling": "disable_non_proxied_udp"}' \
+        > /etc/chromium/policies/managed/agent-browser-network.json
+
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app/autogpt_platform/backend
