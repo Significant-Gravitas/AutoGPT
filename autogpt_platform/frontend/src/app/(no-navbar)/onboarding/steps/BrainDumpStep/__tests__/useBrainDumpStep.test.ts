@@ -984,6 +984,27 @@ describe("useBrainDumpStep — skip", () => {
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
   });
 
+  // The wizard moves on before the skip is recorded, so the guard is all
+  // that stops a second skip from advancing it again, past Hire.
+  it("advances once when a second skip lands before the first is recorded", async () => {
+    const recording = deferred<ReturnType<typeof completed>>();
+    finalizeBrainDump.mockReturnValue(recording.promise);
+    const { result } = await renderStep();
+
+    await act(async () => {
+      void result.current.handleSkip();
+      void result.current.handleSkip();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      recording.resolve(completed());
+      await Promise.resolve();
+    });
+
+    expect(finalizeBrainDump).toHaveBeenCalledTimes(1);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
   // Being unable to say "no thanks" because the network is down would be
   // absurd — path B is the safe default anyway.
   it("lets the user through even when the skip call fails", async () => {
