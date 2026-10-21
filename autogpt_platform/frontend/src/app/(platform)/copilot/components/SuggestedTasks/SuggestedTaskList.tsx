@@ -90,7 +90,7 @@ export function SuggestedTaskList({
                   onClick={() => onSend(task)}
                   className={cn(
                     ROW_CLASSES,
-                    "group cursor-pointer disabled:cursor-default disabled:opacity-60",
+                    "cursor-pointer disabled:cursor-default disabled:opacity-60",
                   )}
                 >
                   <Icon
@@ -116,7 +116,7 @@ export function SuggestedTaskList({
                     <Icon
                       icon={ArrowRight01Icon}
                       size={15}
-                      className="ml-auto shrink-0 text-zinc-400 transition-transform duration-150 ease-out group-hover:translate-x-1"
+                      className="ml-auto shrink-0 text-zinc-400"
                     />
                   )}
                 </button>
