@@ -190,18 +190,19 @@ async def embed_query(query: str, *, public_search: bool = False) -> list[float]
     query from the last ``QUERY_EMBEDDING_TTL_SECONDS``.
 
     With ``public_search``, a new embedding needs a slot from store search's
-    per-minute budget; without one this raises ``PublicSearchBudgetSpent``.
+    per-minute budget; without one this raises ``PublicSearchBudgetSpent``. A
+    budget of 0 raises it for every query, cached or not.
     Raises exceptions on failure - caller should handle.
     """
     query = " ".join(query.split())
+    if public_search and not public_search_embeddings_enabled():
+        raise PublicSearchBudgetSpent()
     digest = hashlib.sha256(query.encode()).hexdigest()
     key = f"search:query-embedding:{EMBEDDING_MODEL}:{digest}"
     if cached := await _cached_query_embedding(key):
         return cached
     if public_search and not await take_public_search_embedding_slot():
-        # A disabled budget never refills, so its text-ranked results may stay cached.
-        refused = refused_public_queries.get()
-        if refused is not None and public_search_embeddings_enabled():
+        if (refused := refused_public_queries.get()) is not None:
             refused.append(query)
         raise PublicSearchBudgetSpent()
     embedding = await generate_embedding(query)

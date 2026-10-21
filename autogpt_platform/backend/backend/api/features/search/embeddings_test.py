@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 from prisma.enums import ContentType
 
-from backend.api.features.search import embeddings
+from backend.api.features.search import embeddings, rate_limit
 
 
 @pytest.fixture(autouse=True)
@@ -195,6 +195,22 @@ async def test_a_public_query_past_the_budget_is_not_embedded():
         await embeddings.embed_query(f"spent {uuid.uuid4().hex}", public_search=True)
 
     generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_with_the_budget_off_a_public_query_ignores_a_cached_embedding(
+    monkeypatch,
+):
+    query = f"off {uuid.uuid4().hex}"
+    with patch.object(embeddings, "generate_embedding", AsyncMock(return_value=[0.4])):
+        await embeddings.embed_query(query)
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 0
+    )
+
+    with pytest.raises(embeddings.PublicSearchBudgetSpent):
+        await embeddings.embed_query(query, public_search=True)
+    assert await embeddings.embed_query(query) == [0.4]
 
 
 @pytest.mark.asyncio(loop_scope="session")
