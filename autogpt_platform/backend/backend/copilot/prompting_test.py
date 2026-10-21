@@ -37,9 +37,7 @@ class TestGetSdkSupplementStaticPlaceholder:
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
-        guidance = result.split("### SDK tool-result files\n", 1)[1].split("\n### ", 1)[
-            0
-        ]
+        guidance = next(line for line in result.splitlines() if "tool-results/" in line)
         assert "`read_tool_result`" in guidance
         assert "`Read`" not in guidance
 
@@ -88,24 +86,22 @@ class TestComputerNote:
 
 
 class TestCredentialsSurfacingGuardrails:
-    """The system prompt must instruct the model to (a) surface sign-in cards
-    eagerly via tool calls and (b) never claim a card has appeared unless one
-    was just emitted in the same turn. Both behaviours prevent the user from
-    being stranded waiting for a card that was never produced.
+    """The eager-card and never-claim-a-card rules live in the base system
+    prompt (service.py). The supplement keeps the mechanics: stop on the card,
+    connect-only calls, credentials-only cards, rejections and pickers.
     """
 
-    def test_local_prompt_contains_eager_surfacing_rule(self):
-        result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "Surface the sign-in card EAGERLY" in result
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_prompt_stops_on_the_sign_in_card(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert (
+            "returns a sign-in card (`setup_requirements`). Show it and stop." in result
+        )
 
-    def test_e2b_prompt_contains_eager_surfacing_rule(self):
-        result = prompting.get_sdk_supplement(use_e2b=True)
-        assert "Surface the sign-in card EAGERLY" in result
-
-    def test_prompt_contains_anti_hallucination_guardrail(self):
+    def test_pickers_are_called_with_null_not_asked_for(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "NEVER claim a card has appeared" in result
-        assert "call the tool first" in result
+        assert "with the field set to `null`" in result
+        assert "Don't ask for the id or URL" in result
 
     def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
         """An expert session's ``find_capability`` reports an account-owned
@@ -114,17 +110,18 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         step = result[result.index('`connected: "needs_expert_grant"`') :]
         step = " ".join(step[: step.index("4. `review_required`")].split())
-        assert "Do NOT ask the user to sign in" in step
+        assert "Don't ask the user to sign in" in step
         assert "Grant button" in step
-        assert "ask the user to grant access" in step
+        assert "Ask the user to grant access" in step
 
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge
         that takes one side drops a rule silently."""
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "refused a credential the user already has" in result
-        assert "Connecting is not running" in result
-        assert "The card asks for credentials, not inputs" in result
+        assert "To only connect an account" in result
+        assert 'input={"connect": true}' in result
+        assert "The card collects credentials only" in result
 
     def test_prompt_states_the_one_connect_convention(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -138,24 +135,18 @@ class TestCredentialsSurfacingGuardrails:
 
 
 class TestToolDiscoveryPriorityAntiPattern:
-    """The Discovery section must forbid claiming a capability gap without
-    calling ``find_capability`` first — this is the regression the
-    LinkedIn-skip incident on dev (May 2026) exposed.
+    """The supplement must send the model to the registry before it talks
+    about what exists; the honest-gap wording lives in the base prompt.
     """
 
-    def test_supplement_contains_find_capability_mandatory_language(self):
+    def test_supplement_says_search_before_answering_from_memory(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The header must signal that find_capability is mandatory before
-        # any "no integration" reply.
-        assert "find_capability` is MANDATORY" in result
+        assert "Search it; don't rely on what you remember." in result
+        assert "start with `find_capability(" in result
 
-    def test_supplement_lists_the_forbidden_phrases(self):
+    def test_supplement_keeps_the_mcp_fallback_search(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The anti-pattern section must explicitly enumerate the
-        # phrases the model emitted in the regression so the model
-        # can pattern-match on its own draft and reject it.
-        assert "we don't have an X integration" in result
-        assert "there's no block for X" in result
+        assert '"<service> MCP server"' in result
 
     def test_supplement_includes_the_flow_and_no_legacy_names(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -411,3 +402,29 @@ class TestConnectedAccountNotes:
             CopilotPermissions(providers=["github"], providers_exclude=True)
         )
         assert "none of the user's connected accounts" in none
+
+
+class TestPlainLanguageRules:
+    def test_no_internal_plumbing_and_one_retry(self):
+        result = prompting.SHARED_TOOL_NOTES
+        assert "Never mention internal errors" in result
+        assert "Retry a failing step at most once" in result
+
+    def test_blocking_inputs_are_asked_before_building(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Use sensible defaults instead of asking" in notes
+        assert "ask it before you start building" in notes
+
+    def test_only_cite_opened_pages(self):
+        assert "Only cite pages you actually opened" in prompting.SHARED_TOOL_NOTES
+
+    def test_memory_prefers_injected_context(self):
+        result = prompting.get_graphiti_supplement()
+        assert "Use memory already injected" in result
+        assert "ALWAYS" not in result
+
+    def test_team_building_checks_the_roster_first(self):
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+        assert "look at `<team_context>` first" in result

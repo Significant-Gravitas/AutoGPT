@@ -66,11 +66,10 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the merge of the memory stack (the marked <temporal_context>
-# memory block any user message may carry, in place of the first message's
-# <memory_context>) with dev's `<seen_capabilities>` block (SECRT-2791).
+# Last re-pinned for the plain-English prompt rewrite, merged with the
+# <temporal_context> memory block.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "eac208b4ad07faf67646f51f9e8e6f0bfc7993dab9f353e907108770ee2f7aa5"
+    "19ecd383f6efca599a9a6ca6d0cb87b30c7b93f09c0024860ee6c4207731a538"
 )
 
 
