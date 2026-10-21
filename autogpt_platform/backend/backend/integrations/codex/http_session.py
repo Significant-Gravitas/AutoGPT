@@ -266,6 +266,7 @@ async def _consume_event(
             outcome.model = getattr(response, "model", None) or outcome.model
             if (raw_usage := getattr(response, "usage", None)) is not None:
                 outcome.usage = _usage_from(raw_usage)
+        # Failed responses fall through to raise after their usage is captured.
         if kind != "response.failed":
             return
 

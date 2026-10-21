@@ -257,7 +257,10 @@ class CodexAnthropicGateway:
 
     @property
     def usage(self) -> CodexTokenUsage | None:
-        """Reported usage across completed and interrupted conversations."""
+        """Reported usage across completed and interrupted conversations.
+
+        Conversations remain retained for this gateway's lifetime (one SDK turn).
+        """
         return _sum_usage(c.usage for c in self._conversations.values())
 
     async def start(self) -> None:

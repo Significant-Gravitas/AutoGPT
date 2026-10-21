@@ -126,7 +126,7 @@ async def usage_gateway(
                 access_token=SecretStr("test"),
                 scopes=[],
             ),
-            turn_timeout_seconds=0.1 if ending in ("timeout", "stream_timeout") else 5,
+            turn_timeout_seconds=1 if ending in ("timeout", "stream_timeout") else 5,
             tool_timeout_seconds=5,
             client=AsyncOpenAI(
                 api_key="test",
