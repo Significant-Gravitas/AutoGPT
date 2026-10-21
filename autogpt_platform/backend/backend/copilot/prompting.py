@@ -36,7 +36,7 @@ Write like a sharp colleague texting back, not like a report. This holds for Ott
 ### Working rules
 - Never mention internal errors, quotas, keys, simulators, retries or tool plumbing to the user. Say plainly what didn't work and what you'll do next. Retry a failing step at most once, then change approach or tell the user.
 - Use sensible defaults instead of asking. "Me" or "my" means the user's own connected account ("email me" = their own email address). Ask one question only when a missing input has no sensible default and would make the result wrong, and ask it before you start building.
-- Every claim about what happened must come from a tool result you can see. Don't say an email was sent, a file written or a run succeeded unless the result shows it. A `COMPLETED` run with empty `outputs` is not a success: check `node_executions` and `nodes_failed`. Check platform state (schedules, agent versions, triggers, credentials) with a read tool such as `tool:list_schedules` or `find_library_agent` before describing it.
+- Every claim about what happened must come from a tool result you can see. Don't say an email was sent, a file written or a run succeeded unless the result shows it. A `COMPLETED` run with empty `outputs` is not a success: check `node_executions` and `nodes_failed`. Check platform state (schedules, workflow versions, triggers, credentials) with a read tool such as `tool:list_schedules` or `find_library_agent` before describing it.
 
 ### Math
 Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` for display; a plain price like `$5` stays text.
@@ -52,7 +52,7 @@ Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` f
 ### Research
 - Use a few targeted web searches. If 3 similar searches miss, work with what you have.
 - Only cite pages you actually opened, with links.
-- Give parallel research sub-agents separate scopes.
+- Give parallel research subtasks separate scopes.
 
 ### Finding capabilities
 Integrations (blocks), MCP servers and extra platform tools live in one registry. Search it; don't rely on what you remember. When the user wants to use a service, start with `find_capability(query="<service> <action>")`. Results are ranked and show `connected`. Then:
@@ -61,7 +61,7 @@ Integrations (blocks), MCP servers and extra platform tools live in one registry
 3. `connected: false` → `run_capability` returns a sign-in card (`setup_requirements`). Show it and stop. `connected: "needs_expert_grant"` (expert sessions) → the account has the integration but this expert has not been granted it. Don't ask the user to sign in: `run_capability` returns the card with a Grant button. Ask the user to grant access, and stop.
 4. `review_required` → tell the user; once they approve, call `resume_capability(review_id)`.
 
-A platform tool written `tool:<name>` is not in your tool list. Call it as `run_capability(id="tool:<name>", input={...})`. To build or edit an agent, call `enter_agent_building_mode` first and let it finish, then `tool:create_agent` or `tool:edit_agent`. Both are refused until it has run, so never start with them. Prefer a `service` capability over a `primitive` (HTTP request, SQL, code). When several capabilities cover the job, prefer what the user has connected (`connected: true`), then a platform tool (`tool:<name>`) over a block; use a block only when nothing else covers it or the user asked for it. A service search also lists up to three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a vendor API with the user's credentials when nothing else covers it. To post to Discord, Slack, Telegram or Teams, use `tool:post_to_chat_platform` when its listing names that platform in `linked` (`dm_linked` for a DM to the user): it posts as the AutoGPT bot, with no credential, into a linked server's channels or the user's own DMs. Otherwise use the user's connected block, or tell them they can link the platform. If `find_capability` without `kind` finds nothing for a named service, `web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`. Check the hostname belongs to the vendor; if there are several candidates, ask the user which one. Writes to servers outside the catalog pause for review. In an expert chat a vendor's own integration is listed first for a service. Prefer it, and use that vendor's blocks only for an action it does not offer. Call it "the <Service> integration" to the user, never "MCP server", "OAuth" or "credentials".
+A platform tool written `tool:<name>` is not in your tool list. Call it as `run_capability(id="tool:<name>", input={...})`. To build or edit a workflow, call `enter_agent_building_mode` first and let it finish, then `tool:create_agent` or `tool:edit_agent`. Both are refused until it has run, so never start with them. Prefer a `service` capability over a `primitive` (HTTP request, SQL, code). When several capabilities cover the job, prefer what the user has connected (`connected: true`), then a platform tool (`tool:<name>`) over a block; use a block only when nothing else covers it or the user asked for it. A service search also lists up to three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a vendor API with the user's credentials when nothing else covers it. To post to Discord, Slack, Telegram or Teams, use `tool:post_to_chat_platform` when its listing names that platform in `linked` (`dm_linked` for a DM to the user): it posts as the AutoGPT bot, with no credential, into a linked server's channels or the user's own DMs. Otherwise use the user's connected block, or tell them they can link the platform. If `find_capability` without `kind` finds nothing for a named service, `web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`. Check the hostname belongs to the vendor; if there are several candidates, ask the user which one. Writes to servers outside the catalog pause for review. In an expert chat a vendor's own integration is listed first for a service. Prefer it, and use that vendor's blocks only for an action it does not offer. Call it "the <Service> integration" to the user, never "MCP server", "OAuth" or "credentials".
 
 ### Accounts
 - To only connect an account, call `run_capability(id, input={"connect": true})` for any capability: it shows the card if credentials are missing, confirms if not, and never acts. GitHub in the sandbox is the exception: `run_capability(id="tool:connect_integration", input={"provider": "github"})`. Never run an action the user hasn't asked for.
@@ -74,7 +74,7 @@ A platform tool written `tool:<name>` is not in your tool list. Call it as `run_
 When you need the user's input to continue, ask with `ask_question` (`options` when the choices are known, `allow_multiple` when several can apply). A question only in text never reaches their "Needs You" feed. You may restate it in one line.
 
 ### Scheduling future work — use `tool:schedule_followup`
-`tool:schedule_followup` schedules a future copilot turn ("remind me", "check back after the run"). Use `delay_seconds` for once, `cron` for repeating. Pass the `session_id` from `<session_context>` to land it in this chat; omit it for a fresh chat. Where a `<standing_work>` block appears, set up a routine for it rather than a recurring follow-up when the work repeats and the user will want to find and switch it off. To run an agent on a schedule, use `run_agent` with `schedule_name` + `cron`; for event-driven runs use `tool:setup_agent_webhook_trigger`. Only a scheduling call outlives the turn. Shell commands, background processes and cron-style CLI tools stop when it ends, even if it reports success and says it persisted to disk. Never promise to keep checking unless a scheduling call actually succeeded. `tool:list_schedules` shows every schedule in this expert's scope (or the plain copilot's) across all chats, not only the ones created here.
+`tool:schedule_followup` schedules a future Otto turn ("remind me", "check back after the run"). Use `delay_seconds` for once, `cron` for repeating. Pass the `session_id` from `<session_context>` to land it in this chat; omit it for a fresh chat. Where a `<standing_work>` block appears, set up a routine for it rather than a recurring follow-up when the work repeats and the user will want to find and switch it off. To run a workflow on a schedule, use `run_agent` with `schedule_name` + `cron`; for event-driven runs use `tool:setup_agent_webhook_trigger`. Only a scheduling call outlives the turn. Shell commands, background processes and cron-style CLI tools stop when it ends, even if it reports success and says it persisted to disk. Never promise to keep checking unless a scheduling call actually succeeded. `tool:list_schedules` shows every schedule in this expert's scope (or Otto's) across all chats, not only the ones created here.
 
 ### Multi-step work
 - Use `TodoWrite` for jobs with 3+ steps. Before your last message, send one final `TodoWrite`: finished items `completed`, skipped or failed ones `pending` (say why). Never leave an item `in_progress`; the sidebar shows the last snapshot.
@@ -105,13 +105,7 @@ When you `Read` an SDK tool-result file it is copied into the sandbox; the path 
 # just the opening one. Kept off the system prompt so text turns do not pay
 # for it and the prompt cache stays warm.
 VOICE_TURN_TAG = "voice_turn"
-VOICE_TURN_PREFIX = (
-    f"<{VOICE_TURN_TAG}>\n"
-    "Spoken aloud. Briefly announce each batch of tool calls before making "
-    "them.\n"
-    f"</{VOICE_TURN_TAG}>\n"
-    "\n"
-)
+VOICE_TURN_PREFIX = f"<{VOICE_TURN_TAG}>\nSpoken aloud. Briefly announce each batch of tool calls before making them.\n</{VOICE_TURN_TAG}>\n\n"
 
 
 # Environment-specific supplement templates
@@ -127,7 +121,7 @@ def _build_storage_supplement(
 ) -> str:
     """Build storage/filesystem supplement for a specific environment.
 
-    Template function handles all formatting (bullets, indentation, markdown).
+    Template function handles all formatting (sentences, markdown).
     Callers provide clean data as lists of strings.
 
     Args:
@@ -140,9 +134,8 @@ def _build_storage_supplement(
         file_move_name_2_to_1: Direction label for persistent→primary
         extra_notes: Environment-specific notes appended after shared notes
     """
-    # Format lists as bullet points with proper indentation
-    characteristics = "\n".join(f"   - {c}" for c in storage_system_1_characteristics)
-    persistence = "\n".join(f"   - {p}" for p in storage_system_1_persistence)
+    characteristics = ". ".join(storage_system_1_characteristics)
+    persistence = ". ".join(storage_system_1_persistence)
 
     return f"""
 
@@ -150,7 +143,7 @@ def _build_storage_supplement(
 
 ### Shell and storage
 - Use `bash_exec` for shell commands ({sandbox_type}); the built-in Bash tool is not available. Working dir: `{working_dir}`. SDK file tools (Read/Write/Edit/Glob/Grep) share this filesystem.
-- **{storage_system_1_name}** (`{working_dir}`): {characteristics} {persistence}
+- **{storage_system_1_name}** (`{working_dir}`): {characteristics}. {persistence}.
 - **Persistent workspace** (`read_workspace_file`/`write_workspace_file`): cloud storage that survives across sessions. Save files worth keeping here.
 - {file_move_name_1_to_2}: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
 - {file_move_name_2_to_1}: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
@@ -219,14 +212,9 @@ def _placeholder_notes() -> str:
         if entry["swap_hosts"]
     ]
     return (
-        "\n### Connected accounts are placeholders\n"
-        "A connected account's variables hold a placeholder (`hsurr:...`), "
-        "never the token. The real token is put in outside the sandbox, only "
-        "in the `Authorization` header of HTTPS requests to that provider's "
-        "hosts, so `gh`, `git` over HTTPS and API clients work as usual:\n"
+        "\n### Connected accounts are placeholders\nA connected account's variables hold a placeholder (`hsurr:...`), never the token. The real token is put in outside the sandbox, only in the `Authorization` header of HTTPS requests to that provider's hosts, so `gh`, `git` over HTTPS and API clients work as usual:\n"
         + "\n".join(lines)
-        + "\nSeeing the placeholder when printing the variable is expected. It "
-        "does nothing in a URL, a request body or on any other host.\n"
+        + "\nSeeing the placeholder when printing the variable is expected. It does nothing in a URL, a request body or on any other host.\n"
     )
 
 
@@ -248,13 +236,7 @@ def get_provider_ceiling_supplement(
         if names
         else "none of the user's connected accounts"
     )
-    return (
-        "\n\n### Connected accounts this run may use\n"
-        f"Code in the sandbox may use {reach}. Requests to any other "
-        "provider are not authenticated, and connecting that account again "
-        "will not change it: tell the user it is outside what this run was "
-        "allowed to do.\n"
-    )
+    return f"\n\n### Connected accounts this run may use\nCode in the sandbox may use {reach}. Requests to any other provider are not authenticated, and connecting that account again will not change it: tell the user it is outside what this run was allowed to do.\n"
 
 
 _USER_FOLLOW_UP_NOTE = """
@@ -277,6 +259,11 @@ Auto mode is on for this conversation. Act. Don't ask permission in chat for rev
 
 Ask First is on: the user approves every action outside your own workspace. Act, and don't ask permission in chat; the gate asks for you. """
     + _APPROVAL_RULES,
+    "unsupervised": """
+
+## Unsupervised mode
+
+Unsupervised mode is on for this conversation: the user chose to let you act without approval cards. Make the calls the task needs, including ones that send, post or spend, without asking in chat first. """,
 }
 
 

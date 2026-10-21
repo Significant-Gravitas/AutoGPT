@@ -6,6 +6,7 @@ import pytest
 
 from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -284,7 +285,7 @@ class TestSchedulingGuidance:
     def test_supplement_names_schedule_followup_by_capability_id(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "### Scheduling future work — use `tool:schedule_followup`" in result
-        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+        assert "`tool:schedule_followup` schedules a future Otto turn" in result
 
     def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
         # Routines ride the flag-gated ``expert_resources`` group, so this
@@ -428,3 +429,41 @@ class TestPlainLanguageRules:
             experts_enabled=True, expert_id=None
         )
         assert "look at `<team_context>` first" in result
+
+
+class TestStorageSupplementSentences:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_storage_line_is_one_sentence_pair_not_nested_bullets(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "   - " not in result
+        line = next(
+            ln for ln in result.splitlines() if ln.startswith("- **") and "`): " in ln
+        )
+        assert line.endswith(".")
+        assert ". Files " in line
+
+
+class TestApprovalModeSupplement:
+    def test_every_mode_has_its_own_section(self):
+        assert "## Auto mode" in prompting.approval_mode_supplement("auto")
+        assert "## Ask First mode" in prompting.approval_mode_supplement("ask_first")
+        unsupervised = prompting.approval_mode_supplement("unsupervised")
+        assert "## Unsupervised mode" in unsupervised
+        assert "without asking in chat first" in unsupervised
+
+    def test_no_active_gate_adds_no_section(self):
+        assert prompting.approval_mode_supplement(None) == ""
+
+
+class TestBasePromptApprovalFallback:
+    def test_card_rule_is_tied_to_a_mode_section(self):
+        assert "When an Auto or Ask First mode section below is present" in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+        assert "With no mode section, ask for the user's OK in chat first." in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+
+    def test_greeting_offers_one_thing_like_the_reply_style(self):
+        assert "offer one concrete thing you could do" in CACHEABLE_SYSTEM_PROMPT
+        assert "one thing you can do" in prompting.SHARED_TOOL_NOTES
