@@ -96,7 +96,7 @@ async def test_untracked_script_edit_is_not_attributed_to_the_old_version(
 
 
 @pytest.mark.asyncio
-async def test_failed_file_removal_keeps_publication_pending_until_retry(
+async def test_a_failed_package_swap_keeps_publication_pending_until_retry(
     package_workspace, fake_learning_store, monkeypatch
 ):
     for target in ("skill_publication_db", "skill_versions_db"):
@@ -125,10 +125,15 @@ async def test_failed_file_removal_keeps_publication_pending_until_retry(
         ),
         expected_current_version=head.current_version,
     )
-    delete = package_workspace.delete_file
-    monkeypatch.setattr(
-        package_workspace, "delete_file", AsyncMock(side_effect=OSError("unavailable"))
-    )
+    write = package_workspace.write_file
+
+    async def fail_the_root(**kwargs):
+        # The last step of the package swap, after the stale file is gone.
+        if kwargs["path"].endswith("/SKILL.md"):
+            raise OSError("unavailable")
+        return await write(**kwargs)
+
+    monkeypatch.setattr(package_workspace, "write_file", fail_the_root)
     failed = await publish.write_committed_version("user-1", pending.version, None)
     assert failed.status == "write_failed"
     assert (
@@ -138,7 +143,8 @@ async def test_failed_file_removal_keeps_publication_pending_until_retry(
         "user-1", ChatSession.new("user-1", dry_run=False), name="checks"
     )
     assert isinstance(loaded, ErrorResponse)
-    monkeypatch.setattr(package_workspace, "delete_file", delete)
+    assert "/skills/checks/scripts/removed.py" in package_workspace.files
+    monkeypatch.setattr(package_workspace, "write_file", write)
     retried = await publish.write_committed_version("user-1", pending.version, None)
     assert retried.status == "applied"
     assert "/skills/checks/scripts/removed.py" not in package_workspace.files

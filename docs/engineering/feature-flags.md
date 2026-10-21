@@ -1,8 +1,10 @@
 # Feature flags
 
 Which vendor answers a flag read is set per deployment by `FEATURE_FLAG_BACKEND`:
-`launchdarkly` (the default), `posthog`, or `dual` — evaluate both, serve
-LaunchDarkly's answer, and log every disagreement. Call sites are unaffected by
+`posthog` (the default), `launchdarkly`, or `dual` — evaluate both, serve
+LaunchDarkly's answer, and log every disagreement. Without `POSTHOG_API_KEY`
+the default reads every flag as its code default, which is what a self-hosted
+install and CI get. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
@@ -15,6 +17,14 @@ project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
 evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
 instead, unless the read is local-only, as a signed-out visitor's own read is.
 
+A flag the code reads but the project doesn't have is served its code default.
+The backend still asks `/flags` about it once, because PostHog answers some
+flags there that it leaves out of the definitions (one in its newer config
+format, for instance). Once `/flags` has had no answer either, the backend
+serves the default without asking again for five minutes, so the read costs no
+network round trip. Creating the flag takes effect at the next definitions
+poll, or within those five minutes for a flag the definitions leave out.
+
 | | Dev | Prod |
 |---|---|---|
 | PostHog project | [281733](https://eu.posthog.com/project/281733/feature_flags) | [117338](https://eu.posthog.com/project/117338/feature_flags) |
@@ -26,16 +36,17 @@ is defined in each project. The **Projects** tab on the
 [flag list](https://eu.posthog.com/project/281733/feature_flags?tab=projects)
 and on each flag's page shows a flag across both projects side by side.
 
-**Until Prod switches to PostHog**, Prod serves LaunchDarkly's answers
-(`FEATURE_FLAG_BACKEND=dual` only compares PostHog's against them), so a change
-to a Prod flag is made in LaunchDarkly and mirrored in the Prod PostHog project.
+Dev and Prod both run `FEATURE_FLAG_BACKEND=posthog`, so a flag is changed in
+that environment's PostHog project and LaunchDarkly answers nothing there.
 
-**The browser.** With `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server` the browser
-gets its flags from the backend's `GET /api/feature-flags`, which evaluates
+**The browser.** With `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server`, the default,
+the browser gets its flags from the backend's `GET /api/feature-flags`, which evaluates
 them through the same path as the backend's own reads, so the browser and the
 backend give one answer from one project. A Vercel preview in `server` mode
-gets the answer of the backend it calls. The other values read flags in the
-browser itself: `launchdarkly` (the default) from LaunchDarkly, and `posthog` /
+gets the answer of the backend it calls, and a backend with no vendor answers
+`configured: false`, so the browser serves its own defaults and stops asking.
+The other values read flags in the browser itself: `launchdarkly` from
+LaunchDarkly, and `posthog` /
 `dual` from the project `NEXT_PUBLIC_POSTHOG_KEY` names. `useExperiment` reads
 posthog-js in every mode.
 
@@ -92,8 +103,7 @@ wire and has no definitions to share.
 
 **Per environment.** Leave the defaults on `dev` and `prod`: both run several
 replicas against a shared Redis, which is what the cache is for. Local
-development and CI run `FEATURE_FLAG_BACKEND=launchdarkly`, so none of this is
-reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
+development and CI have no PostHog keys, so none of this is reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
 PostHog locally without Redis.
 
 ### What the refresher is

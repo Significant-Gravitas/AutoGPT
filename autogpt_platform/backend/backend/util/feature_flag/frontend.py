@@ -42,8 +42,6 @@ class FrontendFlag(str, Enum):
     ARTIFACTS_PAGE = "artifacts-page"
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
     GENERIC_TRIGGER_AGENTS = Flag.GENERIC_TRIGGER_AGENTS.value
-    CHAT_SEARCH = "chat-search"
-    AUTOGPT_NEW_LAYOUT = "autogpt-new-layout"
     CHAT_WORKSPACE_FILES = "chat-workspace-files"
     CHAT_PINNING = "chat-pinning"
     TASK_PROGRESS_BAR = "task-progress-bar"

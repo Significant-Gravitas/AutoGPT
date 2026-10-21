@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from posthog import Posthog
-from posthog.types import FeatureFlagResult
+from posthog.types import FeatureFlag, FeatureFlagResult
 
 import backend.util.feature_flag.posthog as ph
 
@@ -53,6 +53,22 @@ class TestClientConstruction:
         _, kwargs = posthog.call_args
         assert kwargs["secret_key"] is None
         assert kwargs["enable_local_evaluation"] is False
+
+    @pytest.mark.parametrize(
+        ("sentry_release", "expected"),
+        [("0123abcd", {"revision": "0123abcd"}), ("", {})],
+        ids=["revision set", "no revision"],
+    )
+    def test_its_events_carry_the_revision(self, mocker, sentry_release, expected):
+        """``$feature_flag_called`` comes from this client, not ``capture``."""
+        configure(mocker)
+        mocker.patch.object(ph.settings.config, "sentry_release", sentry_release)
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+
+        _, kwargs = posthog.call_args
+        assert kwargs["super_properties"] == expected
 
     def test_the_client_is_built_once(self, mocker):
         configure(mocker)
@@ -322,6 +338,110 @@ class TestRawRead:
             assert loop.run_until_complete(scenario()) == "probe"
         finally:
             loop.close()
+
+
+class TestAFlagTheDefinitionsLeaveOut:
+    """Only PostHog's /flags can answer one, at a network call per read."""
+
+    @pytest.fixture
+    def client(self, mocker):
+        client = Posthog(
+            "phc-test", secret_key="phx-test", enable_local_evaluation=False
+        )
+        client.feature_flags = [_rolled_out("hire-experts", 100)]
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+        yield client
+        client.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_one_posthog_has_no_answer_for_is_asked_about_once(
+        self, mocker, client
+    ):
+        remote = mocker.patch.object(
+            client, "_get_flags_decision", return_value={"flags": {}}
+        )
+
+        reads = [
+            await ph.evaluate_flag("copilot-sdk", "u-1", default=True) for _ in range(3)
+        ]
+
+        assert reads == [(True, False)] * 3
+        assert remote.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_it_is_asked_about_again_once_that_answer_is_stale(
+        self, mocker, client
+    ):
+        mocker.patch.object(ph, "UNANSWERED_RECHECK_SECONDS", -1)
+        remote = mocker.patch.object(
+            client, "_get_flags_decision", return_value={"flags": {}}
+        )
+
+        for _ in range(2):
+            await ph.evaluate_flag("copilot-sdk", "u-1", default=True)
+
+        assert remote.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_one_posthog_answers_is_asked_about_every_time(self, mocker, client):
+        """As a flag in PostHog's newer config format is: the definitions SDKs
+        poll leave it out, and only /flags evaluates it."""
+        remote = mocker.patch.object(
+            client,
+            "_get_flags_decision",
+            return_value={
+                "flags": {
+                    "copilot-skills": FeatureFlag.from_value_and_payload(
+                        "copilot-skills", False, None
+                    )
+                }
+            },
+        )
+
+        reads = [
+            await ph.evaluate_flag("copilot-skills", "u-1", default=True)
+            for _ in range(2)
+        ]
+
+        assert reads == [(False, True)] * 2
+        assert remote.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_flag_defined_since_is_read_from_its_definition(
+        self, mocker, client
+    ):
+        """Creating a default-on flag switched off turns its feature off at the
+        next definitions poll, not when PostHog's earlier answer goes stale."""
+        remote = mocker.patch.object(
+            client, "_get_flags_decision", return_value={"flags": {}}
+        )
+        await ph.evaluate_flag("copilot-skills", "u-1", default=True)
+
+        client.feature_flags = [
+            _rolled_out("hire-experts", 100),
+            {**_rolled_out("copilot-skills", 100), "id": 2, "active": False},
+        ]
+
+        assert await ph.evaluate_flag("copilot-skills", "u-1", default=True) == (
+            False,
+            True,
+        )
+        assert remote.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_every_read_asks_while_the_definitions_are_unknown(
+        self, mocker, client
+    ):
+        mocker.patch.object(ph, "_definition_cache", None)
+        client.feature_flags = []
+        remote = mocker.patch.object(
+            client, "_get_flags_decision", return_value={"flags": {}}
+        )
+
+        for _ in range(2):
+            await ph.evaluate_flag("copilot-sdk", "u-1", default=True)
+
+        assert remote.call_count == 2
 
 
 def _rolled_out(key: str, percentage: int, payload: str | None = None) -> dict:

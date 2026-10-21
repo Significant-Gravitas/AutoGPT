@@ -182,7 +182,10 @@ export function SelectedRunView({
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
-                        <RunOutputs outputs={run.outputs as any} />
+                        <RunOutputs
+                          outputs={run.outputs as any}
+                          hiddenFromReplay
+                        />
                       ) : (
                         <Text variant="body" className="text-neutral-600">
                           No output from this run.

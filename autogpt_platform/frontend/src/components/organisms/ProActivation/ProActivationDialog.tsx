@@ -92,7 +92,6 @@ export function ProActivationDialog({ activation }: Props) {
                 disabled={isBusy || refreshTerms}
                 loading={isBusy}
                 onClick={confirm}
-                unmask={retryConsent}
               >
                 {retryConsent
                   ? "Retry same confirmation"

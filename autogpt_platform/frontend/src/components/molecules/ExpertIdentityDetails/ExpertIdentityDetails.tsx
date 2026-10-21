@@ -57,7 +57,6 @@ export function ExpertIdentityDetails({
           as={size === "page" ? "h1" : "span"}
           variant={compact ? "body-medium" : "lead-semibold"}
           tone="primary"
-          unmask={false}
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
@@ -72,7 +71,6 @@ export function ExpertIdentityDetails({
             as="span"
             variant="body"
             tone="secondary"
-            unmask={false}
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
@@ -117,7 +115,6 @@ export function ExpertIdentityDetails({
           as="span"
           variant="small"
           tone="secondary"
-          unmask={false}
           className={cn("truncate leading-4", areaClassName)}
           title={area}
         >

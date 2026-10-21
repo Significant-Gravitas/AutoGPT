@@ -400,8 +400,14 @@ class TestClientWiring:
         assert kwargs["enable_local_evaluation"] is False
 
 
-class TestDefaultBackendIsUntouched:
-    """`launchdarkly` is the default, and it reaches none of this."""
+class TestLaunchDarklyBackendIsUntouched:
+    """`launchdarkly` reaches none of this."""
+
+    @pytest.fixture(autouse=True)
+    def launchdarkly(self, mocker):
+        mocker.patch.object(
+            ff.settings.config, "feature_flag_backend", FeatureFlagBackend.LAUNCHDARKLY
+        )
 
     @pytest.fixture
     def ld_client(self, mocker):
@@ -418,13 +424,8 @@ class TestDefaultBackendIsUntouched:
             return_value=(context, True),
         )
 
-    def test_the_default_flag_backend_is_launchdarkly(self):
-        assert (
-            ff.settings.config.feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
-        )
-
     @pytest.mark.asyncio
-    async def test_the_default_builds_no_definition_cache(
+    async def test_a_read_builds_no_definition_cache(
         self, mocker, ld_client, user_context
     ):
         build = mocker.patch.object(ph, "get_flag_definition_cache")
@@ -434,6 +435,7 @@ class TestDefaultBackendIsUntouched:
         build.assert_not_called()
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestAgainstTheRealSDK:
     """The SDK's own poll, driven through the provider."""
 
