@@ -22,7 +22,7 @@ from backend.api.features.account_deletion.email_opt_out import (
 )
 from backend.data import db
 from backend.data.notifications import AudienceAction, NotificationResult
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 MODULE = "backend.api.features.account_deletion.email_opt_out"
 # The MailerLite unsubscribe is queued by the opt-out helper in data/user.py.
@@ -180,7 +180,7 @@ async def test_a_mailerlite_queueing_failure_is_logged_not_raised(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_unknown_account_raises(accounts: tuple[str, str], queued: AsyncMock):
-    with pytest.raises(DatabaseError):
+    with pytest.raises(NotFoundError):
         await stop_account_emails(str(uuid4()))
 
     queued.assert_not_awaited()

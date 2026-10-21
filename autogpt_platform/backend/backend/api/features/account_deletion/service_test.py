@@ -96,7 +96,9 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
         USER_ID, AccountDeletionSource.SETTINGS
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
-    steps.send_account_deleted_email.assert_awaited_once_with(EMAIL)
+    steps.send_account_deleted_email.assert_awaited_once_with(
+        EMAIL, AccountDeletionSource.SETTINGS
+    )
     steps.mark_confirmation_sent.assert_awaited_once_with(USER_ID)
     steps.capture_anonymous.assert_called_once_with(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
@@ -110,6 +112,18 @@ async def test_the_paywall_is_recorded_as_the_surface(steps: MagicMock):
 
     _, properties = steps.capture_anonymous.call_args.args
     assert properties == {"plan_state": "pro", "surface": "paywall"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source", [AccountDeletionSource.SETTINGS, AccountDeletionSource.PAYWALL]
+)
+async def test_the_confirmation_email_is_told_the_source(
+    steps: MagicMock, source: AccountDeletionSource
+):
+    await _delete(source)
+
+    steps.send_account_deleted_email.assert_awaited_once_with(EMAIL, source)
 
 
 @pytest.mark.asyncio
@@ -301,7 +315,7 @@ async def test_a_stalled_confirmation_email_does_not_hold_the_request(
 ):
     mocker.patch(f"{MODULE}.CONFIRMATION_EMAIL_TIMEOUT_SECONDS", 0.05)
 
-    async def stall(email: str) -> None:
+    async def stall(email: str, source: AccountDeletionSource) -> None:
         await asyncio.Event().wait()
 
     steps.send_account_deleted_email.side_effect = stall

@@ -2024,7 +2024,7 @@ async def test_unsubscribe_error_does_not_repeat_the_token():
     never expires."""
     token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    with pytest.raises(DatabaseError) as exc:
+    with pytest.raises(ValueError) as exc:
         await user_module.unsubscribe_user_by_token(token)
 
     assert token not in str(exc.value)

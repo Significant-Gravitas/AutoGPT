@@ -169,10 +169,7 @@ export function useAgentRunModal(
           // Simulate goes through the same mutation as Run; only a real run
           // is an activation.
           if (!variables.data.dry_run) {
-            trackAgentRunGoal(
-              { id: agent.graph_id, name: agent.name },
-              "library",
-            );
+            trackAgentRunGoal(agent.graph_id, "library");
           }
           setIsOpen(false);
         }

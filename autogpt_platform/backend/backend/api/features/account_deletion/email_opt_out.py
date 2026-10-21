@@ -31,9 +31,10 @@ async def stop_account_emails(user_id: str) -> None:
     out of every later MailerLite write, and an unsubscribe is queued so
     MailerLite stops mailing a subscriber it already has.
 
-    Idempotent. Database errors propagate; a failure to queue the MailerLite
-    unsubscribe is logged and does not raise, since the stored opt-out
-    already blocks every other MailerLite write.
+    Idempotent. An unknown account raises NotFoundError and database errors
+    propagate; a failure to queue the MailerLite unsubscribe is logged and
+    does not raise, since the stored opt-out already blocks every other
+    MailerLite write.
     """
     current = await get_user_notification_preference(user_id)
     await update_user_notification_preference(

@@ -62,7 +62,8 @@ is not retried, and neither the scheduler nor the webhook ingress checks for a
 closed account. It must also delete the user's auth identities with the User
 row, or the auth-identity monitor re-creates the User. For a row whose
 ``confirmationSentAt`` is still null it must send ``send_account_deleted_email``
-before it erases the User row (the address goes with it), then set the column.
+(with the row's ``source``) before it erases the User row (the address goes
+with it), then set the column.
 
 Neither the typed email nor the account's email is ever logged.
 """
@@ -135,7 +136,7 @@ async def delete_account(
     await _revoke_and_stop(user_id)
     if not await _close(user_id, source):
         return
-    await _send_confirmation(user_id, user.email)
+    await _send_confirmation(user_id, user.email, source)
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
@@ -189,12 +190,14 @@ async def _close(user_id: str, source: AccountDeletionSource) -> bool:
     return closed
 
 
-async def _send_confirmation(user_id: str, email: str) -> None:
+async def _send_confirmation(
+    user_id: str, email: str, source: AccountDeletionSource
+) -> None:
     """Best effort: the account is already closed. One that did not go out
     stays unmarked on the request row, for the erasure routine to send."""
     try:
         await asyncio.wait_for(
-            send_account_deleted_email(email),
+            send_account_deleted_email(email, source),
             timeout=CONFIRMATION_EMAIL_TIMEOUT_SECONDS,
         )
         await mark_confirmation_sent(user_id)

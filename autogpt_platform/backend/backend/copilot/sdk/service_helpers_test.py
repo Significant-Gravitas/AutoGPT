@@ -2646,3 +2646,21 @@ class TestCompressionFailureIsReportedAsADrop:
         assert stats.dropped is True
         assert stats.messages_before == 3
         assert stats.tokens_after is None
+
+
+class TestStampPostHogTrace:
+    def test_the_turns_posthog_trace_is_stamped_before_the_end_of_turn_save(self):
+        """A rating of the reply names its PostHog trace from this stamp
+        (``ai_spans.stamp_turn_trace_id``). The turn handler is too large to
+        drive in a unit test, so pin at the source that the stamp runs before
+        the save that persists it."""
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        src = inspect.getsource(stream_chat_completion_sdk)
+        stamped_at = src.index(
+            "stamp_turn_trace_id(session.messages, pre_turn_message_count)"
+        )
+        saved_at = src.index("await asyncio.shield(upsert_chat_session(session))")
+        assert stamped_at < saved_at

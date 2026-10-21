@@ -10,6 +10,7 @@ import {
 import { PromptInputTextarea } from "@/components/ai-elements/prompt-input";
 import { parseCredentialMentions } from "./helpers";
 import { isKey } from "@/lib/keyboard";
+import { isTouchDevice } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { MentionInput } from "../ChatInput/useChatMentions";
 import { CredentialMentionBadge } from "./CredentialMentionBadge";
@@ -69,6 +70,7 @@ export function CredentialMentionEditor({
     (part) => typeof part !== "string",
   );
   const wasRich = useRef(rich);
+  const hasFocus = useRef(false);
   const pendingSelection = useRef<PendingSelection | null>(null);
   const {
     editorRef,
@@ -83,7 +85,11 @@ export function CredentialMentionEditor({
     const input = document.getElementById(inputId);
     const pending = pendingSelection.current;
     pendingSelection.current = null;
-    if (input && wasRich.current !== rich) {
+    if (
+      input &&
+      wasRich.current !== rich &&
+      (!isTouchDevice() || hasFocus.current)
+    ) {
       input.focus();
       if (pending?.value === value) restoreSelection(input, pending);
     }
@@ -91,6 +97,15 @@ export function CredentialMentionEditor({
     if (rich && editorRef.current)
       onInputReady?.(mentionInputFor(editorRef.current));
   });
+
+  function handleFocus() {
+    hasFocus.current = true;
+  }
+
+  function handleBlur() {
+    hasFocus.current = false;
+    onBlur?.();
+  }
 
   function handleInput() {
     const editor = editorRef.current;
@@ -116,7 +131,10 @@ export function CredentialMentionEditor({
     onKeyDown(event);
     if (event.defaultPrevented || !isKey(event, "Enter")) return;
     event.preventDefault();
-    if (event.shiftKey) document.execCommand("insertText", false, "\n");
+    // Like the plain textarea: on a phone Enter adds a line and the send
+    // button sends.
+    if (event.shiftKey || isTouchDevice())
+      document.execCommand("insertText", false, "\n");
     else event.currentTarget.closest("form")?.requestSubmit();
   }
 
@@ -140,7 +158,8 @@ export function CredentialMentionEditor({
         onChange={handleTextareaChange}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        onBlur={onBlur}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         onMultilineChange={onMultilineChange}
         disabled={disabled}
         placeholder={placeholder}
@@ -167,7 +186,8 @@ export function CredentialMentionEditor({
         onPaste={handlePaste}
         onCompositionStart={onCompositionStart}
         onCompositionEnd={onCompositionEnd}
-        onBlur={onBlur}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         className={cn(
           "max-h-48 min-h-10 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-3 py-2 text-left text-base leading-7 outline-none empty:before:pointer-events-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)]",
           disabled && "cursor-not-allowed opacity-50",

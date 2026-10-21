@@ -14,7 +14,7 @@ from concurrent.futures import Future
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -42,6 +42,7 @@ from backend.api.features.onboarding_dump.retention import (
     purge_expired_recordings,
 )
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -381,6 +382,14 @@ async def _execute_graph(**kwargs):
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+def execute_held_wake(user_id: str, session_id: str):
+    """Start the turn that carries a chat's answered cards."""
+    # Deferred: the gate package imports this module (``gate/references.py``).
+    from backend.copilot.gate.held import wake
+
+    run_async(wake(user_id, session_id))
 
 
 def execute_copilot_turn(**kwargs):
@@ -832,6 +841,12 @@ async def _tell_owner_why_skipped(
         now=datetime.now(tz=timezone.utc),
         run=run,
         user_timezone=args.user_timezone,
+        # A routine's every fire time, not just this job's.
+        crons=(
+            list(routine.crons)
+            if routine is not None
+            else [args.cron] if args.cron else None
+        ),
     )
     if notice is None:
         return
@@ -1693,7 +1708,10 @@ def execute_nightly_batch_sync(
 
 
 def _submit_nightly_batch(
-    user_id: str, expert_id: str | None = None
+    user_id: str,
+    expert_id: str | None = None,
+    *,
+    trigger: Literal["cron", "admin"] = "cron",
 ) -> "NightlyBatchResult | None":
     """Flag-gated nightly batch-family fan-out of one scope, outcome logged.
 
@@ -1714,7 +1732,8 @@ def _submit_nightly_batch(
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
     Returns ``None`` only when the runtime flag gate short-circuits
-    before the submitter runs.
+    before the submitter runs. ``trigger`` is what the dream pass's
+    record says started it: the cron, or the admin wrapper.
     """
     from backend.copilot.dream.nightly_batch import (
         NightlyBatchResult,
@@ -1731,7 +1750,7 @@ def _submit_nightly_batch(
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id, expert_id=expert_id),
+        run_nightly_batch_submit(user_id, expert_id=expert_id, trigger=trigger),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
     log_nightly_outcome(scope, result)
@@ -1846,7 +1865,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
     try:
         # The admin trigger bypasses the registry gate of the cron body:
         # it runs the account's pass whatever state its scope row is in.
-        result = _submit_nightly_batch(user_id)
+        result = _submit_nightly_batch(user_id, trigger="admin")
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1929,8 +1948,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
 
-def execute_dream_pass_with_status(user_id: str, job_id: str):
-    """Run the dream pass in isolation and record JobStatus transitions."""
+def execute_dream_pass_with_status(user_id: str, job_id: str, force: bool = False):
+    """Run the dream pass in isolation and record JobStatus transitions.
+
+    ``force`` has the pass's guard expire a fresh open pass of the account
+    instead of skipping behind it (the admin trigger's ``?force=true``)."""
     from backend.copilot.dream.job_status import (
         mark_complete,
         mark_errored,
@@ -1953,7 +1975,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id, status_id=job_id),
+            execute_dream_pass(user_id, status_id=job_id, trigger="admin", force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -2015,7 +2037,9 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
         # a failed dream as a successful one.
         try:
             run_async(
-                mark_errored(kind="dream_pass", job_id=job_id, error=result.error),
+                mark_errored(
+                    kind="dream_pass", job_id=job_id, error=result.error, result=result
+                ),
                 timeout=10,
             )
         except Exception:
@@ -2323,6 +2347,79 @@ def erase_closed_accounts():
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
+
+
+# The dream modules import the batch executor, whose package imports this
+# module, so the dream jobs below import them where they run, as the other
+# dream job bodies in this module do.
+
+
+def execute_dream_pass_reaper() -> None:
+    """Close the dream passes of every user that outlived their lease
+    (``copilot/dream/reaper.py``). The run bounds itself, and that budget is
+    what stops it: ``run_async``'s timeout frees the job thread should the
+    event loop stall, but does not cancel the run."""
+    from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS, reap_expired_passes
+
+    run_async(reap_expired_passes(), timeout=REAPER_BUDGET_SECONDS + 30)
+
+
+def execute_dream_pass_retention() -> None:
+    """Delete the closed dream passes past their retention
+    (``copilot/dream/retention.py``), bounded the same way."""
+    from backend.copilot.dream.retention import (
+        RETENTION_BUDGET_SECONDS,
+        delete_expired_records,
+    )
+
+    run_async(
+        delete_expired_records(config.dream_pass_retention_days),
+        timeout=RETENTION_BUDGET_SECONDS + 60,
+    )
+
+
+class _SystemJobs(Protocol):
+    """The call the dream pass jobs make on the scheduler, typed:
+    ``BackgroundScheduler.add_job`` itself is unannotated."""
+
+    def add_job(
+        self,
+        func: Callable[[], None],
+        trigger: str | CronTrigger,
+        *,
+        id: str,
+        replace_existing: bool,
+        max_instances: int,
+        jobstore: str,
+        coalesce: bool = ...,
+        minutes: int = ...,
+    ) -> JobObj: ...
+
+
+def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
+    """The two jobs over every user's DreamPass rows, registered once at
+    start like the other system jobs: the reaper every
+    ``REAPER_INTERVAL_MINUTES``, retention weekly (Sunday 05:30 UTC)."""
+    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
+
+    scheduler.add_job(
+        execute_dream_pass_reaper,
+        id="dream_pass_reaper",
+        trigger="interval",
+        minutes=REAPER_INTERVAL_MINUTES,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        jobstore=Jobstores.EXECUTION.value,
+    )
+    scheduler.add_job(
+        execute_dream_pass_retention,
+        CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
+        id="dream_pass_retention",
+        replace_existing=True,
+        max_instances=1,
+        jobstore=Jobstores.EXECUTION.value,
+    )
 
 
 def ensure_embeddings_coverage():
@@ -2844,6 +2941,15 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Load the block registry before serving. Otherwise the first add-schedule
+        # loads it inside graph validation, and the scheduler freezes meanwhile.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -3100,6 +3206,10 @@ class Scheduler(AppService):
                 max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
+
+            # Dream passes: close those that outlived their lease, and delete
+            # the closed ones past their retention.
+            _register_dream_pass_jobs(self.scheduler)
 
             # Schedule Index Reconcile - Every 24 hours
             # Safety net for the best-effort index writes: re-adds rows a
@@ -3603,6 +3713,45 @@ class Scheduler(AppService):
         self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         self._invalidate_jobs_cache()
         return True
+
+    @expose
+    def update_copilot_turn_cron(
+        self, schedule_id: str, user_id: str, cron: str
+    ) -> CopilotTurnJobInfo:
+        """Give a repeating follow-up a new cadence, in place.
+
+        The job keeps its id, which is what its failure streak, its notes and
+        Resume all name it by. A paused one stays paused: changing how often it
+        runs is not the same thing as starting it again. A routine's jobs are
+        not changed here; its row owns their crons.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
+        if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
+            raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
+        if info.routine_id is not None:
+            raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+        # The zone the dialog showed its times in: a follow-up saved before
+        # user_timezone existed keeps its zone on the trigger alone.
+        trigger = _build_trigger(
+            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
+        )
+        args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
+            update={"cron": cron}
+        )
+        changes: dict[str, object] = {
+            "trigger": trigger,
+            "kwargs": args.model_dump(mode="json"),
+        }
+        if job.next_run_time is not None:
+            changes["next_run_time"] = trigger.get_next_fire_time(
+                None, datetime.now(timezone.utc)
+            )
+        logger.info(f"Changing the cadence of job {schedule_id}")
+        updated = self.scheduler.modify_job(
+            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+        )
+        self._invalidate_jobs_cache()
+        return CopilotTurnJobInfo.from_db(args, updated)
 
     @expose
     def get_graph_execution_schedules(
@@ -4648,6 +4797,23 @@ class Scheduler(AppService):
         )
         return result.model_dump(mode="json")
 
+    @expose
+    def schedule_held_wake(
+        self, user_id: str, session_id: str, delay_seconds: float
+    ) -> None:
+        """Wake the chat's answered cards in *delay_seconds*. Keyed by chat, so
+        each later answer moves the one job, and stored, so it runs after a
+        restart however late."""
+        self.scheduler.add_job(
+            execute_held_wake,
+            kwargs={"user_id": user_id, "session_id": session_id},
+            trigger="date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=delay_seconds),
+            id=f"held_wake_{session_id}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+        )
+
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
     # The ``schedule_immediate_*`` methods schedule the matching
@@ -4688,14 +4854,17 @@ class Scheduler(AppService):
         return {"scheduled": True, "job_id": job_id, "kind": "nightly"}
 
     @expose
-    def schedule_immediate_dream_pass(self, user_id: str, job_id: str) -> dict:
-        """Schedule a one-shot dream pass run keyed by ``job_id``."""
+    def schedule_immediate_dream_pass(
+        self, user_id: str, job_id: str, force: bool = False
+    ) -> dict[str, Any]:
+        """Schedule a one-shot dream pass run keyed by ``job_id``; ``force``
+        goes to the pass's guard (see ``execute_dream_pass_with_status``)."""
         import datetime as _dt
 
         scheduler_job_id = f"adhoc_dream_{job_id}"
         self.scheduler.add_job(
             execute_dream_pass_with_status,
-            kwargs={"user_id": user_id, "job_id": job_id},
+            kwargs={"user_id": user_id, "job_id": job_id, "force": force},
             trigger="date",
             run_date=_dt.datetime.now(_dt.timezone.utc),
             id=scheduler_job_id,
@@ -4778,6 +4947,7 @@ class SchedulerClient(AppServiceClient):
     )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
+    update_copilot_turn_cron = endpoint_to_async(Scheduler.update_copilot_turn_cron)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules
@@ -4845,3 +5015,4 @@ class SchedulerClient(AppServiceClient):
     schedule_immediate_community_rebuild = endpoint_to_async(
         Scheduler.schedule_immediate_community_rebuild
     )
+    schedule_held_wake = endpoint_to_async(Scheduler.schedule_held_wake)

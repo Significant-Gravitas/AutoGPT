@@ -12,6 +12,7 @@ import {
   PlugSocketIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { RunLessOftenDialog } from "./components/RunLessOftenDialog/RunLessOftenDialog";
 import type { NoticeAction, ScheduledChatNotice } from "./helpers";
 import { useScheduledChatNoticeCard } from "./useScheduledChatNoticeCard";
 
@@ -48,6 +49,18 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
           href={action.href}
           variant="secondary"
           size="small"
+        >
+          {action.label}
+        </Button>
+      );
+    }
+    if (action.kind === "run_less_often") {
+      return (
+        <Button
+          key="run-less-often"
+          variant="secondary"
+          size="small"
+          onClick={() => card.setLessOftenOpen(true)}
         >
           {action.label}
         </Button>
@@ -96,6 +109,13 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
           ) : null}
         </div>
       </div>
+      {notice.scheduleKey && card.lessOftenOpen ? (
+        <RunLessOftenDialog
+          scheduleKey={notice.scheduleKey}
+          isOpen
+          setIsOpen={card.setLessOftenOpen}
+        />
+      ) : null}
       {card.connectProvider ? (
         <ConnectServiceDialog
           open

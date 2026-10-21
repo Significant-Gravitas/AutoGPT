@@ -33,6 +33,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 CLOSED = "closed-user"
 OPEN = "open-user"
+BANNED = "banned-user"
 
 
 def _request(headers: dict | None = None):
@@ -415,6 +416,61 @@ class TestGetUserIdAllowingClosed:
             await get_user_id_allowing_closed(request, _payload(OPEN))
 
         assert exc_info.value.status_code == 403
+
+
+@pytest.fixture
+def bans(backend, mocker: MockerFixture):
+    """Add the ban lookup: ``CLOSED`` is banned, as deleting an account bans
+    it, and ``BANNED`` is banned by an admin without being closed."""
+    db_mod = sys.modules["backend.data.db"]
+    mocker.patch.object(db_mod, "is_connected", Mock(return_value=True), create=True)
+    mocker.patch.object(sys.modules["backend.data"], "db", db_mod, create=True)
+    user_mod = types.ModuleType("backend.data.user")
+    is_banned = AsyncMock(side_effect=lambda user_id: user_id in (CLOSED, BANNED))
+    mocker.patch.object(user_mod, "is_user_banned", is_banned, create=True)
+    mocker.patch.dict(sys.modules, {"backend.data.user": user_mod})
+    return is_banned
+
+
+class TestBannedAndClosed:
+    """A deleted account is banned too. It is answered as closed, not banned,
+    and the deletion route still answers its repeat request."""
+
+    @staticmethod
+    def _client(user_id: str) -> TestClient:
+        app = FastAPI()
+
+        @app.get("/me")
+        def me(uid: str = Security(get_user_id)):
+            return {"user_id": uid}
+
+        @app.post("/account/deletion")
+        def delete_account(uid: str = Security(get_user_id_allowing_closed)):
+            return {"user_id": uid}
+
+        app.dependency_overrides[get_jwt_payload] = lambda: _payload(user_id)
+        return TestClient(app)
+
+    def test_a_deleted_account_is_told_it_is_closed(self, bans):
+        response = self._client(CLOSED).get("/me")
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "This account is closed."}
+
+    def test_the_deletion_route_still_answers_a_deleted_account(self, bans):
+        response = self._client(CLOSED).post("/account/deletion")
+
+        assert response.status_code == 200
+        assert response.json() == {"user_id": CLOSED}
+
+    @pytest.mark.parametrize(
+        "method, path", [("get", "/me"), ("post", "/account/deletion")]
+    )
+    def test_an_admin_ban_is_still_refused(self, bans, method, path):
+        response = getattr(self._client(BANNED), method)(path)
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "account_banned"
 
 
 class TestFailsOpen:

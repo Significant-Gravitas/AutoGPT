@@ -136,7 +136,9 @@ describe("DeleteAccountFlow confirm step", () => {
       "Your chats, Experts, workflows, files and memory are deleted.",
     );
     expect(
-      await screen.findByText("Your Pro plan is canceled and won't renew."),
+      await screen.findByText(
+        "Your Pro plan ends now. The rest of this billing period isn't refunded.",
+      ),
     ).toBeDefined();
     expect(dialog.textContent).toContain(
       "You'll be signed out right away. We finish removing your data within 30 days.",
@@ -160,10 +162,41 @@ describe("DeleteAccountFlow confirm step", () => {
       ).toEqual([
         "Your chats, Experts, workflows, files and memory are deleted.",
         "Connected apps like Gmail, Google Calendar and others are disconnected, and our access to them is revoked.",
-        "Your Max plan is canceled and won't renew.",
+        "Your Max plan ends now. The rest of this billing period isn't refunded.",
         "Your published workflows are removed from the Marketplace.",
       ]),
     );
+  });
+
+  test("a trial ends without a refund line", async () => {
+    mockAccountDeletionAPI({
+      subscription: subscriptionStatus({ tier: "TRIAL" }),
+    });
+    openConfirmStep();
+
+    expect(await screen.findByText("Your trial ends now.")).toBeDefined();
+    expect(screen.getByRole("dialog").textContent).not.toContain("refunded");
+  });
+
+  test.each([
+    [
+      "skills only",
+      { hasSkillListings: true },
+      "Your published skills are removed from the Marketplace.",
+    ],
+    [
+      "workflows and skills",
+      { hasListings: true, hasSkillListings: true },
+      "Your published workflows and skills are removed from the Marketplace.",
+    ],
+  ])("names %s in the Marketplace line", async (_, listings, line) => {
+    mockAccountDeletionAPI({
+      subscription: subscriptionStatus({ tier: "NO_TIER" }),
+      ...listings,
+    });
+    openConfirmStep();
+
+    expect(await screen.findByText(line)).toBeDefined();
   });
 
   test.each([

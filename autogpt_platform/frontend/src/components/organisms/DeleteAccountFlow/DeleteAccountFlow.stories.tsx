@@ -8,6 +8,7 @@ import {
   getGetV1ListCredentialsMockHandler200,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import {
+  getGetV2ListMySkillSubmissionsMockHandler200,
   getGetV2ListMySubmissionsMockHandler200,
   getGetV2ListMySubmissionsResponseMock200,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
@@ -77,6 +78,7 @@ function handlers({
         ? getGetV2ListMySubmissionsResponseMock200()
         : getGetV2ListMySubmissionsResponseMock200({ submissions: [] }),
     ),
+    getGetV2ListMySkillSubmissionsMockHandler200([]),
     getDeleteV1DeleteCredentialsMockHandler200({
       deleted: true,
       revoked: true,
