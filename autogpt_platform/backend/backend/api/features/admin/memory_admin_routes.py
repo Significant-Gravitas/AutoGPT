@@ -1031,7 +1031,8 @@ ADMIN_CANCEL_REASON = "cancelled by an admin"
 
 
 class DreamPassCancelRequest(BaseModel):
-    """Why an admin cancels a dream pass, kept as the pass's error."""
+    """Why an admin cancels a dream pass, for the log; the pass records
+    ``cancelled: by_admin``."""
 
     # Stripped before the length check, so a blank reason is refused.
     model_config = ConfigDict(str_strip_whitespace=True)

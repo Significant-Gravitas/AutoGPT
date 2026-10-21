@@ -2488,9 +2488,8 @@ async def _resolve_sdk_model_for_request(
 def _codex_gateway_usage(
     gateway: CodexAnthropicGateway,
 ) -> CodexTokenUsage | None:
-    """Read authoritative aggregate usage from a completed Codex gateway."""
-    result = gateway.result
-    return result.usage if result is not None else None
+    """Read authoritative usage, including interrupted Codex conversations."""
+    return gateway.usage
 
 
 def _reconciles_openrouter_cost(is_codex_transport: bool) -> bool:
