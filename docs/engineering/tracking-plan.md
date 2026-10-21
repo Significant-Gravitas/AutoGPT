@@ -7,7 +7,9 @@ DataFast; this page is the event contract.
 
 PostHog is the only place for what people do in the app. DataFast gets no
 in-app events (SECRT-2718): it keeps its script for visits and marketing
-attribution, the public `/tour` goals, the server-side `signup` goal
+attribution, the `/tour` goals (including `tour_cta_click` with
+`surface: marketplace` from the logged-out marketplace sidebar, which shares
+the tour's tracking), the server-side `signup` goal
 (`datafast-server.ts`), and the DataFast visitor and session ids that ride
 along to the backend (`X-Datafast-*` headers) and into Stripe Checkout
 metadata, so purchases are attributed to the channel that brought the visitor.

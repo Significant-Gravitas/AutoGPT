@@ -19,7 +19,7 @@ exists, so a change to one must be made in all four.
 | **Looker Studio** | GTM dashboards. | Only `analytics.*` views, via the `analytics_readonly` role. |
 | **PostHog** | Funnels, session replay, experiment bucketing and significance testing. | Frontend autocapture + the server-side activation events below. Can also read `analytics.*` as a data-warehouse source. |
 | **LaunchDarkly** | Feature gating (on/off, rollouts, targeting). Not for A/B measurement. | — |
-| **DataFast** | Marketing attribution: which channel brought a visitor who signed up and paid. No in-app events; PostHog has those. | Its script (visits, the public `/tour` goals), the server-side `signup` goal, and its visitor ids in Stripe Checkout metadata for purchases. |
+| **DataFast** | Marketing attribution: which channel brought a visitor who signed up and paid. No in-app events; PostHog has those. | Its script (visits, the `/tour` goals, and `tour_cta_click` from the logged-out marketplace sidebar), the server-side `signup` goal, and its visitor ids in Stripe Checkout metadata for purchases. |
 | **Admin dashboard** | Ops views: platform costs, copilot usage export, execution accuracy. | Backend admin routes. |
 | **Sentry** | Errors and stack traces behind `agent_run_finished` with `status: failed`. | — |
 
