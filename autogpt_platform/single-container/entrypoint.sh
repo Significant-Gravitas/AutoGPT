@@ -152,6 +152,12 @@ configure_environment() {
   export NOTIFICATIONMANAGER_HOST=127.0.0.1 PLATFORMLINKINGMANAGER_HOST=127.0.0.1
   export COPILOTEXECUTOR_HOST=127.0.0.1 COPILOTCHATBRIDGE_HOST=127.0.0.1
   export AGENT_API_HOST=127.0.0.1 WEBSOCKET_SERVER_HOST=127.0.0.1
+  # The key the services require from each other on internal calls. Only the
+  # services in this container use it, so every boot makes a new one; a value
+  # the operator sets is kept.
+  INTERNAL_API_KEY="${INTERNAL_API_KEY:-$("${AUTOGPT_PYTHON}" -I -c 'import secrets; print(secrets.token_urlsafe(36))')}"
+  [[ -n "${INTERNAL_API_KEY}" ]] || fatal "could not generate INTERNAL_API_KEY"
+  export INTERNAL_API_KEY
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.

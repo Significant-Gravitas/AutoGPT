@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from swap_proxy import source as source_module
+from swap_proxy.settings import Settings
 from swap_proxy.source import BackendCredentialSource, SourceUnavailable
 
 TOKEN = "ghp_a-real-looking-token"
@@ -34,6 +35,45 @@ def _ok(path, body):
             "allowed_hosts": ["github.com", "api.github.com"],
         },
     )
+
+
+def _authorization_seen(api_key: str = ""):
+    seen: list[str | None] = []
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return _ok(request.url.path, json.loads(request.content or b"{}"))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+    return BackendCredentialSource("http://backend:8012/", client, api_key), seen
+
+
+async def test_every_call_carries_the_internal_key():
+    source, seen = _authorization_seen("internal-key")
+    await source.bound_names("api.github.com")
+    await source.resolve("user-a", "github", "api.github.com", "box-1")
+    assert seen == ["Bearer internal-key", "Bearer internal-key"]
+
+
+async def test_without_a_key_no_authorization_is_sent():
+    source, seen = _authorization_seen()
+    await source.bound_names("api.github.com")
+    await source.resolve("user-a", "github", "api.github.com", "box-1")
+    assert seen == [None, None]
+
+
+async def test_the_key_is_the_backends_own_setting(monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "shared-key")
+    seen: list[str | None] = []
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return _ok(request.url.path, {})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+    source = BackendCredentialSource.from_settings(Settings(), client)
+    await source.bound_names("api.github.com")
+    assert seen == ["Bearer shared-key"]
 
 
 async def test_bound_names_come_from_the_bindings_table_asked_once():

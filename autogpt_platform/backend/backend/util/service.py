@@ -43,6 +43,7 @@ from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
+from backend.util.service_auth import internal_auth_dependencies, internal_auth_headers
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -550,7 +551,9 @@ class AppService(BaseAppService, ABC):
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
 
-        # Register the exposed API routes.
+        # Register the exposed API routes. Only these take the internal key:
+        # the health checks below and /metrics stay open to probes and scrapers.
+        auth = internal_auth_dependencies(self.service_name)
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
@@ -558,6 +561,7 @@ class AppService(BaseAppService, ABC):
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
+                    dependencies=auth,
                 )
         app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
         app.add_api_route(
@@ -705,6 +709,7 @@ def get_service_client(
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._headers = internal_auth_headers()
             self._connection_failure_count = 0
             self._last_client_reset = 0
             self._async_clients = {}  # None key for default async client
@@ -713,6 +718,7 @@ def get_service_client(
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
+                headers=self._headers,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
@@ -725,6 +731,7 @@ def get_service_client(
         def _create_async_client(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 base_url=self.base_url,
+                headers=self._headers,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls

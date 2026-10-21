@@ -21,6 +21,7 @@ from typing import Optional, Protocol
 
 import httpx
 
+from swap_proxy.settings import Settings
 from swap_proxy.swap import Credential, host_in_list
 
 logger = logging.getLogger(__name__)
@@ -48,13 +49,27 @@ class CredentialSource(Protocol):
 
 
 class BackendCredentialSource:
-    def __init__(self, base_url: str, client: Optional[httpx.AsyncClient] = None):
+    def __init__(
+        self,
+        base_url: str,
+        client: Optional[httpx.AsyncClient] = None,
+        api_key: str = "",
+    ):
         self._base_url = base_url.rstrip("/")
         self._client = client or httpx.AsyncClient(timeout=_TIMEOUT)
+        # The backend's internal service key, which its services require on
+        # every call once enforced (backend/util/service_auth.py).
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._bindings: Optional[tuple[float, dict[str, tuple[str, ...]]]] = None
         self._credentials: dict[
             tuple[str, str, str, str], tuple[float, Optional[Credential]]
         ] = {}
+
+    @classmethod
+    def from_settings(
+        cls, settings: Settings, client: Optional[httpx.AsyncClient] = None
+    ) -> "BackendCredentialSource":
+        return cls(settings.backend_url, client, settings.internal_api_key)
 
     async def bindings(self) -> dict[str, tuple[str, ...]]:
         now = time.monotonic()
@@ -112,7 +127,9 @@ class BackendCredentialSource:
 
     async def _call(self, method: str, body: dict):
         try:
-            response = await self._client.post(f"{self._base_url}/{method}", json=body)
+            response = await self._client.post(
+                f"{self._base_url}/{method}", json=body, headers=self._headers
+            )
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:

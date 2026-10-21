@@ -10,6 +10,7 @@ from backend.copilot.swap_credentials import NoLiveBox, SwapCredential
 from backend.copilot.swap_service import SwapCredentialService
 from backend.data.db_manager import DatabaseManager
 from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
+from backend.util.service_auth import internal_auth_headers
 
 _SWAP_METHODS = {"get_swap_bindings", "resolve_swap_credential"}
 
@@ -17,8 +18,11 @@ _SWAP_METHODS = {"get_swap_bindings", "resolve_swap_credential"}
 @pytest.fixture(scope="module")
 def client():
     # Not entered as a context manager: the lifespan (database, Redis) is not
-    # what is under test, the routes are.
-    return TestClient(SwapCredentialService().build_fastapi_app())
+    # what is under test, the routes are. Calls carry the internal key, as the
+    # swap proxy's do, whenever one is configured.
+    return TestClient(
+        SwapCredentialService().build_fastapi_app(), headers=internal_auth_headers()
+    )
 
 
 def _database_manager_methods() -> list[str]:
