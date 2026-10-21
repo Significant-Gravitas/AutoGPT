@@ -5,12 +5,10 @@ import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup } from "@testing-library/react";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 
-// React 18.3 only ships `cache` under the `react-server` export condition.
-// Vitest doesn't set that condition, so any module that imports `cache` from
-// "react" (e.g. server-only helpers wrapped for per-request memoization) blows
-// up with "cache is not a function" the moment its file is evaluated. Shim it
-// to identity here — the cache contract degrades to "no deduplication," which
-// is the correct semantics in a unit-test context.
+// Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
+// (lib/auth/client-ip.ts).
+process.env.TRUST_X_FORWARDED_FOR ??= "true";
+
 // Sign-ups look up their domain's MX (lib/auth/disposable-email.ts); no test
 // does that on the network.
 vi.mock("node:dns/promises", async (importActual) => {
@@ -23,6 +21,12 @@ vi.mock("node:dns/promises", async (importActual) => {
   return { ...actual, default: { ...actual, Resolver }, Resolver };
 });
 
+// React 18.3 only ships `cache` under the `react-server` export condition.
+// Vitest doesn't set that condition, so any module that imports `cache` from
+// "react" (e.g. server-only helpers wrapped for per-request memoization) blows
+// up with "cache is not a function" the moment its file is evaluated. Shim it
+// to identity here — the cache contract degrades to "no deduplication," which
+// is the correct semantics in a unit-test context.
 vi.mock("react", async (importActual) => {
   const actual = await importActual<typeof import("react")>();
   return {

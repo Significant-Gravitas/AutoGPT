@@ -213,3 +213,43 @@ describe("IP and email domain blocks", () => {
     ]);
   });
 });
+
+describe("the client IP", () => {
+  beforeEach(() => {
+    blocks.ips = ["203.0.113.7"];
+    blocks.domains = [];
+    loggedIps.length = 0;
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is not read from X-Forwarded-For off Vercel without TRUST_X_FORWARDED_FOR", async () => {
+    const handler = await createAuthHandler();
+
+    const signedUp = await signUp(handler, "a@example.com", "203.0.113.7");
+    const signedIn = await signIn(handler, "a@example.com", "203.0.113.7");
+
+    expect([signedUp.status, signedIn.status]).toEqual([200, 200]);
+    expect(loggedIps).toEqual([]);
+  });
+
+  it.each([
+    ["on Vercel", "VERCEL", "1"],
+    ["with TRUST_X_FORWARDED_FOR", "TRUST_X_FORWARDED_FOR", "true"],
+  ])("is read from X-Forwarded-For %s", async (_, name, value) => {
+    vi.stubEnv(name, value);
+    const handler = await createAuthHandler();
+
+    const response = await signUp(handler, "a@example.com", "203.0.113.7");
+
+    expect(await refusal(response)).toEqual({
+      status: 403,
+      code: SIGN_UP_BLOCKED_CODE,
+    });
+  });
+});

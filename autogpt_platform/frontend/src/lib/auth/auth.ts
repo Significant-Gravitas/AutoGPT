@@ -10,6 +10,7 @@ import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { getIPAddressOptions } from "./client-ip";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
@@ -272,6 +273,7 @@ export const auth = betterAuth({
     // sign-up takes as long whether or not the address already has an
     // account: see background-tasks.ts.
     backgroundTasks: { handler: runAfterResponse },
+    ipAddress: getIPAddressOptions(),
   },
   session: {
     modelName: "UserAuthSession",
