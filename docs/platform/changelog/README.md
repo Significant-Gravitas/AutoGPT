@@ -8,6 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [September 19](september-19-2026.md) | Meet your Experts: hire or raise an Expert, Expert pages, routines, Skills marketplace, Otto's desktop |
 | [August 21 – September 4](august-21-september-4-2026.md) | Chat shows its work, clickable answers, redesigned emails, memory settings |
 | [July 29 – August 13](july-29-august-13-2026.md) | Paste screenshots into chat, voice onboarding, Claude Sonnet 5, single-container self-hosting |
 | [July 15 – July 22](july-15-july-22-2026.md) | New sidebar, composer plus menu, Telegram, workflow-building mode |
