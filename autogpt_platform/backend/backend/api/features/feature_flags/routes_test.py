@@ -38,7 +38,7 @@ VISITOR = "0b6c1f3e-visitor-0001"
 USER_ID = "3f2b8c1e-7a4d-4e9b-9c2a-5d6e7f8a9b0c"
 PINNING = FrontendFlag.CHAT_PINNING.value
 HIRE_EXPERTS = FrontendFlag.HIRE_EXPERTS.value
-CHAT_SEARCH = FrontendFlag.CHAT_SEARCH.value
+PROGRESS_BAR = FrontendFlag.TASK_PROGRESS_BAR.value
 STREAM_SHADOW = FrontendFlag.COPILOT_STREAM_SHADOW.value
 
 app = fastapi.FastAPI()
@@ -125,7 +125,7 @@ async def test_a_flag_the_vendor_has_no_definition_of_is_answered_null():
 
     # Null serves the page's default now; left out, the page would wait for good.
     assert (
-        flags.get(CHAT_SEARCH, "left out"),
+        flags.get(PROGRESS_BAR, "left out"),
         flags.get(STREAM_SHADOW, "left out"),
         flags[HIRE_EXPERTS],
     ) == (None, None, True)
@@ -143,7 +143,7 @@ async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
     flags = (await _get_flags(USER_ID))["flags"]
 
     # A default here would read as an answer and 404 a gated route for a user who has it.
-    assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == (False, None)
+    assert (HIRE_EXPERTS in flags, flags.get(PROGRESS_BAR, "left out")) == (False, None)
 
 
 @pytest.mark.parametrize("ready_first", [False, True])
@@ -228,7 +228,7 @@ async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker
         client.shutdown()
 
     # hire-experts is defined but needs /flags; nothing else may ask.
-    assert (remote.call_count, flags.get(CHAT_SEARCH, "left out")) == (1, None)
+    assert (remote.call_count, flags.get(PROGRESS_BAR, "left out")) == (1, None)
 
 
 @pytest.mark.parametrize("loaded", [True, False])
@@ -251,7 +251,7 @@ async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
 
     # hire-experts is defined but needs /flags, which is down: left out either way.
     expected = (False, None) if loaded else (False, "left out")
-    assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == expected
+    assert (HIRE_EXPERTS in flags, flags.get(PROGRESS_BAR, "left out")) == expected
 
 
 async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(mocker):
@@ -285,13 +285,13 @@ async def test_an_env_override_forces_a_switch_but_never_a_payload(
     monkeypatch.setenv("FORCE_FLAG_COPILOT_VOICE_MODE", "true")
     monkeypatch.setenv("FORCE_FLAG_MARKETPLACE_SEARCH_TERMS", "true")
     # Forced although the vendor has no definition of it.
-    monkeypatch.setenv("FORCE_FLAG_CHAT_SEARCH", "true")
+    monkeypatch.setenv("FORCE_FLAG_TASK_PROGRESS_BAR", "true")
 
     flags = (await _get_flags(user_id, visitor_id))["flags"]
 
     assert flags[FrontendFlag.COPILOT_VOICE_MODE.value] is True
     assert flags[FrontendFlag.MARKETPLACE_SEARCH_TERMS.value] == terms
-    assert flags[CHAT_SEARCH] is True
+    assert flags[PROGRESS_BAR] is True
 
 
 async def test_a_consenting_visitor_is_bucketed_by_their_own_id():

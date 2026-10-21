@@ -118,8 +118,8 @@ def _stub_sdk(stack, session, gateway, client):
         client_side_effect=lambda **_: client,
     ):
         stack.enter_context(patch(target, **kwargs))
+    stack.enter_context(patch(f"{_SVC}.resolve_answered", new=_no_answered_cards))
     for name, value in (
-        ("resolve_answered", []),
         ("inject_user_context", None),
         ("build_session_context", ""),
         ("build_skills_update_notice", None),
@@ -130,6 +130,11 @@ def _stub_sdk(stack, session, gateway, client):
             patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
         )
     stack.enter_context(patch(f"{_SVC}.gateway_for_lease", return_value=gateway))
+
+
+async def _no_answered_cards(*_, **__):
+    return
+    yield
 
 
 def _record_accounting(stack):

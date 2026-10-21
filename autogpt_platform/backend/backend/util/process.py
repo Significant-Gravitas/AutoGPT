@@ -1,7 +1,9 @@
+import gc
 import logging
 import os
 import signal
 import sys
+import time
 from abc import ABC, abstractmethod
 from multiprocessing import Process, get_all_start_methods, set_start_method
 from typing import ClassVar, Optional
@@ -11,7 +13,12 @@ from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
 from backend.util.retry import stop_retry_loops
 from backend.util.secrets_guard import check_secrets
-from backend.util.settings import AppEnvironment, Config, set_service_name
+from backend.util.settings import (
+    AppEnvironment,
+    Config,
+    get_service_name,
+    set_service_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,3 +198,20 @@ class AppProcess(ABC):
 
         logger.info(f"[{self.service_name}] with PID {pid} stopped")
         self.process = None
+
+
+def freeze_startup_heap() -> None:
+    """Exempt every object alive now from later full garbage collections.
+
+    Call once startup is done. A full collection walks every tracked object
+    with the GIL held, and the ~2M the block registry leaves stopped all
+    threads for ~0.5 s each time, and for seconds on a swapping CI runner.
+    """
+    started = time.monotonic()
+    # Collect first: garbage still in the heap would otherwise be frozen in place.
+    gc.collect()
+    gc.freeze()
+    logger.info(
+        f"[{get_service_name()}] Froze {gc.get_freeze_count()} startup objects "
+        f"out of full garbage collections in {time.monotonic() - started:.1f}s"
+    )

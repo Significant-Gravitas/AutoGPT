@@ -2,11 +2,13 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import sys
+import threading
 import time
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import orjson
@@ -1002,6 +1004,74 @@ async def test_health_check_during_shutdown(test_service):
 # ============================================================================
 
 
+@pytest.mark.asyncio
+async def test_a_pooled_call_survives_a_server_freeze_past_its_idle_time(
+    keep_alive_service,
+):
+    """A call written into a pooled connection while the server is frozen past
+    that connection's idle time is answered, not reset (httpx.ReadError)."""
+    client = get_service_client(KeepAliveServiceClient)
+    await asyncio.gather(*(client.ping() for _ in range(3)))
+    # The service freezes from 4 s to 7 s of idle, across uvicorn's default 5 s
+    # keep-alive, which it must outlive; the calls arrive mid-freeze.
+    await get_service_client(KeepAliveServiceClient).hold_gil(after=4.0, seconds=3.0)
+    await asyncio.sleep(5.5)
+
+    assert await asyncio.gather(*(client.ping() for _ in range(3))) == [1, 1, 1]
+
+
+@pytest.fixture
+async def keep_alive_service():
+    service = KeepAliveService()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class KeepAliveService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 18998
+
+    @expose
+    def ping(self) -> int:
+        return 1
+
+    @expose
+    def hold_gil(self, after: float, seconds: float) -> int:
+        """Freeze every other thread for *seconds*, starting *after* seconds from
+        now, as a full gen2 GC does: the event loop is then idle in select()."""
+        timer = threading.Timer(after, _spin_holding_gil, args=(seconds,))
+        timer.daemon = True
+        timer.start()
+        return 1
+
+
+class KeepAliveServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return KeepAliveService
+
+    ping = endpoint_to_async(KeepAliveService.ping)
+    hold_gil = endpoint_to_async(KeepAliveService.hold_gil)
+
+
+def _spin_holding_gil(seconds: float) -> None:
+    # A spinning thread keeps the GIL until another has waited a whole switch
+    # interval for it, so an interval this long hands it over only at the end.
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(seconds)
+    try:
+        deadline = time.perf_counter() + seconds
+        while time.perf_counter() < deadline:
+            pass
+    finally:
+        sys.setswitchinterval(previous)
+
+
 class TestGetReturn:
     """Direct unit tests for DynamicClient._get_return typed-return contract."""
 
@@ -1239,3 +1309,34 @@ def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
     [request] = sent
     assert "sentry-trace" not in request.headers
     assert "baggage" not in request.headers
+
+
+async def test_an_app_service_freezes_its_heap_after_its_own_startup(mocker):
+    order: list[str] = []
+    mocker.patch("backend.util.service.redis_client.get_redis_async", AsyncMock())
+    mocker.patch("backend.util.service.redis_client.disconnect_async", AsyncMock())
+    mocker.patch(
+        "backend.util.service.freeze_startup_heap", lambda: order.append("freeze")
+    )
+    app = _StartupRecordingService(order).build_fastapi_app()
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert order == ["subclass startup", "freeze"]
+
+
+class _StartupRecordingService(AppService):
+    def __init__(self, order: list[str]):
+        super().__init__()
+        self.order = order
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+    @contextlib.asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        async with super().lifespan(app):
+            self.order.append("subclass startup")
+            yield

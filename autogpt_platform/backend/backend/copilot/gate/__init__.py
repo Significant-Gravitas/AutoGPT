@@ -3,7 +3,8 @@
 Ordering is the design, cheapest and most certain first:
 
 1. gate inactive                          -> ALLOW (today's behaviour)
-2. an approval for exactly these args     -> ALLOW, consumed single-use
+2. an approval for exactly these args     -> ALLOW, consumed single-use;
+   a proposal card's Approve of the id a confirm applies counts as one
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
    the tool's; a call that runs nothing never asks
 4. the user's rule on that subject in this chat -> allow, judge or ask
@@ -20,6 +21,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.context import get_current_envelope
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.copilot.trial_cost_context import capture_cost_context
@@ -28,6 +30,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
+from .card_approval import approved_on_card
 from .classifier import DecidedBy, Judgement, supervise
 from .headline import Headline
 from .policy import (
@@ -212,6 +215,8 @@ async def check_action(
         # The first call's card and stored call stand; re-storing would
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
+    if await approved_on_card(tool_name, args, user_id, session_id):
+        return Decision(allowed=True, approved=True, decided=True)
 
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)
@@ -448,7 +453,7 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
     typed = [
         strip_injected_context_for_display(message.content)
-        for message in session.messages[:upto]
+        for message in without_stored_first_turn_memory(session.messages[:upto])
         if message.role == "user"
         and message.content
         and not held.is_answer_row(message)
