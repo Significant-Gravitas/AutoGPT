@@ -290,7 +290,7 @@ class TelegramAdapter(WebhookAdapter):
             if not mentioned and not replied_to_bot:
                 return None
             channel_type = "channel"
-            bot_mentioned = True
+            bot_mentioned = mentioned
             if bot_username:
                 text = re.sub(
                     rf"@{re.escape(bot_username)}\b", "", text, flags=re.IGNORECASE

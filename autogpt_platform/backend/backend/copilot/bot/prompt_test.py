@@ -37,6 +37,15 @@ def test_clamp_prompt_keeps_the_tail_and_marks_the_cut():
     assert "OLD-CONTEXT" * 5000 not in clamped  # older context was dropped
 
 
+def test_clamp_prompt_keeps_the_header_of_an_oversized_message():
+    header = '[Discord · you were @mentioned · message from "B" (Discord user ID: 1) · post here with channel="2"]\n'
+    message = header + "OLD" * 20000 + "THE ACTUAL QUESTION"
+    clamped = clamp_prompt(message, MAX_BOT_MESSAGE_CHARS)
+    assert len(clamped) == MAX_BOT_MESSAGE_CHARS
+    assert clamped.startswith(header + _TRUNCATION_NOTICE)
+    assert clamped.endswith("THE ACTUAL QUESTION")
+
+
 def test_clamp_prompt_output_always_satisfies_bot_chat_request():
     # Regression: a long conversation's assembled prompt used to exceed the
     # request cap and raise a pydantic ValidationError mid-turn (surfaced to

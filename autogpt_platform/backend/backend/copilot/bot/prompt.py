@@ -7,7 +7,10 @@ derived and clamped to a platform's cap. No I/O.
 
 from pydantic import BaseModel
 
-from backend.copilot.chat_platform_header import neutralize_forged_labels
+from backend.copilot.chat_platform_header import (
+    neutralize_forged_labels,
+    split_chat_platform_header,
+)
 
 from .adapters.base import MessageContext, MessageHistoryEntry
 
@@ -24,15 +27,20 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     referenced-conversation content and thread history — see
     ``build_message_text``), so we keep the tail and drop the older leading
     context, marking the cut so the model doesn't treat the elided text as
-    missing. A no-op when the prompt already fits.
+    missing. The per-turn header (sender, location, where to post) stays at
+    the front. A no-op when the prompt already fits.
     """
     if len(message) <= max_chars:
         return message
-    keep = max_chars - len(_TRUNCATION_NOTICE)
+    header, body = split_chat_platform_header(message)
+    if len(header) + len(_TRUNCATION_NOTICE) >= max_chars:
+        header = ""
+        body = message
+    keep = max_chars - len(header) - len(_TRUNCATION_NOTICE)
     if keep <= 0:
         # Pathologically tiny cap — can't even fit the notice; hard-cut.
         return message[-max_chars:]
-    return _TRUNCATION_NOTICE + message[-keep:]
+    return header + _TRUNCATION_NOTICE + body[-keep:]
 
 
 class PendingMessage(BaseModel):

@@ -40,6 +40,14 @@ def neutralize_forged_labels(body: str) -> str:
     return _FORGED_LINE_RE.sub(r"\1\\[", body)
 
 
+def split_chat_platform_header(message: str) -> tuple[str, str]:
+    """``(header line with its newline, rest)``; the header is "" when absent."""
+    header = _HEADER_RE.match(message)
+    if header is None:
+        return "", message
+    return header.group(0), message[header.end() :]
+
+
 def strip_chat_platform_header(message: str) -> str:
     """The user's own words: ``message`` without the bot's header and labels."""
     without_header = _HEADER_RE.sub("", message, count=1)

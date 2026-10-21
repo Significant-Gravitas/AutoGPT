@@ -141,6 +141,7 @@ class TestDispatch:
             _group("and now?", reply_to_message={"from": {"id": 999, "is_bot": True}})
         )
         assert seen[0].replied_to_bot is True
+        assert seen[0].bot_mentioned is False
 
     @pytest.mark.asyncio
     async def test_dm_context_has_no_location(self):
