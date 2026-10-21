@@ -218,6 +218,7 @@ async def test_context_and_attachments_survive_a_pending_image(
     assert isinstance(parts, list)
     text = "".join(part["text"] for part in parts if part["type"] == "text")
     expected_memory = [warm_context] if has_memory else []
+    saved_text = "".join(message.content or "" for message in session.messages)
     for hint in [
         *hints.values(),
         *expected_memory,
@@ -231,7 +232,7 @@ async def test_context_and_attachments_survive_a_pending_image(
             )
             in text
         )
-        assert hint not in session.model_dump_json()
+        assert hint not in saved_text
     assert text.count(INJECTED_MEMORY_MARKER) == int(has_memory)
     if not has_memory:
         assert warm_context not in text

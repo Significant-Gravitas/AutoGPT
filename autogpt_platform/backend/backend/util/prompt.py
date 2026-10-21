@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Message prefixes for important system messages that should be protected during compression
 MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
+_IMAGE_TOKEN_ESTIMATE = 4096
 
 # ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
@@ -62,7 +63,8 @@ def _msg_tokens(msg: dict, enc) -> int:
         )
 
     # Count content tokens
-    content_tokens = _tok_len(msg.get("content") or "", enc)
+    content = msg.get("content")
+    content_tokens = 0 if isinstance(content, list) else _tok_len(content or "", enc)
 
     # Count tool call tokens for both OpenAI and Anthropic formats
     tool_call_tokens = 0
@@ -80,7 +82,6 @@ def _msg_tokens(msg: dict, enc) -> int:
                 )
 
     # Anthropic format: tool_use within content array
-    content = msg.get("content")
     if isinstance(content, list):
         for item in content:
             if isinstance(item, dict) and item.get("type") == "tool_use":
@@ -96,11 +97,11 @@ def _msg_tokens(msg: dict, enc) -> int:
                 # Count text block tokens (standard: "text" key, fallback: "content")
                 text_val = item.get("text") or item.get("content", "")
                 tool_call_tokens += _tok_len(text_val, enc)
+            elif isinstance(item, dict) and item.get("type") == "image_url":
+                tool_call_tokens += _IMAGE_TOKEN_ESTIMATE
             elif isinstance(item, dict) and "content" in item:
                 # Other content types with content field
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
-        # For list content, override content_tokens since we counted everything above
-        content_tokens = 0
 
     return WRAPPER + content_tokens + tool_call_tokens
 
@@ -206,7 +207,7 @@ def estimate_token_count(
     model: str = "gpt-4o",
 ) -> int:
     """
-    Return the true token count of *messages* when encoded for *model*.
+    Count text tokens for *model*, with a bounded estimate per image_url block.
 
     Parameters
     ----------
