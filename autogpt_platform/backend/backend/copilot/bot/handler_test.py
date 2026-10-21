@@ -501,7 +501,7 @@ class TestBatching:
         stream_calls: list[list] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             stream_calls.append(list(batch))
 
@@ -524,7 +524,7 @@ class TestBatching:
         seen: list[list] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             seen.append(list(batch))
             if len(seen) == 1:
@@ -1448,7 +1448,7 @@ class TestAttachments:
         captured: list[list[str] | None] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             captured.append(file_ids)
 

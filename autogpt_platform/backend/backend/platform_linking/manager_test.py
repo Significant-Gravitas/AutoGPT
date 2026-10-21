@@ -13,6 +13,7 @@ from .db import confirm_server_link, confirm_user_link
 from .manager import PlatformLinkingManager, PlatformLinkingManagerClient
 from .models import (
     BotChatRequest,
+    BotExpert,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     LinkType,
@@ -43,6 +44,7 @@ class TestManagerWiring:
             "start_chat_turn",
             "list_user_server_ids",
             "get_user_dm_id",
+            "list_user_experts",
         }
         for name in expected:
             assert hasattr(
@@ -395,3 +397,17 @@ class TestAdversarialConfirmRace:
         losses = [r for r in results if isinstance(r, LinkTokenExpiredError)]
         assert len(successes) == 1
         assert len(losses) == 1
+
+
+class TestListUserExpertsRpc:
+    @pytest.mark.asyncio
+    async def test_delegates_to_chat(self):
+        manager = PlatformLinkingManager()
+        experts = [BotExpert(id="e1", name="Bolt", role="Builder")]
+        with patch(
+            "backend.platform_linking.manager.list_user_experts",
+            new=AsyncMock(return_value=experts),
+        ) as listed:
+            result = await manager.list_user_experts(Platform.DISCORD, "u1", None)
+        assert result == experts
+        listed.assert_awaited_once_with(Platform.DISCORD, "u1", None)

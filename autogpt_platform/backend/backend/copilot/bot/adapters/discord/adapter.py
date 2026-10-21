@@ -24,6 +24,7 @@ from backend.copilot.bot.adapters.shared import (
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.options import TurnOptions
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
@@ -39,7 +40,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import choice_ui, commands, config, intro
+from . import ask_command, choice_ui, commands, config, intro
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -112,6 +113,7 @@ class DiscordAdapter(SocketAdapter):
 
         self._register_events()
         commands.register(self._tree, self._api)
+        ask_command.register(self._tree, self._api, self._dispatch_command)
 
     @property
     def platform_name(self) -> str:
@@ -612,6 +614,34 @@ class DiscordAdapter(SocketAdapter):
             )
             await self._on_message_callback(ctx, self)
 
+    async def _dispatch_command(
+        self,
+        interaction: discord.Interaction,
+        starter: discord.Message,
+        prompt: str,
+        options: TurnOptions,
+    ) -> None:
+        """Run a ``/autogpt`` turn as if ``starter`` were the user's message:
+        a channel threads off it, a DM or thread answers in place."""
+        if self._on_message_callback is None:
+            return
+        user = interaction.user
+        ctx = MessageContext(
+            platform="discord",
+            channel_type=_interaction_channel_type(interaction),
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            channel_id=str(starter.channel.id),
+            message_id=str(starter.id),
+            user_id=str(user.id),
+            username=user.display_name,
+            text=prompt,
+            # Invoking the command is an explicit call, like an @mention.
+            bot_mentioned=True,
+            mentionable_users=((user.display_name, str(user.id)),),
+            options=options,
+        )
+        await self._on_message_callback(ctx, self)
+
     async def _extract_attachments(
         self, message: discord.Message
     ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
@@ -1065,6 +1095,14 @@ class DiscordAdapter(SocketAdapter):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 return False
         return True
+
+
+def _interaction_channel_type(interaction: discord.Interaction) -> ChannelType:
+    if interaction.guild is None:
+        return "dm"
+    if isinstance(interaction.channel, discord.Thread):
+        return "thread"
+    return "channel"
 
 
 def _resolve_mentions(

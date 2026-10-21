@@ -19,6 +19,10 @@ from .chat import (
 from .models import BotChatRequest, Platform, TurnDenial, WorkspaceUploadRequest
 
 
+def _owns(answer: bool) -> AsyncMock:
+    return AsyncMock(return_value=answer)
+
+
 def _request(**overrides) -> BotChatRequest:
     defaults = dict(
         platform=Platform.DISCORD,
@@ -351,10 +355,16 @@ class TestStartChatTurn:
             ),
         ):
             mock_stream_registry.create_session = AsyncMock()
-            handle = await start_chat_turn(_request(session_id="expert-session"))
+            owns = _owns(True)
+            with patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=owns),
+            ):
+                handle = await start_chat_turn(_request(session_id="expert-session"))
 
         assert handle.session_id == "expert-session"
         mock_create.assert_not_awaited()
+        owns.assert_awaited_once_with("owner-1", "expert-1")
         assert mock_enqueue.await_args.kwargs["organization_id"] == "personal-org"
         assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
 
@@ -639,7 +649,9 @@ class TestEnsureChatSession:
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(session_id="cached")),
+                new=AsyncMock(
+                    return_value=MagicMock(session_id="cached", expert_id=None)
+                ),
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
@@ -731,6 +743,10 @@ class TestEnsureChatSession:
                 "backend.platform_linking.chat.create_chat_session",
                 new=AsyncMock(),
             ) as mock_create,
+            patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=_owns(True)),
+            ),
         ):
             result = await ensure_chat_session(
                 Platform.DISCORD,

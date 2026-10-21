@@ -8,6 +8,7 @@ from backend.copilot.prompting import NO_REPLY
 from backend.platform_linking.models import ChannelCard
 
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
+from .options import TurnOptions
 from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
 
 _MODULE = "backend.copilot.bot.turn_stream"
@@ -614,3 +615,33 @@ class TestApprovalCards:
         link = adapter.send_link.await_args
         assert link.args[1] == "⏸️ An action is waiting for approval."
         assert link.kwargs["link_url"] == "https://x/c"
+
+
+class TestTurnOptionsReachStreamChat:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "options,expert_id,model",
+        [
+            (None, None, None),
+            (TurnOptions(expert_id="e1", model="advanced"), "e1", "advanced"),
+        ],
+    )
+    async def test_options_forwarded(self, options, expert_id, model):
+        seen: dict = {}
+        api = MagicMock()
+
+        async def _stream(**kwargs):
+            seen.update(kwargs)
+            yield "ok"
+
+        api.stream_chat = _stream
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [("Bently", "user-1", "hi")],
+                _ctx(),
+                _adapter(),
+                "42",
+                options=options,
+            )
+        assert seen["expert_id"] == expert_id
+        assert seen["model"] == model

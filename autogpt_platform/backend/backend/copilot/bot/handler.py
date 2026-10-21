@@ -7,6 +7,7 @@ The streaming machinery itself lives in ``turn_stream``; prompt assembly in
 """
 
 import asyncio
+import dataclasses
 import logging
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,8 @@ from .attachments import (
     upload_attachments,
 )
 from .bot_backend import BotBackend
+from .expert_choice import resolve_turn_options
+from .options import TurnOptions, parse_turn_options
 from .prompt import build_message_text, build_thread_name
 from .turn_stream import TurnStreamer, send_denial
 
@@ -54,6 +57,9 @@ class TargetState(BaseModel):
     session_id: str | None = None
     # Turns woken by a card answered here, streamed before the next batch.
     follows: list[ChatTurnHandle] = Field(default_factory=list)
+    # Expert / model tier for the pending batch; a later message's choices
+    # override earlier ones, unset fields carry over.
+    options: TurnOptions = Field(default_factory=TurnOptions)
 
 
 class MessageHandler:
@@ -70,6 +76,7 @@ class MessageHandler:
         if ctx.follow is not None:
             await self._follow(ctx, ctx.follow, adapter)
             return
+        ctx = with_typed_options(ctx)
         # Skipped attachments (too large / failed download) count as content:
         # the user sent something and must hear why nothing happened.
         has_content = bool(
@@ -101,6 +108,11 @@ class MessageHandler:
 
         if not await self._ensure_linked(ctx, adapter):
             return
+
+        options = await resolve_turn_options(self._api, ctx, adapter)
+        if options is None:
+            return
+        ctx = dataclasses.replace(ctx, options=options)
 
         if not ctx.text.strip() and not ctx.attachments:
             # The content gate above guarantees skipped_attachments is
@@ -248,6 +260,7 @@ class MessageHandler:
                     platform_user_id=ctx.user_id,
                     platform_server_id=ctx.server_id,
                     session_id=await sessions.get_session(ctx.platform, target_id),
+                    expert_id=ctx.options.expert_id,
                 )
                 if result.denial is not None:
                     return None, result.denial
@@ -303,6 +316,7 @@ class MessageHandler:
         file_ids: list[str] | None = None,
         session_id: str | None = None,
         turn: ChatTurnHandle | None = None,
+        options: TurnOptions | None = None,
     ) -> None:
         await self._streamer.stream_batch(
             batch,
@@ -312,6 +326,7 @@ class MessageHandler:
             file_ids=file_ids,
             session_id=session_id,
             turn=turn,
+            options=options,
         )
 
     async def _enqueue_and_process(
@@ -331,6 +346,7 @@ class MessageHandler:
         # resolved the same session (serialised by _session_lock), so keep it.
         if session_id and state.session_id is None:
             state.session_id = session_id
+        state.options = state.options.merged(ctx.options)
         await self._process(ctx, adapter, target_id, state)
 
     async def _process(
@@ -355,9 +371,11 @@ class MessageHandler:
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
                 batch_session_id = state.session_id
+                batch_options = state.options
                 state.pending.clear()
                 state.pending_file_ids.clear()
                 state.session_id = None
+                state.options = TurnOptions()
                 if len(batch_file_ids) > MAX_TURN_FILE_IDS:
                     logger.warning(
                         "Dropping %d batched file(s) over the per-turn cap of %d",
@@ -372,6 +390,7 @@ class MessageHandler:
                     target_id,
                     file_ids=batch_file_ids,
                     session_id=batch_session_id,
+                    options=batch_options,
                 )
         finally:
             state.processing = False
@@ -455,3 +474,15 @@ class MessageHandler:
                 ctx.channel_id,
                 "Something went wrong setting up the link. Try again later.",
             )
+
+
+def with_typed_options(ctx: MessageContext) -> MessageContext:
+    """Strip leading ``expert=`` / ``mode=`` tokens off the message and merge
+    them over whatever the adapter already set (a slash command's fields)."""
+    typed, text = parse_turn_options(ctx.text)
+    if text is ctx.text:
+        return ctx
+    base = ctx.options
+    if typed.expert_name is not None:
+        base = base.model_copy(update={"expert_id": None})
+    return dataclasses.replace(ctx, text=text, options=base.merged(typed))
