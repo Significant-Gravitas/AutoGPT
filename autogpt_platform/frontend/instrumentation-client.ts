@@ -14,7 +14,8 @@ import {
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
-import { setupSessionReplay } from "@/lib/session-replay";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
+import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -46,20 +47,21 @@ Sentry.init({
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943).
+  // not read (BUILDER-943). URLs are masked last: the request logger's match
+  // needs the URL as it was requested.
   beforeSend(event) {
     stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : event;
+    return isNextRSCNavigationFallback(event) ? null : redactEventURLs(event);
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)
       ? null
-      : stripSpanPII(stripUserPII(event));
+      : stripSpanPII(stripUserPII(redactEventURLs(event)));
   },
-  beforeSendSpan: stripSpanDataPII,
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
   beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
@@ -114,4 +116,9 @@ Sentry.init({
   enableLogs: true,
 });
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export function onRouterTransitionStart(
+  ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
+) {
+  Sentry.captureRouterTransitionStart(...args);
+  holdReplayBackFor(args[0]);
+}
