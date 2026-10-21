@@ -5,6 +5,13 @@ sender and one set of properties. [Activation Metrics & Experiments](activation-
 explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
 DataFast; this page is the event contract.
 
+PostHog is the only place for what people do in the app. DataFast gets no
+in-app events (SECRT-2718): it keeps its script for visits and marketing
+attribution, the public `/tour` goals, the server-side `signup` goal
+(`datafast-server.ts`), and the DataFast visitor and session ids that ride
+along to the backend (`X-Datafast-*` headers) and into Stripe Checkout
+metadata, so purchases are attributed to the channel that brought the visitor.
+
 Event names follow the product analytics plan, *Every Second Counts* (owner:
 Toran), section "What we will record". Where that plan names an event for an
 action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
@@ -177,7 +184,7 @@ retried on the next tour visit in that session.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | — | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
@@ -278,8 +285,7 @@ retried on the next tour visit in that session.
 
 The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
 `checkout_started` → `payment_succeeded`, with `checkout_abandoned`
-as the way out. The onboarding paywall's DataFast goals (`paywall_view`,
-`paywall_checkout_cancelled`) keep firing alongside.
+as the way out.
 
 Browser events captured before PostHog captures (a page's mount effect on a
 full page load, such as the return from Stripe, runs before `posthog.init`
@@ -502,7 +508,7 @@ history PostHog already holds.
 | Event | Was sent by | Read instead |
 | --- | --- | --- |
 | `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
-| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
+| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
 | `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
 | `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
