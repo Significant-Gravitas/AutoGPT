@@ -248,23 +248,28 @@ class _Restyler(HTMLParser):
 
 
 class _NestingCounter(HTMLParser):
+    """Follows what bleach's parser does: ``<div/>`` opens a div, and an end tag
+    closes only an element that is open."""
+
     def __init__(self):
         super().__init__(convert_charrefs=False)
-        self.depth = 0
+        self.open: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _VOID_TAGS or tag in _CLOSED_BY_SIBLINGS:
             return
-        self.depth += 1
-        if self.depth > MAX_NESTING:
+        self.open.append(tag)
+        if len(self.open) > MAX_NESTING:
             raise ValueError(f"The HTML is nested more than {MAX_NESTING} levels deep.")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        pass
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag not in _VOID_TAGS and tag not in _CLOSED_BY_SIBLINGS:
-            self.depth = max(self.depth - 1, 0)
+        # At most MAX_NESTING entries, so the search stays cheap.
+        if tag in self.open:
+            while self.open.pop() != tag:
+                pass
 
 
 class _ImageSources(HTMLParser):

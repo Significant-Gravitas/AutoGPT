@@ -339,8 +339,14 @@ async def test_a_blank_subject_or_body_is_refused(postmark, subject, body, refus
 
 @pytest.mark.parametrize(
     "opening, closing",
-    # The second hides a closing tag in an attribute value, where bleach keeps it.
-    [("<div>", "</div>"), ("<div title='</div>'>", "</div>")],
+    # Each of the last three hides the nesting from a naive count: a closing tag
+    # in an attribute value, a self-closing div, an end tag for nothing open.
+    [
+        ("<div>", "</div>"),
+        ("<div title='</div>'>", "</div>"),
+        ("<div/>", ""),
+        ("<div></b>", ""),
+    ],
 )
 async def test_html_nested_too_deeply_is_refused(postmark, opening, closing):
     body = opening * 150 + "deep" + closing * 150
