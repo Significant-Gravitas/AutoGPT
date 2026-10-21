@@ -407,6 +407,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
