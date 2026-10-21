@@ -162,7 +162,10 @@ async def take_public_search_embedding_slot() -> bool:
     Fails closed on Redis trouble: the search still answers, ranked by text.
     Records one Sentry event a minute when the budget is
     ``PUBLIC_SEARCH_EMBEDDINGS_ALERT_PERCENT`` percent used, and one when it is spent.
+    A budget of 0 turns embeddings off: no slot, no count, no alert.
     """
+    if not public_search_embeddings_enabled():
+        return False
     now = datetime.now(UTC)
     bucket = int(now.timestamp()) // PUBLIC_SEARCH_WINDOW_SECONDS
     try:
@@ -188,6 +191,12 @@ async def take_public_search_embedding_slot() -> bool:
             "ranking by text alone until the next one",
         )
     return count <= limit
+
+
+def public_search_embeddings_enabled() -> bool:
+    """False when ``public_search_embeddings_per_minute`` is 0: store search then
+    always ranks by text alone."""
+    return settings.config.public_search_embeddings_per_minute > 0
 
 
 def _alert_embedding_budget(stage: str, message: str) -> None:

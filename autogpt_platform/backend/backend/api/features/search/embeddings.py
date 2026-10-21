@@ -24,7 +24,10 @@ from redis.exceptions import RedisClusterException, RedisError
 from tiktoken import encoding_for_model
 
 from backend.api.features.search.content_handlers import CONTENT_HANDLERS
-from backend.api.features.search.rate_limit import take_public_search_embedding_slot
+from backend.api.features.search.rate_limit import (
+    public_search_embeddings_enabled,
+    take_public_search_embedding_slot,
+)
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.data.redis_client import get_redis_async
 from backend.util.clients import get_openai_client
@@ -196,7 +199,9 @@ async def embed_query(query: str, *, public_search: bool = False) -> list[float]
     if cached := await _cached_query_embedding(key):
         return cached
     if public_search and not await take_public_search_embedding_slot():
-        if (refused := refused_public_queries.get()) is not None:
+        # A disabled budget never refills, so its text-ranked results may stay cached.
+        refused = refused_public_queries.get()
+        if refused is not None and public_search_embeddings_enabled():
             refused.append(query)
         raise PublicSearchBudgetSpent()
     embedding = await generate_embedding(query)

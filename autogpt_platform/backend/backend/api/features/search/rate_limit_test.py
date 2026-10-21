@@ -205,6 +205,26 @@ async def test_store_search_reports_its_embedding_budget_once_nearly_spent_and_o
 
 
 @pytest.mark.asyncio
+async def test_a_disabled_embedding_budget_takes_no_slot_and_raises_no_alert(
+    frozen_minute, monkeypatch, caplog
+):
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 0
+    )
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX",
+        f"test:store:search:embeddings:{uuid.uuid4().hex}",
+    )
+
+    with caplog.at_level(logging.ERROR, logger=rate_limit.logger.name):
+        slots = [await rate_limit.take_public_search_embedding_slot() for _ in range(3)]
+
+    assert slots == [False, False, False]
+    assert _errors(caplog) == []
+
+
+@pytest.mark.asyncio
 async def test_without_redis_store_search_is_not_limited_but_embeds_nothing(mocker):
     mocker.patch.object(
         rate_limit,

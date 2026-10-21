@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.features.search import embeddings
+from backend.api.features.search import embeddings, rate_limit
 from backend.util import cache as cache_util
 
 from . import cache as store_cache
@@ -32,6 +32,22 @@ async def test_a_search_ranked_by_text_alone_is_recomputed_and_a_full_one_cached
         for _ in range(2):
             await _search(query)
         assert rows.await_count == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_with_the_embedding_budget_off_a_text_ranked_search_is_cached():
+    rows = AsyncMock(return_value=[_agent_row()])
+    with (
+        patch.object(store_hybrid_search, "query_raw_with_schema", rows),
+        patch.object(
+            rate_limit.settings.config, "public_search_embeddings_per_minute", 0
+        ),
+    ):
+        query = f"sheets {uuid.uuid4().hex}"
+        for _ in range(2):
+            await _search(query)
+
+    assert rows.await_count == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
