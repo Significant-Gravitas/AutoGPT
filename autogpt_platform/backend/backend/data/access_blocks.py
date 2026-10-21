@@ -5,6 +5,7 @@ Admins write them here; the frontend's Better Auth hooks enforce them
 value is normalised.
 """
 
+import functools
 import ipaddress
 import re
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from datetime import datetime, timezone
 from prisma.enums import AuthAccessBlockKind
 from prisma.models import AuthAccessBlock, AuthUser
 from prisma.types import AuthAccessBlockWhereInput
+from publicsuffixlist import PublicSuffixList
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
@@ -182,13 +184,6 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
     }
 )
 
-# A country's registry level ("co.uk", "com.au"): blocking one would refuse
-# every domain registered under it, since sign-up checks each parent domain.
-_REGISTRY_LABELS = frozenset(
-    {"ac", "co", "com", "edu", "go", "gob", "gov", "gouv", "ltd", "mil", "ne", "net"}
-    | {"nic", "or", "org", "plc", "sch"}
-)
-
 _DOMAIN_PATTERN = re.compile(
     r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$"
 )
@@ -336,10 +331,18 @@ def normalize_email_domain(raw: str) -> str:
         raise ValueError(
             f"{domain} is a public email provider; ban its accounts one by one instead."
         )
-    labels = domain.split(".")
-    if len(labels) == 2 and labels[0] in _REGISTRY_LABELS and len(labels[1]) == 2:
-        raise ValueError(f"{domain} is a registry, not a domain someone owns.")
+    # A public suffix ("co.uk", "nhs.uk", "github.io"): blocking one would refuse
+    # every domain registered under it, since sign-up checks each parent domain.
+    if _public_suffixes().is_public(domain):
+        raise ValueError(f"{domain} is a public suffix, not a domain someone owns.")
     return domain
+
+
+# The Public Suffix List ships inside the package, so it refreshes with
+# dependency bumps; built on first use rather than at every service's import.
+@functools.cache
+def _public_suffixes() -> PublicSuffixList:
+    return PublicSuffixList()
 
 
 def get_email_domain(email: str) -> str:
