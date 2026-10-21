@@ -1471,6 +1471,22 @@ class TestReplyContext:
         channel.fetch_message.assert_awaited_once_with(42)
 
     @pytest.mark.asyncio
+    async def test_a_reply_to_a_deleted_message_is_not_fetched(self):
+        # Discord marks a deleted target with ``DeletedReferencedMessage``; a
+        # fetch can only 404, and it would run for every such channel reply.
+        adapter, _ = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.fetch_message = AsyncMock()
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(
+            resolved=MagicMock(spec=discord.DeletedReferencedMessage), message_id=42
+        )
+        msg.channel = channel
+        assert await adapter._resolve_reply(msg) is None
+        channel.fetch_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_with_reply_context_prepends_quoted_message(self):
         adapter, _ = _bare_adapter()
         replied = self._replied("fact about space", author_name="AutoBoostBot")

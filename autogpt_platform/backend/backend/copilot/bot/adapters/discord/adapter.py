@@ -753,6 +753,9 @@ class DiscordAdapter(SocketAdapter):
             return None
         if isinstance(ref.resolved, discord.Message):
             return ref.resolved
+        # A deleted target can only 404, and every such reply runs this check.
+        if isinstance(ref.resolved, discord.DeletedReferencedMessage):
+            return None
         if ref.message_id is None or not isinstance(
             message.channel, discord.abc.Messageable
         ):

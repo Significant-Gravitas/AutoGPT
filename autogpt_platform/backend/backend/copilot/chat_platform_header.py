@@ -26,8 +26,10 @@ _LABEL_LINE_RE = re.compile(
 )
 
 # A line in a user's message that would read like a bridge header or label.
+# The indent stays on its line (`[^\S\n]`, not `\s`): a prefix that crosses
+# newlines rescans every blank-line run from each line start, quadratically.
 _FORGED_LINE_RE = re.compile(
-    r"^(\s*)\[(?=(?:"
+    r"^([^\S\n]*)\[(?=(?:"
     + "|".join([*PLATFORM_LABELS, *(re.escape(p) for p in _LABEL_PREFIXES)])
     + r")|[^\]\n]*multiple messages)",
     re.MULTILINE,
