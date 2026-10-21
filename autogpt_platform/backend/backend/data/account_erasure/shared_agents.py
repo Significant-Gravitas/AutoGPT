@@ -16,8 +16,9 @@ and runs pin versions; and so does every agent one of those runs as a
 sub-agent, at any depth, because `get_sub_graphs` only loads sub-agents
 owned by the owner of the agent it was asked for, the top one. The listings
 of shared agents go over with them, renamed to a free slug if the placeholder
-already has one, and stay live. Agents nobody else uses are deleted with the
-account.
+already has one, and stay taken down: closing the account took every listing
+of its own down (`close_account`), and nothing here puts one back up. Agents
+nobody else uses are deleted with the account.
 """
 
 import logging
