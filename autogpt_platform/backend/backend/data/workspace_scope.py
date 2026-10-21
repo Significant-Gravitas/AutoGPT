@@ -7,7 +7,11 @@ own files. ``None`` scope means unrestricted: the account owner acting
 through personal Otto, REST endpoints, or system paths.
 """
 
+import asyncio
+import logging
 import posixpath
+import random
+import time
 from typing import cast
 
 import prisma
@@ -109,9 +113,62 @@ class WorkspaceScope(BaseModel):
         return any(path.startswith(prefix) for prefix in prefixes)
 
 
-async def resolve_expert_workspace_scope(
-    user_id: str, expert_id: str
-) -> WorkspaceScope:
+async def _perf_new_scope(user_id: str, expert_id: str) -> WorkspaceScope:
+    """Resolve the grants for *expert_id* owned by *user_id*.
+
+    Own conversations are every session attributed to the expert, so a new
+    conversation keeps reaching files from earlier ones, and the owner's own
+    files are readable so an expert can work on what the owner uploaded.
+    Fails closed: a missing, archived, or foreign expert yields no grants at
+    all, user files included (callers add the current session explicitly,
+    which grants nothing beyond that one conversation). The ``visibility`` filter
+    mirrors ``experts_db.get_expert``: hired experts are PRIVATE in v1, and
+    a TEAM/ORG expert must not read files until sharing rules exist for it.
+
+    The three reads run together, since every expert file call waits on
+    them; the conversations count only once the expert is found.
+    """
+    expert, own_sessions, delegated_sessions = await asyncio.gather(
+        PrismaExpert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
+        ),
+        PrismaChatSession.prisma().find_many(
+            where={"userId": user_id, "expertId": expert_id}
+        ),
+        PrismaChatSession.prisma().find_many(
+            where={
+                "userId": user_id,
+                "metadata": cast(
+                    prisma.types.JsonFilter,
+                    {
+                        "path": ["delegated_by_expert_id"],
+                        "equals": prisma.Json(expert_id),
+                    },
+                ),
+            }
+        ),
+    )
+    if expert is None:
+        return WorkspaceScope(expert_id=expert_id)
+
+    return WorkspaceScope(
+        expert_id=expert_id,
+        owns_skills_folder=True,
+        reads_user_files=True,
+        session_ids=[row.id for row in own_sessions],
+        delegated_session_ids=[
+            row.id for row in delegated_sessions if row.expertId != expert_id
+        ],
+    )
+
+
+async def _perf_old_scope(user_id: str, expert_id: str) -> WorkspaceScope:
     """Resolve the grants for *expert_id* owned by *user_id*.
 
     Own conversations are every session attributed to the expert, so a new
@@ -156,3 +213,53 @@ async def resolve_expert_workspace_scope(
             row.id for row in delegated_sessions if row.expertId != expert_id
         ],
     )
+
+
+# Do-not-merge probe (#15739 integration preview): file calls get the reads run
+# together, timed; a few seconds later (at most once per 10 s) the old reads
+# one after another and the new ones run once each in a random order.
+_perf_logger = logging.getLogger(__name__)
+_perf_tasks: set[asyncio.Task] = set()
+_perf_last = 0.0
+
+
+async def resolve_expert_workspace_scope(
+    user_id: str, expert_id: str
+) -> WorkspaceScope:
+    global _perf_last
+    started = time.perf_counter()
+    scope = await _perf_new_scope(user_id, expert_id)
+    _perf_logger.info(
+        "perf-step dbm:expert_scope_inline %d sessions=%d",
+        round((time.perf_counter() - started) * 1000),
+        len(scope.session_ids),
+    )
+    if time.monotonic() - _perf_last > 10:
+        _perf_last = time.monotonic()
+        task = asyncio.create_task(_perf_compare(user_id, expert_id))
+        _perf_tasks.add(task)
+        task.add_done_callback(_perf_tasks.discard)
+    return scope
+
+
+async def _perf_compare(user_id: str, expert_id: str) -> None:
+    try:
+        await asyncio.sleep(3)
+        loaders = {"old": _perf_old_scope, "new": _perf_new_scope}
+        order = ["old", "new"]
+        random.shuffle(order)
+        scopes: dict[str, WorkspaceScope] = {}
+        ms: dict[str, int] = {}
+        for name in order:
+            started = time.perf_counter()
+            scopes[name] = await loaders[name](user_id, expert_id)
+            ms[name] = round((time.perf_counter() - started) * 1000)
+        _perf_logger.info(
+            "perf-step dbm:expert_scope old=%d new=%d same=%s first=%s",
+            ms["old"],
+            ms["new"],
+            scopes["old"] == scopes["new"],
+            order[0],
+        )
+    except Exception:
+        _perf_logger.exception("perf-step dbm:expert_scope compare failed")
