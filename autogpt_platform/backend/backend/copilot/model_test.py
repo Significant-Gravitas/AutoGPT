@@ -1156,19 +1156,16 @@ async def test_a_follow_up_takes_its_sequence_from_the_session_it_read(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("held", [[], [0, None]], ids=["new chat", "unsaved message"])
-async def test_a_session_that_cannot_say_its_next_sequence_asks_the_database(
-    mocker: MockerFixture, held: list[int | None]
+async def test_a_session_holding_an_unsaved_message_asks_the_database(
+    mocker: MockerFixture,
 ) -> None:
-    """A new chat holds no messages, and a message not saved yet has no
-    sequence: either way the next sequence is read from the database."""
+    """A message not saved yet has no sequence, so the session can't say
+    which comes next: the database does."""
     session = _make_session_with_messages(
-        *(
-            ChatMessage(role="assistant", content=f"message {n}", sequence=sequence)
-            for n, sequence in enumerate(held)
-        )
+        ChatMessage(role="user", content="first", sequence=0),
+        ChatMessage(role="assistant", content="streaming", sequence=None),
     )
-    db = _stub_save_path(mocker, session, next_sequence=len(held))
+    db = _stub_save_path(mocker, session, next_sequence=2)
 
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="next")
@@ -1177,7 +1174,27 @@ async def test_a_session_that_cannot_say_its_next_sequence_asks_the_database(
     assert result is not None
     db.get_next_sequence.assert_awaited_once_with(session.session_id)
     [insert] = db.add_chat_messages_batch.await_args_list
-    assert insert.kwargs["start_sequence"] == len(held)
+    assert insert.kwargs["start_sequence"] == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_chats_first_message_starts_at_zero_without_reading_it(
+    mocker: MockerFixture,
+) -> None:
+    """A new chat holds no messages, so its first one is sequence 0. The save
+    still checks for the session row first (a chat's first message does)."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_not_awaited()
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
 
 
 def _stub_save_path(

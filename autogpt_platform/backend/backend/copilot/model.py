@@ -1388,8 +1388,8 @@ async def append_and_save_message(
 
 def _next_sequence_held(messages: list[ChatMessage]) -> int | None:
     """The next message sequence, from a session read under its lock, when
-    every message in it is saved; ``None`` asks the database instead (a new
-    chat, or a message not saved yet).
+    every message in it is saved (0 for a new chat); ``None`` asks the
+    database instead, for a session holding a message not saved yet.
 
     Messages are never deleted on their own, so a session that was read can
     lag the database but never lead it. One that lags collides on
@@ -1397,9 +1397,9 @@ def _next_sequence_held(messages: list[ChatMessage]) -> int | None:
     database's next sequence.
     """
     saved = [m.sequence for m in messages if m.sequence is not None]
-    if not saved or len(saved) < len(messages):
+    if len(saved) < len(messages):
         return None
-    return max(saved) + 1
+    return max(saved, default=-1) + 1
 
 
 async def create_chat_session(
