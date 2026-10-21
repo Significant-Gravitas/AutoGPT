@@ -88,10 +88,11 @@ export async function signupTestUser(
         .waitFor({ state: "visible", timeout: 10000 });
     }
 
-    // skipOnboardingIfPresent covers the /onboarding landing; a wizard left
-    // open for the test must not race these writes.
+    // skipOnboardingIfPresent covers /onboarding, where an open wizard must not
+    // race these writes; the reload makes the open page read them.
     if (!currentUrl.includes("/onboarding")) {
       await dismissTabIntrosViaAPI(page);
+      await page.reload();
     }
 
     if (withAgent) {
