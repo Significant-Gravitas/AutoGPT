@@ -7,7 +7,7 @@ import { blockMenuContainerStyle } from "../style";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 
 export const PaginatedIntegrationList = () => {
-  const { setIntegration } = useBlockMenuStore();
+  const setIntegration = useBlockMenuStore((state) => state.setIntegration);
   const {
     allProviders: providers,
     providersLoading,

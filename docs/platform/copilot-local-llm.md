@@ -65,7 +65,9 @@ the pre-catalog behavior; your env vars stay authoritative. See
 
 ## Required environment variables
 
-In `autogpt_platform/backend/.env`:
+In `autogpt_platform/backend/.env` (for the single-container image, the same
+lines go in its `--env-file`; see
+[Run AutoGPT in One Docker Container](single-container.md#ollama-or-another-local-openai-compatible-server)):
 
 ```bash
 # Turn on the local transport
@@ -338,7 +340,7 @@ copilot_executor log for the upstream error. Common causes:
   → free RAM (stop ClamAV, raise VM memory) or pick a smaller model
 - `model "..." not found` → `ollama pull <slug>` first
 - `connection refused` → containers can't reach the host on `:11434`;
-  see "Container → host networking" above
+  see "Networking — same host, different host, or remote" above
 
 **`api_key` is `None` even though I set `OPENAI_API_KEY`** — by design.
 The local transport requires an explicit `CHAT_API_KEY` so a stray cloud
@@ -390,8 +392,8 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 
 | Setting | Cloud default | Local default |
 |---|---|---|
-| `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_LLM_MODEL` | `gpt-6-luna` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-6-luna` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
 The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`
@@ -401,7 +403,8 @@ the next section.
 
 You can pin your own slugs at any time by setting the matching
 `GRAPHITI_*_MODEL` env var; the validator only touches slots still at
-their cloud default. A custom slug (`qwen3:8b`, `hf.co/...`,
+their cloud default, including the previous `gpt-4.1-mini` default in
+existing `.env` files. A custom slug (`qwen3:8b`, `hf.co/...`,
 `my-registry.io/model:tag`) passes through untouched.
 
 ### Embeddings require an embedding model pulled into Ollama

@@ -6,9 +6,11 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 
 class ResponseType(str, Enum):
@@ -174,6 +176,19 @@ class ToolResponseBase(BaseModel):
     @property
     def outside(self) -> tuple[Any, ...] | None:
         return self._outside
+
+    _google_data: bool = PrivateAttr(default=False)
+
+    def with_google_data(self, google_data: bool = True) -> Self:
+        """Mark this response as carrying what a Google block returned."""
+        self._google_data = self._google_data or google_data
+        return self
+
+    @property
+    def holds_google_data(self) -> bool:
+        """Whether this carries what a Google block returned, which must stay
+        out of LLM traces (see ``backend.copilot.google_data_redaction``)."""
+        return self._google_data
 
 
 # Agent discovery models
@@ -981,6 +996,8 @@ class CapabilityListResponse(ToolResponseBase):
     count: int
     # Generic primitives offered when the query named a service.
     fallback: list[dict[str, Any]] = Field(default_factory=list)
+    # Connected or better-covering entries a ``kind`` filter hid.
+    other_kinds: list[dict[str, Any]] = Field(default_factory=list)
     service: str | None = None
 
 
@@ -1025,6 +1042,10 @@ class BlockOutputResponse(ToolResponseBase):
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
     )
+
+    @property
+    def holds_google_data(self) -> bool:
+        return self.provider == ProviderName.GOOGLE.value or self._google_data
 
 
 class ReviewRequiredResponse(ToolResponseBase):
@@ -1387,36 +1408,17 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
-class MemoryForgetFailureCode(str, Enum):
-    """Stable, machine-switchable reason a forget delete failed.
-
-    The frontend/model can branch on this code (retry vs. give up) without
-    parsing the free-text ``reason``. New codes may be added over time, so
-    consumers must tolerate unknown values.
-    """
-
-    NO_MATCH = "no_match"
-    QUERY_ERROR = "query_error"
-
-
-class MemoryForgetFailure(BaseModel):
-    """One edge that could not be deleted, with an actionable reason.
-
-    Surfaced so the assistant (and user) can tell *why* a delete failed —
-    e.g. the edge was not found vs. the query itself errored — instead of a
-    bare "N failed" count that gives the model nothing to act on.
-    """
-
-    uuid: str
-    code: MemoryForgetFailureCode
-    reason: str
-
-
 class MemoryForgetConfirmResponse(ToolResponseBase):
     """Response after deleting specific memory edges."""
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
+    # Facts the dream derived from the deleted ones, retracted with them
+    # (``graphiti/recall_cascade.py``).
+    derived_uuids: list[str] = Field(default_factory=list)
+    # Requested uuids already erased by an earlier hard forget whose cascade
+    # this one went on with (``graphiti/recall_forget.py``).
+    resumed_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
 

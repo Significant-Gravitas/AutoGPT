@@ -1,5 +1,6 @@
+import time
 from base64 import b64encode
-from typing import Optional
+from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -14,11 +15,13 @@ class NotionOAuthHandler(BaseOAuthHandler):
     Based on the documentation at https://developers.notion.com/docs/authorization
 
     Notes:
-    - Notion uses non-expiring access tokens and therefore doesn't have a refresh flow
+    - Notion documents no access-token expiry, but returns a refresh token, and each
+      refresh replaces both tokens
     - Notion doesn't use scopes
     """
 
     PROVIDER_NAME = ProviderName.NOTION
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -42,11 +45,36 @@ class NotionOAuthHandler(BaseOAuthHandler):
     async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
-        request_body = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": self.redirect_uri,
-        }
+        return await self._request_tokens(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": self.redirect_uri,
+            }
+        )
+
+    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        # Notion doesn't support token revocation
+        return False
+
+    async def _refresh_tokens(
+        self, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
+        if not credentials.refresh_token:
+            return credentials
+        return await self._request_tokens(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": credentials.refresh_token.get_secret_value(),
+            },
+            current_credentials=credentials,
+        )
+
+    async def _request_tokens(
+        self,
+        request_body: dict[str, str],
+        current_credentials: Optional[OAuth2Credentials] = None,
+    ) -> OAuth2Credentials:
         auth_str = b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
         headers = {
             "Authorization": f"Basic {auth_str}",
@@ -64,13 +92,21 @@ class NotionOAuthHandler(BaseOAuthHandler):
             else None
         )
 
-        return OAuth2Credentials(
+        expires_in = token_data.get("expires_in")
+        new_credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=token_data.get("workspace_name"),
+            title=(
+                current_credentials.title
+                if current_credentials
+                else token_data.get("workspace_name")
+            ),
             username=email,
             access_token=token_data["access_token"],
-            refresh_token=None,
-            access_token_expires_at=None,  # Notion tokens don't expire
+            refresh_token=token_data.get("refresh_token")
+            or (current_credentials.refresh_token if current_credentials else None),
+            access_token_expires_at=(
+                int(time.time()) + expires_in if expires_in else None
+            ),
             refresh_token_expires_at=None,
             scopes=[],
             metadata={
@@ -81,17 +117,6 @@ class NotionOAuthHandler(BaseOAuthHandler):
                 "workspace_icon": token_data.get("workspace_icon"),
             },
         )
-
-    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
-        # Notion doesn't support token revocation
-        return False
-
-    async def _refresh_tokens(
-        self, credentials: OAuth2Credentials
-    ) -> OAuth2Credentials:
-        # Notion doesn't support token refresh
-        return credentials
-
-    def needs_refresh(self, credentials: OAuth2Credentials) -> bool:
-        # Notion access tokens don't expire
-        return False
+        if current_credentials:
+            new_credentials.id = current_credentials.id
+        return new_credentials

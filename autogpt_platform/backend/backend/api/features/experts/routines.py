@@ -46,6 +46,7 @@ from backend.api.features.experts.routine_jobs import (
     spread_cron,
 )
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
+from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -273,6 +274,15 @@ async def enable_routine(
         # without this the row would say PINNED and behave like FRESH. The tool
         # always supplies one; this closes the RPC path, which does not.
         raise ValueError("A PINNED routine needs the chat it should fire into.")
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -290,7 +300,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.
@@ -428,6 +438,17 @@ async def disable_routine(
     )
     if updated is None:
         raise RoutineNotFoundError(routine_id)
+    # Switched off is no longer paused for failing: its jobs are gone. The
+    # routine is off whatever this does, so a failure is logged, not raised;
+    # a streak left behind ends on its first run once switched back on.
+    try:
+        await forget_routine(user_id, row.id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of switched-off routine %s",
+            row.id,
+            exc_info=True,
+        )
     return to_model(updated)
 
 

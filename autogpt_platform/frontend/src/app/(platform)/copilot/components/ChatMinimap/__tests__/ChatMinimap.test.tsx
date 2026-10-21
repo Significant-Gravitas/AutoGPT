@@ -1,8 +1,26 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import type { UIMessage } from "ai";
 import { describe, expect, it, vi } from "vitest";
-import { tickColor, tickScale, toMinimapEntries } from "../helpers";
+import {
+  haveSameMinimapRows,
+  tickColor,
+  tickScale,
+  toMinimapEntries,
+} from "../helpers";
 import { ChatMinimap } from "../ChatMinimap";
+
+// The rail calls useReducedMotion once per render.
+const railRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("framer-motion", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("framer-motion")>();
+  return {
+    ...actual,
+    useReducedMotion: () => {
+      railRenders.count += 1;
+      return actual.useReducedMotion();
+    },
+  };
+});
 
 function textMessage(id: string, role: "user" | "assistant", text: string) {
   return {
@@ -64,9 +82,112 @@ describe("ChatMinimap", () => {
 
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
   });
+
+  it("hands a message whose row is not mounted to the transcript", () => {
+    const onJumpToUnmounted = vi.fn();
+    render(
+      <div>
+        <ChatMinimap
+          messages={MESSAGES}
+          onJumpToUnmounted={onJumpToUnmounted}
+        />
+        <div data-message-id="m1">Plan my week</div>
+      </div>,
+    );
+    const scrollIntoView = vi.fn();
+    document
+      .querySelectorAll("[data-message-id]")
+      .forEach(
+        (el) => ((el as HTMLElement).scrollIntoView = scrollIntoView as never),
+      );
+
+    fireEvent.click(screen.getByLabelText("Jump to: Now the budget"));
+    expect(onJumpToUnmounted).toHaveBeenCalledWith("m3");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Jump to: Plan my week"));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(onJumpToUnmounted).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ChatMinimap renders", () => {
+  it("skips a streamed flush that only grows the reply", () => {
+    const { rerender } = render(<ChatMinimap messages={MESSAGES} />);
+    const before = railRenders.count;
+
+    rerender(
+      <ChatMinimap
+        messages={[
+          ...MESSAGES.map((message) => ({ ...message })),
+          textMessage("m6", "assistant", "Travel booked"),
+        ]}
+      />,
+    );
+
+    expect(railRenders.count).toBe(before);
+  });
+
+  it("adds a tick for a new user message", () => {
+    const { rerender } = render(<ChatMinimap messages={MESSAGES} />);
+
+    rerender(
+      <ChatMinimap
+        messages={[...MESSAGES, textMessage("m6", "user", "Book hotels")]}
+      />,
+    );
+
+    expect(screen.getAllByRole("button")).toHaveLength(4);
+    expect(screen.getByLabelText("Jump to: Book hotels")).toBeDefined();
+  });
+
+  it("relabels a tick whose message text changed under the same id", () => {
+    const { rerender } = render(<ChatMinimap messages={MESSAGES} />);
+
+    rerender(
+      <ChatMinimap
+        messages={[
+          ...MESSAGES.slice(0, 4),
+          textMessage("m5", "user", "And hotels"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByLabelText("Jump to: And hotels")).toBeDefined();
+    expect(screen.queryByLabelText("Jump to: And travel")).toBeNull();
+  });
 });
 
 describe("minimap helpers", () => {
+  it("compares the user turns, not the array", () => {
+    const copy = MESSAGES.map((message) => ({ ...message }));
+    expect(haveSameMinimapRows(MESSAGES, copy)).toBe(true);
+    expect(
+      haveSameMinimapRows(MESSAGES, [
+        ...copy,
+        textMessage("m6", "assistant", "More reply"),
+      ]),
+    ).toBe(true);
+    expect(
+      haveSameMinimapRows(MESSAGES, [
+        ...copy,
+        textMessage("m6", "user", "Another ask"),
+      ]),
+    ).toBe(false);
+    expect(
+      haveSameMinimapRows(MESSAGES, [
+        ...copy.slice(0, 4),
+        textMessage("m5", "user", "Edited"),
+      ]),
+    ).toBe(false);
+    expect(
+      haveSameMinimapRows(MESSAGES, [
+        ...copy.slice(0, 4),
+        textMessage("m9", "user", "And travel"),
+      ]),
+    ).toBe(false);
+  });
+
   it("drops assistant turns and labels text-free user messages", () => {
     const entries = toMinimapEntries([
       { id: "t1", role: "assistant", parts: [] } as unknown as UIMessage,

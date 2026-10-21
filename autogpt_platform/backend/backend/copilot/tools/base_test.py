@@ -7,6 +7,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot import ai_spans
+from backend.copilot.gate import ALLOW
+from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    REDACTED,
+    redact_google_data,
+)
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
@@ -21,6 +32,7 @@ from backend.copilot.tools.base import (
 from backend.copilot.tools.models import (
     BlockDetails,
     BlockDetailsResponse,
+    BlockOutputResponse,
     ErrorResponse,
     ResponseType,
     ToolResponseBase,
@@ -709,3 +721,248 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+class TestPostHogToolSpans:
+    """Every platform tool call, on either engine, is a PostHog ``$ai_span``
+    in the reply's trace, and none carries the tool's input or output."""
+
+    @staticmethod
+    def _tool(response: ToolResponseBase | None = None, error: bool = False):
+        class _Tool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "gmail_read"
+
+            @property
+            def description(self) -> str:
+                return "reads mail"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                if error:
+                    raise RuntimeError("could not read the inbox")
+                assert response is not None
+                return response
+
+        return _Tool()
+
+    @pytest.fixture
+    def capture(self, mocker):
+        set_turn_trace_id("turn-1")
+        ai_spans.set_turn_span("turn-1")
+        yield mocker.patch.object(ai_spans.posthog_client, "capture")
+        set_turn_trace_id(None)
+        ai_spans.set_turn_span(None)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
+        email_subject = "Subject: quarterly numbers"
+        tool = self._tool(
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=email_subject)
+        )
+
+        await tool.execute(
+            "u1", MagicMock(session_id="s1"), "call-1", query=email_subject
+        )
+
+        capture.assert_called_once()
+        _, event, properties = capture.call_args.args
+        assert event == "$ai_span"
+        assert properties["$ai_span_name"] == "gmail_read"
+        assert properties["$ai_trace_id"] == "turn-1"
+        assert properties["$ai_parent_id"] == "turn-1"
+        assert properties["$ai_session_id"] == "s1"
+        assert properties["$ai_is_error"] is False
+        assert email_subject not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
+        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "$ai_error" not in properties
+        assert "no such label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):
+        """An approval card is the user's decision to make, not the tool
+        failing, so it must not count against the tool."""
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+        session = MagicMock(session_id="s1")
+        refusal = tool._refusal("call-1", session, "Needs your approval")
+        with patch.object(tool, "_gate", new=AsyncMock(return_value=(refusal, False))):
+            result = await tool.execute("u1", session, "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_a_sign_in_did_not_fail(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch.object(
+            type(tool), "requires_auth", new_callable=lambda: property(lambda _: True)
+        ):
+            result = await tool.execute(None, MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
+        self, capture
+    ):
+        tool = self._tool(error=True)
+
+        result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "RuntimeError"
+        assert "inbox" not in repr(properties)
+
+
+# ---------------------------------------------------------------------------
+# The gate's traces of a Google call
+# ---------------------------------------------------------------------------
+
+
+class TestGateTracesOfGoogleCalls:
+    """The supervisor and the content judge quote a call's arguments and
+    result in prompts of their own, so for a Google call whatever they trace
+    is redacted whole."""
+
+    @staticmethod
+    def _block_tool(provider: str | None):
+        class _Block(BaseTool):
+            @property
+            def name(self) -> str:
+                return "run_capability"
+
+            @property
+            def description(self) -> str:
+                return "Runs a block"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return BlockOutputResponse(
+                    message="ran",
+                    block_id="b",
+                    block_name="b",
+                    outputs={"result": ["the email"]},
+                    provider=provider,
+                )
+
+        return _Block()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "names_google_block, provider, action_redacted, read_redacted",
+        [
+            (True, None, True, True),
+            (False, "google", False, True),
+            (False, None, False, False),
+        ],
+        ids=["names a Google block", "returns Google data", "neither"],
+    )
+    async def test_redacted_while_the_gate_runs(
+        self, names_google_block, provider, action_redacted, read_redacted
+    ):
+        block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
+        traced: dict[str, object] = {}
+
+        async def action(*args, **kwargs):
+            traced["action"] = redact_google_data({"text": "the email"})
+            return ALLOW
+
+        async def read(*args, **kwargs):
+            traced["read"] = redact_google_data({"text": "the email"})
+
+        with (
+            patch("backend.copilot.gate.check_action", side_effect=action),
+            patch(
+                "backend.copilot.gate.reads.release_held_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.gate.reads.screen_read", side_effect=read),
+            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+        ):
+            await self._block_tool(provider).execute(
+                "u1", MagicMock(session_id="s1"), "call-1", id=block.id
+            )
+
+        def expected(redacted: bool) -> dict[str, str]:
+            return {"text": REDACTED if redacted else "the email"}
+
+        assert traced == {
+            "action": expected(action_redacted),
+            "read": expected(read_redacted),
+        }
+        assert redact_google_data({"text": "the email"}) == expected(False)
+
+    @pytest.mark.asyncio
+    async def test_the_late_cut_of_a_google_output_is_redacted(self):
+        """The SDK's late path cuts the output again before the model reads it."""
+        seen: list[str] = []
+
+        def cut(text: str, success: bool) -> str:
+            seen.append(text[: len(text) // 2])
+            return seen[-1]
+
+        token = model_view.set(cut)
+        try:
+            with (
+                patch(
+                    "backend.copilot.gate.check_action",
+                    new=AsyncMock(return_value=ALLOW),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.release_held_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.screen_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            ):
+                await self._block_tool("google").execute(
+                    "u1", MagicMock(session_id="s1"), "call-1"
+                )
+        finally:
+            model_view.reset(token)
+
+        assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}
+
+
+class TestPersistedGoogleOutputIsFlagged:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("google", [True, False])
+    async def test_the_saved_file_says_whether_it_holds_google_data(self, google):
+        workspace = MagicMock(id="ws-1")
+        db = AsyncMock()
+        db.get_or_create_workspace = AsyncMock(return_value=workspace)
+        manager = AsyncMock()
+        with (
+            patch("backend.copilot.tools.base.workspace_db", return_value=db),
+            patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+        ):
+            await _persist_and_summarize(
+                "A" * 200_000, "u1", "s1", "call-1", google_data=google
+            )
+
+        metadata = manager.write_file.await_args.kwargs["metadata"]
+        assert metadata.get(GOOGLE_DATA_METADATA_KEY, False) is google
