@@ -309,6 +309,48 @@ sent or dropped this way, not while it is held.
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
 
+### Email
+
+Postmark's webhooks for the mail the platform sends itself
+(`api/features/postmark/`). MailerLite's mail (the onboarding tour, the
+changelog) is not covered.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `email_delivered` | backend | live | `email_type`, `message_stream`, `message_id` | The receiving mail server accepts the email (Postmark's Delivery webhook). |
+| `email_opened` | backend | live | `email_type`, `message_stream`, `message_id`, `first_open` | The email's tracking pixel loads (Open webhook). Mail apps that preload images, such as Apple Mail, report opens nobody made, so read it as an upper bound. |
+| `email_clicked` | backend | live | `email_type`, `message_stream`, `message_id`, `link` | A link in the email is followed (Click webhook). |
+| `email_bounced` | backend | live | `email_type`, `message_stream`, `message_id`, `bounce_type` | The email bounces (Bounce webhook), soft bounces included. A hard bounce also marks the address unverified. |
+
+- **`email_type`** is the Postmark tag the email was sent with: the
+  notification type in lower case (`briefing`, `alert`, `verdict`, `ops`,
+  `subscription_welcome`, `payment_failed`, `payment_final_notice`,
+  `subscription_cancelled`, `subscription_resumed`, `subscription_ended`,
+  `trial_update`), or `auth` for Better Auth's verification and password
+  emails. Unset for mail sent before tags were added.
+- **`message_stream`** is the Postmark stream (`POSTMARK_TRANSACTIONAL_STREAM`)
+  and **`message_id`** Postmark's message id, which ties the events of one
+  email together.
+- **`link`** is the clicked link's scheme, host and path only: the query
+  string and fragment are dropped, and a path segment that looks like an id or
+  a token becomes `:id` (`https://platform.agpt.co/library/agents/:id`). A
+  link that is not `http(s)` keeps only its scheme (`mailto:`).
+- **`bounce_type`** is Postmark's bounce type (`HardBounce`, `SoftBounce`,
+  `Transient`, `SpamNotification`, ...).
+- **`first_open`** is whether Postmark counts it as the first open of that
+  email.
+- **Who it is for.** The recipient address is looked up among users, and the
+  user id is the `distinct_id`. An address with no account (such as the Ops
+  inbox) sends nothing. The address is never sent or logged.
+- **When.** The event carries Postmark's own time, not the time the webhook
+  arrived, and is deduplicated on message id, record type and that time, so a
+  webhook Postmark redelivers counts once.
+- **Opens and clicks need tracking on.** Each notification email asks
+  Postmark to track opens and to rewrite links in its HTML part only when
+  `POSTMARK_TRACK_OPENS_AND_CLICKS` is true (off by default). Auth email is
+  never tracked, since its links carry sign-in tokens. Postmark only calls the
+  webhook for the record types ticked on the stream's webhook.
+
 ## LLM analytics
 
 AutoPilot's LLM calls, tool calls and the ratings of its replies, in
@@ -580,8 +622,11 @@ line:
   `artifact_created`, `file_produced` and `answer_only` do not.
 - **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
   `chat_response_completed`, `chat_blocked`, `screen_viewed`,
-  `screen_engaged`, `milestone_reached`, the builder, library and email
-  families, ...) come with the plan's phases, not with this list.
+  `screen_engaged`, `milestone_reached`, the builder and library families,
+  `email_sent`, ...) come with the plan's phases, not with this list.
+- **`email_delivered` instead of the plan's `email_sent`.** Postmark's
+  webhook reports that the receiving server accepted the email, which is
+  delivery, not sending. `email_sent` stays free for the send itself.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
   `billing_portal_opened`, `marketing_opted_out`, `tour_*`,

@@ -14,6 +14,7 @@ import asyncio
 import atexit
 import logging
 from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime
 from functools import cache
 from threading import Lock
 from typing import Any
@@ -124,6 +125,7 @@ def capture(
     *,
     source: str = "platform",
     dedup_key: str | None = None,
+    timestamp: datetime | None = None,
     client: Posthog | None = None,
 ) -> bool:
     """Send one event for *distinct_id* with the base properties, on
@@ -137,7 +139,10 @@ def capture(
     ``dedup_key`` is an idempotency key for a redelivery or requeue that can
     send the same event twice; it is carried both as ``$insert_id`` and as a
     deterministic event uuid, because PostHog's ingestion keys on the uuid,
-    which the client otherwise randomises per call.
+    which the client otherwise randomises per call. ``timestamp`` is when the
+    action happened, for an event reported after the fact, such as by a
+    webhook. PostHog only merges duplicates that fall on the same day, so a
+    redelivery needs the sender's own time as well as ``dedup_key``.
     """
     if not distinct_id:
         return False
@@ -166,6 +171,7 @@ def capture(
             event=event_name,
             properties=payload,
             uuid=event_uuid,
+            timestamp=timestamp,
         )
         return queued is not None
     except Exception:

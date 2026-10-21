@@ -10,8 +10,10 @@ from backend.data.user import (
     set_user_email_verification,
     unsubscribe_user_by_token,
 )
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
+from .analytics import safe_link, track_email_event
 from .models import (
     PostmarkBounceEnum,
     PostmarkBounceWebhook,
@@ -52,18 +54,23 @@ async def postmark_webhook_handler(
         Body(discriminator="RecordType"),
     ]
 ):
-    logger.info(f"Received webhook from Postmark: {webhook}")
+    # The payload holds the recipient's address; keep it out of the logs.
+    logger.info(
+        "Received %s webhook from Postmark for message %s",
+        webhook.RecordType,
+        webhook.MessageID,
+    )
     match webhook:
         case PostmarkDeliveryWebhook():
-            delivery_handler(webhook)
+            await delivery_handler(webhook)
         case PostmarkBounceWebhook():
             await bounce_handler(webhook)
         case PostmarkSpamComplaintWebhook():
             spam_handler(webhook)
         case PostmarkOpenWebhook():
-            open_handler(webhook)
+            await open_handler(webhook)
         case PostmarkClickWebhook():
-            click_handler(webhook)
+            await click_handler(webhook)
         case PostmarkSubscriptionChangeWebhook():
             subscription_handler(webhook)
         case _:
@@ -74,49 +81,77 @@ async def postmark_webhook_handler(
             return
 
 
+async def _user_id_for(recipient: str, message_id: str) -> str | None:
+    """The user an email went to, or None for an address with no account,
+    such as the internal Ops inbox."""
+    user = await get_user_by_email(recipient)
+    if not user:
+        logger.info("Postmark message %s went to no known user", message_id)
+        return None
+    return user.id
+
+
 async def bounce_handler(event: PostmarkBounceWebhook):
-    logger.info(f"Bounce handler {event=}")
+    user_id = await _user_id_for(event.Email, event.MessageID)
+    if not user_id:
+        return
+    track_email_event(
+        user_id,
+        PostHogEvent.EMAIL_BOUNCED,
+        event,
+        occurred_at=event.BouncedAt,
+        properties={"bounce_type": event.Type},
+    )
     if event.TypeCode in [
         PostmarkBounceEnum.Transient,
         PostmarkBounceEnum.SoftBounce,
         PostmarkBounceEnum.DnsError,
     ]:
         logger.info(
-            f"Softish bounce: {event.TypeCode} for {event.Email}, not setting email verification to false"
+            "Softish bounce %s for user %s, not setting email verification to false",
+            event.TypeCode,
+            user_id,
         )
         return
-    logger.info(f"{event.Email=}")
-    user = await get_user_by_email(event.Email)
-    if not user:
-        logger.warning(
-            "Received bounce for unknown email %s. Ensure user records are current.",
-            event.Email,
-        )
-        return
-    await set_user_email_verification(user.id, False)
-    logger.debug(f"Setting email verification to false for user: {user.id}")
+    await set_user_email_verification(user_id, False)
+    logger.debug(f"Setting email verification to false for user: {user_id}")
 
 
 def spam_handler(event: PostmarkSpamComplaintWebhook):
     logger.info("Spam handler")
-    pass
 
 
-def delivery_handler(event: PostmarkDeliveryWebhook):
-    logger.info("Delivery handler")
-    pass
+async def delivery_handler(event: PostmarkDeliveryWebhook):
+    if user_id := await _user_id_for(event.Recipient, event.MessageID):
+        track_email_event(
+            user_id,
+            PostHogEvent.EMAIL_DELIVERED,
+            event,
+            occurred_at=event.DeliveredAt,
+        )
 
 
-def open_handler(event: PostmarkOpenWebhook):
-    logger.info("Open handler")
-    pass
+async def open_handler(event: PostmarkOpenWebhook):
+    if user_id := await _user_id_for(event.Recipient, event.MessageID):
+        track_email_event(
+            user_id,
+            PostHogEvent.EMAIL_OPENED,
+            event,
+            occurred_at=event.ReceivedAt,
+            properties={"first_open": event.FirstOpen},
+        )
 
 
-def click_handler(event: PostmarkClickWebhook):
-    logger.info("Click handler")
-    pass
+async def click_handler(event: PostmarkClickWebhook):
+    if user_id := await _user_id_for(event.Recipient, event.MessageID):
+        track_email_event(
+            user_id,
+            PostHogEvent.EMAIL_CLICKED,
+            event,
+            occurred_at=event.ReceivedAt,
+            properties={"link": safe_link(event.OriginalLink)},
+        )
 
 
 def subscription_handler(event: PostmarkSubscriptionChangeWebhook):
     logger.info("Subscription handler")
-    pass
