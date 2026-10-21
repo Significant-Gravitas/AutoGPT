@@ -9,6 +9,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
+import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
@@ -20,8 +22,6 @@ import { getCategoryAccent } from "../../../components/ExpertsSection/helpers";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
 import { formatCategoryLabel } from "../../../components/SkillsSection/helpers";
 import { ExpertSection } from "../../../experts/[expertId]/components/ExpertSection";
-import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
-import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ConnectStep } from "./ConnectStep";
 import { SkillActions } from "./SkillActions";
 import { SkillBody } from "./SkillBody";
@@ -43,8 +43,6 @@ export function SkillPage({ slug }: Props) {
     isNotFound,
     refetch,
     isReady,
-    flagEnabled,
-    flagReady,
     isAdded,
     isAdding,
     experts,
@@ -64,10 +62,9 @@ export function SkillPage({ slug }: Props) {
 
   // A bookmarked URL reaches this page without passing the marketplace shelf,
   // so the shelf being hidden is not what keeps the feature dark.
-  if (flagReady && !flagEnabled) notFound();
   if (isNotFound) notFound();
 
-  if (!flagReady || isLoading) return <SkillPageSkeleton />;
+  if (isLoading) return <SkillPageSkeleton />;
 
   if (isError || !skill) {
     return (

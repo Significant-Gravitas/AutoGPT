@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
-  initMock: vi.fn(),
-  reportingObserverIntegrationMock: vi.fn((options?: { types?: string[] }) => ({
-    name: "ReportingObserver",
-    options,
-  })),
-}));
+const { initMock, reportingObserverIntegrationMock, holdReplayBackForMock } =
+  vi.hoisted(() => ({
+    initMock: vi.fn(),
+    holdReplayBackForMock: vi.fn(),
+    reportingObserverIntegrationMock: vi.fn(
+      (options?: { types?: string[] }) => ({
+        name: "ReportingObserver",
+        options,
+      }),
+    ),
+  }));
 
 vi.mock("@sentry/nextjs", () => {
   function stubIntegration(name: string) {
@@ -26,11 +30,31 @@ vi.mock("@sentry/nextjs", () => {
   };
 });
 
+vi.mock("@/lib/session-replay", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/session-replay")>()),
+  holdReplayBackFor: holdReplayBackForMock,
+}));
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("Sentry client instrumentation", () => {
+  it("holds session replay back as Next starts each navigation", async () => {
+    const Sentry = await import("@sentry/nextjs");
+    const { onRouterTransitionStart } = await import(
+      "../../instrumentation-client"
+    );
+
+    onRouterTransitionStart("/link/t-1", "push");
+
+    expect(Sentry.captureRouterTransitionStart).toHaveBeenCalledWith(
+      "/link/t-1",
+      "push",
+    );
+    expect(holdReplayBackForMock).toHaveBeenCalledWith("/link/t-1");
+  });
+
   it("does not forward browser deprecation reports to Sentry", async () => {
     await import("../../instrumentation-client");
 

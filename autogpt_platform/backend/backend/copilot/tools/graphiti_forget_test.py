@@ -37,10 +37,6 @@ from backend.copilot.tools.models import (
 _MODULE = "backend.copilot.tools.graphiti_forget"
 
 
-async def _enabled(_user_id: str) -> bool:
-    return True
-
-
 @pytest.fixture(autouse=True)
 def lock_redis(mocker) -> FakeRedis:
     """The real ``retract`` takes the graph's write lock; keep it in memory."""
@@ -67,10 +63,7 @@ class TestExpertMemoryScope:
     async def test_forget_search_uses_expert_memory_group(self) -> None:
         search_facts = AsyncMock(return_value=[])
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", search_facts),
-        ):
+        with (patch(f"{_MODULE}.search_facts", search_facts),):
             await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="private fact"
             )
@@ -83,10 +76,7 @@ class TestExpertMemoryScope:
     async def test_forget_confirm_uses_expert_memory_group(self) -> None:
         retract = AsyncMock(return_value=ForgetResult())
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["private-edge"]
             )
@@ -116,10 +106,7 @@ class TestForgetSearchCandidates:
             attributes={"status": status} if status else {},
         )
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),
-        ):
+        with (patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),):
             response = await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="atlas"
             )
@@ -162,7 +149,6 @@ class TestForgetSearchForgottenCandidates:
         session = ChatSession.new("user-abc", dry_run=False)
         search_forgotten = AsyncMock(return_value=forgotten)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
             patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
             patch(f"{_MODULE}.recheck", AsyncMock(return_value=(live, []))),
@@ -295,10 +281,7 @@ class TestForgetConfirmModes:
     async def test_hard_delete_asks_for_a_hard_retract(self) -> None:
         retract = AsyncMock(return_value=ForgetResult(deleted=["e1"]))
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"], hard_delete=True
             )
@@ -313,10 +296,7 @@ class TestForgetConfirmModes:
         """The user hears of the dream's facts the forget retracted too."""
         result = ForgetResult(deleted=["e1"], derived=["d1", "d2", "d3"])
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),
-        ):
+        with (patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"]
             )
@@ -331,10 +311,7 @@ class TestForgetConfirmModes:
     @pytest.mark.asyncio
     async def test_unavailable_graph_is_an_error_response(self) -> None:
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),
-        ):
+        with (patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"]
             )
@@ -358,7 +335,6 @@ class TestForgetFailuresAreActionable:
         driver = _mock_driver([], [])  # the lookup finds nothing, nothing names it
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -397,7 +373,6 @@ class TestForgetFailuresAreActionable:
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -428,7 +403,6 @@ class TestForgetFailuresAreActionable:
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),

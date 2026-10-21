@@ -28,7 +28,6 @@ from backend.api.features.onboarding_dump import (
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RecommendedExpert,
-    RecommendedExpertsResponse,
 )
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
@@ -1346,15 +1345,6 @@ def _stored_team(dumps: DumpStore) -> dict:
 
 
 @pytest.fixture
-def team_flag(mocker: MockerFixture) -> AsyncMock:
-    """Both flags on. ``ONBOARDING_EXPERT_TEAM`` is a child of
-    ``HIRE_EXPERTS``, so the reads are separate and both must pass."""
-    mock = AsyncMock(return_value=True)
-    mocker.patch.object(service, "is_feature_enabled", new=mock)
-    return mock
-
-
-@pytest.fixture
 def templates(mocker: MockerFixture) -> AsyncMock:
     mock = AsyncMock(return_value=TEMPLATES)
     mocker.patch.object(service, "list_templates", new=mock)
@@ -1383,38 +1373,8 @@ def generate_team(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_the_flag_being_off_costs_no_llm_call_and_no_roster_read(
-    dumps: DumpStore,
-    mocker: MockerFixture,
-    templates: AsyncMock,
-    generate_team: AsyncMock,
-):
-    """A dark feature must not bill for itself.
-
-    The result is still written: a null column reads as "still running",
-    and the client would poll it to its own ceiling.
-    """
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    await finalize_voice()
-
-    generate_team.assert_not_awaited()
-    templates.assert_not_awaited()
-    assert _stored_team(dumps) == {
-        "diagnosis": "",
-        "experts": [],
-        "raise_suggestion": None,
-        "source": "disabled",
-    }
-
-
-@pytest.mark.asyncio
 async def test_the_generated_team_is_stored_with_the_wizard_answers(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
@@ -1438,7 +1398,6 @@ async def test_the_generated_team_is_stored_with_the_wizard_answers(
 @pytest.mark.asyncio
 async def test_a_failed_team_job_still_stores_an_answer(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1462,25 +1421,8 @@ async def test_a_failed_team_job_still_stores_an_answer(
 
 
 @pytest.mark.asyncio
-async def test_the_team_is_withheld_entirely_while_the_flag_is_off(
-    dumps: DumpStore, mocker: MockerFixture
-):
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    response = await service.get_recommended_experts(USER_ID)
-    card = await service.get_intro_card(USER_ID)
-
-    assert response == RecommendedExpertsResponse(ready=True, team=None)
-    assert card.team is None
-    assert card.team_pending is False
-
-
-@pytest.mark.asyncio
 async def test_the_team_is_pending_while_the_job_is_still_running(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1499,7 +1441,7 @@ async def test_the_team_is_pending_while_the_job_is_still_running(
 
 @pytest.mark.asyncio
 async def test_a_terminal_dump_with_no_stored_team_falls_back(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     """The job died with the process, so nothing is coming.
 
@@ -1524,7 +1466,7 @@ async def test_a_terminal_dump_with_no_stored_team_falls_back(
 
 @pytest.mark.asyncio
 async def test_a_stored_team_is_served_as_written(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1552,7 +1494,7 @@ async def test_a_stored_team_is_served_as_written(
 
 @pytest.mark.asyncio
 async def test_a_malformed_stored_team_falls_back_rather_than_500s(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1572,7 +1514,7 @@ async def test_a_malformed_stored_team_falls_back_rather_than_500s(
 
 @pytest.mark.asyncio
 async def test_a_team_written_while_the_flag_was_off_is_recomputed(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     """A flag flip must not strand the user with an empty section.
 
@@ -1597,9 +1539,7 @@ async def test_a_team_written_while_the_flag_was_off_is_recomputed(
 
 
 @pytest.mark.asyncio
-async def test_a_skipped_dump_still_gets_a_team(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
-):
+async def test_a_skipped_dump_still_gets_a_team(dumps: DumpStore, templates: AsyncMock):
     """Path B has no transcript, so the job never ran for it.
 
     The raise door has to be reachable anyway, which means the section
@@ -1618,7 +1558,6 @@ async def test_a_skipped_dump_still_gets_a_team(
 @pytest.mark.asyncio
 async def test_the_intro_card_carries_the_stored_team(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1634,39 +1573,22 @@ async def test_the_intro_card_carries_the_stored_team(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hire_enabled,team_enabled",
-    [(False, False), (False, True), (True, False), (True, True)],
-)
-async def test_pending_greeting_only_waits_for_an_enabled_team(
-    dumps: DumpStore,
-    team_flag: AsyncMock,
-    templates: AsyncMock,
-    hire_enabled: bool,
-    team_enabled: bool,
+async def test_pending_greeting_waits_for_the_team(
+    dumps: DumpStore, templates: AsyncMock
 ):
-    team_flag.side_effect = lambda flag, *args, **kwargs: (
-        hire_enabled if flag == service.Flag.HIRE_EXPERTS else team_enabled
-    )
     await start_voice_take(dumps)
     await dumps.update_dump(
-        USER_ID,
-        RECORDING_ID,
-        status=BrainDumpStatus.extracting,
-        transcript=TRANSCRIPT,
+        USER_ID, RECORDING_ID, status=BrainDumpStatus.extracting, transcript=TRANSCRIPT
     )
-
     card = await service.get_intro_card(USER_ID)
-
     assert card.greeting_pending is True
-    assert card.team_pending is (hire_enabled and team_enabled)
+    assert card.team_pending is True
     assert card.team is None
 
 
 @pytest.mark.asyncio
 async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishes(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],

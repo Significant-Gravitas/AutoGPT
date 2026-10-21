@@ -19,17 +19,13 @@ import {
 import type { ExpertIdentity } from "@/app/api/__generated__/models/expertIdentity";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
-const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
+const { uploadFileDirectMock } = vi.hoisted(() => {
   return {
-    setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
     uploadFileDirectMock: vi.fn(),
   };
 });
 
-// Per-test flag overrides must persist across re-renders; restore the default
-// afterward.
 afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   uploadFileDirectMock.mockReset();
 });
 
@@ -39,15 +35,6 @@ beforeEach(() => {
   resetNavigation();
   server.use(getListExpertIdentitiesMockHandler([]));
 });
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ARTIFACTS_PAGE: "artifacts-page",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: () => true,
-  useFlagStatus: () => setFlagStatusMock(),
-}));
 
 // Uploads go straight to the backend (not through the MSW-mocked proxy), so
 // the direct-upload helper is stubbed here.
@@ -329,28 +316,15 @@ describe("ArtifactsPage - search filter", () => {
   });
 });
 
-describe("ArtifactsPage - feature flag gating", () => {
-  test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
-    setFlagStatusMock.mockReturnValue({ enabled: false, ready: false });
-
+describe("ArtifactsPage availability", () => {
+  test("loads files without waiting for feature flags", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "retired-flag-file", name: "available.pdf" }),
+    ]);
     render(<ArtifactsPage />);
-
-    expect(await screen.findByTestId("artifacts-flag-loading")).toBeDefined();
+    expect(await screen.findByText("available.pdf")).toBeDefined();
     expect(notFoundMock).not.toHaveBeenCalled();
-  });
-
-  test("calls notFound() when the flag is resolved and disabled", () => {
-    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
-    notFoundMock.mockClear();
-
-    try {
-      render(<ArtifactsPage />);
-    } catch {
-      // React surfaces the thrown notFound() error; the assertion below is
-      // what we actually care about.
-    }
-
-    expect(notFoundMock).toHaveBeenCalled();
   });
 });
 
