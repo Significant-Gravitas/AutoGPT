@@ -96,6 +96,7 @@ LLMProviderName = Literal[
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
+    ProviderName.MINIMAX,
     ProviderName.V0,
 ]
 AICredentials = (

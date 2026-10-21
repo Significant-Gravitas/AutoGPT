@@ -1,4 +1,25 @@
-import { LlmModelMetadata } from "./types";
+import type { LlmModelMetadata } from "./types";
+
+type ModelEntry = {
+  title: string;
+  entries: Pick<LlmModelMetadata, "provider" | "name">[];
+};
+
+export function compareModelEntries(a: ModelEntry, b: ModelEntry) {
+  if (
+    a.entries.every((model) => model.provider === "minimax") &&
+    b.entries.every((model) => model.provider === "minimax")
+  ) {
+    const aFlash = a.entries.some(
+      (model) => model.name === "MiniMax-M3.1-Flash",
+    );
+    const bFlash = b.entries.some(
+      (model) => model.name === "MiniMax-M3.1-Flash",
+    );
+    if (aFlash !== bFlash) return aFlash ? -1 : 1;
+  }
+  return a.title.localeCompare(b.title);
+}
 
 export function groupByCreator(models: LlmModelMetadata[]) {
   const map = new Map<string, LlmModelMetadata[]>();

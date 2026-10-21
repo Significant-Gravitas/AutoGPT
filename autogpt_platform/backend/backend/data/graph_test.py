@@ -3248,7 +3248,7 @@ def test_llm_block_union_is_left_intact_without_model():
 
     slots = _slots(graph)
     assert list(slots) == [
-        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+        "aiml_api-anthropic-groq-llama_api-minimax-ollama-open_router-openai-v0_api_key_credentials"
     ]
     providers, types, required = slots[list(slots)[0]]
     assert providers == {
@@ -3256,6 +3256,7 @@ def test_llm_block_union_is_left_intact_without_model():
         "anthropic",
         "groq",
         "llama_api",
+        "minimax",
         "ollama",
         "open_router",
         "openai",
@@ -3504,6 +3505,6 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
 
     slots = _slots(graph)
     assert list(slots) == [
-        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+        "aiml_api-anthropic-groq-llama_api-minimax-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True

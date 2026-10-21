@@ -24,7 +24,7 @@ from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, LLM_COST
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
@@ -188,6 +188,19 @@ def test_transcribe_youtube_has_one_credit_tooling_floor():
         },
     )
     assert cost == 1
+
+
+def test_minimax_models_are_registered_under_llm_cost():
+    models = {
+        entry.cost_filter["model"]
+        for entry in LLM_COST
+        if entry.cost_filter.get("credentials", {}).get("provider") == "minimax"
+    }
+    assert models == {
+        LLMModel.MINIMAX_M3_1_FLASH,
+        LLMModel.MINIMAX_M3,
+        LLMModel.MINIMAX_M2_7,
+    }
 
 
 # -------- SECRT-2701: OpenRouter display rates are not billing rates --------
