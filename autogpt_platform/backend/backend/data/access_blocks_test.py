@@ -45,6 +45,8 @@ def test_normalize_ip_refuses_what_is_not_one_address(raw: str):
         ("Example.COM", "example.com"),
         ("@example.com", "example.com"),
         ("mail.example.co.uk.", "mail.example.co.uk"),
+        ("example.co.uk", "example.co.uk"),
+        ("example.uk", "example.uk"),
     ],
 )
 def test_normalize_email_domain(raw: str, expected: str):
@@ -57,6 +59,9 @@ def test_normalize_email_domain(raw: str, expected: str):
         "gmail.com",
         "@Outlook.com",
         "t-online.de",
+        "outlook.co.uk",
+        "co.uk",
+        "com.au",
         "user@example.com",
         "example",
         "-x.example",

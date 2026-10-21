@@ -62,12 +62,17 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
         "googlemail.com",
         "hanmail.net",
         "hey.com",
+        "hotmail.be",
+        "hotmail.ca",
+        "hotmail.co.jp",
         "hotmail.co.uk",
         "hotmail.com",
+        "hotmail.com.au",
         "hotmail.de",
         "hotmail.es",
         "hotmail.fr",
         "hotmail.it",
+        "hotmail.nl",
         "icloud.com",
         "inbox.ru",
         "interia.pl",
@@ -75,11 +80,16 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
         "laposte.net",
         "libero.it",
         "list.ru",
+        "live.be",
+        "live.ca",
         "live.co.uk",
         "live.com",
+        "live.com.au",
         "live.de",
         "live.fr",
+        "live.ie",
         "live.it",
+        "live.jp",
         "live.nl",
         "mac.com",
         "mail.com",
@@ -94,11 +104,17 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
         "optonline.net",
         "optusnet.com.au",
         "orange.fr",
+        "outlook.be",
+        "outlook.co.uk",
         "outlook.com",
+        "outlook.com.au",
         "outlook.de",
         "outlook.es",
         "outlook.fr",
+        "outlook.ie",
+        "outlook.in",
         "outlook.it",
+        "outlook.jp",
         "pm.me",
         "posteo.de",
         "proton.me",
@@ -134,15 +150,25 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
         "yahoo.ca",
         "yahoo.co.in",
         "yahoo.co.jp",
+        "yahoo.co.nz",
         "yahoo.co.uk",
         "yahoo.com",
+        "yahoo.com.ar",
         "yahoo.com.au",
         "yahoo.com.br",
+        "yahoo.com.hk",
+        "yahoo.com.mx",
+        "yahoo.com.sg",
+        "yahoo.com.tw",
         "yahoo.de",
         "yahoo.es",
         "yahoo.fr",
+        "yahoo.gr",
+        "yahoo.ie",
         "yahoo.in",
         "yahoo.it",
+        "yahoo.nl",
+        "yahoo.se",
         "yandex.by",
         "yandex.com",
         "yandex.kz",
@@ -154,6 +180,13 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
         "zoho.com",
         "zohomail.com",
     }
+)
+
+# A country's registry level ("co.uk", "com.au"): blocking one would refuse
+# every domain registered under it, since sign-up checks each parent domain.
+_REGISTRY_LABELS = frozenset(
+    {"ac", "co", "com", "edu", "go", "gob", "gov", "gouv", "ltd", "mil", "ne", "net"}
+    | {"nic", "or", "org", "plc", "sch"}
 )
 
 _DOMAIN_PATTERN = re.compile(
@@ -303,6 +336,9 @@ def normalize_email_domain(raw: str) -> str:
         raise ValueError(
             f"{domain} is a public email provider; ban its accounts one by one instead."
         )
+    labels = domain.split(".")
+    if len(labels) == 2 and labels[0] in _REGISTRY_LABELS and len(labels[1]) == 2:
+        raise ValueError(f"{domain} is a registry, not a domain someone owns.")
     return domain
 
 
