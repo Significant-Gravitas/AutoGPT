@@ -755,10 +755,10 @@ export function useCopilotStream({
   // Invalidate session + usage caches when the stream completes.
   // Reconnect counter/timer reset on the same transition is owned by
   // `useCopilotReconnect`, which watches `status` internally.
-  // `lastSubmittedMessageText` is intentionally NOT cleared here: it prevents
-  // `getSendSuppressionReason` from allowing a duplicate POST of the same
-  // message immediately after a successful turn. Failed turns are exempt
-  // from duplicate suppression so the error card can retry the same text.
+  // `lastSubmittedMessageText` is intentionally NOT cleared here: a resume
+  // may still re-POST it, and `getSendSuppressionReason` only treats a
+  // resend as a duplicate while its echo is the newest message or the turn
+  // is in flight, so keeping it cannot swallow a later message.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
