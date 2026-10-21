@@ -949,7 +949,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     @field_validator("posthog_flag_definition_cache", mode="before")
     @classmethod
     def _default_unknown_definition_cache(cls, v):
-        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
         if not isinstance(v, str):
             return v
         try:
