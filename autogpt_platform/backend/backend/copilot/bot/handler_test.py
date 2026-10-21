@@ -559,6 +559,24 @@ class TestBatching:
         assert "target-1" not in handler._targets
 
     @pytest.mark.asyncio
+    async def test_a_drained_batch_uses_the_queued_messages_context(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        thread_ctx = _ctx(channel_type="thread", channel_id="thread-333", text="more")
+        contexts: list[MessageContext] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, **_):
+            contexts.append(ctx)
+            if len(contexts) == 1:
+                await handler._enqueue_and_process(thread_ctx, adapter, "target-1")
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        first_ctx = _ctx(text="first")
+        await handler._enqueue_and_process(first_ctx, adapter, "target-1")
+
+        assert contexts == [first_ctx, thread_ctx]
+
+    @pytest.mark.asyncio
     async def test_a_turn_a_card_woke_mid_reply_streams_after_that_reply(self):
         handler = MessageHandler(_api())
         state = TargetState()

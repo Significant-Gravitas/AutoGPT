@@ -46,3 +46,31 @@ def strip_chat_platform_header(message: str) -> str:
     if without_header == message:
         return message
     return _LABEL_LINE_RE.sub("", without_header).strip("\n")
+
+
+_SENDER_RE = re.compile(r'message from "([^"\n]*)"')
+
+
+def attribute_chat_platform_speakers(message: str) -> str | None:
+    """A bot turn as ``Speaker: words`` lines, one per message, without the
+    bot's routing and mention fields; None when ``message`` is not a bot turn.
+
+    In a linked server the executing user is the server owner, not the sender,
+    so memory must take each speaker from the bot's own labels.
+    """
+    header = _HEADER_RE.match(message)
+    if header is None:
+        return None
+    body = message[header.end() :]
+    sender = _SENDER_RE.search(header.group(0))
+    if sender is not None:
+        return f"{sender.group(1)}: {body.strip()}"
+    labels = list(_LABEL_LINE_RE.finditer(body))
+    lines: list[str] = []
+    for index, label in enumerate(labels):
+        end = labels[index + 1].start() if index + 1 < len(labels) else len(body)
+        words = body[label.end() : end].strip()
+        name = _SENDER_RE.search(label.group(0))
+        if words and name is not None:
+            lines.append(f"{name.group(1)}: {words}")
+    return "\n".join(lines)

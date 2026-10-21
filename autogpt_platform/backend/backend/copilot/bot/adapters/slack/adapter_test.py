@@ -107,7 +107,8 @@ class TestInboundRouting:
         assert ctx.channel_id == "T1|C1|"
         # The header and post_to_chat_platform use Slack's own channel id.
         assert ctx.public_channel_id == "C1"
-        assert ctx.post_channel_id == "C1"
+        # post_to_chat_platform gets the workspace-qualified target.
+        assert ctx.post_channel_id == "T1|C1|"
         assert ctx.public_thread_id is None
         # The author is who the bot answers, so a reply naming them pings.
         assert [uid for _, uid in ctx.mentionable_users] == ["U1"]
@@ -134,7 +135,8 @@ class TestInboundRouting:
         ctx = captured["ctx"]
         assert ctx.public_channel_id == "C1"
         assert ctx.public_thread_id == "1.0"
-        assert ctx.post_channel_id == "C1"
+        # Posting with this value lands in the thread, in the right workspace.
+        assert ctx.post_channel_id == "T1|C1|1.0"
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):
@@ -872,6 +874,11 @@ class TestChannelIdGrammar:
     def test_slack_ids_match(self, adapter):
         assert adapter.looks_like_channel_id("C01234567")
         assert adapter.looks_like_channel_id("D09ABCDEF")
+
+    def test_workspace_qualified_targets_match(self, adapter):
+        assert adapter.looks_like_channel_id("T1|C01234567|")
+        assert adapter.looks_like_channel_id("T1|C01234567|1.0")
+        assert not adapter.looks_like_channel_id("T1|general|")
 
     def test_channel_names_do_not_match(self, adapter):
         assert not adapter.looks_like_channel_id("general")

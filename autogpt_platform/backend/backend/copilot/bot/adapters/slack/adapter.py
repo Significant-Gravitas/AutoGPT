@@ -130,7 +130,8 @@ class SlackAdapter(WebhookAdapter):
         return config.TYPING_REFRESH_SECONDS
 
     def looks_like_channel_id(self, ref: str) -> bool:
-        return bool(_CHANNEL_ID_RE.match(ref))
+        _, channel, _ = _decode_target(ref)
+        return bool(_CHANNEL_ID_RE.match(channel))
 
     def localize_markup(self, text: str) -> str:
         return to_mrkdwn(text)
@@ -450,7 +451,7 @@ class SlackAdapter(WebhookAdapter):
             bot_mentioned=bot_mentioned,
             public_channel_id=None if is_dm else channel,
             public_thread_id=None if is_dm else thread_ts,
-            post_channel_id=None if is_dm else channel,
+            post_channel_id=None if is_dm else target_channel_id,
             thread_history=thread_history,
             mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,

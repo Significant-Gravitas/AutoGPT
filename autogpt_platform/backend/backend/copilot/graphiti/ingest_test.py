@@ -378,6 +378,29 @@ class TestEnqueueConversationTurn:
 
         assert queue.get_nowait()["episode_body"] == "Alice: I like tea"
 
+    @pytest.mark.asyncio
+    async def test_server_messages_keep_their_sender_not_the_owner(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        with (
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(queue)),
+            patch.object(
+                ingest,
+                "resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="owner-1",
+                session_id="session-1",
+                user_msg=(
+                    '[Discord · you were @mentioned · message from "Bob" (Discord user ID: 2)'
+                    ' · post here with channel="2"]\nI work at Acme'
+                ),
+            )
+
+        assert queue.get_nowait()["episode_body"] == "Bob: I work at Acme"
+
 
 class TestMemoryGroupQueueIsolation:
     @pytest.mark.asyncio

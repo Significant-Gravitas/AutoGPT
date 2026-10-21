@@ -9,7 +9,7 @@ The streaming machinery itself lives in ``turn_stream``; prompt assembly in
 import asyncio
 import logging
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SkipValidation
 
 from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
@@ -53,6 +53,10 @@ class TargetState(BaseModel):
     session_id: str | None = None
     # Turns woken by a card answered here, streamed before the next batch.
     follows: list[ChatTurnHandle] = Field(default_factory=list)
+    # Context of the newest message in `pending`, so a drained batch's header
+    # names where those messages were sent (e.g. the thread the first reply
+    # opened), not where the turn that started processing came from.
+    pending_ctx: SkipValidation[MessageContext | None] = None
 
 
 class MessageHandler:
@@ -324,6 +328,7 @@ class MessageHandler:
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
         state.pending.append(PendingMessage.from_context(ctx, message_text or ctx.text))
+        state.pending_ctx = ctx
         if file_ids:
             state.pending_file_ids.extend(file_ids)
         # First attachment message in a batch pins the session; later ones
@@ -354,6 +359,8 @@ class MessageHandler:
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
                 batch_session_id = state.session_id
+                batch_ctx = state.pending_ctx or ctx
+                state.pending_ctx = None
                 state.pending.clear()
                 state.pending_file_ids.clear()
                 state.session_id = None
@@ -366,7 +373,7 @@ class MessageHandler:
                     batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
                 await self._stream_batch(
                     batch,
-                    ctx,
+                    batch_ctx,
                     adapter,
                     target_id,
                     file_ids=batch_file_ids,

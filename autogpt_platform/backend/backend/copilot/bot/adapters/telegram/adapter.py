@@ -725,6 +725,7 @@ def _context_from_callback_query(
         return None
     is_private = chat.get("type") == "private"
     target_id = _encode_target(chat_id, message.get("message_thread_id"))
+    topic_id = _topic_id(message)
     return MessageContext(
         platform="telegram",
         channel_type="dm" if is_private else "channel",
@@ -735,6 +736,12 @@ def _context_from_callback_query(
         username=sender.get("username") or sender.get("first_name") or "unknown",
         text=option,
         bot_mentioned=True,
+        channel_name=None if is_private else chat.get("title"),
+        public_channel_id=None if is_private else chat_id,
+        public_thread_id=None if is_private else topic_id,
+        post_channel_id=(
+            None if is_private else _encode_target(chat_id, _int_or_none(topic_id))
+        ),
     )
 
 

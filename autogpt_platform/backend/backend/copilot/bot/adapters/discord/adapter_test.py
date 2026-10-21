@@ -12,12 +12,11 @@ from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
-    _Location,
-    _location,
     _mention_queries,
     _resolve_mentions,
 )
 from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
+from backend.copilot.bot.adapters.discord.location import Location, location_of
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.turn_stream import _clarification_message
 
@@ -199,7 +198,7 @@ class TestLocationFields:
         msg = MagicMock()
         msg.guild = None
         msg.channel = MagicMock(spec=discord.DMChannel)
-        assert _location(msg) == _Location()
+        assert location_of(msg.guild, msg.channel) == Location()
 
     def test_channel_gives_names_and_its_own_id_to_post_to(self):
         msg = MagicMock()
@@ -208,7 +207,7 @@ class TestLocationFields:
         msg.channel = MagicMock(spec=discord.TextChannel)
         msg.channel.name = "eng-general"
         msg.channel.id = 222
-        assert _location(msg) == _Location(
+        assert location_of(msg.guild, msg.channel) == Location(
             server_name="Significant Gravitas",
             channel_name="eng-general",
             public_channel_id="222",
@@ -226,7 +225,7 @@ class TestLocationFields:
         thread.parent = MagicMock(spec=discord.TextChannel)
         thread.parent.name = "eng-general"
         msg.channel = thread
-        assert _location(msg) == _Location(
+        assert location_of(msg.guild, msg.channel) == Location(
             server_name="SG",
             channel_name="eng-general",
             public_channel_id="222",
@@ -245,7 +244,7 @@ class TestLocationFields:
         thread.parent_id = None
         thread.parent = None
         msg.channel = thread
-        location = _location(msg)
+        location = location_of(msg.guild, msg.channel)
         assert location.public_channel_id is None
         assert location.channel_name is None
         assert location.post_channel_id == "333"

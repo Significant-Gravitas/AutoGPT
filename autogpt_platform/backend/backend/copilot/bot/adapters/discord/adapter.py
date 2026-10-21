@@ -13,7 +13,6 @@ from typing import Optional
 
 import discord
 from discord import app_commands
-from pydantic import BaseModel
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.adapters.shared import (
@@ -41,6 +40,7 @@ from ..base import (
     SocketAdapter,
 )
 from . import choice_ui, commands, config, intro
+from .location import location_of
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -595,7 +595,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             attachments, skipped = await self._extract_attachments(message)
-            location = _location(message)
+            location = location_of(message.guild, message.channel)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -1085,38 +1085,6 @@ class DiscordAdapter(SocketAdapter):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 return False
         return True
-
-
-class _Location(BaseModel):
-    """Names and public ids for the location header the model sees."""
-
-    server_name: str | None = None
-    channel_name: str | None = None
-    public_channel_id: str | None = None
-    thread_name: str | None = None
-    public_thread_id: str | None = None
-    post_channel_id: str | None = None
-
-
-def _location(message: discord.Message) -> _Location:
-    channel = message.channel
-    if message.guild is None:
-        return _Location()
-    location = _Location(
-        server_name=str(message.guild.name),
-        public_channel_id=str(channel.id),
-        post_channel_id=str(channel.id),
-    )
-    if isinstance(channel, discord.Thread):
-        location.thread_name = str(channel.name)
-        location.public_thread_id = str(channel.id)
-        location.public_channel_id = (
-            str(channel.parent_id) if channel.parent_id else None
-        )
-        location.channel_name = str(channel.parent.name) if channel.parent else None
-    elif isinstance(channel, discord.abc.GuildChannel):
-        location.channel_name = str(channel.name)
-    return location
 
 
 def _resolve_mentions(
