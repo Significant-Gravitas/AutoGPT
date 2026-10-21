@@ -68,8 +68,18 @@ describe("getAnsweredQuestions", () => {
 
   it("reads onboarding answers by step keyword", () => {
     const steps = [
-      { question: "Which channel?", keyword: "source", options: [] },
-      { question: "Which channel?", keyword: "destination", options: [] },
+      {
+        question: "Which channel?",
+        keyword: "source",
+        options: [],
+        allow_multiple: false,
+      },
+      {
+        question: "Which channel?",
+        keyword: "destination",
+        options: [],
+        allow_multiple: false,
+      },
     ];
     const part = {
       type: "tool-expert_onboarding",

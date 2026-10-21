@@ -67,7 +67,8 @@ interface FormProps {
 
 function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const { expertsById } = useExpertMap();
-  const answers = useContext(AnsweredQuestionsContext).get(callId);
+  // What the user's reply in the chat said, as opposed to the form's answers.
+  const sentAnswers = useContext(AnsweredQuestionsContext).get(callId);
   const sectionId = useId();
   const {
     answer,
@@ -102,7 +103,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   if (isDone) {
     // Skipped questions have no answer to show, so only answered ones stay.
     const answered = onboarding.steps.flatMap((step) => {
-      const answer = answers?.get(step.keyword);
+      const answer = sentAnswers?.get(step.keyword);
       return answer
         ? [{ key: step.keyword, question: step.question, answer }]
         : [];
