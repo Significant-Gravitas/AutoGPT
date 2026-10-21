@@ -1,5 +1,6 @@
 import logging
-from typing import Annotated
+from types import TracebackType
+from typing import Annotated, Self
 
 from fastapi import APIRouter, Body, Query, Security
 from fastapi.responses import JSONResponse
@@ -60,19 +61,45 @@ async def postmark_webhook_handler(
         webhook.RecordType,
         webhook.MessageID,
     )
-    try:
+    with _RetryOnFailure(webhook) as boundary:
         await _handle(webhook)
-    except Exception as error:  # noqa: BLE001 — any failure, see below
-        # Neither re-raised nor logged with its traceback: Sentry would send
-        # every frame's locals, and the webhook in them holds the recipient's
-        # address. Postmark retries anything but a 200.
+    if boundary.failed:
+        return JSONResponse(status_code=503, content={"status": "retry"})
+
+
+class _RetryOnFailure:
+    """Turns any failure while handling a webhook into a retry, without the
+    failure reaching Sentry.
+
+    Neither re-raised nor logged with its traceback: Sentry would send every
+    frame's locals, and the webhook in them holds the recipient's address.
+    Only the record type, message id and error type are logged; Postmark
+    retries anything but a 200. Cancellation still propagates.
+    """
+
+    def __init__(self, webhook: PostmarkWebhook):
+        self.webhook = webhook
+        self.failed = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        if exc_type is None or not issubclass(exc_type, Exception):
+            return False
         logger.error(
             "Postmark %s webhook for message %s failed: %s",
-            webhook.RecordType,
-            webhook.MessageID,
-            type(error).__name__,
+            self.webhook.RecordType,
+            self.webhook.MessageID,
+            exc_type.__name__,
         )
-        return JSONResponse(status_code=503, content={"status": "retry"})
+        self.failed = True
+        return True
 
 
 async def _handle(webhook: PostmarkWebhook) -> None:
