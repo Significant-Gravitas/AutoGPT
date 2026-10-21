@@ -59,6 +59,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Paste screenshots into chat, talk through onboarding, self-host in one container](changelog/july-29-august-13-2026.md)
   * [A new sidebar, a smarter composer, and Otto on Telegram](changelog/july-15-july-22-2026.md)
   * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
   * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)
