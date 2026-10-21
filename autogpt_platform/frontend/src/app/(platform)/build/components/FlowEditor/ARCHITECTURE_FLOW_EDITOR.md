@@ -448,7 +448,7 @@ convertNodesPlusBlockInfoIntoCustomNodes(node, blockInfo);
 // Merges backend Node + BlockInfo → CustomNode (for loading)
 ```
 
-### **Handle ID Generation** (`components/renderers/InputRenderer/helpers.ts`)
+### **Handle ID Generation** (`@/components/renderers/InputRenderer/helpers.ts`)
 
 ```typescript
 getHandleId({ id, schema, uiOptions });
