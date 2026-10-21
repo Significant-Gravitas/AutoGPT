@@ -148,6 +148,44 @@ it("acknowledges an uncertain save already present on the server without another
   });
 });
 
+it("keeps saving after a timed-out save that the server applied", async () => {
+  let server = { progress: makeProgress(), revision: 4 };
+  getState.mockImplementation(async () =>
+    response(server.progress, server.revision),
+  );
+  patchState.mockImplementation(
+    ({ wizardProgress, wizardRevision, wizardUserId }) => {
+      if (wizardRevision !== server.revision)
+        return Promise.resolve({ status: 409, data: { detail: "Conflict" } });
+      const answers = server.revision > 4;
+      server = { progress: wizardProgress, revision: server.revision + 1 };
+      if (!answers) return new Promise(() => {});
+      return Promise.resolve({
+        status: 200,
+        data: { userId: wizardUserId, wizardRevision: server.revision },
+      });
+    },
+  );
+  const { result } = mountWizard();
+  await settle();
+  act(() => useOnboardingWizardStore.getState().setRole("Founder"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_250);
+  });
+  expect(result.current.error).toMatch(/couldn't save/i);
+  act(() => useOnboardingWizardStore.getState().setOtherRole("Solo"));
+  await settle();
+  const latest = makeProgress({ role: "Founder", otherRole: "Solo" });
+  expect(result.current.conflict).toBe(false);
+  expect(result.current.error).toBeNull();
+  expect(server).toEqual({ progress: latest, revision: 6 });
+  expect(readLocalProgress("u1")).toEqual({
+    progress: latest,
+    revision: 6,
+    pending: false,
+  });
+});
+
 it("keeps a clean offline cache clean and saves subsequent edits", async () => {
   writeLocalProgress("u1", makeProgress(), false, 4);
   getState.mockRejectedValue(new Error("Offline"));

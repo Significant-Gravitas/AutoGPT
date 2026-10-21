@@ -2,8 +2,10 @@
 against a live FalkorDB whose own Redis holds the graph's write lock.
 
 graphiti's ``add_episode`` saves the edges and entities it read when it
-began (``SET r = edge``, ``SET n = node``), so a forget landing mid-episode
-used to be written over. Now the two never overlap (``scope_lock.py``): a
+began, so a forget landing mid-episode used to be written over: the fact
+whole, and the summaries of its entities (the driver now saves nothing on a
+forgotten fact but its episode list, ``fact_attributes.py``, and still
+saves entities whole). Now the two never overlap (``scope_lock.py``): a
 forget that arrives while an episode is being written waits for it, then
 applies to what it wrote, and search never shows the forgotten sentence once
 the forget has answered (``scope_lock_integration_test.py`` covers a lock
@@ -58,6 +60,10 @@ from .scope import MemoryScope
 
 # A forget, or the legacy-forget backfill's restamp.
 Writer = Callable[[], Awaitable[ForgetResult | LegacyForgets]]
+
+# Text in graphiti's bulk save of the facts, and of the entities.
+_FACT_SAVE = "[r:RELATES_TO {uuid: edge.uuid}]"
+_ENTITY_SAVE = "SET n = node"
 
 
 @pytest.fixture(autouse=True)
@@ -156,7 +162,9 @@ async def _assert_forgotten(driver: AutoGPTFalkorDriver, scope: MemoryScope, ali
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.parametrize("marker", ["SET r = edge", "SET n = node"])
+@pytest.mark.parametrize(
+    "marker", [_FACT_SAVE, _ENTITY_SAVE], ids=["fact-save", "entity-save"]
+)
 async def test_a_forget_arriving_mid_ingestion_waits_then_applies(
     scope_graph, stub_graphiti_client, ingest_worker_cleanup, marker: str
 ) -> None:
@@ -194,7 +202,7 @@ async def test_a_hard_forget_arriving_mid_ingestion_deletes_what_it_wrote(
     async def forget() -> ForgetResult:
         return await retract(scope, [alice], hard=True)
 
-    with _forget_arrives_at("SET r = edge", forget) as (started, waited):
+    with _forget_arrives_at(_FACT_SAVE, forget) as (started, waited):
         await _say(driver, scope, stub_graphiti_client)
     result = await asyncio.wait_for(started[0], 30)
 
@@ -231,7 +239,7 @@ async def test_a_forget_on_another_event_loop_waits_for_the_ingestion(
     def forget() -> Awaitable[ForgetResult]:
         return asyncio.to_thread(asyncio.run, elsewhere())
 
-    with _forget_arrives_at("SET r = edge", forget) as (started, waited):
+    with _forget_arrives_at(_FACT_SAVE, forget) as (started, waited):
         await _say(driver, scope, stub_graphiti_client)
     result = await asyncio.wait_for(started[0], 30)
     await _close(clients.pop(asyncio.get_running_loop(), None))
@@ -262,7 +270,7 @@ async def test_the_legacy_forget_backfill_waits_for_the_ingestion(
     async def backfill() -> LegacyForgets:
         return await backfill_graph(driver, apply=True)
 
-    with _forget_arrives_at("SET r = edge", backfill) as (started, waited):
+    with _forget_arrives_at(_FACT_SAVE, backfill) as (started, waited):
         await _say(driver, scope, stub_graphiti_client)
     result = await asyncio.wait_for(started[0], 30)
 

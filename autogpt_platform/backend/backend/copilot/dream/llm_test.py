@@ -130,13 +130,24 @@ def test_parse_structured_output_validates_fenced_json():
 
 
 @pytest.mark.parametrize(
-    "content,match",
-    [("", "empty"), ("prose only", "non-JSON"), ('{"other": 1}', "did not match")],
+    "content,match,code",
+    [
+        ("", "empty", "empty_content"),
+        ("prose only", "non-JSON", "non_json_content"),
+        ("prose {only", "non-JSON", "non_json_content"),
+        ('{"other": 1}', "did not match", "schema_mismatch"),
+        ('{"content": ["said by the model"]}', "did not match", "schema_mismatch"),
+    ],
 )
-def test_parse_failures_carry_the_billed_usage(content: str, match: str):
+def test_parse_failures_carry_the_billed_usage(content: str, match: str, code: str):
+    """And a code, while neither the code nor the message quotes the answer,
+    which a dream pass's record would keep (``forget_copies.py``)."""
     with pytest.raises(InferenceError, match=match) as exc_info:
         parse_structured_output(content, _Fact, _USAGE)
     assert exc_info.value.usage == _USAGE
+    assert exc_info.value.code == code
+    assert "only" not in str(exc_info.value)
+    assert "said by the model" not in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

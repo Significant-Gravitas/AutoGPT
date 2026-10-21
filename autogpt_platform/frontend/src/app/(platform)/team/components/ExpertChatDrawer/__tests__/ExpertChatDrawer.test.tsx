@@ -491,7 +491,9 @@ describe("ExpertChatDrawer", () => {
       />,
     );
     fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
-    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Send answers" }),
+    );
     await waitFor(() => expect(createSession).toHaveBeenCalled());
     await waitFor(() =>
       expect(
@@ -503,10 +505,8 @@ describe("ExpertChatDrawer", () => {
       ).toBe(false),
     );
     expect(
-      screen
-        .getByRole("radio", { name: "Pricing" })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
+      screen.getByRole("button", { name: /Which outcome.*Pricing/ }),
+    ).toBeDefined();
   });
 
   test("keeps settled setup out of new chats", async () => {
