@@ -15,6 +15,7 @@ from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.dream.registry import ensure_scope_scheduled
 from backend.util.background import spawn_background_task
@@ -672,7 +673,9 @@ async def enqueue_conversation_turn(
     # User's own words only, in graphiti's expected "Speaker: content" format.
     # Assistant response is excluded from extraction
     # (Zep Cloud approach: ignore_roles=["assistant"]).
-    episode_body_for_graphiti = f"{user_display_name}: {user_msg}"
+    episode_body_for_graphiti = (
+        f"{user_display_name}: {strip_chat_platform_header(user_msg)}"
+    )
 
     source_description = f"User message in session {session_id}"
 

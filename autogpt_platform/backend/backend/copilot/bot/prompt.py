@@ -5,6 +5,10 @@ referenced conversations) becomes the model's prompt, and how thread names are
 derived and clamped to a platform's cap. No I/O.
 """
 
+from pydantic import BaseModel
+
+from backend.copilot.chat_platform_header import neutralize_forged_labels
+
 from .adapters.base import MessageContext, MessageHistoryEntry
 
 THREAD_NAME_PREFIX = "AutoGPT: "
@@ -29,6 +33,146 @@ def clamp_prompt(message: str, max_chars: int) -> str:
         # Pathologically tiny cap — can't even fit the notice; hard-cut.
         return message[-max_chars:]
     return _TRUNCATION_NOTICE + message[-keep:]
+
+
+class PendingMessage(BaseModel):
+    """One inbound message waiting to be sent to Otto as part of a batch."""
+
+    username: str
+    user_id: str
+    text: str
+    bot_mentioned: bool = False
+    replied_to_bot: bool = False
+
+    @classmethod
+    def from_context(cls, ctx: MessageContext, text: str) -> "PendingMessage":
+        return cls(
+            username=ctx.username,
+            user_id=ctx.user_id,
+            text=text,
+            bot_mentioned=ctx.bot_mentioned,
+            replied_to_bot=ctx.replied_to_bot,
+        )
+
+
+class _Nouns(BaseModel):
+    server: str = "server"
+    channel: str = "channel"
+    channel_id: str = "channel id"
+    thread: str = "thread"
+
+
+_NOUNS: dict[str, _Nouns] = {
+    "slack": _Nouns(server="workspace"),
+    "teams": _Nouns(server="team"),
+    "telegram": _Nouns(channel="group", channel_id="chat id", thread="topic"),
+}
+_NAME_MAX_CHARS = 60
+# Characters that would let a user-chosen name close or fake a header field.
+_NAME_ESCAPES = str.maketrans({'"': "'", "[": "(", "]": ")", "·": "-"})
+
+
+def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
+    """Format one or more pending messages into a single prompt for Otto.
+
+    One header line says where the turn was sent, whether each message
+    addressed the bot and who sent it (bridge-made fields first, user-chosen
+    names after, sanitised so they can't fake a field), and how to post here.
+    Batched messages (they arrived while a prior reply was streaming) each
+    get their own label line. Body lines that mimic a header are escaped.
+    """
+    platform = _platform_tag(ctx)
+    place = [*format_location(ctx), _post_hint(ctx)]
+    if len(batch) == 1:
+        message = batch[0]
+        fields = [platform, *_message_label(message, ctx), *place]
+        return f"[{' · '.join(fields)}]\n{neutralize_forged_labels(message.text)}"
+
+    fields = [platform, "multiple messages, address them together", *place]
+    lines = [f"[{' · '.join(fields)}]"]
+    for message in batch:
+        label = " · ".join(_message_label(message, ctx))
+        lines.append(f"\n[{label}]\n{neutralize_forged_labels(message.text)}")
+    return "\n".join(lines)
+
+
+def _platform_tag(ctx: MessageContext) -> str:
+    platform_display = ctx.platform.capitalize()
+    return f"{platform_display} DM" if ctx.is_dm else platform_display
+
+
+def _message_label(message: PendingMessage, ctx: MessageContext) -> list[str]:
+    sender = (
+        f"message from {_quote(message.username)} "
+        f"({ctx.platform.capitalize()} user ID: {message.user_id})"
+    )
+    if ctx.is_dm:
+        return [sender]
+    if message.bot_mentioned:
+        addressed = "you were @mentioned"
+    elif message.replied_to_bot:
+        addressed = "they replied to your message"
+    else:
+        addressed = "you were not mentioned"
+    return [addressed, sender]
+
+
+def format_location(ctx: MessageContext) -> list[str]:
+    """The header fields naming where ``ctx`` was sent, with public ids."""
+    if ctx.is_dm:
+        return []
+    nouns = _NOUNS.get(ctx.platform, _Nouns())
+    fields: list[str] = []
+    if ctx.server_id and ctx.platform != "telegram":
+        fields.append(
+            _field(nouns.server, ctx.server_name, f"{nouns.server} id {ctx.server_id}")
+        )
+    if ctx.public_channel_id or ctx.channel_name:
+        channel_id = (
+            f"{nouns.channel_id} {ctx.public_channel_id}"
+            if ctx.public_channel_id
+            else None
+        )
+        fields.append(_field(nouns.channel, ctx.channel_name, channel_id))
+    if ctx.public_thread_id or ctx.thread_name:
+        thread_id = (
+            f"{nouns.thread} id {ctx.public_thread_id}"
+            if ctx.public_thread_id
+            else None
+        )
+        fields.append(_field(nouns.thread, ctx.thread_name, thread_id))
+    return fields
+
+
+def _post_hint(ctx: MessageContext) -> str:
+    if ctx.is_dm:
+        return "post here with target='dm'"
+    if not ctx.post_channel_id:
+        return (
+            f"post_to_chat_platform can't post to {ctx.platform.capitalize()} "
+            "channels, target='dm' only"
+        )
+    if ctx.channel_type == "thread" and ctx.post_channel_id == ctx.public_channel_id:
+        return f'post to the parent channel with channel="{ctx.post_channel_id}"'
+    return f'post here with channel="{ctx.post_channel_id}"'
+
+
+def _field(noun: str, name: str | None, id_label: str | None) -> str:
+    parts = [noun]
+    if name:
+        parts.append(_quote(name))
+    if id_label:
+        parts.append(f"({id_label})")
+    return " ".join(parts)
+
+
+def _quote(name: str) -> str:
+    """``name`` as a quoted header value that can't break out of its field."""
+    printable = "".join(ch if ch.isprintable() else " " for ch in name)
+    cleaned = " ".join(printable.translate(_NAME_ESCAPES).split())
+    if len(cleaned) > _NAME_MAX_CHARS:
+        cleaned = cleaned[: _NAME_MAX_CHARS - 1] + "…"
+    return f'"{cleaned}"'
 
 
 def build_message_text(

@@ -62,7 +62,8 @@ UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 # Telegram chat IDs are integers of any length; groups/supergroups are
 # negative (supergroups start with -100). Used to tell a raw proactive chat
 # ref from a name (names are never purely numeric).
-_CHAT_ID_RE = re.compile(r"^-?\d+$")
+# A chat id, optionally pinned to a forum topic (``chat_id|topic_id``).
+_CHAT_ID_RE = re.compile(r"^-?\d+(\|\d+)?$")
 
 # Message fields that carry a downloadable file, with a fallback filename for
 # the kinds Telegram doesn't name.
@@ -272,6 +273,7 @@ class TelegramAdapter(WebhookAdapter):
         is_private = chat.get("type") == "private"
         text = message.get("text") or message.get("caption") or ""
 
+        replied_to_bot = False
         if is_private:
             channel_type: ChannelType = "dm"
             bot_mentioned = True
@@ -295,6 +297,7 @@ class TelegramAdapter(WebhookAdapter):
                 ).strip()
 
         target_id = _encode_target(chat_id, message.get("message_thread_id"))
+        topic_id = _topic_id(message)
         attachments, skipped = await self._extract_attachments(message)
         return MessageContext(
             platform="telegram",
@@ -307,6 +310,13 @@ class TelegramAdapter(WebhookAdapter):
             username=sender.get("username") or sender.get("first_name") or "unknown",
             text=text,
             bot_mentioned=bot_mentioned,
+            replied_to_bot=replied_to_bot,
+            channel_name=None if is_private else chat.get("title"),
+            public_channel_id=None if is_private else chat_id,
+            public_thread_id=None if is_private else topic_id,
+            post_channel_id=(
+                None if is_private else _encode_target(chat_id, _int_or_none(topic_id))
+            ),
             mentionable_users=_collect_mentionable_users(message),
             attachments=attachments,
             skipped_attachments=skipped,
@@ -726,6 +736,22 @@ def _context_from_callback_query(
         text=option,
         bot_mentioned=True,
     )
+
+
+def _topic_id(message: dict[str, Any]) -> str | None:
+    """The forum topic the message was posted in, if any.
+
+    ``message_thread_id`` alone also marks reply threads outside forums, so
+    only ``is_topic_message`` makes it a topic.
+    """
+    thread_id = message.get("message_thread_id")
+    if not message.get("is_topic_message") or thread_id is None:
+        return None
+    return str(thread_id)
+
+
+def _int_or_none(value: str | None) -> int | None:
+    return int(value) if value is not None else None
 
 
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:

@@ -12,6 +12,8 @@ from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
+    _Location,
+    _location,
     _mention_queries,
     _resolve_mentions,
 )
@@ -190,6 +192,86 @@ class TestMessageText:
 
 
 # ── _channel_type ──────────────────────────────────────────────────────
+
+
+class TestLocationFields:
+    def test_dm_has_no_names(self):
+        msg = MagicMock()
+        msg.guild = None
+        msg.channel = MagicMock(spec=discord.DMChannel)
+        assert _location(msg) == _Location()
+
+    def test_channel_gives_names_and_its_own_id_to_post_to(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "Significant Gravitas"
+        msg.channel = MagicMock(spec=discord.TextChannel)
+        msg.channel.name = "eng-general"
+        msg.channel.id = 222
+        assert _location(msg) == _Location(
+            server_name="Significant Gravitas",
+            channel_name="eng-general",
+            public_channel_id="222",
+            post_channel_id="222",
+        )
+
+    def test_thread_gives_parent_channel_and_posts_to_the_thread(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "SG"
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 333
+        thread.name = "Bug triage"
+        thread.parent_id = 222
+        thread.parent = MagicMock(spec=discord.TextChannel)
+        thread.parent.name = "eng-general"
+        msg.channel = thread
+        assert _location(msg) == _Location(
+            server_name="SG",
+            channel_name="eng-general",
+            public_channel_id="222",
+            thread_name="Bug triage",
+            public_thread_id="333",
+            post_channel_id="333",
+        )
+
+    def test_thread_with_an_uncached_parent(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "SG"
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 333
+        thread.name = "t"
+        thread.parent_id = None
+        thread.parent = None
+        msg.channel = thread
+        location = _location(msg)
+        assert location.public_channel_id is None
+        assert location.channel_name is None
+        assert location.post_channel_id == "333"
+
+
+class TestRepliedToBot:
+    def _reply_to(self, author_id: int) -> MagicMock:
+        msg = MagicMock()
+        replied = MagicMock(spec=discord.Message)
+        replied.author = MagicMock(id=author_id)
+        msg.reference = MagicMock(resolved=replied)
+        return msg
+
+    def test_reply_to_the_bot_counts(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        assert adapter._replied_to_bot(self._reply_to(1000)) is True
+
+    def test_reply_to_someone_else_does_not(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        assert adapter._replied_to_bot(self._reply_to(5)) is False
+
+    def test_no_reply_does_not(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = MagicMock()
+        msg.reference = None
+        assert adapter._replied_to_bot(msg) is False
 
 
 class TestChannelType:

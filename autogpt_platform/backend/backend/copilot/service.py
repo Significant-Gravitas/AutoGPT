@@ -21,6 +21,7 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
@@ -1089,7 +1090,9 @@ async def _update_title_async(
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
     """
-    title, response = await _generate_session_title(message, user_id, session_id)
+    title, response = await _generate_session_title(
+        strip_chat_platform_header(message), user_id, session_id
+    )
 
     if user_id:
         try:

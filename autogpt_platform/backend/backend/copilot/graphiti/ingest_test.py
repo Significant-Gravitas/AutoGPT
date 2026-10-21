@@ -355,6 +355,29 @@ class TestEnqueueConversationTurn:
         assert enqueue_mock.await_args.args[0] == expert_scope
         assert queue.get_nowait()["group_id"] == expert_scope.group_id
 
+    @pytest.mark.asyncio
+    async def test_bot_header_is_not_ingested_as_the_users_words(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        with (
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(queue)),
+            patch.object(
+                ingest,
+                "resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="user-1",
+                session_id="session-1",
+                user_msg=(
+                    '[Discord DM · message from "Alice" (Discord user ID: 1)'
+                    " · post here with target='dm']\nI like tea"
+                ),
+            )
+
+        assert queue.get_nowait()["episode_body"] == "Alice: I like tea"
+
 
 class TestMemoryGroupQueueIsolation:
     @pytest.mark.asyncio

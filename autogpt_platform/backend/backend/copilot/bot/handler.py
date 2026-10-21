@@ -22,7 +22,7 @@ from .attachments import (
     upload_attachments,
 )
 from .bot_backend import BotBackend
-from .prompt import build_message_text, build_thread_name
+from .prompt import PendingMessage, build_message_text, build_thread_name
 from .turn_stream import TurnStreamer, send_denial
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,7 @@ class TargetState(BaseModel):
     """
 
     processing: bool = False
-    # Each entry: (username, user_id, text)
-    pending: list[tuple[str, str, str]] = Field(default_factory=list)
+    pending: list[PendingMessage] = Field(default_factory=list)
     # Workspace file IDs uploaded for messages in `pending`, drained together
     # with them so a batched turn carries every attached file.
     pending_file_ids: list[str] = Field(default_factory=list)
@@ -296,7 +295,7 @@ class MessageHandler:
 
     async def _stream_batch(
         self,
-        batch: list[tuple[str, str, str]],
+        batch: list[PendingMessage],
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
@@ -324,7 +323,7 @@ class MessageHandler:
         session_id: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
-        state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
+        state.pending.append(PendingMessage.from_context(ctx, message_text or ctx.text))
         if file_ids:
             state.pending_file_ids.extend(file_ids)
         # First attachment message in a batch pins the session; later ones

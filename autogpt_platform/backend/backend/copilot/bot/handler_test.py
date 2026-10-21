@@ -24,7 +24,7 @@ from .adapters.base import (
 )
 from .bot_backend import ChatTurnDeniedError, LinkTokenResult, ResolveResult
 from .handler import MAX_TURN_FILE_IDS, MessageHandler, TargetState
-from .prompt import build_thread_name, clamp_thread_name
+from .prompt import PendingMessage, build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -491,7 +491,21 @@ class TestBatching:
         await handler._enqueue_and_process(_ctx(text="second"), adapter, "target-1")
 
         assert state.processing is True
-        assert state.pending == [("Bently", "user-1", "second")]
+        assert state.pending == [
+            PendingMessage(username="Bently", user_id="user-1", text="second")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_queued_message_keeps_whether_it_mentioned_the_bot(self):
+        handler = MessageHandler(_api())
+        state = TargetState(processing=True)
+        handler._targets["target-1"] = state
+
+        await handler._enqueue_and_process(
+            _ctx(text="@bot hi", bot_mentioned=True), _adapter(), "target-1"
+        )
+
+        assert state.pending[0].bot_mentioned is True
 
     @pytest.mark.asyncio
     async def test_target_state_cleared_after_drain(self):
@@ -508,7 +522,9 @@ class TestBatching:
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
 
         await handler._enqueue_and_process(_ctx(text="hello"), adapter, "target-1")
-        assert stream_calls == [[("Bently", "user-1", "hello")]]
+        assert stream_calls == [
+            [PendingMessage(username="Bently", user_id="user-1", text="hello")]
+        ]
         # Dict entry should be gone once processing finishes with empty pending.
         assert "target-1" not in handler._targets
 
@@ -529,14 +545,16 @@ class TestBatching:
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
-                state.pending.append(("Later", "u2", "follow-up"))
+                state.pending.append(
+                    PendingMessage(username="Later", user_id="u2", text="follow-up")
+                )
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
         await handler._enqueue_and_process(_ctx(text="first"), adapter, "target-1")
 
         assert seen == [
-            [("Bently", "user-1", "first")],
-            [("Later", "u2", "follow-up")],
+            [PendingMessage(username="Bently", user_id="user-1", text="first")],
+            [PendingMessage(username="Later", user_id="u2", text="follow-up")],
         ]
         assert "target-1" not in handler._targets
 
@@ -556,7 +574,10 @@ class TestBatching:
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
         await handler._enqueue_and_process(_ctx(text="first"), _adapter(), "target-1")
 
-        assert streamed == [([("Bently", "user-1", "first")], None), ([], woken)]
+        assert streamed == [
+            ([PendingMessage(username="Bently", user_id="user-1", text="first")], None),
+            ([], woken),
+        ]
         assert "target-1" not in handler._targets
 
     @pytest.mark.asyncio
@@ -576,7 +597,10 @@ class TestBatching:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_message.assert_not_awaited()
@@ -614,7 +638,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -662,7 +689,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -701,7 +731,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         # The question is sent as a normal text message (every adapter
@@ -749,7 +782,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_message.assert_awaited_once()
@@ -794,7 +830,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -830,7 +869,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-1",
@@ -870,7 +909,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-2",
@@ -910,7 +949,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-3",
@@ -948,7 +987,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -968,7 +1010,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -996,7 +1041,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -1587,7 +1635,10 @@ class TestTurnDenied:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -1614,7 +1665,10 @@ class TestTurnDenied:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_message.assert_awaited_once()

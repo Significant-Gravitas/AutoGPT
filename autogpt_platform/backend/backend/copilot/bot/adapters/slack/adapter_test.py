@@ -105,8 +105,36 @@ class TestInboundRouting:
         assert ctx.text == "hi there"  # bot mention stripped
         # The opaque channel_id carries the workspace so sends pick its token.
         assert ctx.channel_id == "T1|C1|"
+        # The header and post_to_chat_platform use Slack's own channel id.
+        assert ctx.public_channel_id == "C1"
+        assert ctx.post_channel_id == "C1"
+        assert ctx.public_thread_id is None
         # The author is who the bot answers, so a reply naming them pings.
         assert [uid for _, uid in ctx.mentionable_users] == ["U1"]
+
+    @pytest.mark.asyncio
+    async def test_thread_context_gives_the_public_thread_ts(self, adapter):
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "app_mention",
+                "channel": "C1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "<@UBOT> hi",
+                "team": "T1",
+            }
+        )
+        ctx = captured["ctx"]
+        assert ctx.public_channel_id == "C1"
+        assert ctx.public_thread_id == "1.0"
+        assert ctx.post_channel_id == "C1"
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):

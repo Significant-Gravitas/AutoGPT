@@ -13,6 +13,7 @@ from typing import Optional
 
 import discord
 from discord import app_commands
+from pydantic import BaseModel
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.adapters.shared import (
@@ -594,6 +595,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             attachments, skipped = await self._extract_attachments(message)
+            location = _location(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -604,6 +606,13 @@ class DiscordAdapter(SocketAdapter):
                 username=message.author.display_name,
                 text=message_text,
                 bot_mentioned=bot_mentioned,
+                server_name=location.server_name,
+                channel_name=location.channel_name,
+                public_channel_id=location.public_channel_id,
+                thread_name=location.thread_name,
+                public_thread_id=location.public_thread_id,
+                post_channel_id=location.post_channel_id,
+                replied_to_bot=self._replied_to_bot(message),
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
@@ -669,6 +678,17 @@ class DiscordAdapter(SocketAdapter):
         if bot_user is None:
             return False
         return any(user.id == bot_user.id for user in message.mentions)
+
+    def _replied_to_bot(self, message: discord.Message) -> bool:
+        """The message is a reply to one of the bot's own messages."""
+        bot_user = self._client.user
+        ref = message.reference
+        if bot_user is None or ref is None:
+            return False
+        resolved = ref.resolved
+        return (
+            isinstance(resolved, discord.Message) and resolved.author.id == bot_user.id
+        )
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
@@ -1065,6 +1085,38 @@ class DiscordAdapter(SocketAdapter):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 return False
         return True
+
+
+class _Location(BaseModel):
+    """Names and public ids for the location header the model sees."""
+
+    server_name: str | None = None
+    channel_name: str | None = None
+    public_channel_id: str | None = None
+    thread_name: str | None = None
+    public_thread_id: str | None = None
+    post_channel_id: str | None = None
+
+
+def _location(message: discord.Message) -> _Location:
+    channel = message.channel
+    if message.guild is None:
+        return _Location()
+    location = _Location(
+        server_name=str(message.guild.name),
+        public_channel_id=str(channel.id),
+        post_channel_id=str(channel.id),
+    )
+    if isinstance(channel, discord.Thread):
+        location.thread_name = str(channel.name)
+        location.public_thread_id = str(channel.id)
+        location.public_channel_id = (
+            str(channel.parent_id) if channel.parent_id else None
+        )
+        location.channel_name = str(channel.parent.name) if channel.parent else None
+    elif isinstance(channel, discord.abc.GuildChannel):
+        location.channel_name = str(channel.name)
+    return location
 
 
 def _resolve_mentions(

@@ -98,6 +98,49 @@ class TestDispatch:
         assert ctx.text == "hello there"
 
     @pytest.mark.asyncio
+    async def test_forum_topic_gives_the_combined_post_target(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(
+            _group("@OurBot hi", message_thread_id=7, is_topic_message=True)
+        )
+        ctx = seen[0]
+        assert ctx.channel_name == "Builders"
+        assert ctx.public_channel_id == "-100555"
+        assert ctx.public_thread_id == "7"
+        assert ctx.post_channel_id == "-100555|7"
+        assert a.looks_like_channel_id(ctx.post_channel_id)
+
+    @pytest.mark.asyncio
+    async def test_a_reply_thread_outside_a_forum_is_not_a_topic(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_group("@OurBot hi", message_thread_id=7))
+        assert seen[0].public_thread_id is None
+        assert seen[0].post_channel_id == "-100555"
+
+    @pytest.mark.asyncio
+    async def test_reply_to_the_bot_is_flagged(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(
+            _group("and now?", reply_to_message={"from": {"id": 999, "is_bot": True}})
+        )
+        assert seen[0].replied_to_bot is True
+
+    @pytest.mark.asyncio
+    async def test_dm_context_has_no_location(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_dm("hi"))
+        assert seen[0].channel_name is None
+        assert seen[0].post_channel_id is None
+
+    @pytest.mark.asyncio
     async def test_group_message_without_mention_is_ignored(self):
         a = _adapter()
         seen = []
