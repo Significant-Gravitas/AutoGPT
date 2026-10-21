@@ -28,20 +28,15 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
-const flags = vi.hoisted(() => ({ experts: false }));
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  function isOn(flag: string) {
-    if (flag === actual.Flag.ONBOARDING_BRAIN_DUMP) return true;
-    return flag === actual.Flag.HIRE_EXPERTS && flags.experts;
-  }
   return {
     ...actual,
-    useGetFlag: isOn,
-    useFlagStatus: (flag: string) => ({ enabled: isOn(flag), ready: true }),
+    useGetFlag: () => false,
+    useFlagStatus: () => ({ enabled: false, ready: true }),
   };
 });
 
@@ -80,7 +75,6 @@ let writes: SuggestedTasksUpdate[] = [];
 beforeEach(() => {
   capture.mockReset();
   window.localStorage.clear();
-  flags.experts = false;
   stored = TASKS.map((task) => ({ ...task }));
   isStored = true;
   reads = 0;
@@ -359,7 +353,6 @@ describe("Suggested first tasks — Home after the first message", () => {
   });
 
   it("goes while an expert is the recipient", async () => {
-    flags.experts = true;
     server.use(
       getListExpertIdentitiesMockHandler([
         {

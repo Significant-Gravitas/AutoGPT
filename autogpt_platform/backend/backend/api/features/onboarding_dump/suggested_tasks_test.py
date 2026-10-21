@@ -89,11 +89,6 @@ def setup_app_auth(mock_jwt_user):
 
 
 @pytest.fixture(autouse=True)
-def flag_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FORCE_FLAG_ONBOARDING_BRAIN_DUMP", "true")
-
-
-@pytest.fixture(autouse=True)
 def rows(mocker: MockerFixture) -> RowStore:
     store = RowStore()
     module = "backend.api.features.onboarding_dump.db"
@@ -262,14 +257,3 @@ def test_an_empty_id_list_is_refused(rows: RowStore):
     rows.put(STORED)
 
     assert update([], "dismissed").status_code == 422
-
-
-@pytest.mark.parametrize(
-    "call", [lambda: client.get(URL), lambda: update(["0"], "sent")]
-)
-def test_both_endpoints_are_404_when_the_flag_is_off(
-    monkeypatch: pytest.MonkeyPatch, call
-):
-    monkeypatch.setenv("FORCE_FLAG_ONBOARDING_BRAIN_DUMP", "false")
-
-    assert call().status_code == 404

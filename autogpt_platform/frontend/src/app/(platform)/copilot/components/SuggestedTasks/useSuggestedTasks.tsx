@@ -8,7 +8,6 @@ import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { trackFunnel } from "@/services/experts/experts-analytics";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast as sonnerToast } from "sonner";
@@ -36,12 +35,11 @@ const UNDO_TOAST_MS = 6000;
 const QUERY_KEY = getGetBrainDumpSuggestedTasksQueryKey();
 
 export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const queryClient = useQueryClient();
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const { data: response } = useGetBrainDumpSuggestedTasks({
-    query: { enabled: Boolean(isBrainDumpEnabled) && enabled },
+    query: { enabled },
   });
   const list = response?.status === 200 ? response.data : null;
   const tasks = list?.tasks ?? [];

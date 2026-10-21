@@ -99,7 +99,6 @@ from backend.util.llm.provider_billing import (
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     estimate_token_count,
@@ -121,7 +120,6 @@ from ..constants import (
 )
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
-from ..graphiti.config import is_enabled_for_user
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
@@ -2488,9 +2486,8 @@ async def _resolve_sdk_model_for_request(
 def _codex_gateway_usage(
     gateway: CodexAnthropicGateway,
 ) -> CodexTokenUsage | None:
-    """Read authoritative aggregate usage from a completed Codex gateway."""
-    result = gateway.result
-    return result.usage if result is not None else None
+    """Read authoritative usage, including interrupted Codex conversations."""
+    return gateway.usage
 
 
 def _reconciles_openrouter_cost(is_codex_transport: bool) -> bool:
@@ -5392,14 +5389,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         auto_mode_supplement = approval_mode_supplement(
             await active_mode(user_id, session)
         )
-        # The whole expert-team surface rides the hire-experts flag, failing
-        # closed for anonymous turns.  Resolved here rather than at the
-        # tool-hiding site below so the delegation rules can be gated on the
-        # same boolean — a flag-off turn must not be told to call tools that
-        # were never registered with the MCP server.
-        experts_enabled = bool(user_id) and await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        )
+        experts_enabled = bool(user_id)
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         oversight_supplement = get_expert_oversight_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
@@ -6963,7 +6953,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # --- Skill learning: record this turn as a learning source ---
         # Independent of Graphiti: a memory-service failure must not change
         # what the nightly learner can consider. Fire-and-forget; the
-        # helper is flag-gated and never raises.
+        # helper honors the user's learning preferences and never raises.
         if expert_identity_validated and user_id and message and is_user_message:
             _capture_task = asyncio.create_task(
                 capture_chat_turn(
@@ -7213,7 +7203,7 @@ async def _fetch_graphiti_context(
     session: ChatSession,
     message: str | None,
 ) -> tuple[bool, str]:
-    """Check Graphiti flag and fetch warm context in one shot.
+    """Fetch warm context for authenticated users.
 
     Returns ``(graphiti_enabled, warm_ctx)`` where ``warm_ctx`` is a
     pre-loaded fact bundle for the first turn's query (not the system
@@ -7223,8 +7213,7 @@ async def _fetch_graphiti_context(
     never stored in the user's message. Skips the fetch on follow-up turns
     (history > 1 message) and when the user is anonymous.
     """
-    enabled = await is_enabled_for_user(user_id)
-    if not enabled:
+    if not user_id:
         return False, ""
     if not (user_id and len(session.messages) <= 1):
         return True, ""

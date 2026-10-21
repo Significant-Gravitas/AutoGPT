@@ -1,24 +1,18 @@
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
-import {
-  forgetHeldFollowUp,
-  rememberHeldFollowUp,
-  takeHeldFollowUps,
-} from "./helpers/heldFollowUps";
-import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
-import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
-import { useCopilotPendingChips } from "./useCopilotPendingChips";
-import { useCopilotUIStore } from "./store";
-import { useChatSession } from "./useChatSession";
 import {
   buildKickoffMessage,
   getKickoffAttemptToken,
@@ -26,23 +20,28 @@ import {
   shouldClearKickoffParam,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
-import { useExpertKickoff } from "./useExpertKickoff";
+import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import {
+  forgetHeldFollowUp,
+  rememberHeldFollowUp,
+  takeHeldFollowUps,
+} from "./helpers/heldFollowUps";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
+import { useCopilotUIStore } from "./store";
+import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
+import { useExpertKickoff } from "./useExpertKickoff";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
-import { useSettleGate } from "./useSettleGate";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
+import { useSettleGate } from "./useSettleGate";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
-import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
-import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import {
-  peekGreetingDone,
-  setGreetingDone,
-  takeIntroAwaitingFollowup,
-} from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -73,11 +72,10 @@ export function useCopilotPage({
   isStreamRuntime = false,
 }: { isStreamRuntime?: boolean } = {}) {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const [newThreadParam] = useQueryState("new", parseAsString);
-  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const expertId = expertIdParam;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
     parseAsString,
@@ -98,33 +96,17 @@ export function useCopilotPage({
     ? expertsById.get(validExpertIdParam)
     : undefined;
   const kickoffExpertId =
-    isExpertsEnabled && hasExpertsSettled && kickoffExpert?.isArchived === false
+    hasExpertsSettled && kickoffExpert?.isArchived === false
       ? kickoffExpert.id
       : null;
   const isKickoffResolving =
-    isExpertsEnabled &&
-    kickoffParam === "1" &&
-    validExpertIdParam !== null &&
-    isLoadingExperts;
+    kickoffParam === "1" && validExpertIdParam !== null && isLoadingExperts;
 
   useEffect(() => {
     if (kickoffParam !== "1") return;
-    if (
-      !shouldClearKickoffParam(
-        isExpertsEnabled,
-        hasExpertsSettled,
-        kickoffExpertId,
-      )
-    )
-      return;
+    if (!shouldClearKickoffParam(hasExpertsSettled, kickoffExpertId)) return;
     void setKickoffParam(null, { history: "replace" });
-  }, [
-    hasExpertsSettled,
-    isExpertsEnabled,
-    kickoffExpertId,
-    kickoffParam,
-    setKickoffParam,
-  ]);
+  }, [hasExpertsSettled, kickoffExpertId, kickoffParam, setKickoffParam]);
 
   const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
@@ -177,7 +159,7 @@ export function useCopilotPage({
     [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
   );
   const isResolvingExpertIdentity = Boolean(
-    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
+    activeExpertId && !hasExpertsSettled,
   );
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
@@ -385,10 +367,7 @@ export function useCopilotPage({
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
     // fact locally so no future visit even has to ask.
-    // Gated on the flag: the endpoint 404s without it, and because the
-    // local cache is only written on success, an ungated call retried on
-    // every single message the user ever sent.
-    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
+    if (!peekGreetingDone(user?.id)) {
       completeGreeting(undefined, {
         onSuccess: () => setGreetingDone(user?.id),
         // Retiring the greeting is bookkeeping — the worst case is
@@ -485,7 +464,7 @@ export function useCopilotPage({
   const { isKickoffStarting } = useExpertKickoff({
     userId: user?.id ?? null,
     expertId: kickoffExpertId,
-    kickoff: isExpertsEnabled && kickoffParam === "1",
+    kickoff: kickoffParam === "1",
     sessionId,
     sessionExpertId,
     hasPersistedExpertHistory:

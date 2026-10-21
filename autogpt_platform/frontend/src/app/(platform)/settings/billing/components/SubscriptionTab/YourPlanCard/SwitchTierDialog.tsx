@@ -178,8 +178,6 @@ function ConfirmButton({
       onClick={onConfirm}
       disabled={disabled}
       loading={isSaving}
-      data-fast-goal="subscription_change_confirm"
-      data-fast-goal-surface="settings_billing"
     >
       {label}
     </Button>
