@@ -16,22 +16,12 @@ import {
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
-import { makeProgress } from "./progress-fixture";
+import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => (
     <button
       data-testid="step-role"
-      onClick={() => useOnboardingWizardStore.getState().nextStep()}
-    >
-      Continue
-    </button>
-  ),
-}));
-vi.mock("../steps/PainPointsStep", () => ({
-  PainPointsStep: () => (
-    <button
-      data-testid="step-painpoints"
       onClick={() => useOnboardingWizardStore.getState().nextStep()}
     >
       Continue
@@ -145,9 +135,6 @@ let flags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ENABLE_PLATFORM_PAYMENT: "payment",
-    ONBOARDING_BRAIN_DUMP: "brain",
-    ONBOARDING_EXPERT_TEAM: "team",
-    HIRE_EXPERTS: "hire",
   },
   useGetFlag: (flag: string) => !!flags[flag],
   useFlagStatus: (flag: string) => ({ enabled: !!flags[flag], ready: true }),
@@ -213,6 +200,29 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function makeProgress(overrides: Partial<OnboardingWizardProgress> = {}) {
+  const progress = makeBaseProgress(overrides);
+  return {
+    ...progress,
+    completedSteps: Array.from(
+      new Set([
+        "team",
+        "autopilot",
+        ...progress.completedSteps,
+        ...(["subscription", "connect", "preparing"].includes(
+          progress.currentStep,
+        ) && progress.completedSteps.includes("painPoints")
+          ? ["hire"]
+          : []),
+      ]),
+    ),
+  } as OnboardingWizardProgress;
+}
+async function completePersonalization() {
+  for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+    fireEvent.click(await screen.findByTestId(`step-${key}`));
+  }
+}
 function atPaywall() {
   serverDraft = makeProgress({
     currentStep: "subscription",
@@ -223,17 +233,16 @@ function atPaywall() {
 describe("onboarding before payment", () => {
   it("collects role and pain points before showing the card requirement", async () => {
     render(<OnboardingPage />);
-    fireEvent.click(await screen.findByTestId("step-role"));
-    fireEvent.click(await screen.findByTestId("step-painpoints"));
+    await completePersonalization();
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(completeStep).not.toHaveBeenCalled();
     expect(submitProfile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
   });
 
   it("keeps the brain dump and real hire step before the paywall", async () => {
-    flags = { payment: true, team: true, brain: true, hire: true };
+    flags = { payment: true };
     render(<OnboardingPage />);
     for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
       fireEvent.click(await screen.findByTestId(`step-${key}`));
@@ -335,14 +344,15 @@ describe("onboarding before payment", () => {
       completedSteps: ["role"],
     });
     render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+    expect(await screen.findByTestId("step-braindump")).toBeDefined();
     expect(screen.queryByTestId("step-subscription")).toBeNull();
   });
 
-  it("restores the earliest incomplete step when optional intro steps become enabled", async () => {
-    atPaywall();
-    flags.team = true;
-    flags.hire = true;
+  it("restores missing intro steps from a legacy draft", async () => {
+    serverDraft = makeBaseProgress({
+      currentStep: "subscription",
+      completedSteps: ["role", "painPoints"],
+    });
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-team")).toBeDefined();
   });
@@ -357,7 +367,7 @@ describe("onboarding before payment", () => {
         JSON.stringify({ state: { role: "Another user" } }),
       );
       render(<OnboardingPage />);
-      expect(await screen.findByTestId("step-role")).toBeDefined();
+      expect(await screen.findByTestId("step-team")).toBeDefined();
       expect(useOnboardingWizardStore.getState().role).toBe("");
     },
   );
@@ -408,8 +418,7 @@ describe("draft recovery", () => {
   it("saves each step in the background without holding navigation", async () => {
     patchState.mockImplementation(() => new Promise(() => {}));
     render(<OnboardingPage />);
-    fireEvent.click(await screen.findByTestId("step-role"));
-    fireEvent.click(await screen.findByTestId("step-painpoints"));
+    await completePersonalization();
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     const localDraft = JSON.parse(
       localStorage.getItem(progressStorageKey("u1"))!,
@@ -433,7 +442,7 @@ describe("draft recovery", () => {
     );
     serverDraft = makeProgress({ role: "Old answer" });
     render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+    expect(await screen.findByTestId("step-braindump")).toBeDefined();
     expect(useOnboardingWizardStore.getState().role).toBe("Design");
     await waitFor(() =>
       expect(patchState).toHaveBeenCalledWith(
@@ -456,11 +465,13 @@ describe("draft recovery", () => {
   it("surfaces save failures while allowing continuation", async () => {
     patchState.mockRejectedValue(new Error("offline"));
     render(<OnboardingPage />);
-    fireEvent.click(await screen.findByTestId("step-role"));
+    for (const key of ["team", "autopilot", "role"])
+      fireEvent.click(await screen.findByTestId(`step-${key}`));
     expect(
       await screen.findByText(/couldn't save your progress/),
     ).toBeDefined();
-    fireEvent.click(screen.getByTestId("step-painpoints"));
+    fireEvent.click(screen.getByTestId("step-braindump"));
+    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
   });
 
@@ -475,9 +486,9 @@ describe("draft recovery", () => {
     serverDraft = null;
     patchState.mockClear();
     view.rerender(<OnboardingPage />);
-    expect(await screen.findByTestId("step-role")).toBeDefined();
+    expect(await screen.findByTestId("step-team")).toBeDefined();
     expect(useOnboardingWizardStore.getState().role).toBe("");
-    fireEvent.click(screen.getByTestId("step-role"));
+    fireEvent.click(screen.getByTestId("step-team"));
     await act(async () => {
       await useOnboardingWizardStore.getState().flushProgress?.();
     });
@@ -513,7 +524,7 @@ it("ignores a late draft response from an account that has been switched away", 
   const view = render(<OnboardingPage />);
   user = { id: "u2", email: "other@example.com", user_metadata: {} };
   view.rerender(<OnboardingPage />);
-  expect(await screen.findByTestId("step-role")).toBeDefined();
+  expect(await screen.findByTestId("step-team")).toBeDefined();
   await act(async () => {
     release?.({
       status: 200,
@@ -560,7 +571,7 @@ it("recognizes a successful save whose response was lost before navigation", asy
   serverDraft = draft;
   revision = 1;
   render(<OnboardingPage />);
-  expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+  expect(await screen.findByTestId("step-braindump")).toBeDefined();
   expect(
     screen.queryByRole("button", { name: "Reload latest progress" }),
   ).toBeNull();
@@ -587,7 +598,7 @@ it("recognizes a successful save whose response was lost before navigation", asy
 it("surfaces a revision conflict without overwriting newer server answers", async () => {
   patchState.mockRejectedValue({ status: 409 });
   render(<OnboardingPage />);
-  fireEvent.click(await screen.findByTestId("step-role"));
+  fireEvent.click(await screen.findByTestId("step-team"));
   expect(
     await screen.findByRole("button", { name: "Reload latest progress" }),
   ).toBeDefined();
@@ -647,7 +658,8 @@ it.each(["", "Other"])(
     expect(completeStep).not.toHaveBeenCalled();
     act(() => useOnboardingWizardStore.getState().setRole("Design"));
     fireEvent.click(screen.getByTestId("step-role"));
-    fireEvent.click(await screen.findByTestId("step-painpoints"));
+    fireEvent.click(await screen.findByTestId("step-braindump"));
+    fireEvent.click(await screen.findByTestId("step-hire"));
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledWith(
@@ -745,7 +757,7 @@ describe("profile saving before completion", () => {
     user = { id: "u2", email: "other@example.com", user_metadata: {} };
     serverDraft = null;
     view.rerender(<OnboardingPage />);
-    expect(await screen.findByTestId("step-role")).toBeDefined();
+    expect(await screen.findByTestId("step-team")).toBeDefined();
     await act(async () => release?.({ status: 200 }));
     expect(completeStep).not.toHaveBeenCalled();
     expect(routerReplace).not.toHaveBeenCalledWith("/home");

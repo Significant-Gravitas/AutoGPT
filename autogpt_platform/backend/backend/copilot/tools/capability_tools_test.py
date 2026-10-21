@@ -66,11 +66,13 @@ def _clean_context():
 
 @pytest.fixture(autouse=True)
 def _no_experts():
-    """Expert entries are per user and read from the database; with
-    hire-experts off the layer is empty (``expert_capabilities_test`` covers it)."""
+    """Keep capability-only tests independent of the expert database."""
     with patch(
-        "backend.copilot.tools.session_registry.is_feature_enabled",
-        AsyncMock(return_value=False),
+        "backend.copilot.tools.session_registry.experts_db",
+        return_value=MagicMock(
+            list_experts=AsyncMock(return_value=[]),
+            list_templates=AsyncMock(return_value=[]),
+        ),
     ):
         yield
 
