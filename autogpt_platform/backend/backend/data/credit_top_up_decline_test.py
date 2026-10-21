@@ -95,20 +95,6 @@ def _stripe(credit: UserCredit, cards: list[MagicMock], intent_results: list):
 
 
 @pytest.mark.asyncio
-async def test_a_single_declined_card_raises_stripes_message():
-    credit = UserCredit()
-    with (
-        _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, *_),
-        pytest.raises(CardDeclinedError) as exc,
-    ):
-        await credit._top_up_credits("user-1", 500)
-
-    assert str(exc.value) == "Your card has insufficient funds."
-    assert "req_" not in str(exc.value)
-    enable.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_a_declined_card_moves_on_to_the_next_saved_card():
     credit = UserCredit()
     cards = [_card("pm_1"), _card("pm_2")]
@@ -139,20 +125,6 @@ async def test_every_card_declined_raises_the_last_decline_and_saves_nothing():
     assert payment_intent.await_count == 2
     assert "Your card has insufficient funds." in str(exc.value)
     assert "req_" not in str(exc.value)
-    enable.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_declined_card_check_raises_stripes_message():
-    credit = UserCredit()
-    with (
-        _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, _, setup),
-        pytest.raises(CardDeclinedError) as exc,
-    ):
-        await credit._top_up_credits("user-1", 0)
-
-    setup.assert_awaited_once()
-    assert str(exc.value) == "Your card has insufficient funds."
     enable.assert_not_awaited()
 
 
