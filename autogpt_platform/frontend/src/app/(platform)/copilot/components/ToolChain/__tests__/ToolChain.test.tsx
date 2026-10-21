@@ -9,6 +9,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
 import type { PendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { ToolChain } from "../ToolChain";
@@ -439,6 +440,45 @@ describe("ToolChain", () => {
     await user.type(field, "Wstern");
     await expectTypingKept(field, "e", 1);
     await expectTypingKept(field, " 日本語");
+  });
+
+  it("keeps an answered question and its answer on screen once the chain settles", () => {
+    render(
+      <AnsweredQuestionsContext.Provider
+        value={
+          new Map([["call-ask_question", new Map([["region", "Europe"]])]])
+        }
+      >
+        <ToolChain
+          parts={[
+            toolPart("web_search", "output-available", {
+              input: { query: "regions" },
+              output: { results: [] },
+            }),
+            toolPart("ask_question", "output-available", {
+              output: {
+                type: "agent_builder_clarification_needed",
+                questions: [
+                  {
+                    question: "Which region?",
+                    keyword: "region",
+                    options: ["Europe", "Asia"],
+                  },
+                ],
+              },
+            }),
+          ]}
+          isStreaming={false}
+        />
+      </AnsweredQuestionsContext.Provider>,
+    );
+
+    // The chain is collapsed, yet the question and the answer stay visible.
+    expect(
+      getChainHeader(/searched the web/i).getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(screen.getByText("Which region?")).toBeDefined();
+    expect(screen.getByText("Europe")).toBeDefined();
   });
 
   it("reports a rejected send without bringing the card back", async () => {

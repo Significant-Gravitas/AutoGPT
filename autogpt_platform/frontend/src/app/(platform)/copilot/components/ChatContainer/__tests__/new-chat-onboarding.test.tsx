@@ -133,7 +133,10 @@ describe("new full-page expert chats", () => {
     const onSend = vi.fn();
     render(<ChatContainer {...props} onSend={onSend} />);
     fireEvent.click(await screen.findByRole("radio", { name: "AI" }));
-    fireEvent.click(screen.getByRole("button", { name: /Send answers/i }));
+    // The pick moves on to the review after a short beat; Send lives there.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Send answers/i }),
+    );
     await waitFor(() =>
       expect(onSend).toHaveBeenCalledWith(
         "**Here are my answers:**\n\n> What topic?\n\nAI\n\nPlease proceed.",
