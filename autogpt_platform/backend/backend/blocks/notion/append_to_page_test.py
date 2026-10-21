@@ -1,3 +1,5 @@
+import pytest
+
 from backend.blocks.notion._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.notion.append_to_page import NotionAppendToPageBlock
 
@@ -84,5 +86,23 @@ async def test_a_failure_after_the_first_request_still_reports_the_blocks_added(
 
     assert [name for name, _ in outputs] == ["block_ids", "error"]
     assert outputs[0][1] == lines[:100]
-    assert outputs[1][1].startswith("Added 100 of 150 blocks before Notion refused")
+    assert outputs[1][1].startswith("Added 100 of 150 blocks, then a request failed")
     assert "rate_limited" in outputs[1][1]
+
+
+@pytest.mark.parametrize(
+    "line, widths",
+    [("a" * 4500, [2000, 2000, 500]), ("😀" * 1500, [2000, 1000])],
+    ids=["ascii", "emoji"],
+)
+async def test_a_line_over_the_text_limit_is_split_within_one_block(
+    notion_api, line: str, widths: list[int]
+):
+    sent = notion_api({"results": [{"id": "p"}]})
+
+    await NotionAppendToPageBlock.append_content(TEST_CREDENTIALS, PAGE_ID, line)
+
+    [paragraph] = sent[0][2]["children"]
+    pieces = [seg["text"]["content"] for seg in paragraph["paragraph"]["rich_text"]]
+    assert [len(piece.encode("utf-16-le")) // 2 for piece in pieces] == widths
+    assert "".join(pieces) == line

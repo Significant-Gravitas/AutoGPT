@@ -22,6 +22,8 @@ from .create_page import NotionCreatePageBlock
 
 # Notion refuses an append of more children than this in one request.
 MAX_CHILDREN_PER_REQUEST = 100
+# Notion refuses a rich-text segment longer than this, counted in UTF-16 units.
+MAX_TEXT_LENGTH = 2000
 
 
 class NotionAppendToPageBlock(Block):
@@ -84,7 +86,10 @@ class NotionAppendToPageBlock(Block):
             IDs of the appended blocks, in page order.
         """
         client = NotionClient(credentials)
-        children = NotionCreatePageBlock._markdown_to_blocks(content)
+        children = [
+            _within_text_limit(block)
+            for block in NotionCreatePageBlock._markdown_to_blocks(content)
+        ]
 
         block_ids: list[str] = []
         for start in range(0, len(children), MAX_CHILDREN_PER_REQUEST):
@@ -122,6 +127,33 @@ class NotionAppendToPageBlock(Block):
 class PartialAppendError(Exception):
     def __init__(self, block_ids: list[str], total: int, cause: Exception):
         super().__init__(
-            f"Added {len(block_ids)} of {total} blocks before Notion refused the rest: {cause}"
+            f"Added {len(block_ids)} of {total} blocks, then a request failed; "
+            f"check the page for the rest before retrying: {cause}"
         )
         self.block_ids = block_ids
+
+
+def _within_text_limit(block: dict) -> dict:
+    """Split each rich-text segment over MAX_TEXT_LENGTH into several, in order."""
+    body = block[block["type"]]
+    if "rich_text" in body:
+        body["rich_text"] = [
+            {**segment, "text": {**segment["text"], "content": piece}}
+            for segment in body["rich_text"]
+            for piece in _split_text(segment["text"]["content"])
+        ]
+    return block
+
+
+def _split_text(text: str) -> list[str]:
+    pieces: list[str] = []
+    piece: list[str] = []
+    size = 0
+    for char in text:
+        width = 2 if ord(char) > 0xFFFF else 1
+        if size + width > MAX_TEXT_LENGTH:
+            pieces.append("".join(piece))
+            piece, size = [], 0
+        piece.append(char)
+        size += width
+    return [*pieces, "".join(piece)]
