@@ -17,6 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
@@ -533,6 +534,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.access_block_admin_routes.router,
     tags=["admin"],
     prefix="/api",
 )

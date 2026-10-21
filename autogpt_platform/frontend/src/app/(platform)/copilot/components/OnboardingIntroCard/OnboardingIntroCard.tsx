@@ -1,7 +1,6 @@
 "use client";
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,
@@ -16,66 +15,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Analytics01Icon,
-  ArrowRight01Icon,
-  CalendarCheckIcon,
-  Chat01Icon,
-  Clock01Icon,
-  CodeIcon,
-  Copy01Icon,
-  DollarCircleIcon,
-  File02Icon,
-  FlashIcon,
-  GlobeIcon,
-  Mail01Icon,
-  Megaphone01Icon,
-  News01Icon,
-  Notification02Icon,
-  Robot01Icon,
-  Rocket01Icon,
-  Search01Icon,
-  ShoppingCart01Icon,
-  SparklesIcon,
-  Target01Icon,
-  Tick02Icon,
-  UserGroupIcon,
-} from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-
-// Slugs the backend may emit (see intro.PROMPT_ICONS); anything unknown
-// falls back to the sparkle.
-const PROMPT_ICONS: Record<string, IconSvgElement> = {
-  sparkle: SparklesIcon,
-  "chart-bar": Analytics01Icon,
-  envelope: Mail01Icon,
-  "magnifying-glass": Search01Icon,
-  "calendar-check": CalendarCheckIcon,
-  bell: Notification02Icon,
-  "rocket-launch": Rocket01Icon,
-  "file-text": File02Icon,
-  globe: GlobeIcon,
-  code: CodeIcon,
-  newspaper: News01Icon,
-  users: UserGroupIcon,
-  "shopping-cart": ShoppingCart01Icon,
-  chats: Chat01Icon,
-  lightning: FlashIcon,
-  target: Target01Icon,
-  robot: Robot01Icon,
-  clock: Clock01Icon,
-  megaphone: Megaphone01Icon,
-  "currency-dollar": DollarCircleIcon,
-};
+import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
+import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
   name: string;
   greeting: string;
-  prompts: SuggestedPrompt[];
+  suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
-  onSelectPrompt: (prompt: string) => void;
   disabled?: boolean;
 }
 
@@ -104,9 +54,8 @@ export function introRevealTimings() {
 export function OnboardingIntroCard({
   name,
   greeting,
-  prompts,
+  suggestions,
   transcript = "",
-  onSelectPrompt,
   disabled = false,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
@@ -205,49 +154,25 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
-      {prompts.length > 0 && (
-        <motion.ol
-          {...reveal(promptsStart)}
-          // Negative margins let the card's border breathe outward while
-          // the row content (px-5) stays aligned with the text above it.
-          className="-mx-5 mt-5 divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white"
-        >
-          {prompts.map((prompt) => {
-            const promptIcon = PROMPT_ICONS[prompt.icon ?? ""] ?? SparklesIcon;
-            return (
-              <li key={prompt.title} data-testid="onboarding-intro-prompt">
-                <button
-                  type="button"
-                  disabled={disabled}
-                  // Sends the full prompt as the user's first message —
-                  // which also creates the session and retires the greeting
-                  // via the regular first-send path in useCopilotPage.
-                  onClick={() => onSelectPrompt(prompt.prompt)}
-                  className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-zinc-50 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
-                >
-                  <Icon
-                    icon={promptIcon}
-                    size={15}
-                    className="shrink-0 text-zinc-400"
-                  />
-                  <Text variant="body-medium" tone="primary">
-                    {prompt.title}
-                  </Text>
-                  <Icon
-                    icon={ArrowRight01Icon}
-                    size={15}
-                    className="ml-auto shrink-0 text-zinc-400 transition-transform duration-150 ease-out group-hover:translate-x-1"
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </motion.ol>
+      {suggestions.tasks.length > 0 && (
+        // Negative margins let the list's border breathe outward while the
+        // row content (px-4) stays aligned with the text above it.
+        <motion.div {...reveal(promptsStart)} className="-mx-5 mt-5">
+          <SuggestedTaskList
+            tasks={suggestions.tasks}
+            sendingId={suggestions.sendingId}
+            disabled={disabled}
+            onSend={suggestions.sendTask}
+            onHide={suggestions.hideTask}
+          />
+        </motion.div>
       )}
 
       <motion.div {...reveal(footerStart)}>
         <Text variant="body" tone="muted" className="mt-5">
-          Want to do something else? Just write it in the textbox below.
+          {suggestions.tasks.length > 0
+            ? "Want to do something else? Just write it in the textbox below."
+            : "Tell me what you'd like to start with in the textbox below."}
         </Text>
       </motion.div>
     </div>
