@@ -491,6 +491,42 @@ describe("HireStep — hiring the whole team", () => {
     expect(busyChangesOnHireStep).toEqual([true]);
   });
 
+  it.each([
+    { when: "before its hires land", landFirst: false },
+    { when: "during the advance beat", landFirst: true },
+  ])(
+    "does not move the wizard on when the step is left $when",
+    async ({ landFirst }) => {
+      mockTeam(THREE_TEAM);
+      let release!: () => void;
+      mockHires(new Set(), new Promise<void>((resolve) => (release = resolve)));
+      const { unmount } = render(<HireStep />);
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Hire all 3" }),
+      );
+      await screen.findByRole("button", { name: "Hiring…" });
+      if (landFirst) {
+        release();
+        expect(await screen.findAllByText("Hired")).toHaveLength(3);
+      }
+      // Browser navigation unmounts the step; Back being hidden does not stop it.
+      unmount();
+      render(<HireStep />);
+      await screen.findAllByTestId("hire-step-expert");
+      release();
+
+      await waitFor(() =>
+        expect(
+          useOnboardingWizardStore.getState().hiredTemplateIds,
+        ).toHaveLength(3),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+      expect(events("hire_step_continued")).toEqual([]);
+    },
+  );
+
   it("keeps the hires that landed, names the one that did not, and offers to try it again", async () => {
     mockTeam(THREE_TEAM);
     const failing = new Set(["tpl-sam"]);

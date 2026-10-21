@@ -26,6 +26,7 @@ export function useHireAll({ experts, onTeamHired }: Args) {
   const [hiringTemplateIds, setHiringTemplateIds] = useState<string[]>([]);
   const [failedTemplateIds, setFailedTemplateIds] = useState<string[]>([]);
   const advanceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const isMounted = useRef(false);
 
   // Busy through the advance beat too: Back then would land the timer's
   // nextStep on the previous step.
@@ -34,7 +35,13 @@ export function useHireAll({ experts, onTeamHired }: Args) {
     return () => setStepBusy(false);
   }, [isHiringAll, setStepBusy]);
 
-  useEffect(() => () => clearTimeout(advanceTimer.current), []);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      clearTimeout(advanceTimer.current);
+    };
+  }, []);
 
   async function hireAll(batch: RecommendedExpert[], isRetry: boolean) {
     trackBrainDump("hire_all_clicked", {
@@ -51,6 +58,9 @@ export function useHireAll({ experts, onTeamHired }: Args) {
     const failed = batch.filter((_, i) => results[i].status === "rejected");
     // Best effort, as for a card hire: the roster is not on screen here.
     await invalidateExpertRosterQueries(queryClient).catch(() => undefined);
+    // Browser navigation can unmount the step mid-batch; the wizard store
+    // outlives it, so a stale batch must not drive the wizard.
+    if (!isMounted.current) return;
 
     if (failed.length === 0) {
       advanceTimer.current = setTimeout(onTeamHired, HIRE_ALL_ADVANCE_DELAY_MS);
