@@ -4,6 +4,7 @@ The recipient is never a parameter: it is the account's verified address, read
 here from the user id, so nothing upstream of this call can redirect it.
 """
 
+import asyncio
 import logging
 from collections.abc import Awaitable
 from datetime import UTC, datetime
@@ -41,7 +42,7 @@ class OwnerRenderedEmail(RenderedEmail):
 
 class OwnerEmail(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=100_000)
+    body: str = Field(min_length=1, max_length=50_000)
     link: str | None = None
     body_format: BodyFormat = BodyFormat.MARKDOWN
     images: list[InlineImage] = Field(default_factory=list, max_length=MAX_IMAGES)
@@ -109,7 +110,8 @@ async def send_owner_email(
             "sent to it. Verify it from the sign-in email, then try again."
         )
 
-    email = render_owner_email(message)
+    # Off the event loop: rendering a long body takes a CPU-bound tenth of a second.
+    email = await asyncio.to_thread(render_owner_email, message)
     counter = f"owner_email:daily:{user_id}:{_utc_today()}"
     limit = settings.config.owner_email_daily_limit
     if not await _take_daily_send(counter, limit):

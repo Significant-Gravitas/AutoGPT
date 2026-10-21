@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -77,10 +79,11 @@ class SendEmailToMeBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-        images = await fetch_images(
-            image_sources(input_data.body, input_data.body_format), execution_context
-        )
         try:
+            sources = await asyncio.to_thread(
+                image_sources, input_data.body, input_data.body_format
+            )
+            images = await fetch_images(sources, execution_context)
             await self.send_to_owner(
                 user_id,
                 input_data.subject,
