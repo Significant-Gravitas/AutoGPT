@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from http import HTTPStatus
 from typing import Any
 
@@ -14,16 +14,17 @@ Sent = list[tuple[str, str, Any]]
 def notion_api(monkeypatch: pytest.MonkeyPatch) -> Callable[..., Sent]:
     """Answer each Notion request with the next payload given; returns what was sent.
 
-    A `status` of 400 or more makes every request fail the way `Requests` fails it.
+    `statuses` gives each answer's HTTP status (200 when absent); 400 or more fails
+    that request the way `Requests` fails it.
     """
 
-    def respond(*payloads: dict, status: int = 200) -> Sent:
-        answers = iter(payloads)
+    def respond(*payloads: dict, statuses: Sequence[int] = ()) -> Sent:
+        answers = iter(zip(payloads, [*statuses, *[200] * len(payloads)]))
         sent: Sent = []
 
         async def request(_self, method: str, url: str, **kwargs: Any) -> _Response:
             sent.append((method, url, kwargs.get("json")))
-            payload = next(answers)
+            payload, status = next(answers)
             if status >= 400:
                 body = json.dumps(payload).encode()
                 raise http_status_error(status, HTTPStatus(status).phrase, body)

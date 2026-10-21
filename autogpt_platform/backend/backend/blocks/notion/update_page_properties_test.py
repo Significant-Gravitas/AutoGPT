@@ -118,7 +118,7 @@ def test_an_update_must_change_something(change: dict, valid: bool):
 
 
 async def test_a_notion_error_is_the_blocks_only_output(notion_api):
-    notion_api(NOT_FOUND, status=404)
+    notion_api(NOT_FOUND, statuses=[404])
     block = NotionUpdatePagePropertiesBlock()
     input_data = block.Input(
         credentials=TEST_CREDENTIALS_INPUT,

@@ -88,9 +88,14 @@ class NotionAppendToPageBlock(Block):
 
         block_ids: list[str] = []
         for start in range(0, len(children), MAX_CHILDREN_PER_REQUEST):
-            result = await client.append_blocks(
-                page_id, children[start : start + MAX_CHILDREN_PER_REQUEST]
-            )
+            try:
+                result = await client.append_blocks(
+                    page_id, children[start : start + MAX_CHILDREN_PER_REQUEST]
+                )
+            except Exception as e:
+                if not block_ids:
+                    raise
+                raise PartialAppendError(block_ids, len(children), e) from e
             block_ids.extend(block["id"] for block in result.get("results", []))
         return block_ids
 
@@ -106,5 +111,17 @@ class NotionAppendToPageBlock(Block):
                 credentials, input_data.page_id, input_data.content
             )
             yield "block_ids", block_ids
+        except PartialAppendError as e:
+            # Earlier chunks stay on the page; report them so a retry can skip them.
+            yield "block_ids", e.block_ids
+            yield "error", str(e)
         except Exception as e:
             yield "error", str(e) if str(e) else "Unknown error"
+
+
+class PartialAppendError(Exception):
+    def __init__(self, block_ids: list[str], total: int, cause: Exception):
+        super().__init__(
+            f"Added {len(block_ids)} of {total} blocks before Notion refused the rest: {cause}"
+        )
+        self.block_ids = block_ids
