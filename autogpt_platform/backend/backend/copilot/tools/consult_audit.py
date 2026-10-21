@@ -131,17 +131,19 @@ def verdict_response(
     The auditor's prose is model-generated text conditioned on a `boundaries`
     column that a poisoned soul-edit could have written, and it lands in the
     caller's context in a trusted position. Blockquoting it with explicit
-    provenance mirrors ``fence_voice_preferences``.
+    provenance mirrors ``fence_voice_preferences``. Its reason and quotes are
+    tag-escaped, after truncation, wherever they appear: the whole response
+    is the tool result the caller's model reads, the structured fields as
+    much as the message. The verdict card turns the entities back for the
+    user.
     """
-    reason = " ".join(verdict.reason.split())[:MAX_REASON_CHARS]
+    reason = escape_prompt_xml_tags(" ".join(verdict.reason.split())[:MAX_REASON_CHARS])
     quotes = [
-        " ".join(q.split())[:MAX_QUOTE_CHARS]
+        escape_prompt_xml_tags(" ".join(q.split())[:MAX_QUOTE_CHARS])
         for q in verdict.quotes[:MAX_QUOTES]
         if q.strip()
     ]
-    quoted = "\n".join(
-        f"> {escape_prompt_xml_tags(line)}" for line in [reason, *quotes] if line
-    )
+    quoted = "\n".join(f"> {line}" for line in [reason, *quotes] if line)
     return ConsultVerdictResponse(
         message=(
             f"{escape_prompt_xml_tags(reviewer.name)} ruled: "
