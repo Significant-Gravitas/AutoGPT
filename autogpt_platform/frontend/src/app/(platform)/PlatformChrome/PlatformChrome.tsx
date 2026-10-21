@@ -6,8 +6,8 @@ import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/Tou
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { cn } from "@/lib/utils";
-import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
   getPersistedSidebarOpen,
   SidebarInset,
@@ -34,13 +34,11 @@ interface Props {
 
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
-    showNewLayout,
-    isNewLayoutActive,
+    showAppSidebar,
+    showChangelog,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
-    isSettingsRoute,
-    isAdminRoute,
     isBuilderRoute,
   } = usePlatformChrome();
   // The collapsed-by-default sidebar ships with the brain-dump experience.
@@ -67,7 +65,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     );
   }
 
-  if (showNewLayout) {
+  if (showAppSidebar) {
     // The browser's cookie stays current across client navigation; the layout's does not.
     const openOutsideBuilder =
       getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
@@ -80,6 +78,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
+        {showChangelog ? <ChangelogPopup /> : null}
         <SidebarInset className="bg-[#f9f9f9]">
           <header
             className={cn(
@@ -109,23 +108,10 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     );
   }
 
-  // Settings and admin render their own sidebar shells (with a Back link) —
-  // no top Navbar. Only the new layout drops the Navbar here; classic users
-  // keep it below so they don't lose global nav (wallet, account menu) or a
-  // way back on mobile.
-  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
-    return (
-      <main className="flex h-screen w-full flex-col">
-        <AdminImpersonationBanner />
-        <GlobalSearchOverlay />
-        <section className="flex-1">{content}</section>
-      </main>
-    );
-  }
-
+  // Settings and admin render their own sidebar shells (with a Back link);
+  // the unauthenticated routes (reset-password, auth errors) get a bare frame.
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

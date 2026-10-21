@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import functools
 import hashlib
 import logging
 import os
@@ -13,7 +14,7 @@ from concurrent.futures import Future
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -41,6 +42,7 @@ from backend.api.features.onboarding_dump.retention import (
     purge_expired_recordings,
 )
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
@@ -88,6 +90,12 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.scheduled_chats.notices import (
+    SkippedRun,
+    post_notice,
+    schedule_title,
+    skip_notice,
+)
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
@@ -376,6 +384,14 @@ async def _execute_graph(**kwargs):
         )
 
 
+def execute_held_wake(user_id: str, session_id: str):
+    """Start the turn that carries a chat's answered cards."""
+    # Deferred: the gate package imports this module (``gate/references.py``).
+    from backend.copilot.gate.held import wake
+
+    run_async(wake(user_id, session_id))
+
+
 def execute_copilot_turn(**kwargs):
     """Enqueue a copilot turn on the executor queue and wait for completion.
 
@@ -539,7 +555,7 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
-            if await _refuse_if_turn_may_not_start(args, llm_auth_provider):
+            if await _refuse_if_turn_may_not_start(args, llm_auth_provider, routine):
                 return
             new_session = await create_chat_session(
                 args.user_id,
@@ -630,7 +646,7 @@ async def _execute_copilot_turn(**kwargs):
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
             if await _refuse_if_turn_may_not_start(
-                args, session.metadata.llm_auth_provider
+                args, session.metadata.llm_auth_provider, routine
             ):
                 return
             target_session_id = args.session_id
@@ -742,7 +758,9 @@ async def _execute_copilot_turn(**kwargs):
 
 
 async def _refuse_if_turn_may_not_start(
-    job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
+    job_args: "CopilotTurnJobArgs",
+    llm_auth_provider: CopilotLlmAuthProvider,
+    routine: ExpertRoutine | None,
 ) -> bool:
     """Refuse a fire that may not start, as ``dispatch_next_for_user`` refuses
     a queued turn, and say whether it did: the owner has no access to the route
@@ -750,9 +768,11 @@ async def _refuse_if_turn_may_not_start(
 
     A cron schedule stays registered and resumes once the owner has access or
     the window resets. APScheduler drops a one-shot once it fires, so one
-    refused by an outage (unreadable usage limits or plan) is retried, and any
+    refused by an outage (unreadable usage limits or plan) is retried, one
+    refused by a daily or weekly limit waits for that limit to reset, and any
     other is dropped with its routine switched off rather than left pending for
-    a time that has passed.
+    a time that has passed. Unless it was our outage, the chat says why
+    (SECRT-2879).
     """
     retry = None
     try:
@@ -763,26 +783,91 @@ async def _refuse_if_turn_may_not_start(
         # Unknown access is no access: skip the fire, and retry a one-shot.
         refusal = TurnRefusal(
             reason=f"has an unreadable plan ({type(exc).__name__}: {exc})",
+            kind="outage",
             transient=True,
         )
         retry = _reschedule_one_shot_after_plan_unreadable
     if refusal is None:
         return False
+    waits = refusal.kind == "usage" and refusal.window in ("daily", "weekly")
+    if waits:
+        retry = functools.partial(
+            _reschedule_one_shot_after_usage, resets_at=refusal.resets_at
+        )
+    run: SkippedRun
     if job_args.run_at is None:
-        outcome = "the schedule stays registered"
+        run, outcome = "recurring", "the schedule stays registered"
     elif retry is None:
         await _drop_job_from_routine(job_args)
-        outcome = "the one-shot is dropped"
+        run, outcome = "dropped", "the one-shot is dropped"
     elif await retry(job_args):
-        outcome = "the one-shot is retried"
+        run = "waits_for_reset"
+        outcome = (
+            "the one-shot waits for the limit to reset"
+            if waits
+            else "the one-shot is retried"
+        )
     else:
-        outcome = "the one-shot is dropped"
+        run, outcome = "dropped", "the one-shot is dropped"
     logger.log(
         logging.WARNING if refusal.transient else logging.INFO,
         f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
         f"{refusal.reason}; {outcome}",
     )
+    if not refusal.transient:
+        await _tell_owner_why_skipped(job_args, routine, refusal, run=run)
     return True
+
+
+async def _tell_owner_why_skipped(
+    args: "CopilotTurnJobArgs",
+    routine: ExpertRoutine | None,
+    refusal: TurnRefusal,
+    *,
+    run: SkippedRun,
+) -> None:
+    """Best effort, and bounded: a note that cannot be posted must not hold up
+    the scheduler's thread, and the skip itself already happened."""
+    schedule_key = args.routine_id or args.routine_schedule_id or args.schedule_id
+    if schedule_key is None:
+        return
+    title = schedule_title(
+        routine_title=routine.title if routine is not None else None,
+        message=args.message,
+    )
+    notice = skip_notice(
+        refusal,
+        title=title,
+        now=datetime.now(tz=timezone.utc),
+        run=run,
+        user_timezone=args.user_timezone,
+        # A routine's every fire time, not just this job's.
+        crons=(
+            list(routine.crons)
+            if routine is not None
+            else [args.cron] if args.cron else None
+        ),
+    )
+    if notice is None:
+        return
+    try:
+        await asyncio.wait_for(
+            post_notice(
+                notice,
+                user_id=args.user_id,
+                schedule_key=schedule_key,
+                title=title,
+                session_id=args.session_id,
+                expert_id=args.expert_id,
+            ),
+            timeout=_NOTICE_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            f"Could not tell the owner why scheduled copilot turn "
+            f"{args.schedule_id} was skipped",
+            exc_info=True,
+        )
 
 
 def _credential_pins_for_turn(
@@ -819,13 +904,23 @@ _MAX_CAP_RETRIES = 1
 _MAX_EXPERT_LOOKUP_RETRIES = 1
 _MAX_PLAN_LOOKUP_RETRIES = 1
 _MAX_LIMITS_RETRIES = 1
-_RetryKind = Literal["cap", "expert_lookup", "plan_lookup", "limits"]
+# A one-shot refused by a used-up limit waits for the reset rather than being
+# dropped. Twice, because the daily reset can still find the week used up.
+_MAX_USAGE_WAITS = 2
+# Spreads the one-shots waiting for one reset over a few minutes, rather than
+# firing them all on the stroke of midnight.
+_USAGE_WAIT_SPREAD_SECONDS = 300
+_RetryKind = Literal["cap", "expert_lookup", "plan_lookup", "limits", "usage"]
 _MAX_RETRIES: dict[_RetryKind, int] = {
     "cap": _MAX_CAP_RETRIES,
     "expert_lookup": _MAX_EXPERT_LOOKUP_RETRIES,
     "plan_lookup": _MAX_PLAN_LOOKUP_RETRIES,
     "limits": _MAX_LIMITS_RETRIES,
+    "usage": _MAX_USAGE_WAITS,
 }
+# How long a skipped run may spend telling its chat why. It holds a pooled
+# scheduler worker meanwhile, and the skip itself has already happened.
+_NOTICE_TIMEOUT_SECONDS = 10
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -870,12 +965,30 @@ async def _reschedule_one_shot_after_expert_unavailable(
     )
 
 
+async def _reschedule_one_shot_after_usage(
+    args: "CopilotTurnJobArgs", *, resets_at: datetime | None
+) -> bool:
+    """Move a one-shot refused by a used-up limit to when that limit resets."""
+    if resets_at is None:
+        return False
+    key = args.routine_schedule_id or args.schedule_id or args.message
+    spread = int(hashlib.sha256(key.encode()).hexdigest(), 16)
+    return await _reschedule_one_shot(
+        args,
+        reason="used-up usage limit",
+        name_suffix="usage-wait",
+        retry_kind="usage",
+        run_at=resets_at + timedelta(seconds=spread % _USAGE_WAIT_SPREAD_SECONDS),
+    )
+
+
 async def _reschedule_one_shot(
     args: "CopilotTurnJobArgs",
     *,
     reason: str,
     name_suffix: str,
     retry_kind: _RetryKind,
+    run_at: datetime | None = None,
 ) -> bool:
     """Re-create a one-shot copilot-turn schedule after a transient failure,
     and say whether it did.
@@ -884,27 +997,31 @@ async def _reschedule_one_shot(
     retried the limit for this failure kind are dropped to avoid loops. Retry
     depths round-trip independently through APScheduler's persisted kwargs so
     a transient expert lookup does not consume the concurrency-cap budget.
+    The retry fires a few minutes out, or at *run_at* when given.
     """
     counts: dict[_RetryKind, int] = {
         "cap": args.cap_retry_count,
         "expert_lookup": args.expert_lookup_retry_count,
         "plan_lookup": args.plan_lookup_retry_count,
         "limits": args.limits_retry_count,
+        "usage": args.usage_wait_count,
     }
     retry_count = counts[retry_kind]
     max_retries = _MAX_RETRIES[retry_kind]
     counts[retry_kind] = retry_count + 1
 
     if retry_count >= max_retries:
-        logger.error(
+        logger.log(
+            # A limit that is still used up is the owner's state, not a fault.
+            logging.INFO if retry_kind == "usage" else logging.ERROR,
             f"Dropping one-shot copilot turn for session "
             f"{_session_id_label(args)} — exhausted {max_retries} "
-            f"retry/retries after {reason}"
+            f"retry/retries after {reason}",
         )
         await _drop_job_from_routine(args)
         return False
     try:
-        new_run_at = datetime.now(tz=timezone.utc) + timedelta(
+        new_run_at = run_at or datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
         await get_scheduler_client().add_copilot_turn_schedule(
@@ -917,6 +1034,7 @@ async def _reschedule_one_shot(
             expert_lookup_retry_count=counts["expert_lookup"],
             plan_lookup_retry_count=counts["plan_lookup"],
             limits_retry_count=counts["limits"],
+            usage_wait_count=counts["usage"],
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -1153,7 +1271,7 @@ async def _dispatch_at_reset_turn(
         # It carries on the user's own chat, so under the chat's own
         # limits, as a message sent there now would be (a builder chat's).
         permissions=resolve_session_permissions(session),
-        scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id),
+        scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id, purpose=kind),
     )
     logger.info(
         f"Dispatched {kind}-at-reset turn for session {session.session_id[:12]}"
@@ -1590,7 +1708,10 @@ def execute_nightly_batch_sync(
 
 
 def _submit_nightly_batch(
-    user_id: str, expert_id: str | None = None
+    user_id: str,
+    expert_id: str | None = None,
+    *,
+    trigger: Literal["cron", "admin"] = "cron",
 ) -> "NightlyBatchResult | None":
     """Flag-gated nightly batch-family fan-out of one scope, outcome logged.
 
@@ -1611,7 +1732,8 @@ def _submit_nightly_batch(
     Returns the typed ``NightlyBatchResult`` so the admin
     ``*_with_status`` wrapper can persist it on the JobStatus row.
     Returns ``None`` only when the runtime flag gate short-circuits
-    before the submitter runs.
+    before the submitter runs. ``trigger`` is what the dream pass's
+    record says started it: the cron, or the admin wrapper.
     """
     from backend.copilot.dream.nightly_batch import (
         NightlyBatchResult,
@@ -1628,7 +1750,7 @@ def _submit_nightly_batch(
         return None
 
     result: NightlyBatchResult = run_async(
-        run_nightly_batch_submit(user_id, expert_id=expert_id),
+        run_nightly_batch_submit(user_id, expert_id=expert_id, trigger=trigger),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
     log_nightly_outcome(scope, result)
@@ -1743,7 +1865,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
     try:
         # The admin trigger bypasses the registry gate of the cron body:
         # it runs the account's pass whatever state its scope row is in.
-        result = _submit_nightly_batch(user_id)
+        result = _submit_nightly_batch(user_id, trigger="admin")
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -1826,8 +1948,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
 
-def execute_dream_pass_with_status(user_id: str, job_id: str):
-    """Run the dream pass in isolation and record JobStatus transitions."""
+def execute_dream_pass_with_status(user_id: str, job_id: str, force: bool = False):
+    """Run the dream pass in isolation and record JobStatus transitions.
+
+    ``force`` has the pass's guard expire a fresh open pass of the account
+    instead of skipping behind it (the admin trigger's ``?force=true``)."""
     from backend.copilot.dream.job_status import (
         mark_complete,
         mark_errored,
@@ -1850,7 +1975,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id, status_id=job_id),
+            execute_dream_pass(user_id, status_id=job_id, trigger="admin", force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -1912,7 +2037,9 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
         # a failed dream as a successful one.
         try:
             run_async(
-                mark_errored(kind="dream_pass", job_id=job_id, error=result.error),
+                mark_errored(
+                    kind="dream_pass", job_id=job_id, error=result.error, result=result
+                ),
                 timeout=10,
             )
         except Exception:
@@ -2204,6 +2331,79 @@ def execution_accuracy_alerts():
     return report_execution_accuracy_alerts()
 
 
+# The dream modules import the batch executor, whose package imports this
+# module, so the dream jobs below import them where they run, as the other
+# dream job bodies in this module do.
+
+
+def execute_dream_pass_reaper() -> None:
+    """Close the dream passes of every user that outlived their lease
+    (``copilot/dream/reaper.py``). The run bounds itself, and that budget is
+    what stops it: ``run_async``'s timeout frees the job thread should the
+    event loop stall, but does not cancel the run."""
+    from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS, reap_expired_passes
+
+    run_async(reap_expired_passes(), timeout=REAPER_BUDGET_SECONDS + 30)
+
+
+def execute_dream_pass_retention() -> None:
+    """Delete the closed dream passes past their retention
+    (``copilot/dream/retention.py``), bounded the same way."""
+    from backend.copilot.dream.retention import (
+        RETENTION_BUDGET_SECONDS,
+        delete_expired_records,
+    )
+
+    run_async(
+        delete_expired_records(config.dream_pass_retention_days),
+        timeout=RETENTION_BUDGET_SECONDS + 60,
+    )
+
+
+class _SystemJobs(Protocol):
+    """The call the dream pass jobs make on the scheduler, typed:
+    ``BackgroundScheduler.add_job`` itself is unannotated."""
+
+    def add_job(
+        self,
+        func: Callable[[], None],
+        trigger: str | CronTrigger,
+        *,
+        id: str,
+        replace_existing: bool,
+        max_instances: int,
+        jobstore: str,
+        coalesce: bool = ...,
+        minutes: int = ...,
+    ) -> JobObj: ...
+
+
+def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
+    """The two jobs over every user's DreamPass rows, registered once at
+    start like the other system jobs: the reaper every
+    ``REAPER_INTERVAL_MINUTES``, retention weekly (Sunday 05:30 UTC)."""
+    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
+
+    scheduler.add_job(
+        execute_dream_pass_reaper,
+        id="dream_pass_reaper",
+        trigger="interval",
+        minutes=REAPER_INTERVAL_MINUTES,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        jobstore=Jobstores.EXECUTION.value,
+    )
+    scheduler.add_job(
+        execute_dream_pass_retention,
+        CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
+        id="dream_pass_retention",
+        replace_existing=True,
+        max_instances=1,
+        jobstore=Jobstores.EXECUTION.value,
+    )
+
+
 def ensure_embeddings_coverage():
     """
     Ensure all content types (store agents, blocks, docs) have embeddings for search.
@@ -2373,6 +2573,8 @@ class CopilotTurnJobArgs(BaseModel):
     expert_lookup_retry_count: int = 0
     plan_lookup_retry_count: int = 0
     limits_retry_count: int = 0
+    # How often a one-shot has already waited for a used-up limit to reset.
+    usage_wait_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -2721,6 +2923,15 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Load the block registry before serving. Otherwise the first add-schedule
+        # loads it inside graph validation, and the scheduler freezes meanwhile.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -2965,6 +3176,10 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Dream passes: close those that outlived their lease, and delete
+            # the closed ones past their retention.
+            _register_dream_pass_jobs(self.scheduler)
+
             # Schedule Index Reconcile - Every 24 hours
             # Safety net for the best-effort index writes: re-adds rows a
             # failed write missed and clears rows for jobs APScheduler
@@ -3195,6 +3410,7 @@ class Scheduler(AppService):
         routine_id: str | None = None,
         credential_pins: CredentialPins | None = None,
         routine_schedule_id: str | None = None,
+        usage_wait_count: int = 0,
         purpose: Literal["followup", "resume", "send"] = "followup",
         schedule_id: str | None = None,
         created_at: datetime | None = None,
@@ -3247,6 +3463,7 @@ class Scheduler(AppService):
             expert_lookup_retry_count=expert_lookup_retry_count,
             plan_lookup_retry_count=plan_lookup_retry_count,
             limits_retry_count=limits_retry_count,
+            usage_wait_count=usage_wait_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
@@ -3465,6 +3682,45 @@ class Scheduler(AppService):
         self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         self._invalidate_jobs_cache()
         return True
+
+    @expose
+    def update_copilot_turn_cron(
+        self, schedule_id: str, user_id: str, cron: str
+    ) -> CopilotTurnJobInfo:
+        """Give a repeating follow-up a new cadence, in place.
+
+        The job keeps its id, which is what its failure streak, its notes and
+        Resume all name it by. A paused one stays paused: changing how often it
+        runs is not the same thing as starting it again. A routine's jobs are
+        not changed here; its row owns their crons.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
+        if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
+            raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
+        if info.routine_id is not None:
+            raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+        # The zone the dialog showed its times in: a follow-up saved before
+        # user_timezone existed keeps its zone on the trigger alone.
+        trigger = _build_trigger(
+            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
+        )
+        args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
+            update={"cron": cron}
+        )
+        changes: dict[str, object] = {
+            "trigger": trigger,
+            "kwargs": args.model_dump(mode="json"),
+        }
+        if job.next_run_time is not None:
+            changes["next_run_time"] = trigger.get_next_fire_time(
+                None, datetime.now(timezone.utc)
+            )
+        logger.info(f"Changing the cadence of job {schedule_id}")
+        updated = self.scheduler.modify_job(
+            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+        )
+        self._invalidate_jobs_cache()
+        return CopilotTurnJobInfo.from_db(args, updated)
 
     @expose
     def get_graph_execution_schedules(
@@ -4510,6 +4766,23 @@ class Scheduler(AppService):
         )
         return result.model_dump(mode="json")
 
+    @expose
+    def schedule_held_wake(
+        self, user_id: str, session_id: str, delay_seconds: float
+    ) -> None:
+        """Wake the chat's answered cards in *delay_seconds*. Keyed by chat, so
+        each later answer moves the one job, and stored, so it runs after a
+        restart however late."""
+        self.scheduler.add_job(
+            execute_held_wake,
+            kwargs={"user_id": user_id, "session_id": session_id},
+            trigger="date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=delay_seconds),
+            id=f"held_wake_{session_id}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+        )
+
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
     # The ``schedule_immediate_*`` methods schedule the matching
@@ -4550,14 +4823,17 @@ class Scheduler(AppService):
         return {"scheduled": True, "job_id": job_id, "kind": "nightly"}
 
     @expose
-    def schedule_immediate_dream_pass(self, user_id: str, job_id: str) -> dict:
-        """Schedule a one-shot dream pass run keyed by ``job_id``."""
+    def schedule_immediate_dream_pass(
+        self, user_id: str, job_id: str, force: bool = False
+    ) -> dict[str, Any]:
+        """Schedule a one-shot dream pass run keyed by ``job_id``; ``force``
+        goes to the pass's guard (see ``execute_dream_pass_with_status``)."""
         import datetime as _dt
 
         scheduler_job_id = f"adhoc_dream_{job_id}"
         self.scheduler.add_job(
             execute_dream_pass_with_status,
-            kwargs={"user_id": user_id, "job_id": job_id},
+            kwargs={"user_id": user_id, "job_id": job_id, "force": force},
             trigger="date",
             run_date=_dt.datetime.now(_dt.timezone.utc),
             id=scheduler_job_id,
@@ -4640,6 +4916,7 @@ class SchedulerClient(AppServiceClient):
     )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
+    update_copilot_turn_cron = endpoint_to_async(Scheduler.update_copilot_turn_cron)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules
@@ -4707,3 +4984,4 @@ class SchedulerClient(AppServiceClient):
     schedule_immediate_community_rebuild = endpoint_to_async(
         Scheduler.schedule_immediate_community_rebuild
     )
+    schedule_held_wake = endpoint_to_async(Scheduler.schedule_held_wake)

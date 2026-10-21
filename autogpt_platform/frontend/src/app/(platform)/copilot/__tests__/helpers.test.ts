@@ -11,10 +11,8 @@ import {
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
-  formatNotificationTitle,
   getCopilotAuthHeaders,
   extractSendMessageAttachments,
   getSendSuppressionReason,
@@ -34,37 +32,16 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
-
-describe("formatNotificationTitle", () => {
-  it("returns base title when count is 0", () => {
-    expect(formatNotificationTitle(0)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title with count", () => {
-    expect(formatNotificationTitle(3)).toBe(
-      `(3) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-
-  it("returns base title for negative count", () => {
-    expect(formatNotificationTitle(-1)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns base title for NaN", () => {
-    expect(formatNotificationTitle(NaN)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title for count of 1", () => {
-    expect(formatNotificationTitle(1)).toBe(
-      `(1) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-});
 
 describe("hasVisibleAssistantContent", () => {
   function assistant(parts: UIMessage["parts"]): UIMessage[] {
@@ -884,6 +861,23 @@ describe("getCopilotAuthHeaders", () => {
     const headers = await getCopilotAuthHeaders();
 
     expect(headers).toEqual({ Authorization: "Bearer test-jwt-token" });
+  });
+
+  it("names the browser's PostHog session so the chat's events join it", async () => {
+    mockGetWebSocketToken.mockResolvedValue({
+      token: "test-jwt-token",
+      error: undefined,
+    });
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    const headers = await getCopilotAuthHeaders();
+
+    expect(headers).toEqual({
+      Authorization: "Bearer test-jwt-token",
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
   });
 
   it("includes X-Act-As-User-Id header when impersonation is active", async () => {

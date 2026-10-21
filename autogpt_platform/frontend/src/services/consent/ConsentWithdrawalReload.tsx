@@ -9,7 +9,7 @@ import {
   type ConsentState,
 } from "./consent";
 
-// A script that already ran (DataFast, Vercel Analytics, session replay)
+// A script that already ran (DataFast, Vercel Speed Insights, session replay)
 // cannot be unloaded, so taking a category back reloads the page to shed it.
 // Granting needs no reload: consumers pick it up through useConsent.
 export function ConsentWithdrawalReload() {

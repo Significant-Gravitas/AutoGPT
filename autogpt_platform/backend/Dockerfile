@@ -33,6 +33,7 @@ RUN apt-get update \
     python3.13-venv \
     python3-pip \
     build-essential \
+    git \
     libpq5 \
     libz-dev \
     libssl-dev \

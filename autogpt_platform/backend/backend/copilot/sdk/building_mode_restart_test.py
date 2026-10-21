@@ -129,6 +129,15 @@ class TestApplyBuildingModeRestart:
         assert "building mode" in status.message.lower()
 
     @pytest.mark.asyncio
+    async def test_the_continuation_gets_no_warm_context_block(self, mocker):
+        """The continuation is not the turn's query: a transient retry after
+        the restart resends it as it is, with no follow-up warm context
+        appended to it (``_resend_with_fresh_warm_context``)."""
+        _, state, _, _ = await self._run(mocker)
+
+        assert state.warm_context_base is None
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("supplement", ["delegation", "oversight"])
     async def test_supplements_survive_the_restart(self, mocker, supplement):
         """The restart rebuilds the system prompt from its own parts.

@@ -18,7 +18,11 @@ from backend.copilot.computer import (
     open_desktop,
     screen_is_on,
 )
-from backend.copilot.tools.e2b_sandbox import SandboxLookupError, SandboxOwner
+from backend.copilot.tools.e2b_sandbox import (
+    KEEP_CEILING,
+    SandboxLookupError,
+    SandboxOwner,
+)
 
 _C = "backend.copilot.computer"
 _USER, _EXPERT, _SESSION = "user-1", "exp-1", "sess-1"
@@ -208,6 +212,8 @@ class TestOpenDesktop:
             user_id=_USER,
             session_id=_SESSION,
             count_turn=False,
+            # The UI has no turn, so it keeps the box's ceiling.
+            providers=KEEP_CEILING,
         )
         desktop_cls.assert_called_once_with(sandbox)
         desktop.ensure_display.assert_awaited_once()

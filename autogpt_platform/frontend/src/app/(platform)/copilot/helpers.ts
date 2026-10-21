@@ -1,4 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -7,8 +8,6 @@ import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
-
-export const ORIGINAL_TITLE = "AutoGPT";
 
 /**
  * Title/body/icon for the OS-level notification fired when a copilot session
@@ -27,6 +26,8 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
@@ -40,6 +41,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 
@@ -49,16 +51,6 @@ export class CopilotAuthError extends Error {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
   }
-}
-
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) New activity - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
 }
 
 /**
@@ -493,4 +485,14 @@ export function isEngineSwitchPart(dataPart: {
   if (dataPart.type !== "data-mode-changed") return false;
   const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
   return mode === "extended_thinking" || mode === "fast";
+}
+
+export const CREATE_SESSION_RETRY_DELAY_MS = 500;
+
+// A network error on create ("Load failed" on Safari, "Failed to fetch" on
+// Chrome) can mean the server committed and only the response was lost. The
+// request names its session id, so one retry adopts that session instead of
+// bouncing the message back to the composer.
+export function retryLostCreateResponse(failureCount: number, error: unknown) {
+  return failureCount < 1 && error instanceof TypeError;
 }

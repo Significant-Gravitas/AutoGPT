@@ -13,7 +13,7 @@ interface Props {
 }
 
 const HOVER_REVEAL =
-  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100";
+  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100";
 
 export function AssistantRowActions({
   message,

@@ -44,12 +44,18 @@ LIVE_EVENT_NAMES = {
     "payment_failed",
     "$set",
     "$ai_metric",
+    "$ai_trace",
+    "$ai_span",
     "signup_completed",
     "onboarding_completed",
     "checkout_started",
     "subscription_ended",
     "listing_added_to_library",
     "listing_downloaded",
+    "email_delivered",
+    "email_opened",
+    "email_clicked",
+    "email_bounced",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()
