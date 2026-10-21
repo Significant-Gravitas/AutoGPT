@@ -4,7 +4,7 @@
 
 A few parts of the AutoGPT Platform count or record callers by their IP address:
 
-- [Rate limits](rate-limits.md) that count per IP address: store search, and signing in and account emails.
+- [Rate limits](rate-limits.md) that count per IP address: store search when signed out, and signing in and account emails.
 - The sign-in history on an account's page under **Admin → Users**, which lists the IP addresses it signed up and signed in from.
 - IP blocks, which an admin sets on that page to refuse sign-ups and sign-ins from an address.
 
@@ -24,10 +24,10 @@ The single-container image sets `TRUST_X_FORWARDED_FOR=true` itself, because its
 
 ## From the frontend to the backend
 
-Browsers reach the backend through the frontend's server, so the backend sees the frontend's address, not the visitor's. For store search, which the backend limits per IP address, the frontend sends the visitor's address along in a signed token in the `X-Client-IP-Token` header, and the backend counts by that address.
+Browsers reach the backend through the frontend's server, so the backend sees the frontend's address, not the visitor's. For store search, which the backend limits per IP address when the visitor is signed out, the frontend sends the visitor's address along in a signed token in the `X-Client-IP-Token` header, and the backend counts by that address.
 
 - The token is signed with the frontend's sign-in key, which the backend already checks through `JWT_JWKS_URL`, and is valid for 60 seconds.
-- When the frontend has no visitor address (see [the frontend](#the-frontend)), it sends no token. The backend then counts by the connection's address, so all store searches through one frontend server share one count.
+- When the frontend has no visitor address (see [the frontend](#the-frontend)), it sends no token. The backend then counts by the connection's address, so all signed-out store searches through one frontend server share one count.
 
 ## Signing in
 

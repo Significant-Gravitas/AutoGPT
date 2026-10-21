@@ -107,13 +107,16 @@ The search box that searches everything in your account allows 120 searches a mi
 
 ### Store search
 
-Searching the store, signed in or not, allows 30 searches a minute.
+| Searching  | Limit        | Counted per |
+| ---------- | ------------ | ----------- |
+| Signed in  | 120 a minute | account     |
+| Signed out | 30 a minute  | IP address  |
 
-- **Counted per:** IP address. Each minute starts on the clock minute.
-- **What you see:** `429`, with "Store search rate limit exceeded (30 requests per 60s). Try again shortly." and a `Retry-After` header.
+- Each minute starts on the clock minute.
+- **What you see:** `429`, with "Store search rate limit exceeded (120 requests per 60s). Try again shortly." (30 when signed out) and a `Retry-After` header.
 - **Busy minutes:** store search matches on meaning as well as on words. In a minute when all searches together have used the Platform's budget for matching on meaning, new searches match on words alone until the next minute.
 
-**Self-hosting:** `PUBLIC_SEARCH_REQUESTS_PER_MINUTE` sets the searches per IP address (default `30`), and `PUBLIC_SEARCH_EMBEDDINGS_PER_MINUTE` the budget shared by all searches (default `300`; `0` makes store search match on words alone). Store search counts each visitor separately only when the frontend can tell visitors apart; see [Client IP Addresses](client-ip.md).
+**Self-hosting:** `PUBLIC_SEARCH_USER_REQUESTS_PER_MINUTE` sets the limit per signed-in account (default `120`), `PUBLIC_SEARCH_REQUESTS_PER_MINUTE` the limit per IP address for signed-out searches (default `30`), and `PUBLIC_SEARCH_EMBEDDINGS_PER_MINUTE` the budget shared by all searches (default `1000`; `0` makes store search match on words alone). Signed-out searches are counted per visitor only when the frontend can tell visitors apart; see [Client IP Addresses](client-ip.md).
 
 ## Plans and billing
 
