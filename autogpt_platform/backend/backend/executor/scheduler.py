@@ -140,6 +140,7 @@ from backend.util.exceptions import (
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
+from backend.util.process import freeze_startup_heap
 from backend.util.retry import func_retry
 from backend.util.service import (
     AppService,
@@ -2894,15 +2895,6 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
-        # Load the block registry before serving. Otherwise the first add-schedule
-        # loads it inside graph validation, and the scheduler freezes meanwhile.
-        load_started = time.monotonic()
-        block_count = len(get_blocks())
-        logger.info(
-            f"[{self.service_name}] Loaded {block_count} blocks in "
-            f"{time.monotonic() - load_started:.1f}s"
-        )
-
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -3194,9 +3186,33 @@ class Scheduler(AppService):
             self._register_memory_cron_reconcile()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
+        threading.Thread(
+            target=self._load_blocks_once_serving,
+            daemon=True,
+            name="SchedulerBlockLoad",
+        ).start()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _load_blocks_once_serving(self) -> None:
+        """Load the block registry once the RPC server is up, then freeze it.
+
+        The first add-schedule loads it inside graph validation otherwise. Not in
+        ``run_service``: the server starts only after it, on the loop it hands over to.
+        """
+        while not (self.http_server and self.http_server.started):
+            if not self.scheduler.running:
+                return
+            time.sleep(0.1)
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
+        # The serving lifespan froze the heap before the blocks existed.
+        freeze_startup_heap()
 
     def _jobstore_database(self) -> tuple[str | None, str]:
         """Schema and URL of the jobstores and schedule index: the platform
