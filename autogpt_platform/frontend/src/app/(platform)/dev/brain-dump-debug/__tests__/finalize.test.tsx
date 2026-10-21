@@ -21,11 +21,10 @@ interface FakeMeta {
   finalized: boolean;
 }
 
-const { store, flagStatus } = vi.hoisted(() => ({
+const { store } = vi.hoisted(() => ({
   store: {
     meta: null as FakeMeta | null,
   },
-  flagStatus: { enabled: true, ready: true },
 }));
 
 vi.mock(
@@ -36,20 +35,6 @@ vi.mock(
     getParts: async () => [],
   }),
 );
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "onboarding-brain-dump"
-        ? flagStatus
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
