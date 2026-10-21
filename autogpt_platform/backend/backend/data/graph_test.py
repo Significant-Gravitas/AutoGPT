@@ -16,7 +16,8 @@ import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
-from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks import _all_subclasses, load_all_blocks
+from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
@@ -855,12 +856,21 @@ def test_only_known_block_fields_are_marked_secret():
     field (or block) that has since been renamed or removed is no longer
     recognised, and exports and shared copies would carry it. Before removing
     or renaming one of these, scrub the stored values with a data migration;
-    a newly added one only needs adding here."""
-    from backend.blocks import load_all_blocks
+    a newly added one only needs adding here.
+
+    Every block class counts, including those this environment leaves out of
+    `load_all_blocks()` because their provider isn't configured."""
+    load_all_blocks()  # imports every block module
+    block_classes = {
+        block_cls
+        for block_cls in _all_subclasses(Block)
+        if block_cls.__module__.startswith("backend.blocks.")
+        and not block_cls.__name__.endswith("Base")
+    }
 
     secret_fields = set()
     construction_failures: list[str] = []
-    for block_cls in load_all_blocks().values():
+    for block_cls in block_classes:
         try:
             block = block_cls()
         except Exception as e:
