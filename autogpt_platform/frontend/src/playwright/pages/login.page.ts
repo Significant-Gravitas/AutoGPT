@@ -3,7 +3,10 @@ import {
   getSeededTestUser,
   type SeededTestAccountKey,
 } from "../credentials/accounts";
-import { skipOnboardingIfPresent } from "../utils/onboarding";
+import {
+  dismissTabIntrosViaAPI,
+  skipOnboardingIfPresent,
+} from "../utils/onboarding";
 
 export class LoginPage {
   constructor(private page: Page) {}
@@ -83,6 +86,8 @@ export class LoginPage {
 
     // If redirected to onboarding, complete it via API so tests can proceed
     await skipOnboardingIfPresent(this.page, "/marketplace");
+    // Seeded users are past onboarding but have not seen the tab intros.
+    await dismissTabIntrosViaAPI(this.page);
 
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 20_000 });
