@@ -6,6 +6,7 @@ import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/Tou
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
   getPersistedSidebarOpen,
   SidebarInset,
@@ -33,6 +34,7 @@ interface Props {
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showAppSidebar,
+    showChangelog,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
@@ -73,6 +75,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
+        {showChangelog ? <ChangelogPopup /> : null}
         <SidebarInset className="bg-[#f9f9f9]">
           <header
             className={cn(
