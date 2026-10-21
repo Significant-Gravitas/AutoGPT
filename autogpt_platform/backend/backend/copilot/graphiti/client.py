@@ -213,6 +213,9 @@ def _build_graphiti(
     ``recall_ingest.ForgetAwareLLMClient``.
     """
     from graphiti_core import Graphiti
+    from . import perf_search_probe  # do-not-merge probe (#15739)
+
+    perf_search_probe.install()
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client import LLMConfig
 
