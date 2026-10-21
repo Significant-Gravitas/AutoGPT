@@ -21,6 +21,8 @@ from backend.copilot.tools.skills import (
     SkillLimitError,
     SkillNotFoundError,
     SkillPackage,
+    SkillVersionConflictError,
+    SkillWriteLockError,
     parse_skill_markdown,
     render_skill_markdown,
 )
@@ -43,10 +45,13 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.record_registry_write", AsyncMock()
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -167,6 +172,27 @@ def test_delete_copilot_skill_returns_404_when_missing(
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        SkillWriteLockError("held; try again"),
+        SkillVersionConflictError("v1", "v2"),
+    ],
+)
+def test_delete_copilot_skill_returns_409_when_it_could_not_be_ordered(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """Nothing was deleted, so the UI can offer a retry."""
+
+    mocker.patch(
+        "backend.api.features.skills.routes.delete_user_skill",
+        AsyncMock(side_effect=error),
+    )
+
+    response = client.delete("/skills/busy")
+    assert response.status_code == 409
+
+
 def test_read_copilot_skill_returns_user_body(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -183,6 +209,13 @@ def test_read_copilot_skill_returns_user_body(
                 version="1",
             )
         ),
+    )
+    # Unstubbed, listing the files upserts the user's workspace through the
+    # session's database client from TestClient's own event loop, and that
+    # write left its connection inside an open transaction for later tests.
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skill_files",
+        AsyncMock(return_value=[]),
     )
 
     response = client.get("/skills/oauth_flow")

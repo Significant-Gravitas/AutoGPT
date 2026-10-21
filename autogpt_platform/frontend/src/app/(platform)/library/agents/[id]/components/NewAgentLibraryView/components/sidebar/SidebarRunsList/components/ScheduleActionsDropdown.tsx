@@ -89,10 +89,7 @@ export function ScheduleActionsDropdown({
 
       const newRunID = okData(res)?.id;
       if (newRunID) {
-        trackAgentRunGoal(
-          { id: schedule.graph_id, name: agent.name },
-          "library",
-        );
+        trackAgentRunGoal(schedule.graph_id, "library");
       }
 
       await queryClient.invalidateQueries({

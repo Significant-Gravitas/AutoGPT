@@ -1,13 +1,17 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
+from google.auth.credentials import Signing
 from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 from backend.util.gcs_utils import (
+    blob_created_at,
     download_range,
     download_with_fresh_session,
+    generate_iam_signed_url,
     parse_gcs_path,
 )
 
@@ -43,6 +47,58 @@ def test_parse_gcs_path_splits_bucket_and_blob():
 def test_parse_gcs_path_rejects_invalid_prefix():
     with pytest.raises(ValueError):
         parse_gcs_path("s3://my-bucket/file")
+
+
+@pytest.mark.asyncio
+async def test_generate_iam_signed_url_uses_adc_service_account(mocker):
+    credentials = MagicMock()
+    credentials.valid = False
+    credentials.service_account_email = "default"
+
+    def refresh(_request):
+        credentials.valid = True
+        credentials.service_account_email = "backend@example.iam.gserviceaccount.com"
+        credentials.token = "access-token"
+
+    credentials.refresh.side_effect = refresh
+    mocker.patch(
+        "backend.util.gcs_utils.google_auth_default",
+        return_value=(credentials, "project"),
+    )
+    client = MagicMock()
+    blob = client.bucket.return_value.blob.return_value
+    blob.generate_signed_url.return_value = "https://signed.example/object"
+
+    result = await generate_iam_signed_url(client, "bucket", "object", 60)
+
+    assert result == "https://signed.example/object"
+    credentials.refresh.assert_called_once()
+    assert blob.generate_signed_url.call_args.kwargs["service_account_email"] == (
+        "backend@example.iam.gserviceaccount.com"
+    )
+    assert blob.generate_signed_url.call_args.kwargs["access_token"] == "access-token"
+    assert blob.generate_signed_url.call_args.kwargs["version"] == "v4"
+    assert blob.generate_signed_url.call_args.kwargs["method"] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_generate_iam_signed_url_uses_locally_signing_credentials(mocker):
+    credentials = MagicMock(spec=Signing)
+    mocker.patch(
+        "backend.util.gcs_utils.google_auth_default",
+        return_value=(credentials, "project"),
+    )
+    client = MagicMock()
+    blob = client.bucket.return_value.blob.return_value
+    blob.generate_signed_url.return_value = "https://signed.example/object"
+
+    result = await generate_iam_signed_url(client, "bucket", "object", 60)
+
+    assert result == "https://signed.example/object"
+    blob.generate_signed_url.assert_called_once()
+    assert blob.generate_signed_url.call_args.kwargs["credentials"] is credentials
+    assert "service_account_email" not in blob.generate_signed_url.call_args.kwargs
+    assert "access_token" not in blob.generate_signed_url.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -117,3 +173,33 @@ async def test_download_keeps_other_errors_when_url_contains_404(mocker, status)
 
     with pytest.raises(aiohttp.ClientResponseError):
         await download_range("bucket", "blob", 16)
+
+
+@pytest.mark.asyncio
+async def test_blob_created_at_reads_metadata_only(mocker):
+    client = _mock_client(mocker, download=AsyncMock())
+    client.download_metadata = AsyncMock(
+        return_value={"name": "blob", "timeCreated": "2026-10-13T12:00:00.123Z"}
+    )
+
+    assert await blob_created_at("bucket", "blob") == datetime(
+        2026, 10, 13, 12, 0, 0, 123000, tzinfo=timezone.utc
+    )
+    client.download_metadata.assert_awaited_once_with("bucket", "blob")
+    client.download.assert_not_awaited()
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_blob_created_at_is_none_only_for_a_real_404(mocker):
+    client = _mock_client(mocker, download=AsyncMock())
+    client.download_metadata = AsyncMock(
+        side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
+    )
+    assert await blob_created_at("bucket", "missing") is None
+
+    client.download_metadata = AsyncMock(
+        side_effect=_gcs_http_error(503, _URL_CONTAINING_404)
+    )
+    with pytest.raises(aiohttp.ClientResponseError):
+        await blob_created_at("bucket", "blob")

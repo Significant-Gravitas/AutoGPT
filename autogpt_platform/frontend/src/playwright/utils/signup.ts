@@ -2,6 +2,7 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
+import { NavBar } from "../pages/navbar.page";
 import { skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
@@ -23,7 +24,7 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
+  const { getText, getField, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
@@ -41,10 +42,6 @@ export async function signupTestUser(
     const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
-    // Agree to terms and submit. Scope to the Terms checkbox by accessible
-    // name — in dev/local the AgentationDevtool renders extra checkboxes
-    // globally, so a bare getByRole("checkbox") trips Playwright strict mode.
-    await getRole("checkbox", /agree to the terms/i).click();
     const signupButton = getButton("Sign up");
     await signupButton.click();
 
@@ -81,7 +78,7 @@ export async function signupTestUser(
     } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
       await page
         .getByText(
-          "Bringing you AI agents designed by thinkers from around the world",
+          "Bringing you AI workflows designed by thinkers from around the world",
         )
         .first()
         .waitFor({ state: "visible", timeout: 10000 });
@@ -93,8 +90,7 @@ export async function signupTestUser(
 
     if (withAgent) {
       // Create a dummy agent for each new user
-      const buildLink = getId("navbar-link-build");
-      await buildLink.click();
+      await new NavBar(page).clickBuildLink();
 
       const blocksBtn = getId("blocks-control-blocks-button");
       await isVisible(blocksBtn);

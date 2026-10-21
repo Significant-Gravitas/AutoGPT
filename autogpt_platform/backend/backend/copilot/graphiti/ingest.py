@@ -9,11 +9,23 @@ import asyncio
 import logging
 import weakref
 from datetime import datetime, timezone
+from typing import Any
 
+from graphiti_core import Graphiti
+from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
-from .client import derive_memory_group_id, ensure_indices_once, get_graphiti_client
+from backend.copilot.dream.ratification import _promote_if_tentative
+from backend.copilot.dream.registry import ensure_scope_scheduled
+from backend.util.background import spawn_background_task
+
+from . import marked_write
+from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .recall_citations import Citations, rests_on_a_forget
+from .recall_ingest import previous_episode_uuids
+from .scope import MemoryScope
+from .scope_lock import INGEST_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -26,11 +38,14 @@ logger = logging.getLogger(__name__)
 # different loop". Scope the registry per running loop so each loop has its
 # own queues, workers, and lock. Entries auto-clean when the loop is GC'd.
 class _LoopIngestState:
-    __slots__ = ("group_queues", "group_workers", "workers_lock")
+    __slots__ = ("group_queues", "group_workers", "registrations", "workers_lock")
 
     def __init__(self) -> None:
         self.group_queues: dict[str, asyncio.Queue] = {}
         self.group_workers: dict[str, asyncio.Task] = {}
+        # The in-flight dream-schedule registration of each memory group,
+        # dropped when it finishes; see ``_register_dream_schedules``.
+        self.registrations: dict[str, asyncio.Task] = {}
         self.workers_lock = asyncio.Lock()
 
 
@@ -51,6 +66,15 @@ def _get_loop_state() -> _LoopIngestState:
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
 
+# An episode that found its graph's write lock held for a whole
+# ``INGEST_LOCK_WAIT_SECONDS`` goes to the back of the queue after a pause,
+# doubling from this with each wait up to the cap, and is tried again as often
+# as it takes (``_write_or_requeue``).
+INGEST_RETRY_PAUSE_SECONDS = 1.0
+INGEST_RETRY_PAUSE_MAX_SECONDS = 30.0
+# Every this many waits, a warning names the episode still unwritten.
+INGEST_LOCK_WARN_EVERY = 3
+
 
 class MemoryScopeViolationError(ValueError):
     """An ingestion payload targeted a different memory group than its worker.
@@ -66,7 +90,7 @@ class IngestionCompletion:
 
     A memory group's ingestion queue is shared between live-chat ingestion and
     dream-pass writes. A caller that must wait for only its own episodes to
-    land (dream-pass apply) creates one of these, passes it to each
+    be finished (dream-pass apply) creates one of these, passes it to each
     ``enqueue_episode`` it makes, and awaits it. Unrelated activity on the
     same queue — chat episodes enqueued before, during, or after — never
     registers on this tracker, so it cannot extend the wait.
@@ -76,19 +100,52 @@ class IngestionCompletion:
     the counters need no locking. Counts are monotonic (registered /
     completed) rather than a single decrementing balance, so a transient
     interleave can never drive the outstanding count negative.
+
+    It also counts what became of each episode, apart from the drain: so a
+    caller reports as written only what graphiti saved, and the rest as
+    pending or failed.
     """
 
-    __slots__ = ("_registered", "_completed", "_event")
+    __slots__ = (
+        "_registered",
+        "_completed",
+        "_event",
+        "written",
+        "dropped_forgotten",
+        "failed",
+        "provenance_pending",
+    )
 
     def __init__(self) -> None:
         self._registered = 0
         self._completed = 0
         self._event = asyncio.Event()
         self._event.set()  # nothing outstanding yet
+        # Episodes graphiti saved (``add_episode`` returned).
+        self.written = 0
+        # Episodes the worker dropped, unwritten, for resting on a forget
+        # made since they were queued (``recall_citations.py``).
+        self.dropped_forgotten = 0
+        # Episodes the worker did not write: a dream write whose citation
+        # marker could not be written (it fails closed), a graph write that
+        # raised, a payload for another graph.
+        self.failed = 0
+        # Dream writes made whose derivation record failed after the write:
+        # their marker stays until it is reconciled (``recall_reconcile.py``).
+        self.provenance_pending = 0
 
     @property
     def registered(self) -> int:
         return self._registered
+
+    @property
+    def pending(self) -> int:
+        """Episodes neither written, dropped nor failed yet: still queued,
+        waiting for their graph's write lock, or being written. The queue
+        lives in the process, so these are lost if it stops."""
+        return max(
+            0, self._registered - self.written - self.dropped_forgotten - self.failed
+        )
 
     def register(self) -> None:
         """Record one more episode this tracker is waiting on."""
@@ -141,10 +198,11 @@ CUSTOM_EXTRACTION_INSTRUCTIONS = """
 
 # Cypher that overwrites exactly the five envelope-sourced MemoryFact
 # props on a known set of edge uuids. group_id predicate is tenant
-# defense-in-depth (mirrors apply._apply_demotions).
+# defense-in-depth (mirrors the dream's demotions, ``dream/demotions.py``);
+# the forgotten test keeps it off a fact a forget reached first.
 _STAMP_EDGE_METADATA_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
-WHERE e.uuid IN $uuids AND e.group_id = $gid
+WHERE e.uuid IN $uuids AND e.group_id = $gid AND e.forgotten_at IS NULL
 SET e.status = $status,
     e.source_kind = $source_kind,
     e.scope = $scope,
@@ -286,41 +344,18 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
             # up front so it is signalled in the finally below even if the
             # graph write raises. See ``IngestionCompletion``.
             completion: IngestionCompletion | None = payload.pop("_completion", None)
+            waits = int(payload.pop("_lock_waits", 0))
+            requeued = False
             try:
                 if payload.get("group_id") != group_id:
                     raise MemoryScopeViolationError(
                         "Ingestion payload memory group mismatch"
                     )
-                client = await get_graphiti_client(group_id)
-                # This is the write path, so materializing the graph is
-                # intended here — unlike driver construction, which must
-                # never create one. Once per group per loop.
-                await ensure_indices_once(group_id, client)
-                # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
-                # pop it before the **payload spread. Present only for dream
-                # writes; None for conversation turns / memory-store calls.
-                edge_metadata = payload.pop("_edge_metadata", None)
-                # Pass custom entity + edge types so MemoryEnvelope metadata
-                # (status, confidence, source_kind, scope, provenance) lives
-                # on :RELATES_TO edges and not only inside :Episodic.content.
-                # Single point of wire-in for every caller of this worker.
-                result = await client.add_episode(
-                    **payload,
-                    entity_types=ENTITY_TYPES,
-                    edge_types=EDGE_TYPES,
-                    edge_type_map=EDGE_TYPE_MAP,
+                requeued = await _write_or_requeue(
+                    user_id, group_id, queue, payload, completion, waits
                 )
-                # graphiti's attribute extraction fills MemoryFact fields from
-                # the episode text, not the envelope, so dream metadata
-                # (source_kind/provenance/exact status) doesn't survive. Stamp
-                # it deterministically onto the edges THIS episode newly
-                # created — see ``_stamp_edge_metadata`` for the dedup-safety
-                # invariant that prevents clobbering user-authored edges.
-                if edge_metadata:
-                    await _stamp_edge_metadata(
-                        client, group_id, result, edge_metadata, user_id
-                    )
             except MemoryScopeViolationError:
+                _count_failed(completion)
                 logger.error(
                     "MEMORY ISOLATION VIOLATION: ingestion payload for user %s "
                     "targeted group %r but the worker owns group %r — "
@@ -330,6 +365,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     group_id,
                 )
             except Exception:
+                _count_failed(completion)
                 logger.warning(
                     "Graphiti ingestion failed for user %s",
                     user_id[:12],
@@ -339,8 +375,9 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 queue.task_done()
                 # Signal completion for the enqueuer's drain barrier even on
                 # failure — a failed write is still "no longer pending", and
-                # leaving it outstanding would hang the caller's wait.
-                if completion is not None:
+                # leaving it outstanding would hang the caller's wait. A
+                # requeued episode completes when its retry is processed.
+                if completion is not None and not requeued:
                     completion.complete_one()
     except asyncio.CancelledError:
         logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
@@ -364,6 +401,243 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     )
 
 
+async def _write_locked(
+    user_id: str,
+    group_id: str,
+    payload: dict[str, Any],
+    completion: IngestionCompletion | None,
+) -> bool:
+    """Write one episode holding the graph's write lock (``scope_lock.py``),
+    so no forget lands between what graphiti reads and what it saves over
+    it; False, writing nothing, when another writer kept it for the wait.
+    A dream write has its citations marked first, failing closed; one
+    resting on a forget is then dropped under the same lock, its marker
+    withdrawn, as is the marker of one whose check raised; one that is
+    written is recorded after it
+    (``marked_write.py``), so a forget waiting for the lock finds them. A
+    user's chat turn promotes the tentative facts it states under the same
+    lock (``_promote_restated``)."""
+    wait = INGEST_LOCK_WAIT_SECONDS
+    async with graph_write_lock(group_id, wait_seconds=wait) as lock:
+        if lock is LockState.BUSY:
+            return False
+        client = await get_graphiti_client(group_id)
+        # Sidecars (not add_episode kwargs): the citations and the edge
+        # metadata come only with a dream write, the restatement only with a
+        # chat turn's user-message episode.
+        citations: Citations | None = payload.pop("_citations", None)
+        edge_metadata = payload.pop("_edge_metadata", None)
+        restatement = payload.pop("_restatement", False)
+        # This is the write path, so materializing the graph is intended
+        # here — unlike driver construction, which must never create one.
+        # Once per group per loop.
+        await ensure_indices_once(group_id, client)
+        marked = await marked_write.marked(
+            client, group_id, payload, citations, completion
+        )
+        if citations is not None and marked is None:
+            return True
+        try:
+            dropped = await _dropped_as_forgotten(
+                client, payload, citations, completion
+            )
+        except Exception:
+            # Nothing is placed yet. Left pending, the marker would hold up
+            # the forgets of what it cites until it expired.
+            await marked_write.withdrawn(client.driver, marked)
+            raise
+        if dropped:
+            await marked_write.withdrawn(client.driver, marked)
+            return True
+        episode = marked.episode if marked is not None else None
+        result = await marked_write.added(
+            _add_episode(client, group_id, payload, episode),
+            client.driver,
+            group_id,
+            marked,
+        )
+        await _undo_extracted_retractions(client, result)
+        if restatement:
+            await _promote_restated(client, result)
+        # graphiti's attribute extraction fills MemoryFact fields from the
+        # episode text, not the envelope, so dream metadata doesn't survive:
+        # stamp it onto the edges THIS episode newly created (see
+        # ``_stamp_edge_metadata`` for the dedup-safety invariant).
+        if edge_metadata:
+            await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+        if citations is not None and marked is not None:
+            await marked_write.recorded(
+                client, group_id, marked, result, citations, completion
+            )
+        if completion is not None:
+            completion.written += 1
+    return True
+
+
+def _count_failed(completion: IngestionCompletion | None) -> None:
+    if completion is not None:
+        completion.failed += 1
+
+
+async def _promote_restated(client: Graphiti, result: AddEpisodeResults) -> None:
+    """Promote each tentative fact a user's chat turn states, new or merged
+    into, to ``active`` with a ``ratified_at`` stamp (the ratification
+    loop's promotion, ``dream.ratification``). Tentative is probation for
+    what the system inferred, a dream proposal or an assistant's finding,
+    and the user saying it ends it; their own statement is not put on
+    probation because graphiti's model labelled it tentative. Only the facts
+    whose ``episodes`` include the turn's: the ones graphiti invalidated are
+    left alone. The recall stamps and hit counts stay: saying a fact is no
+    recall of it. Best-effort, like the promotion: the episode is written
+    either way."""
+    episode = result.episode.uuid
+    for edge in result.edges:
+        if episode in edge.episodes:
+            await _promote_if_tentative(client.driver, edge.uuid)
+
+
+async def _undo_extracted_retractions(
+    client: Graphiti, result: AddEpisodeResults
+) -> None:
+    """Put back to ``active`` an edge this episode wrote whose status
+    graphiti's attribute extraction set to ``retracted``. Its schema
+    (``types.MemoryFact``) leaves the value out, but graphiti does not hold
+    the model to it, and only a forget retracts: it also stamps
+    ``forgotten_at``, and an edge carrying that is never touched. Run under
+    the graph's write lock, like the write itself. Best-effort: the episode
+    is written either way."""
+    try:
+        uuids = [edge.uuid for edge in result.edges]
+        if uuids:
+            await client.driver.execute_query(
+                _UNDO_EXTRACTED_RETRACTIONS_QUERY,
+                uuids=uuids,
+                retracted=MemoryStatus.retracted.value,
+                active=MemoryStatus.active.value,
+            )
+    except Exception:
+        logger.warning(
+            "Could not check the statuses an episode's edges were given",
+            exc_info=True,
+        )
+
+
+_UNDO_EXTRACTED_RETRACTIONS_QUERY = """
+MATCH ()-[e:RELATES_TO]->()
+WHERE e.uuid IN $uuids AND e.forgotten_at IS NULL AND e.status = $retracted
+SET e.status = $active
+"""
+
+
+async def _dropped_as_forgotten(
+    client: Graphiti,
+    payload: dict[str, Any],
+    citations: Citations | None,
+    completion: IngestionCompletion | None,
+) -> bool:
+    """True, counting it on ``completion``, when ``payload`` is a dream write
+    that rests on a forget made since the dream read the graph."""
+    reason = await rests_on_a_forget(client.driver, citations)
+    if reason is None:
+        return False
+    logger.info(f"Dropped dream write {payload.get('name')!r}: it {reason}")
+    if completion is not None:
+        completion.dropped_forgotten += 1
+    return True
+
+
+async def _write_or_requeue(
+    user_id: str,
+    group_id: str,
+    queue: asyncio.Queue,
+    payload: dict[str, Any],
+    completion: IngestionCompletion | None,
+    waits: int,
+) -> bool:
+    """Write the episode holding its graph's lock (``_write_locked``); True
+    when, the lock held by another writer for a whole wait, the episode went
+    to the back of the queue instead, after a pause (``_pause_before_retry``).
+    Waiters take turns at the lock (``scope_lock.py``), so contention delays
+    an episode but never drops it while the process runs. With no room in
+    the queue behind the others, it is tried again here, holding no slot."""
+    while not await _write_locked(user_id, group_id, payload, completion):
+        waits += 1
+        _note_lock_wait(payload, waits)
+        await _pause_before_retry(waits)
+        try:
+            queue.put_nowait(
+                {**payload, "_lock_waits": waits, "_completion": completion}
+            )
+        except asyncio.QueueFull:
+            continue
+        return True
+    return False
+
+
+async def _pause_before_retry(waits: int) -> None:
+    await asyncio.sleep(_retry_pause(waits))
+
+
+def _retry_pause(waits: int) -> float:
+    """The pause before the *waits*-th retry: ``INGEST_RETRY_PAUSE_SECONDS``,
+    doubling with each wait up to ``INGEST_RETRY_PAUSE_MAX_SECONDS``."""
+    doubled = INGEST_RETRY_PAUSE_SECONDS * 2.0 ** min(waits - 1, 16)
+    return min(INGEST_RETRY_PAUSE_MAX_SECONDS, doubled)
+
+
+def _note_lock_wait(payload: dict[str, Any], waits: int) -> None:
+    """Log a lock wait; every ``INGEST_LOCK_WARN_EVERY`` waits a warning that
+    names the episode still unwritten."""
+    group = str(payload.get("group_id"))[:20]
+    if waits % INGEST_LOCK_WARN_EVERY:
+        logger.info(f"Graph {group} locked by another writer; episode requeued")
+        return
+    logger.warning(
+        f"Graph {group} locked by another writer for {waits} waits; the episode "
+        f"{payload.get('name')!r} is still queued, unwritten"
+    )
+
+
+async def _add_episode(
+    client: Graphiti,
+    group_id: str,
+    payload: dict[str, Any],
+    episode: str | None = None,
+) -> AddEpisodeResults:
+    """graphiti's ``add_episode`` with our types, under the recall policy.
+
+    The custom entity and edge types keep MemoryEnvelope metadata (status,
+    confidence, source_kind, scope, provenance) on ``RELATES_TO`` edges, not
+    only inside ``Episodic.content``; this is the single wire-in for every
+    caller of the worker. The earlier episodes are the ones graphiti would
+    show its extraction prompts, minus those a forget hid: left to pick
+    them itself it would show a forgotten episode again. The caller holds
+    the graph's write lock, and graphiti's model client never lets its model
+    merge a new statement into a forgotten edge (``recall_ingest.py``), so
+    the write leaves every forget's marker, audit copies and recall as it
+    found them. (graphiti's exact-text match, which runs before the model,
+    can still list a new episode on a forgotten edge whose ``[forgotten]``
+    text the statement repeats word for word.)
+
+    A marked dream write's ``episode`` uuid is its marker's: the episode is
+    placed under it first (``marked_write.placed``), after the earlier
+    episodes are read, and graphiti writes over it.
+    """
+    previous = await previous_episode_uuids(
+        client.driver, group_id, payload["reference_time"], payload["source"]
+    )
+    if episode is not None:
+        await marked_write.placed(client.driver, group_id, payload, episode)
+    return await client.add_episode(
+        **payload,
+        uuid=episode,
+        previous_episode_uuids=previous,
+        entity_types=ENTITY_TYPES,
+        edge_types=EDGE_TYPES,
+        edge_type_map=EDGE_TYPE_MAP,
+    )
+
+
 async def enqueue_conversation_turn(
     user_id: str,
     session_id: str,
@@ -385,10 +659,11 @@ async def enqueue_conversation_turn(
         return
 
     try:
-        group_id = derive_memory_group_id(user_id, expert_id)
+        scope = MemoryScope.build(user_id, expert_id)
     except ValueError:
         logger.warning("Invalid memory scope for ingestion: %s", user_id[:12])
         return
+    group_id = scope.group_id
 
     user_display_name = await resolve_user_name(user_id)
 
@@ -402,8 +677,7 @@ async def enqueue_conversation_turn(
     source_description = f"User message in session {session_id}"
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": episode_name,
             "episode_body": episode_body_for_graphiti,
@@ -412,6 +686,9 @@ async def enqueue_conversation_turn(
             "reference_time": datetime.now(timezone.utc),
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+            # Sidecar: the user's own words, so the worker promotes the
+            # tentative facts they state (``_promote_restated``).
+            "_restatement": True,
         },
     )
     if not queued:
@@ -436,8 +713,7 @@ async def enqueue_conversation_turn(
                 provenance=f"session:{session_id}",
             )
             await _enqueue_payload(
-                user_id,
-                group_id,
+                scope,
                 {
                     "name": f"finding_{session_id}",
                     "episode_body": envelope.model_dump_json(),
@@ -451,7 +727,7 @@ async def enqueue_conversation_turn(
 
 
 async def enqueue_episode(
-    user_id: str,
+    scope: MemoryScope,
     session_id: str,
     *,
     name: str,
@@ -460,9 +736,9 @@ async def enqueue_episode(
     is_json: bool = False,
     edge_metadata: dict | None = None,
     completion: IngestionCompletion | None = None,
-    expert_id: str | None = None,
+    citations: Citations | None = None,
 ) -> bool:
-    """Enqueue an arbitrary episode for background ingestion.
+    """Enqueue an arbitrary episode for background ingestion in ``scope``.
 
     Used by ``MemoryStoreTool`` so that explicit memory-store calls go
     through the same memory-group serialization queue as conversation turns.
@@ -483,20 +759,22 @@ async def enqueue_episode(
             await ONLY its own episodes (scoped drain), not everything on the
             shared memory-group queue. ``None`` for chat / memory-store writes
             that are pure fire-and-forget.
+        citations: What a dream write rests on. The worker checks them under
+            the graph's write lock right before writing and drops the
+            episode, counting it on ``completion``, when a forget made since
+            the dream read the graph reached them (``recall_citations.py``);
+            once it is written, the worker records them on the episode and
+            on the facts only dream episodes state (``recall_derivation.py``),
+            so a later forget of one retracts them (``recall_cascade.py``).
+            ``None`` for chat / memory-store writes.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
     The caller registers the episode on ``completion`` iff this returns
     ``True`` — a dropped episode is never enqueued and the worker never
     completes it.
     """
-    if not user_id:
-        return False
-
-    try:
-        group_id = derive_memory_group_id(user_id, expert_id)
-    except ValueError:
-        logger.warning("Invalid memory scope for episode ingestion: %s", user_id[:12])
-        return False
+    user_id = scope.owner_user_id
+    group_id = scope.group_id
 
     body_bytes = len(episode_body.encode("utf-8"))
     if body_bytes > MAX_EPISODE_BODY_BYTES:
@@ -510,8 +788,7 @@ async def enqueue_episode(
     source = EpisodeType.json if is_json else EpisodeType.text
 
     queued = await _enqueue_payload(
-        user_id,
-        group_id,
+        scope,
         {
             "name": name,
             "episode_body": episode_body,
@@ -526,6 +803,8 @@ async def enqueue_episode(
             # Sidecar — the worker calls ``complete_one`` on it after
             # processing so a scoped-drain caller can await this episode.
             "_completion": completion,
+            # Sidecar — popped and checked by the worker under the lock.
+            "_citations": citations,
         },
     )
     if not queued:
@@ -539,7 +818,8 @@ async def enqueue_episode(
 async def wait_for_ingestion(
     completion: IngestionCompletion, timeout_seconds: float
 ) -> bool:
-    """Block until a specific set of enqueued episodes have all landed.
+    """Block until the worker has finished a specific set of enqueued
+    episodes: each written, dropped for resting on a forget, or failed.
 
     ``enqueue_episode`` returning ``True`` only proves the episode reached
     the in-process queue; the real graph write (LLM extraction + embedding
@@ -561,21 +841,22 @@ async def wait_for_ingestion(
     return await completion.wait(timeout_seconds)
 
 
-async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
+async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     """Atomically select a group worker and enqueue one payload.
 
     Queue selection, worker creation, and ``put_nowait`` share
     ``workers_lock`` with idle retirement. A caller can therefore never put
     work onto a queue after its worker has unregistered it.
 
-    Also fires the auto-registration of the user's dream-system
-    schedules (community rebuild + dream pass + ratification pass) the
-    first time we see them in this process — lazy on first memory write,
-    per-job flag-gated, per-job idempotent. See
-    ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
-    Fire-and-forget; failures are swallowed inside the helper so
-    ingestion is never affected.
+    Creating a group's queue also registers the scope's own dream-system
+    crons (community rebuild + nightly batch): an expert group registers the
+    expert's scope, not the account's. That happens on the group's first
+    write in this process and again each time its queue comes back after
+    retiring (``_WORKER_IDLE_TIMEOUT`` idle). Fire-and-forget, flag-gated
+    and idempotent; see ``_register_dream_schedules``.
     """
+    user_id = scope.owner_user_id
+    group_id = scope.group_id
     state = _get_loop_state()
     is_new_group_for_this_process = False
     async with state.workers_lock:
@@ -597,18 +878,34 @@ async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
             return False
 
     if is_new_group_for_this_process:
-        # Fire-and-forget; per-job Redis SETNX inside the helper
-        # provides cross-process / cross-restart idempotency. Done
-        # outside the workers_lock so the scheduler RPC can't
-        # deadlock ingestion.
-        from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
-
-        asyncio.create_task(
-            ensure_dream_system_scheduled(user_id),
-            name=f"dream-system-register-{user_id[:12]}",
-        )
+        # Outside the workers_lock so the registry's RPCs can't hold up
+        # ingestion.
+        _register_dream_schedules(state, scope)
 
     return True
+
+
+def _register_dream_schedules(state: _LoopIngestState, scope: MemoryScope) -> None:
+    """Register the scope's dream-system crons in the background, at most
+    one registration in flight per group: a queue that retires and comes
+    back while the last one is still running does not start another. The
+    scope's registry row makes a repeat registration a no-op; every call it
+    makes is bounded (``copilot/dream/deadline.py``)."""
+    group_id = scope.group_id
+    running = state.registrations.get(group_id)
+    if running is not None and not running.done():
+        return
+    task = spawn_background_task(
+        ensure_scope_scheduled(scope),
+        name=f"dream-system-register-{scope.scope_key[:12]}",
+    )
+    state.registrations[group_id] = task
+
+    def _drop(done: asyncio.Task) -> None:
+        if state.registrations.get(group_id) is done:
+            del state.registrations[group_id]
+
+    task.add_done_callback(_drop)
 
 
 async def resolve_user_name(user_id: str) -> str:

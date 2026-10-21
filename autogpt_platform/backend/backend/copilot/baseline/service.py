@@ -30,6 +30,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
+from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -48,13 +49,20 @@ from backend.copilot.builder_context import (
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_marker import append_injected_memory_block
+from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -75,14 +83,17 @@ from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
+    drained_rows_entry,
     persist_pending_as_user_rows,
     persist_session_safe,
+    persist_unfolded_rows,
 )
 from backend.copilot.pending_messages import (
+    PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.permissions import denied_tool_names
+from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     approval_mode_supplement,
@@ -90,12 +101,14 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_provider_ceiling_supplement,
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -123,6 +136,7 @@ from backend.copilot.service import (
     strip_user_context_tags,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
@@ -140,6 +154,7 @@ from backend.copilot.tools import (
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
+    forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
@@ -167,6 +182,12 @@ from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.llm.provider_billing import (
+    PROVIDER_UNAVAILABLE_CODE,
+    PROVIDER_UNAVAILABLE_MESSAGE,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -206,6 +227,16 @@ def _pause_uncounted_box(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+def _pause_counted_box(sandbox: Any, session_id: str, expert_id: str | None) -> None:
+    """Pause the box at a counted turn's end, fire-and-forget; an expert's box
+    stays running while another of its turns is active."""
+    task = asyncio.create_task(
+        pause_sandbox_direct(sandbox, session_id, expert_id=expert_id)
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 # Hint appended on the last tool round so the model wraps up with a summary
@@ -500,6 +531,10 @@ class _BaselineStreamState:
     # what already ran; see backend/copilot/segments.py.
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
+    # Whose turn this is and in which chat, sent on OpenRouter requests so
+    # Broadcast attributes each generation (see ``llm_attribution``).
+    user_id: str | None = None
+    session_id: str | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -556,13 +591,46 @@ class _BaselineStreamState:
         # frontend's ``convertChatSessionToUiMessages`` relies on these
         # rows to render the Reasoning collapse after the AI SDK's
         # stream-end hydrate swaps in the DB-backed message list.
-        # ``render_in_ui`` is sourced from ``config.render_reasoning_in_ui``
-        # so the operator can silence the reasoning collapse globally
-        # without dropping the persisted audit trail.
-        self.reasoning_emitter = BaselineReasoningEmitter(
-            self.session_messages,
-            render_in_ui=config.render_reasoning_in_ui,
-        )
+        self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
+
+
+async def _refresh_follow_up_warm_context(
+    warm_ctx: str | None,
+    *,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    is_user_message: bool,
+    pre_drain_msg_count: int,
+    message: str | None,
+) -> str | None:
+    """Fill in warm context on a follow-up user turn (SECRT-2378).
+
+    Returns the refreshed block, or ``warm_ctx`` UNCHANGED whenever the
+    refresh yields nothing — fall back, never overwrite. Called after the
+    pending fold, so the query is the combined message (a queued substantive
+    request paired with a short "ok" must still drive recall), and scoped by
+    ``expert_id`` to the same graph the first turn read.
+
+    Diverges from the SDK's ``_append_follow_up_warm_context`` in two
+    respects. The baseline compactor doesn't surface ``was_compacted``, so
+    there is no ``force=True`` and a trivially short post-compaction turn
+    skips recall here. And the refresh starts here, after the fold, with
+    nothing to overlap, so the join grace (``join_refresh``,
+    ``warm_context_refresh_join_grace_ms``) is its whole budget: a refresh
+    still running then is cancelled and the turn goes on without it.
+    Documented debt; SDK is the production engine. The block is appended to
+    the model's input only, never to the transcript.
+    """
+    if not (graphiti_enabled and user_id and is_user_message):
+        return warm_ctx
+    if pre_drain_msg_count <= 1:
+        return warm_ctx
+    pending = start_refresh(user_id, message, expert_id=expert_id)
+    if pending is None:
+        return warm_ctx
+    refreshed = await join_refresh(pending)
+    return refreshed if refreshed else warm_ctx
 
 
 def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
@@ -912,8 +980,16 @@ async def _baseline_llm_caller(
             # which stricter local backends reject outright.
             pass
         elif is_openrouter_transport:
-            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
+            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning
+            # and on the Broadcast fields, which only OpenRouter reads anyway.
             extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
+            extra_body.update(
+                openrouter_attribution(
+                    user_id=state.user_id,
+                    session_id=state.session_id,
+                    generation_name="copilot-baseline",
+                )
+            )
             reasoning_param = reasoning_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
             )
@@ -1462,6 +1538,15 @@ def _humanize_baseline_error(e: Exception) -> str:
     return str(e) or type(e).__name__
 
 
+def _is_platform_out_of_credits(e: Exception, auth_provider: str | None) -> bool:
+    """An out-of-credits refusal on the account the platform pays for.
+
+    A linked subscription (Codex) running out is the user's own limit and
+    keeps its typed envelope; only the platform route is our outage.
+    """
+    return auth_provider in (None, "platform") and is_provider_out_of_credits(e)
+
+
 def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
     """Return ``True`` when the caller should upload the final transcript.
 
@@ -1555,8 +1640,12 @@ async def _load_prior_transcript(
 
     if restore is None:
         logger.debug("[Baseline] No CLI session available — will upload fresh")
-        # Nothing in GCS to protect; allow upload so the first baseline turn
-        # writes the initial transcript snapshot.
+        # Nothing in GCS worth keeping (no file, or one the restore would
+        # not resume from): allow upload, with the session's history so far
+        # in the builder so the upload covers every turn, not just this one.
+        _append_gap_to_builder(
+            _history_before_turn(session_messages), transcript_builder
+        )
         return True, None
 
     content_bytes = restore.content
@@ -1596,7 +1685,10 @@ async def _load_prior_transcript(
             session_id, restore.message_count, gap
         )
     if hole or gap:
-        _append_gap_to_builder(hole + gap, transcript_builder)
+        # The transcript is what later turns read back as their own history,
+        # so a row kept from the model never enters it. The upload's
+        # watermark still counts it, so it is not found again as a gap.
+        _append_gap_to_builder(visible_to_model(hole + gap), transcript_builder)
         logger.info(
             "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
             "+ %d gap msgs from DB",
@@ -1615,6 +1707,18 @@ async def _load_prior_transcript(
         mode=restore.mode,
     )
     return True, str_restore
+
+
+def _history_before_turn(session_messages: list[ChatMessage]) -> list[ChatMessage]:
+    """The session's messages before the current turn, as the model reads
+    them (``extract_context_messages`` without a transcript): a row kept
+    from the model is dropped after the slice, so it never seeds the
+    transcript later turns read back as their own history."""
+    return visible_to_model(
+        without_stored_first_turn_memory(
+            [m for m in session_messages if m.role != "reasoning"][:-1]
+        )
+    )
 
 
 async def _upload_final_transcript(
@@ -1777,6 +1881,12 @@ async def stream_chat_completion_baseline(
     # Capture count *before* the pending drain so is_first_turn and the
     # transcript staleness check are not skewed by queued messages.
     _pre_drain_msg_count = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
+    # The stream's rows start after the message that triggered it; the rows
+    # appended before the turn's first yield are announced once it opens.
+    turn_start = _pre_drain_msg_count
+    opening_entries: list[StreamBaseResponse] = []
 
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
@@ -1860,6 +1970,7 @@ async def stream_chat_completion_baseline(
                 volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
                 expert_id=session.expert_id,
                 user_id=user_id,
+                providers=allowed_providers(permissions),
                 # Counted just before the try/finally that releases it, below:
                 # everything between here and there can still fail or be
                 # stopped, and a count with no release keeps the expert's box
@@ -1868,6 +1979,7 @@ async def stream_chat_completion_baseline(
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+            await forget_turn_ceiling(session_id, session.expert_id)
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
@@ -1923,9 +2035,14 @@ async def stream_chat_completion_baseline(
     # entry, duplicating the pending content in the JSONL uploaded for
     # the next turn's ``--resume``.
 
-    # Generate title for new sessions
+    # Generate title for new sessions. The title model reads the first
+    # message without the memory block an older session stored in it.
     if is_user_message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+        user_messages = [
+            m
+            for m in without_stored_first_turn_memory(session.messages)
+            if m.role == "user"
+        ]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
@@ -1969,6 +2086,8 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        # Empty unless the run's permissions restrict connected accounts.
+        + get_provider_ceiling_supplement(permissions)
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -1987,16 +2106,21 @@ async def stream_chat_completion_baseline(
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         warm_ctx = await _fetch_graphiti_context(user_id, session, message)
+    # NOTE: the follow-up-turn refresh (SECRT-2378) runs after the pending
+    # drain — see ``_refresh_follow_up_warm_context`` below for why.
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
+    # The last stored message stands for the current turn. A turn that stored
+    # none of its own reads an earlier one, maybe the session's first, which
+    # is read without the memory block an older session stored in it.
     prior_context = await extract_context_messages(
         transcript_download, session.messages, session_id=session.session_id
     )
     messages_for_context = await _compress_session_messages(
-        prior_context + ([session.messages[-1]] if session.messages else []),
+        prior_context + without_stored_first_turn_memory(session.messages[-1:]),
         model=active_model,
     )
 
@@ -2025,6 +2149,9 @@ async def stream_chat_completion_baseline(
             )
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
+    # Before anything is appended below: this reads the last entry, and the
+    # per-turn blocks then land on the note as they would on a typed message.
+    send_trailing_note_as_user(openai_messages)
 
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
@@ -2085,7 +2212,6 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
-
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
     # model's current-turn input AND persist each pending message as
@@ -2115,6 +2241,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
         )
         if persisted_ok:
+            opening_entries.append(drained_rows_entry(drained_at_start_pending))
             message = combine_pending_with_current(
                 drained_at_start_pending,
                 message,
@@ -2135,10 +2262,22 @@ async def stream_chat_completion_baseline(
                 msg["content"] = budget_status + str(msg.get("content") or "")
                 break
 
+    warm_ctx = await _refresh_follow_up_warm_context(
+        warm_ctx,
+        graphiti_enabled=graphiti_enabled,
+        user_id=user_id,
+        expert_id=session.expert_id,
+        is_user_message=is_user_message,
+        pre_drain_msg_count=_pre_drain_msg_count,
+        message=message,
+    )
+
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
-    # warm_ctx is already wrapped in <temporal_context>.
-    # Appended AFTER user_context so <user_context> stays at the very start.
+    # warm_ctx is already wrapped in <temporal_context>: the first turn's
+    # fetch, or a follow-up's refresh. Appended AFTER user_context so
+    # <user_context> stays at the very start, and stamped with the injection
+    # mark the SDK engine's blocks carry (``graphiti/context_marker.py``).
     # Reverse scan so we update the current turn's user message, not the
     # oldest one when pending messages were drained.
     if warm_ctx:
@@ -2146,10 +2285,11 @@ async def stream_chat_completion_baseline(
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
-                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                    msg["content"] = append_injected_memory_block(existing, warm_ctx)
                 break
-        # Do NOT append warm_ctx to user_message_for_transcript — it would
-        # persist stale temporal context into the transcript for future turns.
+        # Model input only: NOT the stored user message (``inject_user_context``
+        # never takes it) nor ``user_message_for_transcript``, so no later
+        # turn reads it again, a fact forgotten after this turn included.
 
     # Inject the per-turn ``<builder_context>`` prefix when the session is
     # bound to a graph via ``metadata.builder_graph_id``.  Runs on every
@@ -2158,9 +2298,9 @@ async def stream_chat_completion_baseline(
     # carries the updated nodes/links. Only version + nodes + links here;
     # the static guide + graph id live in the system prompt via
     # ``build_builder_system_prompt_suffix`` (session-stable, prompt-cached).
-    # Prepended AFTER any <user_context>/<memory_context>/<env_context> blocks
-    # — same trust tier as those server-injected prefixes. Not persisted to
-    # the transcript: the snapshot is stale-by-definition after the turn ends.
+    # Prepended AFTER any <user_context>/<env_context> blocks — same trust
+    # tier as those server-injected prefixes. Not persisted to the
+    # transcript: the snapshot is stale-by-definition after the turn ends.
     if is_user_message and session.metadata.builder_graph_id:
         builder_block = await build_builder_context_turn_prefix(session, user_id)
         if builder_block:
@@ -2181,6 +2321,7 @@ async def stream_chat_completion_baseline(
         try:
             skills_notice = await build_skills_update_notice(
                 user_id,
+                session_id=session.session_id,
                 expert_id=session.expert_id,
                 prior_contents=[
                     m.content or "" for m in session.messages if m.role == "user"
@@ -2342,10 +2483,32 @@ async def stream_chat_completion_baseline(
 
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
-    held_results = await resolve_answered(user_id, session)
-    if held_results and await persist_pending_as_user_rows(
-        session, transcript_builder, held_results, log_prefix="[Baseline]"
-    ):
+    unsaved_held: list[PendingMessage] = []
+    held_results: list[PendingMessage] = []
+    try:
+        async for held_status in resolve_answered(
+            user_id, session, unsaved_held.append
+        ):
+            yield held_status
+        held_results = [*unsaved_held]
+        # The helper appends the rows before its first await, so from here the
+        # session carries them.
+        unsaved_held.clear()
+        folded = bool(held_results) and await persist_pending_as_user_rows(
+            session, transcript_builder, held_results, log_prefix="[Baseline]"
+        )
+    except BaseException:
+        # Stopped before the finally below: save what already ran, its approval
+        # spent, and end the counted turn on the box.
+        await persist_unfolded_rows(session, unsaved_held, log_prefix="[Baseline]")
+        if held_results:
+            # Cut inside the fold's own save: its rows are on the session only.
+            await persist_session_safe(session, "[Baseline]")
+        if e2b_sandbox is not None:
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
+    if folded:
+        opening_entries.append(drained_rows_entry(held_results))
         openai_messages.extend(
             format_pending_as_user_message(pm) for pm in held_results
         )
@@ -2374,7 +2537,14 @@ async def stream_chat_completion_baseline(
         llm_credential_id=(
             session.metadata.llm_credential_id if session is not None else None
         ),
+        user_id=user_id,
+        session_id=session_id,
     )
+
+    # Queued, not yielded: the loop below yields them inside the try whose
+    # finally pauses the sandbox.
+    for opening in opening_entries:
+        _emit(state, opening)
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2388,6 +2558,7 @@ async def stream_chat_completion_baseline(
     # and be lost on the final persist.  Wrap in a 1-element holder and read
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
+    final_checkpoint: StreamCheckpoint | None = None
 
     async def _bound_tool_executor(
         tool_call: LLMToolCall, tools: Sequence[Any]
@@ -2548,6 +2719,7 @@ async def stream_chat_completion_baseline(
                     # Persist the assistant/tool flush BEFORE the pending append
                     # so a later pending-persist failure can roll back the
                     # pending rows without also discarding LLM output.
+                    stamp_turn_trace_id(current_session.messages, turn_start)
                     current_session = await persist_session_safe(
                         current_session, "[Baseline]"
                     )
@@ -2573,6 +2745,10 @@ async def stream_chat_completion_baseline(
                     formatted_by_pm = {
                         id(pm): format_pending_as_user_message(pm) for pm in pending
                     }
+
+                    def _formatted(pm: PendingMessage) -> str:
+                        return formatted_by_pm[id(pm)]["content"]
+
                     _openai_anchor = len(openai_messages)
                     for pm in pending:
                         openai_messages.append(formatted_by_pm[id(pm)])
@@ -2580,14 +2756,18 @@ async def stream_chat_completion_baseline(
                     def _trim_openai_on_rollback(_session_anchor: int) -> None:
                         del openai_messages[_openai_anchor:]
 
-                    await persist_pending_as_user_rows(
+                    if await persist_pending_as_user_rows(
                         current_session,
                         transcript_builder,
                         pending,
                         log_prefix="[Baseline]",
-                        content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                        content_of=_formatted,
                         on_rollback=_trim_openai_on_rollback,
-                    )
+                    ):
+                        _emit(state, drained_rows_entry(pending, _formatted))
+                    checkpoint = turn_checkpoint(current_session.messages, turn_start)
+                    if checkpoint is not None:
+                        _emit(state, checkpoint)
         finally:
             # Always post the sentinel so the outer consumer exits — even if
             # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own
@@ -2651,8 +2831,24 @@ async def stream_chat_completion_baseline(
             state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
-        error_msg = _humanize_baseline_error(e)
+        out_of_credits = _is_platform_out_of_credits(
+            e, session.metadata.llm_auth_provider if session else None
+        )
+        error_msg = (
+            PROVIDER_UNAVAILABLE_MESSAGE
+            if out_of_credits
+            else _humanize_baseline_error(e)
+        )
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
+        if out_of_credits:
+            report_provider_out_of_credits(
+                provider=config.effective_transport,
+                model=active_model,
+                surface="copilot_baseline",
+                error=e,
+                session_id=session_id,
+                user_id=user_id,
+            )
         # Drain any queued tail events (reasoning/text close + finish step)
         # that ``_baseline_llm_caller``'s finally block pushed before the
         # sentinel arrived — without this the frontend would be missing the
@@ -2661,11 +2857,17 @@ async def stream_chat_completion_baseline(
             evt = state.pending_events.get_nowait()
             if evt is not None:
                 yield evt
-        failure = classify_provider_failure(
-            e,
-            auth_provider=session.metadata.llm_auth_provider if session else None,
-            credential_id=session.metadata.llm_credential_id if session else None,
-            message=error_msg,
+        # An empty platform account is not the user's limit, so it must not
+        # reach the "switch connection / wait for your limit" envelope.
+        failure = (
+            None
+            if out_of_credits
+            else classify_provider_failure(
+                e,
+                auth_provider=(session.metadata.llm_auth_provider if session else None),
+                credential_id=session.metadata.llm_credential_id if session else None,
+                message=error_msg,
+            )
         )
         # Written before the error is yielded, and deliberately not in
         # ``finally``. The consumer breaks out of its loop the moment it sees
@@ -2683,6 +2885,7 @@ async def stream_chat_completion_baseline(
             retryable=failure.retryable if failure is not None else True,
             failure=failure.as_part() if failure is not None else None,
         ):
+            stamp_turn_trace_id(_failed_session.messages, turn_start)
             try:
                 await upsert_chat_session(_failed_session)
             except Exception as marker_err:
@@ -2694,6 +2897,8 @@ async def stream_chat_completion_baseline(
             # in hand by the time the turn is reported failed.
             yield StreamProviderFailure(failure=failure.as_part())
             yield StreamError(errorText=error_msg, code=failure.kind.value)
+        elif out_of_credits:
+            yield StreamError(errorText=error_msg, code=PROVIDER_UNAVAILABLE_CODE)
         else:
             yield StreamError(errorText=error_msg, code="baseline_error")
     finally:
@@ -2726,13 +2931,7 @@ async def stream_chat_completion_baseline(
         # cleanup below. An expert's box is left running while another of
         # its turns is still active.
         if e2b_sandbox is not None:
-            pause_task = asyncio.create_task(
-                pause_sandbox_direct(
-                    e2b_sandbox, session_id, expert_id=session.expert_id
-                )
-            )
-            _background_tasks.add(pause_task)
-            pause_task.add_done_callback(_background_tasks.discard)
+            _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.
@@ -2862,8 +3061,10 @@ async def stream_chat_completion_baseline(
                     llm_credential_id=state.llm_credential_id,
                 )
             )
+        stamp_turn_trace_id(session.messages, turn_start)
         try:
             await upsert_chat_session(session)
+            final_checkpoint = turn_checkpoint(session.messages, turn_start)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
@@ -2883,6 +3084,22 @@ async def stream_chat_completion_baseline(
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti; flag-gated and never raises.
+        if user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[turn_start:]),
+                    message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the
@@ -2918,6 +3135,8 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
+    if final_checkpoint is not None:
+        yield final_checkpoint
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
         # Report uncached prompt tokens to match what was billed — both
         # cache_read and cache_creation are excluded so the three

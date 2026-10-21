@@ -57,15 +57,15 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       onError: (err) => {
         toast({
           title: "Update Failed",
-          description: "Failed to update agent to latest version",
+          description: "Failed to update workflow to latest version",
           variant: "destructive",
         });
         console.error("Failed to update agent:", err);
       },
       onSuccess: () => {
         toast({
-          title: "Agent Updated",
-          description: "Agent updated to latest version successfully",
+          title: "Workflow Updated",
+          description: "Workflow updated to latest version successfully",
         });
         // Invalidate to get the updated agent data from the server
         if (agent?.id) {

@@ -7,6 +7,7 @@ import {
   screen,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
@@ -85,22 +86,6 @@ afterEach(() => {
 });
 
 describe("ContextPanelToggle files button", () => {
-  test("shares the chat expert with the file panel", async () => {
-    render(
-      <ContextPanelToggle
-        sessionId="s1"
-        expert={{ id: "expert-maria", name: "Maria" }}
-      />,
-    );
-
-    await vi.waitFor(() =>
-      expect(useCopilotUIStore.getState().contextPanelExpert).toEqual({
-        id: "expert-maria",
-        name: "Maria",
-      }),
-    );
-  });
-
   test("shows the number of documents generated in the chat", async () => {
     const documentId = "aaaaaaaa-0000-0000-0000-000000000001";
     const uploadId = "bbbbbbbb-0000-0000-0000-000000000002";
@@ -179,6 +164,43 @@ describe("ContextPanelToggle files button", () => {
 
     const button = await screen.findByLabelText("Open files (1 document)");
     expect(button.textContent).toBe("1");
+  });
+
+  test("does not re-render for a streamed token that only adds text", async () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="toggle" onRender={onRender}>
+        <ContextPanelToggle sessionId="s1" />
+      </Profiler>,
+    );
+    expect(await screen.findByLabelText("Open files")).toBeDefined();
+
+    function reply(text: string) {
+      return [
+        {
+          id: "assistant-message",
+          role: "assistant" as const,
+          parts: [{ type: "text" as const, text }],
+        },
+      ];
+    }
+    act(() => {
+      useCopilotStreamStore.getState().setMessageSnapshot("s1", reply("Hel"));
+    });
+    onRender.mockClear();
+
+    act(() => {
+      useCopilotStreamStore
+        .getState()
+        .setMessageSnapshot("s1", reply("Hello, here"));
+    });
+    act(() => {
+      useCopilotStreamStore
+        .getState()
+        .setMessageSnapshot("s1", reply("Hello, here is the plan"));
+    });
+
+    expect(onRender).not.toHaveBeenCalled();
   });
 
   test("opens the files tab of the side panel", () => {
@@ -311,6 +333,14 @@ describe("ContextPanelToggle computer button", () => {
     render(<ContextPanelToggle sessionId="s1" />);
 
     expect(screen.queryByLabelText("Open computer")).toBeNull();
-    expect(screen.getByLabelText("Open files")).toBeDefined();
+  });
+});
+
+describe("files toggle on mobile", () => {
+  test("is hidden, since mobile floats its own files button", () => {
+    setMobile(true);
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    expect(screen.queryByLabelText(/files/)).toBeNull();
   });
 });

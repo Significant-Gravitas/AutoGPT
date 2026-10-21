@@ -160,7 +160,7 @@ export function useAgentRunModal(
       onSuccess: (response, variables) => {
         if (response.status === 200) {
           toast({
-            title: "Agent execution started",
+            title: "Workflow execution started",
           });
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
@@ -169,10 +169,7 @@ export function useAgentRunModal(
           // Simulate goes through the same mutation as Run; only a real run
           // is an activation.
           if (!variables.data.dry_run) {
-            trackAgentRunGoal(
-              { id: agent.graph_id, name: agent.name },
-              "library",
-            );
+            trackAgentRunGoal(agent.graph_id, "library");
           }
           setIsOpen(false);
         }

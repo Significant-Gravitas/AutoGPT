@@ -81,6 +81,23 @@
   body {
     @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
   }
+
+  /* Touch screens: no grey flash on tap, and no double-tap zoom on controls,
+     which also drops the wait the browser adds to tell a tap from one. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  a,
+  button,
+  input,
+  label,
+  select,
+  summary,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 }
 
 /* *** AutoGPT Design Components *** */
@@ -157,6 +174,38 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   color: inherit;
 }
 
+/* Streamdown's code-block buttons are 24px icons: on a touch screen, widen
+   the area that takes the tap without moving the header around. */
+@media (pointer: coarse) {
+  [data-streamdown="code-block-copy-button"],
+  [data-streamdown="code-block-download-button"] {
+    position: relative;
+  }
+
+  [data-streamdown="code-block-copy-button"]::after,
+  [data-streamdown="code-block-download-button"]::after {
+    content: "";
+    position: absolute;
+    inset: -0.5rem;
+  }
+}
+
+/* A bare URL is one long word: let it wrap instead of running off a phone
+   screen. */
+[data-streamdown="link"] {
+  overflow-wrap: anywhere;
+}
+
+/* Phones: code lines get the 40px the line numbers take. The number keeps
+   its box (at no width), since it is what gives a blank line its height. */
+@media (max-width: 767px) {
+  [data-streamdown="code-block-body"] span::before {
+    visibility: hidden;
+    width: 0;
+    margin-right: 0;
+  }
+}
+
 /* CoPilot chat table styling — remove left/right borders, increase padding */
 [data-streamdown="table-wrapper"] table {
   border-left: none;
@@ -172,4 +221,14 @@ body[data-google-picker-open="true"] [data-dialog-content] {
    around them; display blocks keep KaTeX's size. */
 :not(.katex-display) > .katex {
   font-size: 1.1em;
+}
+
+/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
+   Overview intro's 15px instead of the default 14px. Scoped to the panels so
+   the tab labels, cards' small captions and the rest of the app keep their
+   sizes. */
+[data-profile-tabs] [role="tabpanel"] .text-sm,
+[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
+  font-size: 15px;
+  line-height: 1.5rem;
 }

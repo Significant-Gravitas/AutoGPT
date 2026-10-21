@@ -13,7 +13,7 @@ import { getScrollEdges, measureListHeight } from "./helpers";
 // observer bound to detached rows — the card would keep the height it
 // measured for the old ones until the reader toggled it.
 export function useCardLayout(
-  listRef: RefObject<HTMLUListElement>,
+  listRef: RefObject<HTMLUListElement | null>,
   isShowingAll: boolean,
   rowsKey: string,
 ) {

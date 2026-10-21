@@ -16,6 +16,7 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
@@ -680,6 +681,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            # A saved Google block output, read back, is still Google data.
+            google_data = file_info.metadata.get(GOOGLE_DATA_METADATA_KEY) is True
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -715,7 +719,7 @@ class ReadWorkspaceFileTool(BaseTool):
                         f"from {file_info.name}"
                     ),
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
@@ -740,7 +744,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             # Metadata + download URL for large/binary files
             preview: str | None = None
@@ -775,7 +779,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 preview=preview,
                 message=msg,
                 session_id=session_id,
-            )
+            ).with_google_data(google_data)
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
         except WorkspaceAccessDeniedError as e:
@@ -1088,6 +1092,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                 "file_id": {
                     "type": "string",
                     "description": "File ID from list_workspace_files.",
+                    "entity": "workspace_file",
                 },
                 "path": {
                     "type": "string",
