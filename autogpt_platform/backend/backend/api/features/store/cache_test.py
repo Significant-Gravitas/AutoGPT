@@ -1,11 +1,12 @@
 """The public store search cache, against the real Redis."""
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.api.features.search import embeddings
+from backend.util import cache as cache_util
 
 from . import cache as store_cache
 from . import hybrid_search as store_hybrid_search
@@ -31,6 +32,28 @@ async def test_a_search_ranked_by_text_alone_is_recomputed_and_a_full_one_cached
         for _ in range(2):
             await _search(query)
         assert rows.await_count == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_search_ranked_by_text_alone_answers_while_the_cache_is_unreachable():
+    with (
+        patch.object(
+            store_hybrid_search,
+            "query_raw_with_schema",
+            AsyncMock(return_value=[_agent_row()]),
+        ),
+        patch.object(
+            embeddings,
+            "take_public_search_embedding_slot",
+            AsyncMock(return_value=False),
+        ),
+        patch.object(
+            cache_util, "_get_redis", MagicMock(side_effect=ConnectionError("down"))
+        ),
+    ):
+        response = await _search(f"sheets {uuid.uuid4().hex}")
+
+    assert [agent.slug for agent in response.agents] == ["sheets-agent"]
 
 
 async def _search(query: str):

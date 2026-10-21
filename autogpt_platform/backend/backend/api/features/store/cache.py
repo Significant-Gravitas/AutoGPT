@@ -1,8 +1,14 @@
+import logging
+
+from redis.exceptions import RedisClusterException, RedisError
+
 from backend.api.features.search.embeddings import refused_public_queries
 from backend.util.cache import cached
 
 from . import db as store_db
 from . import model as store_model
+
+logger = logging.getLogger(__name__)
 
 ##############################################
 ############### Caches #######################
@@ -45,16 +51,22 @@ async def get_public_store_agents(
     finally:
         refused_public_queries.reset(token)
     if refused:
-        _get_cached_store_agents.cache_delete(
-            featured=featured,
-            creator=creator,
-            sorted_by=sorted_by,
-            search_query=search_query,
-            category=category,
-            page=page,
-            page_size=page_size,
-            public_search=True,
-        )
+        # The cache read and write already degrade on Redis trouble; this must too.
+        try:
+            _get_cached_store_agents.cache_delete(
+                featured=featured,
+                creator=creator,
+                sorted_by=sorted_by,
+                search_query=search_query,
+                category=category,
+                page=page,
+                page_size=page_size,
+                public_search=True,
+            )
+        except (RedisError, RedisClusterException, ConnectionError, OSError) as e:
+            logger.warning(
+                f"Could not drop a text-ranked store search from the cache: {e!r}"
+            )
     return agents
 
 
