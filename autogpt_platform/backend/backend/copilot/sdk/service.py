@@ -7277,12 +7277,11 @@ _PERF_FIRST_TURNS = 0
 
 
 def _perf_overlap_arm() -> bool:
-    """EXPERIMENT: first turns 0-1 overlap, 2-3 don't, 4-5 do, ... per process
-    (pairs, so the runner's alternating expert/Otto chats get both arms)."""
+    """EXPERIMENT: every first turn overlaps (#15866 on the batch); the A/B of
+    d0d8d6d88b is done."""
     global _PERF_FIRST_TURNS
-    turn = _PERF_FIRST_TURNS
     _PERF_FIRST_TURNS += 1
-    return (turn // 2) % 2 == 0
+    return True
 
 
 async def _graphiti_flag_only(flag: Awaitable[bool]) -> tuple[bool, str]:
