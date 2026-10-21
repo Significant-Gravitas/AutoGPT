@@ -129,6 +129,35 @@ async def test_every_card_declined_raises_the_last_decline_and_saves_nothing():
 
 
 @pytest.mark.asyncio
+async def test_a_decline_stripe_sends_without_a_decline_code_moves_on():
+    # Stripe leaves decline_code out of the error body for an expired card;
+    # its ErrorObject fills the gap with None, so reading it cannot raise.
+    message = "Your card has expired."
+    expired = stripe.CardError(
+        message,
+        None,
+        "expired_card",
+        http_status=402,
+        json_body={
+            "error": {"type": "card_error", "code": "expired_card", "message": message}
+        },
+    )
+    assert expired.error is not None
+    credit = UserCredit()
+    cards = [_card("pm_1"), _card("pm_2")]
+    with _stripe(credit, cards, [expired, _succeeded("pi_ok")]) as (
+        enable,
+        payment_intent,
+        _,
+    ):
+        await credit._top_up_credits("user-1", 500)
+
+    tried = [c.kwargs["payment_method"] for c in payment_intent.await_args_list]
+    assert tried == ["pm_1", "pm_2"]
+    enable.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_a_decline_without_a_message_still_says_the_card_was_declined():
     credit = UserCredit()
     with (
