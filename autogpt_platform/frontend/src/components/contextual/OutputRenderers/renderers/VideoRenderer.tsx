@@ -1,4 +1,10 @@
 import React from "react";
+import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
+import {
+  getYouTubeVideoId,
+  getYouTubeWatchUrl,
+  isYouTubeUrl,
+} from "@/components/molecules/YouTubeEmbed/helpers";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -43,14 +49,10 @@ function guessMimeType(url: string): string | null {
   return extension ? mimeMap[extension] || null : null;
 }
 
-const YOUTUBE_REGEX =
-  /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
 const VIMEO_REGEX = /^https?:\/\/(?:www\.)?vimeo\.com\/(\d+)/;
 
-function getYouTubeVideoID(url: string): string | null {
-  const match = url.match(YOUTUBE_REGEX);
-  return match ? match[1] : null;
+function isYouTubeVideoURL(url: string): boolean {
+  return /^https?:\/\//i.test(url) && getYouTubeVideoId(url) !== null;
 }
 
 function getVimeoVideoID(url: string): string | null {
@@ -59,7 +61,7 @@ function getVimeoVideoID(url: string): string | null {
 }
 
 function isEmbeddableVideoURL(url: string): boolean {
-  return getYouTubeVideoID(url) !== null || getVimeoVideoID(url) !== null;
+  return isYouTubeVideoURL(url) || getVimeoVideoID(url) !== null;
 }
 
 function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
@@ -102,19 +104,29 @@ function renderVideo(
 ): React.ReactNode {
   const videoUrl = String(value);
 
-  const youtubeID = getYouTubeVideoID(videoUrl);
-  if (youtubeID) {
+  if (isYouTubeVideoURL(videoUrl)) {
     return (
       <div className="group relative aspect-video w-full">
-        <iframe
-          className="h-full w-full rounded-md border border-gray-200"
-          src={`https://www.youtube.com/embed/${youtubeID}`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen allow-popups"
-          title="YouTube video"
+        <YouTubeEmbed
+          url={videoUrl}
+          className="rounded-md border border-gray-200"
         />
       </div>
+    );
+  }
+
+  // Video metadata can bring any other YouTube page here. It stays a link,
+  // like in markdown: a <video> would fetch it before consent.
+  if (isYouTubeUrl(videoUrl)) {
+    return (
+      <a
+        href={getYouTubeWatchUrl(videoUrl) ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline"
+      >
+        {videoUrl}
+      </a>
     );
   }
 

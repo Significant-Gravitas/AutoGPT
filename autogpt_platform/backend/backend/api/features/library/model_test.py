@@ -5,7 +5,9 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.api.features.library.triggers import setup_triggered_preset
 from backend.blocks.io import AgentGoogleDriveFileInputBlock
+from backend.util.service import _build_return_adapter
 
 from . import model as library_model
 
@@ -208,40 +210,48 @@ async def test_agent_preset_from_db(test_user_id: str):
     assert agent.inputs == {"input1": {"type": "string", "value": "test value"}}
 
 
+def _preset_row_with_webhook() -> prisma.models.AgentPreset:
+    """A trigger preset as the library loads it: webhook row included, signing
+    material and all."""
+    return prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-1",
+        createdAt=datetime.datetime.now(),
+        updatedAt=datetime.datetime.now(),
+        agentGraphId="g1",
+        agentGraphVersion=1,
+        name="p",
+        description="",
+        isActive=True,
+        userId="u1",
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        InputPresets=[],
+        webhookId="wh-1",
+        Webhook=prisma.models.IntegrationWebhook.model_validate(
+            {
+                "id": "wh-1",
+                "createdAt": datetime.datetime.now(),
+                "userId": "u1",
+                "provider": "github",
+                "credentialsId": "cred-1",
+                "webhookType": "repo",
+                "resource": "owner/repo",
+                "events": ["pull_request"],
+                "config": "{}",
+                "secret": "super-secret-signing-key",
+                "providerWebhookId": "gh-provider-123",
+                "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+            }
+        ),
+    )
+
+
 def test_preset_serialization_redacts_webhook_signing_material():
     """A serialized preset must never leak the webhook's signing secret or
     provider webhook id (GHSA-4m2w-qfr5-9f3v), while still exposing the ingress
     URL and non-sensitive metadata the frontend needs."""
-    from backend.data.integrations import Webhook
-    from backend.integrations.providers import ProviderName
-
-    webhook = Webhook(
-        id="wh-1",
-        user_id="u1",
-        provider=ProviderName.GITHUB,
-        credentials_id="cred-1",
-        webhook_type="repo",
-        resource="owner/repo",
-        events=["pull_request"],
-        config={},
-        secret="super-secret-signing-key",
-        provider_webhook_id="gh-provider-123",
-    )
-    preset = library_model.LibraryAgentPreset(
-        id="preset-1",
-        user_id="u1",
-        created_at=datetime.datetime.now(),
-        updated_at=datetime.datetime.now(),
-        graph_id="g1",
-        graph_version=1,
-        inputs={},
-        credentials={},
-        name="p",
-        description="",
-        is_active=True,
-        webhook_id="wh-1",
-        webhook=webhook,
-    )
+    preset = library_model.LibraryAgentPreset.from_db(_preset_row_with_webhook())
 
     dumped = preset.model_dump(mode="json")
     assert dumped["webhook"] is not None
@@ -255,3 +265,25 @@ def test_preset_serialization_redacts_webhook_signing_material():
     serialized = preset.model_dump_json()
     assert "super-secret-signing-key" not in serialized
     assert "gh-provider-123" not in serialized
+
+
+def test_preset_with_webhook_survives_the_rpc_round_trip():
+    """The copilot executor gets presets from the database manager as JSON and
+    rebuilds them with the RPC client's validator. A preset whose webhook cannot
+    make that trip reaches the copilot tools as a dict, and every read of
+    ``.webhook`` on it fails."""
+    preset = library_model.LibraryAgentPreset.from_db(_preset_row_with_webhook())
+    assert preset.webhook is not None
+    adapter = _build_return_adapter(
+        setup_triggered_preset,
+        library_model.LibraryAgentPreset,
+        "setup_triggered_preset",
+    )
+    assert adapter is not None
+
+    delivered = adapter.validate_python(json.loads(preset.model_dump_json()))
+
+    assert isinstance(delivered, library_model.LibraryAgentPreset)
+    assert delivered.webhook is not None
+    assert delivered.webhook.url == preset.webhook.url
+    assert delivered.webhook.provider == preset.webhook.provider
