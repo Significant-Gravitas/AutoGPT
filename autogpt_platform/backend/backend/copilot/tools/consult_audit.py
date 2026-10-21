@@ -139,7 +139,9 @@ def verdict_response(
         for q in verdict.quotes[:MAX_QUOTES]
         if q.strip()
     ]
-    quoted = "\n".join(f"> {line}" for line in [reason, *quotes] if line)
+    quoted = "\n".join(
+        f"> {escape_prompt_xml_tags(line)}" for line in [reason, *quotes] if line
+    )
     return ConsultVerdictResponse(
         message=(
             f"{escape_prompt_xml_tags(reviewer.name)} ruled: "
