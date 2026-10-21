@@ -5288,6 +5288,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     unsaved_held: list[PendingMessage] = []
     # A first turn's context reads, started before setup (``FirstTurnContext``).
     first_turn_context: FirstTurnContext | None = None
+    graphiti_flag_task: asyncio.Task[bool] | None = None
+    warm_ctx_task: asyncio.Task[tuple[bool, str]] | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5390,14 +5392,30 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
         e2b_task = asyncio.create_task(_setup_e2b())
+        # EXPERIMENT (probe build only): every other pair of first turns per
+        # process awaits only graphiti's flag here and the recalled memories
+        # where the query is sent, so the CLI boots while they are fetched.
+        _perf_overlap = not has_history and _perf_overlap_arm()
+        logger.info("%s perf-step overlap_arm %d", log_prefix, int(_perf_overlap))
+        if _perf_overlap:
+            graphiti_flag_task = asyncio.create_task(is_enabled_for_user(user_id))
+            warm_ctx_task = asyncio.create_task(
+                _fetch_graphiti_context(
+                    user_id, session, message, enabled=graphiti_flag_task
+                )
+            )
         try:
             (
                 (base_system_prompt, understanding),
-                (graphiti_enabled, warm_ctx),
+                graphiti_leg,
                 _restore,
             ) = await asyncio.gather(
                 _build_system_prompt(user_id if not has_history else None),
-                _fetch_graphiti_context(user_id, session, message),
+                (
+                    _graphiti_flag_only(graphiti_flag_task)
+                    if graphiti_flag_task is not None
+                    else _fetch_graphiti_context(user_id, session, message)
+                ),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
@@ -5415,6 +5433,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 e2b_sandbox = await e2b_task
             raise
         e2b_sandbox = await e2b_task
+        graphiti_enabled, warm_ctx = graphiti_leg
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -6092,6 +6111,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # below (``_resend_with_fresh_warm_context``), which rebuilds from the
         # query as it is here, before the block.
         warm_context_base = query_message
+        if warm_ctx_task is not None:
+            _perf_wait_start = time.monotonic()
+            _, warm_ctx = await warm_ctx_task
+            logger.info(
+                "%s perf-step overlap_wait %d",
+                log_prefix,
+                round((time.monotonic() - _perf_wait_start) * 1000),
+            )
         query_message = await append_warm_context(
             warm_context_base,
             was_compacted=was_compacted,
@@ -6719,6 +6746,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         tool_display_bridge.reset()
         if first_turn_context is not None:
             await first_turn_context.close()
+        # Unused when the turn ended before its query; cancelling also marks a
+        # failure it already ended with as handled.
+        for _perf_task in (warm_ctx_task, graphiti_flag_task):
+            if _perf_task is not None:
+                _perf_task.cancel()
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
@@ -7241,10 +7273,28 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 return
 
 
+_PERF_FIRST_TURNS = 0
+
+
+def _perf_overlap_arm() -> bool:
+    """EXPERIMENT: first turns 0-1 overlap, 2-3 don't, 4-5 do, ... per process
+    (pairs, so the runner's alternating expert/Otto chats get both arms)."""
+    global _PERF_FIRST_TURNS
+    turn = _PERF_FIRST_TURNS
+    _PERF_FIRST_TURNS += 1
+    return (turn // 2) % 2 == 0
+
+
+async def _graphiti_flag_only(flag: Awaitable[bool]) -> tuple[bool, str]:
+    return await flag, ""
+
+
 async def _fetch_graphiti_context(
     user_id: str | None,
     session: ChatSession,
     message: str | None,
+    *,
+    enabled: Awaitable[bool] | None = None,
 ) -> tuple[bool, str]:
     """Check Graphiti flag and fetch warm context in one shot.
 
@@ -7256,8 +7306,7 @@ async def _fetch_graphiti_context(
     never stored in the user's message. Skips the fetch on follow-up turns
     (history > 1 message) and when the user is anonymous.
     """
-    enabled = await is_enabled_for_user(user_id)
-    if not enabled:
+    if not await (enabled if enabled is not None else is_enabled_for_user(user_id)):
         return False, ""
     if not (user_id and len(session.messages) <= 1):
         return True, ""
