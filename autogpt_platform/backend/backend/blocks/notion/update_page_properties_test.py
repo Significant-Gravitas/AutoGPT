@@ -22,7 +22,6 @@ async def test_properties_are_written_as_the_types_the_page_already_has(notion_a
             "Notes": {"id": "d", "type": "rich_text"},
             "Due": {"id": "e", "type": "date"},
             "Done": {"id": "f", "type": "checkbox"},
-            "Owner": {"id": "g", "type": "people"},
         }
     }
     sent = notion_api(schema, UPDATED)
@@ -38,7 +37,6 @@ async def test_properties_are_written_as_the_types_the_page_already_has(notion_a
             "Notes": "Shipped",
             "Due": "2026-10-31",
             "Done": True,
-            "Owner": None,
         },
         icon_emoji="🚀",
         cover_url="https://example.com/cover.png",
@@ -58,7 +56,6 @@ async def test_properties_are_written_as_the_types_the_page_already_has(notion_a
                     "Notes": {"rich_text": _text("Shipped")},
                     "Due": {"date": {"start": "2026-10-31"}},
                     "Done": {"checkbox": True},
-                    "Owner": {"people": []},
                     "title": {"title": _text("Renamed")},
                 },
                 "icon": {"type": "emoji", "emoji": "🚀"},
@@ -85,12 +82,54 @@ async def test_trash_state_is_sent_only_when_asked(notion_api, in_trash: bool | 
     assert sent == [("PATCH", PAGE_URL, expected)]
 
 
-async def test_an_unknown_property_is_refused_before_anything_is_written(notion_api):
-    sent = notion_api({"properties": {"Name": {"id": "title", "type": "title"}}})
+async def test_null_clears_each_property_the_way_its_type_allows(notion_api):
+    schema = {
+        "properties": {
+            "Done": {"id": "a", "type": "checkbox"},
+            "Stage": {"id": "b", "type": "select"},
+            "Owner": {"id": "c", "type": "people"},
+        }
+    }
+    sent = notion_api(schema, UPDATED)
 
-    with pytest.raises(ValueError, match="no property named 'Stauts'"):
+    await NotionUpdatePagePropertiesBlock.update_page(
+        TEST_CREDENTIALS,
+        PAGE_ID,
+        properties={"Done": None, "Stage": None, "Owner": None},
+    )
+
+    assert sent[-1][2] == {
+        "properties": {
+            "Done": {"checkbox": False},
+            "Stage": {"select": None},
+            "Owner": {"people": []},
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    "properties, error",
+    [
+        ({"Stauts": "Done"}, "no property named 'Stauts'"),
+        ({"Total": None}, r"Writing a formula property \('Total'\) is not supported"),
+        ({"Owner": ["Ada"]}, r"Writing a people property \('Owner'\) is not supported"),
+    ],
+)
+async def test_a_property_it_cannot_write_is_refused_before_anything_is_written(
+    notion_api, properties: dict, error: str
+):
+    schema = {
+        "properties": {
+            "Name": {"id": "title", "type": "title"},
+            "Total": {"id": "a", "type": "formula"},
+            "Owner": {"id": "b", "type": "people"},
+        }
+    }
+    sent = notion_api(schema)
+
+    with pytest.raises(ValueError, match=error):
         await NotionUpdatePagePropertiesBlock.update_page(
-            TEST_CREDENTIALS, PAGE_ID, properties={"Stauts": "Done"}
+            TEST_CREDENTIALS, PAGE_ID, properties=properties
         )
 
     assert [method for method, _, _ in sent] == ["GET"]

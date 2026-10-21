@@ -163,13 +163,22 @@ class NotionUpdatePagePropertiesBlock(Block):
             yield "error", str(e) if str(e) else "Unknown error"
 
 
-_LIST_VALUED_TYPES = {
-    "title",
-    "rich_text",
-    "multi_select",
-    "people",
-    "relation",
-    "files",
+# What clears each type this block writes; read-only types such as formula are absent.
+_CLEARED_VALUES: dict[str, Any] = {
+    "checkbox": False,
+    "select": None,
+    "status": None,
+    "date": None,
+    "number": None,
+    "url": None,
+    "email": None,
+    "phone_number": None,
+    "title": [],
+    "rich_text": [],
+    "multi_select": [],
+    "people": [],
+    "relation": [],
+    "files": [],
 }
 _SCALAR_TYPES = {"number", "checkbox", "url", "email", "phone_number"}
 
@@ -187,8 +196,10 @@ def _property_values(
 
 
 def _property_value(name: str, prop_type: str, value: Any) -> dict:
+    if prop_type not in _CLEARED_VALUES:
+        raise ValueError(f"Writing a {prop_type} property ('{name}') is not supported")
     if value is None:
-        return {prop_type: [] if prop_type in _LIST_VALUED_TYPES else None}
+        return {prop_type: _CLEARED_VALUES[prop_type]}
     if prop_type in ("title", "rich_text"):
         return {prop_type: [{"type": "text", "text": {"content": str(value)}}]}
     if prop_type in ("select", "status"):
@@ -200,4 +211,4 @@ def _property_value(name: str, prop_type: str, value: Any) -> dict:
         return {"date": {"start": str(value)}}
     if prop_type in _SCALAR_TYPES:
         return {prop_type: value}
-    raise ValueError(f"Setting a {prop_type} property ('{name}') is not supported")
+    raise ValueError(f"Writing a {prop_type} property ('{name}') is not supported")

@@ -12,7 +12,7 @@ Update an existing Notion page's properties, its title among them, its icon or c
 <!-- MANUAL: how_it_works -->
 This block updates an existing page through the Notion API. It can rename the page, set its properties, change its emoji icon or cover image, and move it to the trash or restore it, all in one request. The page must be shared with your integration. It leaves the page's content as it is; the Notion Append To Page block adds content to the end of a page.
 
-Properties are named as they appear in the database, and each value is written as the type that property already has: a name for a select or status, a list of names for a multi-select, a date string for a date, and so on. The block reads the page first to learn those types, and refuses a property the page does not have before anything is written. A null value clears the property.
+Properties are named as they appear in the database, and each value is written as the type that property already has: a name for a select or status, a list of names for a multi-select, a date string for a date, and so on. The block reads the page first to learn those types. Before anything is written, it refuses a property the page does not have, a read-only one such as a formula, and a value for a people, relation or files property. A null value clears the property, and unchecks a checkbox.
 <!-- END MANUAL -->
 
 ### Inputs
