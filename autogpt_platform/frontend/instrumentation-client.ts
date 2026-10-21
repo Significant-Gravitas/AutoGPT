@@ -14,7 +14,8 @@ import {
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
-import { setupSessionReplay } from "@/lib/session-replay";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
+import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
 import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
@@ -48,7 +49,8 @@ Sentry.init({
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943).
+  // not read (BUILDER-943). URLs are masked last: the request logger's match
+  // needs the URL as it was requested.
   beforeSend(event) {
     stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
@@ -56,16 +58,16 @@ Sentry.init({
     if (isInjectedIframeProbe(event)) return null;
     if (isNextRSCNavigationFallback(event)) return null;
     // Mirror last: after our filters (an integration would run before
-    // beforeSend) and on the event stripped above, so PostHog never gets the
-    // email or IP address Sentry doesn't keep either.
-    return mirrorSentryEvent(event);
+    // beforeSend) and on the stripped, URL-masked event, so PostHog never
+    // gets an email, IP address or credential Sentry doesn't keep either.
+    return mirrorSentryEvent(redactEventURLs(event));
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)
       ? null
-      : stripSpanPII(stripUserPII(event));
+      : stripSpanPII(stripUserPII(redactEventURLs(event)));
   },
-  beforeSendSpan: stripSpanDataPII,
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
   beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
@@ -120,4 +122,9 @@ Sentry.init({
   enableLogs: true,
 });
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export function onRouterTransitionStart(
+  ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
+) {
+  Sentry.captureRouterTransitionStart(...args);
+  holdReplayBackFor(args[0]);
+}
