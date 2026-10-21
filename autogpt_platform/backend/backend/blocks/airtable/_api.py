@@ -1087,18 +1087,6 @@ async def list_webhook_payloads(
         )
 
 
-async def list_webhooks(
-    credentials: Credentials,
-    base_id: str,
-) -> Any:
-
-    response = await Requests().get(
-        f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-        headers={"Authorization": credentials.auth_header()},
-    )
-    return response.json()
-
-
 class OAuthAuthorizeRequest(BaseModel):
     """OAuth authorization request parameters for Airtable.
 
