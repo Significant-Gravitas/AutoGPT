@@ -7,7 +7,7 @@ import { BlockMenuSearch } from "../BlockMenuSearch/BlockMenuSearch";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 
 export const BlockMenuContent = () => {
-  const { searchQuery } = useBlockMenuStore();
+  const searchQuery = useBlockMenuStore((state) => state.searchQuery);
   return (
     <div className="flex h-full w-full flex-col">
       <BlockMenuSearchBar />

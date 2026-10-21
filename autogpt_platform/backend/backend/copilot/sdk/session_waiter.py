@@ -22,12 +22,14 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     _get_session_lock,
@@ -39,6 +41,7 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
 from backend.data.db_accessors import chat_db
 
@@ -91,6 +94,10 @@ class SessionResult:
     # Why the turn never started, when the outcome is ``refused``. Written
     # for the model: it names the bound that was hit.
     refusal: str = ""
+    # Set when the turn ended as a pause. A turn the executor refused at
+    # pickup for want of allowance (``started=False``) comes back as
+    # ``refused``, with a ``refusal`` naming the limit: nothing ran.
+    pause: TurnPause | None = None
 
 
 async def wait_for_session_result(
@@ -147,7 +154,33 @@ async def wait_for_session_result(
     result.prompt_tokens = acc.prompt_tokens
     result.completion_tokens = acc.completion_tokens
     result.total_tokens = acc.total_tokens
+    result.pause = pause = acc.pause
+    if (
+        outcome == "completed"
+        and pause is not None
+        and not pause.started
+        and not result.response_text
+        and not result.tool_calls
+    ):
+        # Only the executor's not-started pause: the turn never ran, and
+        # reported as done the caller would take the empty answer for the
+        # task's result. A turn that ran and then couldn't continue into
+        # queued messages ends with the same pause after its own output,
+        # and did complete.
+        outcome = "refused"
+        result.refusal = _budget_refusal(pause)
     return outcome, result
+
+
+def _budget_refusal(pause: TurnPause) -> str:
+    """What the caller's model is told about a turn refused for budget."""
+    if pause.resets_at is None:
+        return f"{pause.summary} The account's budget doesn't reset on its own."
+    resets_at = pause.resets_at.astimezone(UTC)
+    return (
+        f"{pause.summary} The account's budget resets "
+        f"{resets_at:%Y-%m-%d %H:%M} UTC."
+    )
 
 
 async def run_copilot_turn_via_queue(
@@ -278,6 +311,8 @@ async def run_copilot_turn_via_queue(
             spawn=spawn,
             message_metadata=message_metadata,
             delegated=delegated,
+            # A child of an impersonated turn is the admin's work too.
+            impersonated=is_turn_impersonated(),
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
@@ -369,6 +404,7 @@ async def _queue_for_slot(
             permissions=permissions,
             spawn=spawn,
             message_metadata=message_metadata,
+            impersonated=is_turn_impersonated(),
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)

@@ -100,7 +100,7 @@ export function MobileSubmissionsList({
         <SearchInput
           value={searchInput}
           onChange={onSearchChange}
-          placeholder="Search by agent or listing name"
+          placeholder="Search by workflow or listing name"
           aria-label="Search submissions"
           maxLength={100}
           loading={isFetching}

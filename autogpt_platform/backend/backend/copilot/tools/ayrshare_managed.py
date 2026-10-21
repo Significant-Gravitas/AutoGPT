@@ -309,7 +309,7 @@ def _unattended_link_error(
             "(it was scheduled), so say plainly in your reply that the post "
             "was skipped and that the user can link their social accounts by "
             f"opening this chat and choosing {CONNECT_BUTTON} on the Ayrshare "
-            f"card (or {BUILDER_CONNECT_BUTTON} in the agent builder)"
+            f"card (or {BUILDER_CONNECT_BUTTON} in the workflow builder)"
             + (
                 ", then grant this expert access to it on the expert's "
                 "Integrations page"

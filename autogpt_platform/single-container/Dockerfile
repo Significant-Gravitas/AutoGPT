@@ -268,7 +268,7 @@ ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
-      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
+      org.opencontainers.image.description="Single-node AutoGPT Platform distribution" \
       org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
       org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \

@@ -104,6 +104,7 @@ export function MemoryChatPanel({
                     onSend={onSend}
                     disabled={false}
                     isStreaming={isStreaming}
+                    isTurnStarting={status === "submitted"}
                     onStop={onStop}
                     onEnqueue={onSend}
                     placeholder="Ask or update…"

@@ -13,13 +13,15 @@ import stripe
 from click.testing import CliRunner
 
 from backend.cli import mailerlite_backfill as cli
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 from backend.notifications import checkout_backfill, mailerlite_backfill
 from backend.notifications import mailerlite_field_backfill as field_backfill
-from backend.notifications.mailerlite_backfill import Audience, Subscription
+from backend.notifications.mailerlite_backfill import Audience
 from backend.notifications.mailerlite_field_backfill import Person
 
 CREATED = datetime(2026, 7, 14, tzinfo=UTC)
 OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
+ACTIVE = StripeSubscriptionFacts(id="sub_1", status="active")
 
 
 # The root conftest spins a full test server for every test via an autouse
@@ -27,11 +29,6 @@ OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 @pytest.fixture(scope="session")
 def server():
     yield None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
 
 
 def test_a_complete_run_reports_and_succeeds(capsys):
@@ -89,7 +86,7 @@ async def test_each_account_carries_its_consent_and_countries_into_the_backfills
         patch("prisma.models.SubscriptionTrial.prisma", return_value=trials),
     ):
         out, kept = await cli._people(
-            {"cus_out": [Subscription(status="active")], "cus_in": []},
+            {"cus_out": [ACTIVE], "cus_in": []},
             {"cus_out": "RU"},
         )
     assert out.marketing_opt_out_at == OPTED_OUT
@@ -102,12 +99,43 @@ async def test_each_account_carries_its_consent_and_countries_into_the_backfills
     assert cli._customer(kept).marketing_opt_out_at is None
 
 
+@pytest.mark.asyncio
+async def test_the_checkout_refresh_reads_the_trial_row_with_stripe():
+    """A trial that converts mid-run must not be read with the planned,
+    unconverted row: both come back fresh."""
+    person = Person(
+        user_id="u1",
+        email="u1@example.com",
+        created_at=CREATED,
+        stripe_customer_id="cus_1",
+    )
+    row = MagicMock()
+    trials = MagicMock(find_unique=AsyncMock(return_value=row))
+    fresh = object()
+    with (
+        patch(
+            "backend.data.posthog_lifecycle_sync.list_customer_subscriptions",
+            AsyncMock(return_value=[ACTIVE]),
+        ) as listed,
+        patch("prisma.models.SubscriptionTrial.prisma", return_value=trials),
+        patch(
+            "backend.data.subscription_trial.TrialState.from_db",
+            return_value=fresh,
+        ),
+        patch.object(Person, "model_copy", lambda self, update: update),
+    ):
+        refreshed = await cli._refresh(person)
+    listed.assert_awaited_once_with("cus_1")
+    trials.find_unique.assert_awaited_once_with(where={"userId": "u1"})
+    assert refreshed == {"subscriptions": [ACTIVE], "trial": fresh}
+
+
 def test_every_report_counts_the_opted_out(capsys):
     person = Person(
         user_id="out",
         email="out@example.com",
         created_at=CREATED,
-        subscriptions=[Subscription(status="active")],
+        subscriptions=[ACTIVE],
         stripe_customer_id="cus_out",
         marketing_opt_out_at=OPTED_OUT,
     )
@@ -140,7 +168,7 @@ def test_every_report_counts_anyone_placed_in_iran_or_russia(capsys):
         user_id="ru",
         email="ru@example.com",
         created_at=CREATED,
-        subscriptions=[Subscription(status="active")],
+        subscriptions=[ACTIVE],
         stripe_customer_id="cus_ru",
         timezone="Europe/Moscow",
     )

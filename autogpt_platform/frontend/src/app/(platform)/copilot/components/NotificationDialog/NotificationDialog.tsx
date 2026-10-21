@@ -10,12 +10,18 @@ import { BellRingIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationDialog() {
-  const {
-    showNotificationDialog,
-    setShowNotificationDialog,
-    setNotificationsEnabled,
-    isNotificationsEnabled,
-  } = useCopilotUIStore();
+  const showNotificationDialog = useCopilotUIStore(
+    (s) => s.showNotificationDialog,
+  );
+  const setShowNotificationDialog = useCopilotUIStore(
+    (s) => s.setShowNotificationDialog,
+  );
+  const setNotificationsEnabled = useCopilotUIStore(
+    (s) => s.setNotificationsEnabled,
+  );
+  const isNotificationsEnabled = useCopilotUIStore(
+    (s) => s.isNotificationsEnabled,
+  );
 
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED) === "true",

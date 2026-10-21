@@ -2,6 +2,7 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
+import { NavBar } from "../pages/navbar.page";
 import { skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
@@ -77,7 +78,7 @@ export async function signupTestUser(
     } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
       await page
         .getByText(
-          "Bringing you AI agents designed by thinkers from around the world",
+          "Bringing you AI workflows designed by thinkers from around the world",
         )
         .first()
         .waitFor({ state: "visible", timeout: 10000 });
@@ -89,8 +90,7 @@ export async function signupTestUser(
 
     if (withAgent) {
       // Create a dummy agent for each new user
-      const buildLink = getId("navbar-link-build");
-      await buildLink.click();
+      await new NavBar(page).clickBuildLink();
 
       const blocksBtn = getId("blocks-control-blocks-button");
       await isVisible(blocksBtn);

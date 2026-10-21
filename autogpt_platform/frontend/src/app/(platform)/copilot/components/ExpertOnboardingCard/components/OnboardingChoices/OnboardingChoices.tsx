@@ -65,7 +65,7 @@ export function OnboardingChoices({
                 onClick={() => choose(option)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] leading-snug transition-colors",
+                  "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[15px] leading-snug transition-colors",
                   isSelected
                     ? "bg-zinc-900 text-white"
                     : "bg-zinc-50 text-zinc-800 ring-1 ring-zinc-100 hover:bg-zinc-100",
@@ -92,14 +92,14 @@ export function OnboardingChoices({
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleTextKeyDown}
           placeholder="Type your answer"
-          className="resize-none rounded-xl bg-zinc-50 px-4 py-3 text-[15px] leading-relaxed text-zinc-800 ring-1 ring-zinc-200 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
+          className="resize-none rounded-md bg-zinc-50 px-4 py-3 text-[15px] leading-relaxed text-zinc-800 ring-1 ring-zinc-200 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
         />
       ) : (
         <button
           type="button"
           onClick={startTyping}
           onKeyDown={handleLetterKey}
-          className="flex w-full items-center gap-3 rounded-xl border border-dashed border-zinc-200 px-3 py-2.5 text-left text-[15px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
+          className="flex w-full items-center gap-3 rounded-md border border-dashed border-zinc-200 px-3 py-2.5 text-left text-[15px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
         >
           <LetterBadge index={options.length} isSelected={false} />
           Other

@@ -3,6 +3,18 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let mockIsBillingEnabled = true;
+let mockSkillLearningEnabled = false;
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === "dream-skill-learning-enabled" && mockSkillLearningEnabled,
+  };
+});
 vi.mock("@/hooks/useIsBillingEnabled", () => ({
   useIsBillingEnabled: () => mockIsBillingEnabled,
   useBillingStatus: () => ({
@@ -61,6 +73,15 @@ describe("SettingsSidebar", () => {
   beforeEach(() => {
     usePathnameMock.mockReturnValue("/settings/profile");
     mockIsBillingEnabled = true;
+    mockSkillLearningEnabled = false;
+  });
+
+  it("shows personal learning settings when Graphiti is disabled", () => {
+    mockSkillLearningEnabled = true;
+    render(<SettingsSidebar />);
+    expect(
+      screen.getByRole("link", { name: "Memory" }).getAttribute("href"),
+    ).toBe("/settings/memory");
   });
 
   it("leaves Billing out on a self-hosted install without payments", () => {

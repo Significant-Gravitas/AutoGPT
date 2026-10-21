@@ -81,7 +81,7 @@ from backend.util.exceptions import (
 from backend.util.file import clean_exec_files
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.process import AppProcess, set_service_name
+from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
 from backend.util.retry import (
     continuous_retry,
     func_retry,
@@ -187,6 +187,11 @@ KNOWN_GRAPH_EXECUTION_ERRORS = (
 # (VALID_STATUS_TRANSITIONS); a direct QUEUED -> COMPLETED write is rejected
 # and leaves the node QUEUED after its run has finished.
 SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
+
+# Rows charged on their first dispatch: the charge precedes the RUNNING write,
+# and a block parks itself in REVIEW mid-run. A resume or a redelivery after a
+# pod died dispatches them without a second charge; gaps: #15327, Known limits.
+BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
 
 def _propagate_node_failure(
@@ -1199,7 +1204,7 @@ class ExecutionProcessor:
                         user_id=graph_exec.user_id,
                         message=(
                             f"At least {required_balance} credit must be available to run "
-                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                            f"this workflow. {INSUFFICIENT_BALANCE_GUIDANCE}"
                         ),
                         balance=credit_balance,
                         amount=required_balance,
@@ -1236,6 +1241,13 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                # A REVIEW/RUNNING row was charged when it was first
+                # dispatched, so it must not be charged again (#15272).
+                # A TERMINATED row is charged again: its interrupt settled the
+                # first charge, so a per-run block pays twice. Not reachable:
+                # no caller requeues a TERMINATED run.
+                if node_exec.status in BILLED_REDISPATCH_STATUSES:
+                    node_entry.redispatched_from = node_exec.status
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
@@ -1271,9 +1283,14 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                # Charge usage (may raise) — skipped for dry runs and for
+                # REVIEW/RUNNING re-dispatches that were already charged.
                 try:
-                    if not graph_exec.execution_context.dry_run:
+                    if queued_node_exec.redispatched_from is not None:
+                        queued_node_exec.pre_flight_charge = (
+                            billing.redispatch_reconcile_baseline(queued_node_exec)
+                        )
+                    elif not graph_exec.execution_context.dry_run:
                         (
                             cost,
                             remaining_balance,
@@ -1675,6 +1692,7 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Loaded {block_count} blocks in "
             f"{time.monotonic() - load_started:.1f}s"
         )
+        freeze_startup_heap()
 
         self.cancel_thread.start()
         self.run_thread.start()
