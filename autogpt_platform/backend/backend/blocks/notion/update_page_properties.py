@@ -36,7 +36,7 @@ class NotionUpdatePagePropertiesBlock(Block):
             description="New title for the page", default=None
         )
         properties: dict[str, Any] | None = SchemaField(
-            description="Properties to set by name (e.g., {'Status': 'Done', 'Tags': ['urgent']}). Each value is written as the type the property already has; null clears it.",
+            description="Properties to set by name (e.g., {'Status': 'Done', 'Tags': ['urgent']}). Each value is written as the type the property already has; null clears it, or resets a status to its default option.",
             default=None,
         )
         icon_emoji: str | None = SchemaField(
