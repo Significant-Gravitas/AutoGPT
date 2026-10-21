@@ -8,12 +8,21 @@ treats a missing client as "analytics disabled" and never lets tracking
 raise into the request or execution that produced the event. Every client
 built here also stamps ``revision`` on everything it sends (see
 :func:`revision_properties`).
+
+:func:`capture` also reads who the running work is for. An admin acting as
+the user (``X-Act-As-User-Id``, or a chat turn such an admin started) marks
+every event ``impersonated`` and sends no person properties, so the admin's
+clicks never land in the user's numbers or change their person. A request
+from the browser can name its PostHog session, which every event the request
+sends joins as ``$session_id``. ``api/middleware/analytics.py`` sets both
+for a request, the chat executor the first for a turn.
 """
 
 import asyncio
 import atexit
 import logging
 from collections.abc import Callable, Iterable, Mapping
+from contextvars import ContextVar, Token
 from datetime import datetime
 from functools import cache
 from threading import Lock
@@ -113,6 +122,36 @@ async def send_each(sends: Iterable[Send]) -> int:
     return len(failed)
 
 
+# Whether an admin acting as the user caused the work running now.
+_impersonated: ContextVar[bool] = ContextVar("posthog_impersonated", default=False)
+# The browser's PostHog session for the request running now.
+_session_id: ContextVar[str | None] = ContextVar("posthog_session_id", default=None)
+
+
+def set_impersonated(impersonated: bool) -> Token[bool]:
+    """Mark the work running now as done by an admin acting as the user, or
+    not. Returns the token that undoes it."""
+    return _impersonated.set(impersonated)
+
+
+def reset_impersonated(token: Token[bool]) -> None:
+    _impersonated.reset(token)
+
+
+def is_impersonated() -> bool:
+    return _impersonated.get()
+
+
+def set_session_id(session_id: str | None) -> Token[str | None]:
+    """Make *session_id* the browser session the running request's events
+    join. Returns the token that undoes it."""
+    return _session_id.set(session_id or None)
+
+
+def reset_session_id(token: Token[str | None]) -> None:
+    _session_id.reset(token)
+
+
 @cache
 def _environment() -> str:
     return Settings().config.app_env.value
@@ -136,6 +175,12 @@ def capture(
     nobody can merge. The base properties are applied last, so a caller can
     never overwrite ``environment`` or ``source`` by accident.
 
+    Work an admin does as the user is sent with ``impersonated`` true, and its
+    ``$set_person_properties`` events are not sent at all: the person's
+    properties describe the user, not the admin acting for them. A request
+    that named its browser session adds ``$session_id``, unless the caller set
+    one.
+
     ``dedup_key`` is an idempotency key for a redelivery or requeue that can
     send the same event twice; it is carried both as ``$insert_id`` and as a
     deterministic event uuid, because PostHog's ingestion keys on the uuid,
@@ -149,6 +194,9 @@ def capture(
     event_name = "<unknown>"
     try:
         event_name = event.value
+        impersonated = is_impersonated()
+        if impersonated and event is PostHogEvent.SET_PERSON_PROPERTIES:
+            return False
         if client is None:
             client = get_posthog_client()
         if client is None:
@@ -158,6 +206,10 @@ def capture(
             "environment": _environment(),
             "source": source,
         }
+        if impersonated:
+            payload["impersonated"] = True
+        if session_id := _session_id.get():
+            payload.setdefault("$session_id", session_id)
         event_uuid = None
         if dedup_key is not None:
             payload["$insert_id"] = dedup_key
