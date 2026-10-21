@@ -823,17 +823,23 @@ class ReadWorkspaceFileTool(BaseTool):
                 msg += (
                     ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."
                 )
-            return WorkspaceFileMetadataResponse(
-                file_id=file_info.id,
-                name=file_info.name,
-                path=file_info.path,
-                mime_type=file_info.mime_type,
-                size_bytes=file_info.size_bytes,
-                download_url=f"workspace://{target_file_id}",
-                preview=preview,
-                message=msg,
-                session_id=session_id,
-            ).with_google_data(google_data)
+            return (
+                WorkspaceFileMetadataResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type=file_info.mime_type,
+                    size_bytes=file_info.size_bytes,
+                    download_url=f"workspace://{target_file_id}",
+                    preview=preview,
+                    message=msg,
+                    session_id=session_id,
+                )
+                .from_outside(
+                    file_info.name, file_info.path, file_info.mime_type, preview
+                )
+                .with_google_data(google_data)
+            )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
         except WorkspaceAccessDeniedError as e:
