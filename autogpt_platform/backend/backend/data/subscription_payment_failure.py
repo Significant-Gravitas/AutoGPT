@@ -150,6 +150,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
         await _void_unpaid_invoices(failed.sub_id)
         return PaymentFailureOutcome.IGNORED
     if payment is not None:
+        # A refunded debit never pays the invoice again, so the customer must.
+        if payment.state == WalletPaymentState.REFUNDED and failed.is_unpaid:
+            return PaymentFailureOutcome.NEEDS_ACTION
         return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:
         logger.info(
