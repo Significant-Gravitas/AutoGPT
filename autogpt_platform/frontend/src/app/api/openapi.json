@@ -7,6 +7,130 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/access-blocks": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List access blocks",
+        "description": "The IP and email domain blocks in force, newest first. Admin-only.",
+        "operationId": "getAdminList access blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessBlockPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create access block",
+        "description": "Refuse new sign-ups (and, for an IP, sign-ins) from an IP or email\ndomain. 409 while a block on the same value is in force. Admin-only.",
+        "operationId": "postAdminCreate access block",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccessBlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessBlock" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/access-blocks/{block_id}": {
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete access block",
+        "description": "Lift a block. Admin-only.",
+        "operationId": "deleteAdminDelete access block",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Block Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/blocks/cost-estimates": {
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
@@ -2939,6 +3063,44 @@
                 "schema": {
                   "$ref": "#/components/schemas/PlatformCostExportResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/ip-report": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get user IP report",
+        "description": "Where an account signed up and signed in from, the other accounts on\nthose IPs or its email domain, and the blocks covering them. Admin-only.",
+        "operationId": "getAdminGet user ip report",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountIPReport" }
               }
             }
           },
@@ -19233,6 +19395,140 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AccessBlock": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": { "$ref": "#/components/schemas/AuthAccessBlockKind" },
+          "value": { "type": "string", "title": "Value" },
+          "reason": { "type": "string", "title": "Reason" },
+          "created_by_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Id"
+          },
+          "created_by_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Email"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "reason",
+          "created_by_id",
+          "created_by_email",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "AccessBlock"
+      },
+      "AccessBlockPage": {
+        "properties": {
+          "blocks": {
+            "items": { "$ref": "#/components/schemas/AccessBlock" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["blocks", "total"],
+        "title": "AccessBlockPage"
+      },
+      "AccountIP": {
+        "properties": {
+          "ip_address": { "type": "string", "title": "Ip Address" },
+          "display_address": { "type": "string", "title": "Display Address" },
+          "is_ipv6_prefix": { "type": "boolean", "title": "Is Ipv6 Prefix" },
+          "has_sign_up": { "type": "boolean", "title": "Has Sign Up" },
+          "sign_in_count": { "type": "integer", "title": "Sign In Count" },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          },
+          "last_user_agent": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last User Agent"
+          },
+          "other_account_count": {
+            "type": "integer",
+            "title": "Other Account Count"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AccessBlock" },
+              { "type": "null" }
+            ]
+          },
+          "events": {
+            "items": { "$ref": "#/components/schemas/IPEventEntry" },
+            "type": "array",
+            "title": "Events"
+          },
+          "event_count": { "type": "integer", "title": "Event Count" }
+        },
+        "type": "object",
+        "required": [
+          "ip_address",
+          "display_address",
+          "is_ipv6_prefix",
+          "has_sign_up",
+          "sign_in_count",
+          "first_seen",
+          "last_seen",
+          "last_user_agent",
+          "other_account_count",
+          "block",
+          "events",
+          "event_count"
+        ],
+        "title": "AccountIP"
+      },
+      "AccountIPReport": {
+        "properties": {
+          "retention_days": { "type": "integer", "title": "Retention Days" },
+          "ips": {
+            "items": { "$ref": "#/components/schemas/AccountIP" },
+            "type": "array",
+            "title": "Ips"
+          },
+          "domain": { "$ref": "#/components/schemas/EmailDomainInfo" },
+          "related": {
+            "items": { "$ref": "#/components/schemas/RelatedAccount" },
+            "type": "array",
+            "title": "Related"
+          },
+          "related_total": { "type": "integer", "title": "Related Total" }
+        },
+        "type": "object",
+        "required": [
+          "retention_days",
+          "ips",
+          "domain",
+          "related",
+          "related_total"
+        ],
+        "title": "AccountIPReport"
+      },
       "AccuracyAlertData": {
         "properties": {
           "graph_id": { "type": "string", "title": "Graph Id" },
@@ -20011,6 +20307,11 @@
         "title": "AtResetTurnsResponse",
         "description": "The chat's turns set for the budget reset, at most one of each kind."
       },
+      "AuthAccessBlockKind": {
+        "type": "string",
+        "enum": ["IP", "EMAIL_DOMAIN"],
+        "title": "AuthAccessBlockKind"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -20029,6 +20330,11 @@
         "type": "object",
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
+      },
+      "AuthIPEventKind": {
+        "type": "string",
+        "enum": ["SIGN_UP", "SIGN_IN"],
+        "title": "AuthIPEventKind"
       },
       "AuthorizeRequest": {
         "properties": {
@@ -22362,6 +22668,33 @@
         "required": ["api_key", "plain_text_key"],
         "title": "CreateAPIKeyResponse"
       },
+      "CreateAccessBlockRequest": {
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AuthAccessBlockKind" },
+          "value": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "value", "reason"],
+        "title": "CreateAccessBlockRequest"
+      },
       "CreateAliasRequest": {
         "properties": {
           "alias_slug": {
@@ -24079,6 +24412,33 @@
         "type": "object",
         "required": ["description", "body"],
         "title": "EditSkillRequest"
+      },
+      "EmailDomainInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "is_public_provider": {
+            "type": "boolean",
+            "title": "Is Public Provider"
+          },
+          "other_account_count": {
+            "type": "integer",
+            "title": "Other Account Count"
+          },
+          "block": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AccessBlock" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "is_public_provider",
+          "other_account_count",
+          "block"
+        ],
+        "title": "EmailDomainInfo"
       },
       "EnableShareRequest": {
         "properties": {
@@ -27662,6 +28022,23 @@
         "type": "object",
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
+      },
+      "IPEventEntry": {
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/AuthIPEventKind" },
+          "user_agent": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Agent"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "user_agent", "created_at"],
+        "title": "IPEventEntry"
       },
       "ImageURLResponse": {
         "properties": {
@@ -32261,6 +32638,69 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RelatedAccount": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": { "type": "string", "title": "Name" },
+          "role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "banned": { "type": "boolean", "title": "Banned" },
+          "ban_expires": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ban Expires"
+          },
+          "has_profile": { "type": "boolean", "title": "Has Profile" },
+          "via_ips": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Via Ips"
+          },
+          "via_domain": { "type": "boolean", "title": "Via Domain" },
+          "plan": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "granted",
+              "no_subscription"
+            ],
+            "title": "Payment Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "created_at",
+          "banned",
+          "ban_expires",
+          "has_profile",
+          "via_ips",
+          "via_domain",
+          "plan",
+          "payment_status"
+        ],
+        "title": "RelatedAccount"
       },
       "RenameFileRequest": {
         "properties": {
