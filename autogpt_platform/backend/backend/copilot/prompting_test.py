@@ -451,8 +451,22 @@ class TestApprovalModeSupplement:
         assert "## Unsupervised mode" in unsupervised
         assert "without asking in chat first" in unsupervised
 
-    def test_no_active_gate_adds_no_section(self):
-        assert prompting.approval_mode_supplement(None) == ""
+    def test_a_watched_chat_with_no_gate_asks_in_chat(self):
+        section = prompting.approval_mode_supplement(None, interactive=True)
+        assert "## Approvals" in section
+        assert "ask for their OK in chat" in section
+
+    def test_an_unattended_run_with_no_gate_acts(self):
+        section = prompting.approval_mode_supplement(None, interactive=False)
+        assert "## Unattended run" in section
+        assert "without waiting for an OK" in section
+        assert "ask for their OK" not in section
+
+    def test_a_gate_mode_ignores_who_is_watching(self):
+        for mode in ("auto", "ask_first", "unsupervised"):
+            assert prompting.approval_mode_supplement(
+                mode, interactive=False
+            ) == prompting.approval_mode_supplement(mode)
 
 
 class TestBasePromptApprovalFallback:
@@ -460,8 +474,35 @@ class TestBasePromptApprovalFallback:
         assert "When an Auto or Ask First mode section below is present" in (
             CACHEABLE_SYSTEM_PROMPT
         )
-        assert "don't wait in chat for an OK" in CACHEABLE_SYSTEM_PROMPT
-        assert "ask for the user's OK in chat first" not in CACHEABLE_SYSTEM_PROMPT
+        assert "Otherwise the approval section below says whether to ask in chat." in (
+            CACHEABLE_SYSTEM_PROMPT
+        )
+        assert "don't wait in chat for an OK" not in CACHEABLE_SYSTEM_PROMPT
+
+
+class TestCapabilityIdRule:
+    def test_mcp_server_url_is_the_named_exception_to_the_id_rule(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "the one exception is the MCP server URL fallback below" in notes
+        assert "that verified vendor URL is the only id you may use without" in notes
+        assert "Check the hostname belongs to the vendor" in notes
+        assert "Writes to servers outside the catalog pause for review." in notes
+
+
+class TestBuilderBlockRoles:
+    def test_graph_id_is_read_from_builder_context_not_builder_session(self):
+        session_rule = next(
+            ln
+            for ln in CACHEABLE_SYSTEM_PROMPT.splitlines()
+            if "`<builder_session>`" in ln
+        )
+        context_rule = next(
+            ln
+            for ln in CACHEABLE_SYSTEM_PROMPT.splitlines()
+            if ln.startswith("A server-injected `<builder_context>`")
+        )
+        assert "graph id" not in session_rule
+        assert "calls to the graph id in that `<graph>` tag" in context_rule
 
     def test_greeting_offers_one_thing_like_the_reply_style(self):
         assert "offer one concrete thing you could do" in CACHEABLE_SYSTEM_PROMPT

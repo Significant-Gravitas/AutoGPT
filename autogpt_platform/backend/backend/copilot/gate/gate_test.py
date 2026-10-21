@@ -609,10 +609,23 @@ async def test_the_judge_is_handed_every_message_the_user_typed(
 
 
 @pytest.mark.parametrize("mode", _MODES)
-async def test_an_unattended_turn_is_not_told_to_wait_for_a_chat_ok(gate_on, mode):
-    """A scheduled or routine turn gets no mode section, so the base prompt's
-    fallback must let it act instead of waiting for an answer nobody gives."""
+async def test_an_unattended_turn_is_told_to_act_not_wait(gate_on, mode):
+    """A scheduled or routine turn has no gate, and nobody can answer a chat
+    question, so its approval section tells it to carry the work out."""
     session = _session(mode, origin="automation")
-    supplement = approval_mode_supplement(await active_mode("u", session))
-    assert supplement == ""
-    assert "don't wait in chat for an OK" in CACHEABLE_SYSTEM_PROMPT
+    supplement = approval_mode_supplement(
+        await active_mode("u", session),
+        interactive=session.metadata.origin == "interactive",
+    )
+    assert "## Unattended run" in supplement
+    assert "ask for their OK" not in supplement
+    assert "Otherwise the approval section below says" in CACHEABLE_SYSTEM_PROMPT
+
+
+async def test_a_watched_chat_with_the_gate_off_asks_in_chat():
+    """No card can appear, so the model must ask before an outward action."""
+    session = _session("auto")
+    with patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=False)):
+        mode = await active_mode("u", session)
+    supplement = approval_mode_supplement(mode, interactive=True)
+    assert "ask for their OK in chat" in supplement

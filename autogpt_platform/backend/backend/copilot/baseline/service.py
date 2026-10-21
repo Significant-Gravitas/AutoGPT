@@ -2058,7 +2058,10 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
+    auto_mode_supplement = approval_mode_supplement(
+        await active_mode(user_id, session),
+        interactive=session.metadata.origin == "interactive",
+    )
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the
     # tool-filtering site below so the delegation rules can be gated on the
