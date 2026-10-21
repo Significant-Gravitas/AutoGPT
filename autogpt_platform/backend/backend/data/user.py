@@ -375,7 +375,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
         user = await prisma.user.find_unique(where={"email": email})
         return User.from_db(user) if user else None
     except Exception as e:
-        raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+        # Not the address: this message reaches logs and Sentry.
+        raise DatabaseError(f"Failed to get user by email: {e}") from e
 
 
 async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
