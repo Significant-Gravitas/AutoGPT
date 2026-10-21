@@ -112,6 +112,7 @@ type HookContext = {
 // An admin creating an account (or acting as one) is not that account signing
 // up or in from the admin's IP.
 const ADMIN_CREATE_USER_PATH = "/admin/create-user";
+const EMAIL_SIGN_UP_PATH = "/sign-up/email";
 
 function getRequestIP(ctx: HookContext) {
   const headers = ctx?.headers ?? ctx?.request?.headers;
@@ -125,9 +126,17 @@ export const auth = betterAuth({
   database: authDbPool,
   telemetry: { enabled: false },
   hooks: {
-    // With verification required, sign-up and resend email an address with
-    // no session yet: at most a few per IP per window (ip-email-cap.ts).
     before: createAuthMiddleware(async (ctx) => {
+      // Before Better Auth looks the address up, so an address that already
+      // has an account is refused the same way, in the same time.
+      if (
+        ctx.path === EMAIL_SIGN_UP_PATH &&
+        typeof ctx.body?.email === "string"
+      ) {
+        await assertEmailSignUpAllowed(ctx.body.email, getRequestIP(ctx));
+      }
+      // With verification required, sign-up and resend email an address with
+      // no session yet: at most a few per IP per window (ip-email-cap.ts).
       if (!requireEmailVerification) return;
       await capAuthEmailsPerIP({
         path: ctx.path,
@@ -176,13 +185,14 @@ export const auth = betterAuth({
               message: decision.reason ?? "Signups are not allowed.",
             });
           }
-          // IP and email-domain blocks from /admin/users (access-blocks.ts).
-          if (ctx?.path === ADMIN_CREATE_USER_PATH) return;
-          await assertSignUpAllowed(authDbPool, {
-            email: user.email,
-            ipAddress: getRequestIP(ctx),
-          });
-          await assertNotDisposableEmail(user.email);
+          // An email sign-up was already checked in hooks.before.
+          if (
+            ctx?.path === ADMIN_CREATE_USER_PATH ||
+            ctx?.path === EMAIL_SIGN_UP_PATH
+          ) {
+            return;
+          }
+          await assertEmailSignUpAllowed(user.email, getRequestIP(ctx));
         },
         // Writes the platform `User` row (see provision-platform-user.ts). An
         // unverified identity gets it from /auth/callback?method=email instead.
@@ -448,4 +458,14 @@ export const auth = betterAuth({
 // instance they belong to, once it exists.
 async function getAuthContext(): Promise<ResetLinkContext> {
   return auth.$context;
+}
+
+// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
+// before the disposable list, so an admin's domain block keeps its message.
+async function assertEmailSignUpAllowed(
+  email: string,
+  ipAddress: string | null,
+) {
+  await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotDisposableEmail(email);
 }

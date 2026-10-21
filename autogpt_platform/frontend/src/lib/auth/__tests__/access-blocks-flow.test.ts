@@ -79,8 +79,11 @@ const password = "a-long-enough-password"; // pragma: allowlist secret
 
 type Handler = (request: Request) => Promise<Response>;
 
-async function createAuthHandler() {
-  vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
+async function createAuthHandler({ requireEmailVerification = false } = {}) {
+  vi.stubEnv(
+    "AUTH_REQUIRE_EMAIL_VERIFICATION",
+    String(requireEmailVerification),
+  );
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
   vi.doUnmock("../auth");
@@ -203,6 +206,41 @@ describe("IP and email domain blocks", () => {
     });
     expect(elsewhere.status).toBe(200);
   });
+
+  // With verification required, Better Auth answers a sign-up for an address
+  // that has an account without creating one.
+  it.each([
+    [
+      "a blocked domain",
+      () => {
+        blocks.domains = ["example.com"];
+      },
+      "a@example.com",
+      "b@example.com",
+      SIGN_UP_BLOCKED_CODE,
+    ],
+    [
+      "a disposable domain",
+      () => vi.stubEnv("AUTH_ALLOW_DISPOSABLE_EMAILS", "false"),
+      "a@mailinator.com",
+      "b@mailinator.com",
+      DISPOSABLE_EMAIL_CODE,
+    ],
+  ])(
+    "refuses a repeat sign-up on %s as it refuses a new one",
+    async (_, refuse, existing, fresh, code) => {
+      vi.stubEnv("AUTH_ALLOW_DISPOSABLE_EMAILS", "true");
+      handler = await createAuthHandler({ requireEmailVerification: true });
+      expect((await signUp(handler, existing, "192.0.2.1")).status).toBe(200);
+      refuse();
+
+      const repeat = await signUp(handler, existing, "192.0.2.2");
+      const first = await signUp(handler, fresh, "192.0.2.3");
+
+      expect(await refusal(repeat)).toEqual({ status: 403, code });
+      expect(await refusal(first)).toEqual({ status: 403, code });
+    },
+  );
 
   it("logs the sign-up and each sign-in with the client's IP", async () => {
     await signUp(handler, "a@example.com", "192.0.2.1");
