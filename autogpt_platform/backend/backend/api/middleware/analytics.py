@@ -10,8 +10,11 @@ from backend.util import posthog_client
 # (frontend `posthog-session-header.ts`).
 POSTHOG_SESSION_HEADER_NAME = "X-PostHog-Session-Id"
 
-# PostHog's session ids are UUIDs; anything else is dropped, not forwarded.
-_SESSION_ID = re.compile(r"[0-9A-Fa-f-]{1,64}")
+# PostHog's session ids are UUIDv7s; anything else is dropped, not forwarded.
+_SESSION_ID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
 
 
 class AnalyticsContextMiddleware:

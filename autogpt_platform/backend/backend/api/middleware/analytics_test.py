@@ -50,12 +50,24 @@ def test_a_users_own_request_is_not(client: TestClient):
     )
 
 
-def test_a_request_joins_the_browser_session_it_names(client: TestClient):
-    response = client.get("/context", headers={"X-PostHog-Session-Id": SESSION})
-    assert response.json()["session_id"] == SESSION
+@pytest.mark.parametrize("value", [SESSION, SESSION.upper()])
+def test_a_request_joins_the_browser_session_it_names(client: TestClient, value):
+    response = client.get("/context", headers={"X-PostHog-Session-Id": value})
+    assert response.json()["session_id"] == value
 
 
-@pytest.mark.parametrize("value", ["", "not a session", "a" * 65, "<script>"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "not a session",
+        "a" * 65,
+        "<script>",
+        # A UUIDv4, and a v7 with a bad variant.
+        "0192f0c4-5f4e-4b4c-9d6e-1a2b3c4d5e6f",
+        "0192f0c4-5f4e-7b4c-cd6e-1a2b3c4d5e6f",
+    ],
+)
 def test_a_malformed_session_id_is_dropped(client: TestClient, value: str):
     response = client.get("/context", headers={"X-PostHog-Session-Id": value})
     assert response.json()["session_id"] is None
