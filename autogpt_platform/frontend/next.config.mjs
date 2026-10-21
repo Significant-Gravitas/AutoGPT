@@ -30,6 +30,18 @@ const nextConfig = {
   // PostHog proxy path must reach middleware untouched. Middleware redoes the
   // trailing-slash redirect for every other path (see src/middleware.ts).
   skipTrailingSlashRedirect: true,
+  async rewrites() {
+    return [
+      {
+        source: "/api/store/submissions/media/:path*",
+        destination: "/api/proxy/api/store/submissions/media/:path*",
+      },
+      {
+        source: "/api/store/media/:path*",
+        destination: "/api/proxy/api/store/media/:path*",
+      },
+    ];
+  },
   // These /profile pages have no page left for the layout's redirect to run on.
   async redirects() {
     return [
@@ -42,18 +54,6 @@ const nextConfig = {
         source: "/profile/integrations",
         destination: "/settings/integrations",
         permanent: false,
-      },
-    ];
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/api/store/submissions/media/:path*",
-        destination: "/api/proxy/api/store/submissions/media/:path*",
-      },
-      {
-        source: "/api/store/media/:path*",
-        destination: "/api/proxy/api/store/media/:path*",
       },
     ];
   },
