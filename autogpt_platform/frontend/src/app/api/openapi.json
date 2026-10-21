@@ -16412,7 +16412,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/files/{path}": {
@@ -16421,7 +16421,7 @@
         "summary": "Admin Read Skill Submission File",
         "description": "One submitted file's text, so a reviewer reads a script before approving.\n\nThe version is addressed directly rather than through its listing: a first\nsubmission has no approved version for a slug to resolve to, and this\nrouter's admin check is what grants the pending read.",
         "operationId": "getV2Admin read skill submission file",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -16464,7 +16464,7 @@
         "summary": "Review Skill Submission",
         "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
         "operationId": "postV2Review skill submission",
-        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17418,7 +17418,6 @@
         "summary": "List marketplace skills",
         "description": "Approved skill listings, most recently updated first.",
         "operationId": "getV2List marketplace skills",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "category",
@@ -17507,7 +17506,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -17549,7 +17548,7 @@
             "description": "Marketplace profile required, or slug taken"
           }
         },
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/skills/submissions/{skill_listing_version_id}": {
@@ -17558,7 +17557,7 @@
         "summary": "Edit skill submission",
         "description": "Update a pending submission and re-snapshot the library skill.",
         "operationId": "putV2Edit skill submission",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -17608,7 +17607,6 @@
         "summary": "Get marketplace skill",
         "description": "One listing with the full SKILL.md body the install will copy.",
         "operationId": "getV2Get marketplace skill",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -17712,7 +17710,7 @@
         "summary": "Install marketplace skill",
         "description": "Copy the listing's skill into an expert's skills, or the caller's own.",
         "operationId": "postV2Install marketplace skill",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -21866,12 +21864,18 @@
             "type": "array",
             "title": "Source Episode Uuids",
             "description": "UUIDs of the :Episodic nodes the fact was consolidated from."
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids",
+            "description": "UUIDs of the active facts (:RELATES_TO edges) the fact was consolidated from."
           }
         },
         "type": "object",
         "required": ["content", "confidence"],
         "title": "ConsolidatedFact",
-        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. Provenance always points back to the source episodes\nso apply.py can record where the consolidation came from."
+        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. It cites the episodes and active facts it was drawn from,\nso apply can record where the consolidation came from and a forget of one\nof them reaches it (``dream/citations.py``); one citing nothing the pass\nread is dropped unwritten."
       },
       "ConsolidationOutput": {
         "properties": {
@@ -23520,7 +23524,7 @@
         },
         "type": "object",
         "title": "DreamOperations",
-        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — proposals cannot cross scopes.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
+        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — a write or proposal citing a fact of\n    another scope (a fact's scope, else ``real:global``) is dropped\n    whole, as is one citing nothing the pass read\n    (``dream/citations.py``); episode citations are not scoped. A\n    source in the same scope that the write does not truly rest on is\n    not caught.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
       },
       "DreamOperationsSnapshot": {
         "properties": {
@@ -23588,6 +23592,21 @@
             "title": "Failed Writes",
             "default": 0
           },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
+            "default": 0
+          },
           "protected_demotions": {
             "type": "integer",
             "title": "Protected Demotions",
@@ -23639,7 +23658,7 @@
         },
         "type": "object",
         "title": "DreamPassCancelRequest",
-        "description": "Why an admin cancels a dream pass, kept as the pass's error."
+        "description": "Why an admin cancels a dream pass, for the log; the pass records\n``cancelled: by_admin``."
       },
       "DreamPassListResponse": {
         "properties": {
@@ -23766,6 +23785,18 @@
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
+          },
+          "erased_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erased At"
+          },
+          "read_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Read Uuids"
           },
           "created_at": {
             "type": "string",
@@ -23909,6 +23940,21 @@
           "failed_writes": {
             "type": "integer",
             "title": "Failed Writes",
+            "default": 0
+          },
+          "provenance_pending": {
+            "type": "integer",
+            "title": "Provenance Pending",
+            "default": 0
+          },
+          "uncited_writes_dropped": {
+            "type": "integer",
+            "title": "Uncited Writes Dropped",
+            "default": 0
+          },
+          "cross_scope_citations_dropped": {
+            "type": "integer",
+            "title": "Cross Scope Citations Dropped",
             "default": 0
           },
           "protected_demotions": {
@@ -25191,6 +25237,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Options"
+          },
+          "allow_multiple": {
+            "type": "boolean",
+            "title": "Allow Multiple",
+            "default": false
           }
         },
         "type": "object",
@@ -26024,30 +26075,30 @@
       "ForgetFactResponse": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
-          "forgotten": { "type": "boolean", "title": "Forgotten" }
+          "forgotten": { "type": "boolean", "title": "Forgotten" },
+          "derived_forgotten": {
+            "type": "integer",
+            "title": "Derived Forgotten",
+            "default": 0
+          },
+          "resumed": { "type": "boolean", "title": "Resumed", "default": false }
         },
         "type": "object",
         "required": ["uuid", "forgotten"],
-        "title": "ForgetFactResponse"
+        "title": "ForgetFactResponse",
+        "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
       },
       "FrontendFlag": {
         "type": "string",
         "enum": [
           "marketplace-search-terms",
           "enable-platform-payment",
-          "artifacts-page",
           "chat-mode-option",
           "generic-trigger-agents",
           "chat-workspace-files",
           "chat-pinning",
           "task-progress-bar",
-          "hire-experts",
-          "skills-hub",
           "settings-notifications",
-          "onboarding-brain-dump",
-          "onboarding-expert-team",
-          "graphiti-memory",
-          "graphiti-communities-enabled",
           "dream-pass-enabled",
           "dream-pass-invalidate-entity",
           "dream-skill-learning-enabled",
@@ -26062,19 +26113,12 @@
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
           "ENABLE_PLATFORM_PAYMENT",
-          "ARTIFACTS_PAGE",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
           "CHAT_PINNING",
           "TASK_PROGRESS_BAR",
-          "HIRE_EXPERTS",
-          "SKILLS_HUB",
           "SETTINGS_NOTIFICATIONS",
-          "ONBOARDING_BRAIN_DUMP",
-          "ONBOARDING_EXPERT_TEAM",
-          "GRAPHITI_MEMORY",
-          "GRAPHITI_COMMUNITIES_ENABLED",
           "DREAM_PASS_ENABLED",
           "DREAM_PASS_INVALIDATE_ENTITY",
           "DREAM_SKILL_LEARNING_ENABLED",
@@ -28427,7 +28471,7 @@
           },
           "webhook": {
             "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
+              { "$ref": "#/components/schemas/WebhookWithoutSecrets" },
               { "type": "null" }
             ]
           },
@@ -29299,6 +29343,16 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Deleted Uuids"
+          },
+          "derived_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Derived Uuids"
+          },
+          "resumed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Resumed Uuids"
           },
           "failed_uuids": {
             "items": { "type": "string" },
@@ -37979,7 +38033,7 @@
         "title": "VoiceSample",
         "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
-      "Webhook": {
+      "WebhookWithoutSecrets": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
@@ -38001,7 +38055,6 @@
             "type": "object",
             "title": "Config"
           },
-          "secret": { "type": "string", "title": "Secret" },
           "organization_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Organization Id"
@@ -38009,10 +38062,6 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
-          },
-          "provider_webhook_id": {
-            "type": "string",
-            "title": "Provider Webhook Id"
           },
           "url": { "type": "string", "title": "Url", "readOnly": true }
         },
@@ -38024,11 +38073,10 @@
           "webhook_type",
           "resource",
           "events",
-          "secret",
-          "provider_webhook_id",
           "url"
         ],
-        "title": "Webhook"
+        "title": "WebhookWithoutSecrets",
+        "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
       },
       "WorkspaceFile": {
         "properties": {

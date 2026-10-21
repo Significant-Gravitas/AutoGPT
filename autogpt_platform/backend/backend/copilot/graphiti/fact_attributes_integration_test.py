@@ -56,8 +56,9 @@ _PARAPHRASE: Fact = ("Alice", "Atlas", "Alice is working on Atlas")
 _TENTATIVE = {"status": "tentative", "scope": "real:global"}
 
 # What the platform writes on a live fact outside graphiti's extraction: the
-# recall stamps, the ratification and web-verification stamps, and the
-# dream's envelope metadata (``ingest._stamp_edge_metadata``).
+# recall stamps, the ratification and web-verification stamps, the dream's
+# envelope metadata (``ingest._stamp_edge_metadata``) and its derivation
+# record (``recall_derivation.record``).
 STAMPS: dict[str, Any] = {
     "recall_count": 3,
     "last_recalled_at": "2026-05-01T00:00:00.000000+00:00",
@@ -69,6 +70,8 @@ STAMPS: dict[str, Any] = {
     "confidence": 0.9,
     "provenance": "dream:pass-1",
     "scope": "project:atlas",
+    "derived_from_facts": ["fact-cited"],
+    "derived_from_episodes": ["episode-cited"],
 }
 
 

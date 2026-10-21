@@ -54,7 +54,6 @@ from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
@@ -2058,20 +2057,12 @@ async def stream_chat_completion_baseline(
     message_id = str(uuid.uuid4())
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
-    graphiti_enabled = await is_enabled_for_user(user_id)
+    graphiti_enabled = bool(user_id)
 
     auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
-    # The whole expert-team surface rides the hire-experts flag, failing
-    # closed for anonymous turns.  Resolved here rather than at the
-    # tool-filtering site below so the delegation rules can be gated on the
-    # same boolean — a flag-off turn must not be told to call tools its
-    # ``execute_tool`` gate will refuse.
-    experts_enabled = bool(user_id) and await is_feature_enabled(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    )
-    # The role split is a child gate on top of it.  With it off every session
-    # is prompted as Otto is today, which is what makes the flag-off system
-    # prompt byte-identical to the pre-split one.
+    experts_enabled = bool(user_id)
+    # The role split rides its own flag. With it off every session is prompted
+    # as Otto is today, which keeps the system prompt the pre-split one.
     role_split_enabled = (
         experts_enabled
         and user_id is not None
@@ -3102,7 +3093,7 @@ async def stream_chat_completion_baseline(
             _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Skill learning: record this turn as a learning source ---
-        # Independent of Graphiti; flag-gated and never raises.
+        # Independent of Graphiti; honors the user's learning preferences.
         if user_id and message and is_user_message:
             _capture_task = asyncio.create_task(
                 capture_chat_turn(

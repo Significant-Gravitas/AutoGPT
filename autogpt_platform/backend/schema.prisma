@@ -635,6 +635,21 @@ model DreamPass {
   windowEnd   DateTime?
   error       String?
 
+  // Set by a hard forget that may have reached the pass, and never cleared:
+  // the dream's text in the row is blanked, by the forget if the pass is
+  // closed, else by the transition that closes it, and its narrative is
+  // written blanked (backend/copilot/dream/forget_copies.py).
+  erasedAt  DateTime?
+  // Every fact and episode the pass gathered, recorded before its first
+  // model call and never cleared: a hard forget marks a pass that read what
+  // it reached however long ago the pass closed, and its narrative's session
+  // keeps a copy for once the row has aged out. A pass's create states it
+  // (empty until the pass gathers); a row whose writer did not (one from
+  // before this column, or written by a release without it during a rollout)
+  // holds "*": it may have read anything, and any hard forget in its scope
+  // reaches it (backend/data/dream_pass_models.UNKNOWN_READS).
+  readUuids String[]  @default(["*"])
+
   createdAt   DateTime  @default(now())
   startedAt   DateTime?
   submittedAt DateTime?
@@ -1489,8 +1504,8 @@ enum ExpertRoutineSession {
   PINNED
   // One durable thread of its own, minted at the first fire and reused after.
   // Per routine, not per expert, so two routines on the same cadence never
-  // interleave into one conversation. With `graphiti-memory` off this thread
-  // IS the routine's memory, which is why it is the default.
+  // interleave into one conversation. Its conversation history preserves
+  // continuity between runs, which is why it is the default.
   THREAD
 }
 

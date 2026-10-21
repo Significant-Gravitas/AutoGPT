@@ -77,7 +77,6 @@ from backend.copilot.response_model import (
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.util.feature_flag import Flag
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
@@ -3212,26 +3211,19 @@ class _StopAfterExpertsGate(Exception):
 async def _run_baseline_until_experts_gate(
     *,
     user_id: str | None,
-    hire_experts_enabled: bool,
     role_split_enabled: bool = False,
     expert_id: str | None = None,
-) -> tuple[AsyncMock, dict]:
-    """Drive the real generator up to the system-prompt assembly, with every
-    other I/O dependency stubbed out.
+) -> tuple[MagicMock, AsyncMock, dict]:
+    """Drive the real generator up to the system-prompt assembly, before any
+    provider call.
 
-    Returns the ``is_feature_enabled`` mock so callers can assert whether
-    (and how) it was called, plus the kwargs the engine handed
-    ``assemble_system_prompt`` — the sections as this turn resolved them.
+    Returns the oversight-supplement mock, the ``is_feature_enabled`` mock, and
+    the kwargs the engine handed ``assemble_system_prompt``.
     """
     session = ChatSession.new("owner-1", dry_run=False)
     session.title = "already titled"  # skip the async title-generation task
     session.expert_id = expert_id
     assembly_kwargs: dict = {}
-
-    async def _resolve_flag(flag, *args, **kwargs):
-        if flag is Flag.EXPERT_TASK_MANAGEMENT:
-            return role_split_enabled
-        return hire_experts_enabled
 
     def _capture_assembly(*args, **kwargs):
         assembly_kwargs.update(kwargs)
@@ -3267,12 +3259,8 @@ async def _run_baseline_until_experts_gate(
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
             "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(side_effect=_resolve_flag),
+            new=AsyncMock(return_value=role_split_enabled),
         ) as is_feature_enabled_mock,
         patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
@@ -3282,6 +3270,10 @@ async def _run_baseline_until_experts_gate(
             "backend.copilot.baseline.service.assemble_system_prompt",
             new=MagicMock(side_effect=_capture_assembly),
         ),
+        patch(
+            "backend.copilot.baseline.service.get_expert_oversight_supplement",
+            return_value="",
+        ) as oversight_mock,
         pytest.raises(_StopAfterExpertsGate),
     ):
         async for _ in stream_chat_completion_baseline(
@@ -3292,7 +3284,7 @@ async def _run_baseline_until_experts_gate(
         ):
             pass
 
-    return is_feature_enabled_mock, assembly_kwargs
+    return oversight_mock, is_feature_enabled_mock, assembly_kwargs
 
 
 class _StopAtAttachments(Exception):
@@ -3342,15 +3334,11 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service._fetch_graphiti_context",
             new=AsyncMock(return_value=""),
         ),
         patch(
@@ -3383,45 +3371,23 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
     assert seen == [("user-1", session)]
 
 
-class TestBaselineExpertsFlagGuard:
-    """``experts_enabled = bool(user_id) and await is_feature_enabled(...)``:
-    an anonymous turn (``user_id=None``) must fail closed WITHOUT resolving
-    the flag at all — a bare ``await is_feature_enabled(...)`` would await
-    None as a positional arg and/or silently enable the team surface for
-    turns with no user."""
-
+class TestBaselineExpertsAuthorization:
     @pytest.mark.asyncio
-    async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock, _ = await _run_baseline_until_experts_gate(
-            user_id=None, hire_experts_enabled=True
-        )
-        is_feature_enabled_mock.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_authenticated_turn_resolves_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock, _ = await _run_baseline_until_experts_gate(
-            user_id="user-1", hire_experts_enabled=True
-        )
-        # hire-experts, then its expert-task-management child gate.
-        assert is_feature_enabled_mock.await_count == 2
-        assert [call.args[0] for call in is_feature_enabled_mock.await_args_list] == [
-            Flag.HIRE_EXPERTS,
-            Flag.EXPERT_TASK_MANAGEMENT,
-        ]
+    @pytest.mark.parametrize("user_id,expected", [(None, False), ("user-1", True)])
+    async def test_expert_tools_require_authentication(self, user_id, expected):
+        oversight, _, _ = await _run_baseline_until_experts_gate(user_id=user_id)
+        oversight.assert_called_once_with(experts_enabled=expected, expert_id=None)
 
 
 class TestBaselineRoleSplitReachesTheSystemPrompt:
     """The engine-level half of the role split: the charter the assembly
-    receives is decided by the child flag AND the session's expert_id, and
-    with the flag off an expert session is prompted exactly as Otto is."""
+    receives is decided by the flag AND the session's expert_id, and with the
+    flag off an expert session is prompted exactly as Otto is."""
 
     @pytest.mark.asyncio
-    async def test_the_charter_is_empty_while_the_child_flag_is_off(self) -> None:
-        _, assembly = await _run_baseline_until_experts_gate(
-            user_id="user-1",
-            hire_experts_enabled=True,
-            role_split_enabled=False,
-            expert_id="expert-a",
+    async def test_the_charter_is_empty_while_the_flag_is_off(self) -> None:
+        _, _, assembly = await _run_baseline_until_experts_gate(
+            user_id="user-1", role_split_enabled=False, expert_id="expert-a"
         )
         assert assembly["role_charter"] == ""
         assert assembly["delegation_supplement"] == get_delegation_supplement(
@@ -3430,35 +3396,26 @@ class TestBaselineRoleSplitReachesTheSystemPrompt:
 
     @pytest.mark.asyncio
     async def test_an_expert_turn_gets_the_employee_charter(self) -> None:
-        _, assembly = await _run_baseline_until_experts_gate(
-            user_id="user-1",
-            hire_experts_enabled=True,
-            role_split_enabled=True,
-            expert_id="expert-a",
+        _, _, assembly = await _run_baseline_until_experts_gate(
+            user_id="user-1", role_split_enabled=True, expert_id="expert-a"
         )
         assert "Operating as a hired expert" in assembly["role_charter"]
         assert assembly["delegation_supplement"] == get_delegation_supplement("expert")
 
     @pytest.mark.asyncio
     async def test_an_autopilot_turn_gets_the_head_charter(self) -> None:
-        _, assembly = await _run_baseline_until_experts_gate(
-            user_id="user-1",
-            hire_experts_enabled=True,
-            role_split_enabled=True,
-            expert_id=None,
+        _, _, assembly = await _run_baseline_until_experts_gate(
+            user_id="user-1", role_split_enabled=True, expert_id=None
         )
         assert "head of the user's team" in assembly["role_charter"]
 
     @pytest.mark.asyncio
-    async def test_the_charter_needs_the_parent_flag_too(self) -> None:
-        # The child gate is an AND, so hire-experts off means no charter
-        # however the child flag reads.
-        _, assembly = await _run_baseline_until_experts_gate(
-            user_id="user-1",
-            hire_experts_enabled=False,
-            role_split_enabled=True,
-            expert_id="expert-a",
+    async def test_an_anonymous_turn_gets_no_charter(self) -> None:
+        # The role split is an AND with authentication, however the flag reads.
+        _, is_feature_enabled_mock, assembly = await _run_baseline_until_experts_gate(
+            user_id=None, role_split_enabled=True, expert_id="expert-a"
         )
+        is_feature_enabled_mock.assert_not_awaited()
         assert assembly["role_charter"] == ""
         assert assembly["delegation_supplement"] == ""
 
@@ -3571,15 +3528,6 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
         patch(
             "backend.copilot.baseline.service._build_system_prompt",
             new=AsyncMock(return_value=("system prompt", None)),
-        ),
-        # The Graphiti gate: on for this turn, so the refresh must be wired.
-        patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
         ),
         patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
@@ -3738,8 +3686,6 @@ async def _run_baseline_turn(
             f"{_BASELINE}._build_system_prompt",
             dict(new=AsyncMock(return_value=("system prompt", None))),
         ),
-        (f"{_BASELINE}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
-        (f"{_BASELINE}.is_feature_enabled", dict(new=AsyncMock(return_value=False))),
         (
             f"{_BASELINE}.build_builder_system_prompt_suffix",
             dict(new=AsyncMock(return_value="")),

@@ -24,8 +24,10 @@ from .memory_model import ExtractedStatus, SourceKind
 # Edge properties only the platform writes, never graphiti's extraction: a
 # forget's marker and audit copies (``recall_forget.py``, ``recall_hide.py``),
 # the ratification stamp (``dream/ratification.py``), the web-verification
-# stamp, kept for a verification path that does not exist yet, and the recall
-# stamps (``recall_stamp.py``). No extraction model declares one
+# stamp, kept for a verification path that does not exist yet, the recall
+# stamps (``recall_stamp.py``) and the dream's derivation record
+# (``recall_derivation.py``: an invented one would make a user's fact look
+# derived, for a forget's cascade to take). No extraction model declares one
 # (``types_test.py``), so ``extracted_attributes`` drops any the model
 # invents; a stored one still reads back from the edge.
 POLICY_EDGE_FIELDS = frozenset(
@@ -38,6 +40,8 @@ POLICY_EDGE_FIELDS = frozenset(
         "recall_count",
         "last_recalled_at",
         "prev_recalled_at",
+        "derived_from_facts",
+        "derived_from_episodes",
     }
 )
 
