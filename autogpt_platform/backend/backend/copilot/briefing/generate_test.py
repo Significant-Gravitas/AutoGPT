@@ -1043,7 +1043,7 @@ async def test_unavailable_narrative_attribution_still_delivers_template(
         lambda: MagicMock(get_usage_activation_state=lookup),
     )
     provider = AsyncMock()
-    monkeypatch.setattr(narrative, "structured_completion", provider)
+    monkeypatch.setattr(narrative, "structured_complete", provider)
 
     result = await generate_module.generate_and_deliver_briefing("user-1")
 

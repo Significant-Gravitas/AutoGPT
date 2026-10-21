@@ -55,9 +55,12 @@ from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_marker import append_injected_memory_block
+from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -587,6 +590,45 @@ class _BaselineStreamState:
         # rows to render the Reasoning collapse after the AI SDK's
         # stream-end hydrate swaps in the DB-backed message list.
         self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
+
+
+async def _refresh_follow_up_warm_context(
+    warm_ctx: str | None,
+    *,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    is_user_message: bool,
+    pre_drain_msg_count: int,
+    message: str | None,
+) -> str | None:
+    """Fill in warm context on a follow-up user turn (SECRT-2378).
+
+    Returns the refreshed block, or ``warm_ctx`` UNCHANGED whenever the
+    refresh yields nothing — fall back, never overwrite. Called after the
+    pending fold, so the query is the combined message (a queued substantive
+    request paired with a short "ok" must still drive recall), and scoped by
+    ``expert_id`` to the same graph the first turn read.
+
+    Diverges from the SDK's ``_append_follow_up_warm_context`` in two
+    respects. The baseline compactor doesn't surface ``was_compacted``, so
+    there is no ``force=True`` and a trivially short post-compaction turn
+    skips recall here. And the refresh starts here, after the fold, with
+    nothing to overlap, so the join grace (``join_refresh``,
+    ``warm_context_refresh_join_grace_ms``) is its whole budget: a refresh
+    still running then is cancelled and the turn goes on without it.
+    Documented debt; SDK is the production engine. The block is appended to
+    the model's input only, never to the transcript.
+    """
+    if not (graphiti_enabled and user_id and is_user_message):
+        return warm_ctx
+    if pre_drain_msg_count <= 1:
+        return warm_ctx
+    pending = start_refresh(user_id, message, expert_id=expert_id)
+    if pending is None:
+        return warm_ctx
+    refreshed = await join_refresh(pending)
+    return refreshed if refreshed else warm_ctx
 
 
 def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
@@ -1596,8 +1638,12 @@ async def _load_prior_transcript(
 
     if restore is None:
         logger.debug("[Baseline] No CLI session available — will upload fresh")
-        # Nothing in GCS to protect; allow upload so the first baseline turn
-        # writes the initial transcript snapshot.
+        # Nothing in GCS worth keeping (no file, or one the restore would
+        # not resume from): allow upload, with the session's history so far
+        # in the builder so the upload covers every turn, not just this one.
+        _append_gap_to_builder(
+            _history_before_turn(session_messages), transcript_builder
+        )
         return True, None
 
     content_bytes = restore.content
@@ -1659,6 +1705,18 @@ async def _load_prior_transcript(
         mode=restore.mode,
     )
     return True, str_restore
+
+
+def _history_before_turn(session_messages: list[ChatMessage]) -> list[ChatMessage]:
+    """The session's messages before the current turn, as the model reads
+    them (``extract_context_messages`` without a transcript): a row kept
+    from the model is dropped after the slice, so it never seeds the
+    transcript later turns read back as their own history."""
+    return visible_to_model(
+        without_stored_first_turn_memory(
+            [m for m in session_messages if m.role != "reasoning"][:-1]
+        )
+    )
 
 
 async def _upload_final_transcript(
@@ -1975,9 +2033,14 @@ async def stream_chat_completion_baseline(
     # entry, duplicating the pending content in the JSONL uploaded for
     # the next turn's ``--resume``.
 
-    # Generate title for new sessions
+    # Generate title for new sessions. The title model reads the first
+    # message without the memory block an older session stored in it.
     if is_user_message and not session.title:
-        user_messages = [m for m in session.messages if m.role == "user"]
+        user_messages = [
+            m
+            for m in without_stored_first_turn_memory(session.messages)
+            if m.role == "user"
+        ]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
             if first_message:
@@ -2034,16 +2097,21 @@ async def stream_chat_completion_baseline(
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         warm_ctx = await _fetch_graphiti_context(user_id, session, message)
+    # NOTE: the follow-up-turn refresh (SECRT-2378) runs after the pending
+    # drain — see ``_refresh_follow_up_warm_context`` below for why.
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
+    # The last stored message stands for the current turn. A turn that stored
+    # none of its own reads an earlier one, maybe the session's first, which
+    # is read without the memory block an older session stored in it.
     prior_context = await extract_context_messages(
         transcript_download, session.messages, session_id=session.session_id
     )
     messages_for_context = await _compress_session_messages(
-        prior_context + ([session.messages[-1]] if session.messages else []),
+        prior_context + without_stored_first_turn_memory(session.messages[-1:]),
         model=active_model,
     )
 
@@ -2185,10 +2253,22 @@ async def stream_chat_completion_baseline(
                 msg["content"] = budget_status + str(msg.get("content") or "")
                 break
 
+    warm_ctx = await _refresh_follow_up_warm_context(
+        warm_ctx,
+        graphiti_enabled=graphiti_enabled,
+        user_id=user_id,
+        expert_id=session.expert_id,
+        is_user_message=is_user_message,
+        pre_drain_msg_count=_pre_drain_msg_count,
+        message=message,
+    )
+
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
-    # warm_ctx is already wrapped in <temporal_context>.
-    # Appended AFTER user_context so <user_context> stays at the very start.
+    # warm_ctx is already wrapped in <temporal_context>: the first turn's
+    # fetch, or a follow-up's refresh. Appended AFTER user_context so
+    # <user_context> stays at the very start, and stamped with the injection
+    # mark the SDK engine's blocks carry (``graphiti/context_marker.py``).
     # Reverse scan so we update the current turn's user message, not the
     # oldest one when pending messages were drained.
     if warm_ctx:
@@ -2196,10 +2276,11 @@ async def stream_chat_completion_baseline(
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
-                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                    msg["content"] = append_injected_memory_block(existing, warm_ctx)
                 break
-        # Do NOT append warm_ctx to user_message_for_transcript — it would
-        # persist stale temporal context into the transcript for future turns.
+        # Model input only: NOT the stored user message (``inject_user_context``
+        # never takes it) nor ``user_message_for_transcript``, so no later
+        # turn reads it again, a fact forgotten after this turn included.
 
     # Inject the per-turn ``<builder_context>`` prefix when the session is
     # bound to a graph via ``metadata.builder_graph_id``.  Runs on every
@@ -2208,9 +2289,9 @@ async def stream_chat_completion_baseline(
     # carries the updated nodes/links. Only version + nodes + links here;
     # the static guide + graph id live in the system prompt via
     # ``build_builder_system_prompt_suffix`` (session-stable, prompt-cached).
-    # Prepended AFTER any <user_context>/<memory_context>/<env_context> blocks
-    # — same trust tier as those server-injected prefixes. Not persisted to
-    # the transcript: the snapshot is stale-by-definition after the turn ends.
+    # Prepended AFTER any <user_context>/<env_context> blocks — same trust
+    # tier as those server-injected prefixes. Not persisted to the
+    # transcript: the snapshot is stale-by-definition after the turn ends.
     if is_user_message and session.metadata.builder_graph_id:
         builder_block = await build_builder_context_turn_prefix(session, user_id)
         if builder_block:
