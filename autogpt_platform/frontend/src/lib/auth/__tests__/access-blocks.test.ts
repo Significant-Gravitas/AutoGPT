@@ -54,3 +54,35 @@ describe("with a table that can't be read", () => {
     ).resolves.toBeNull();
   });
 });
+
+describe("with the database's answer", () => {
+  function answering(blocked: boolean) {
+    return { query: vi.fn().mockResolvedValue({ rows: [{ blocked }] }) };
+  }
+
+  test("refuses a blocked sign-up, asking about its IP and every parent domain", async () => {
+    const pool = answering(true);
+
+    await expect(
+      codeOf(
+        assertSignUpAllowed(pool, {
+          email: "a@mail.example.com",
+          ipAddress: "203.0.113.7",
+        }),
+      ),
+    ).resolves.toBe(SIGN_UP_BLOCKED_CODE);
+    expect(pool.query.mock.calls[0][1]).toEqual([
+      "203.0.113.7",
+      ["mail.example.com", "example.com"],
+    ]);
+  });
+
+  test("refuses a sign-in from a blocked IP and lets an unblocked one through", async () => {
+    await expect(
+      codeOf(assertSignInAllowed(answering(true), "203.0.113.7")),
+    ).resolves.toBe(SIGN_IN_BLOCKED_CODE);
+    await expect(
+      codeOf(assertSignInAllowed(answering(false), "203.0.113.7")),
+    ).resolves.toBeNull();
+  });
+});
