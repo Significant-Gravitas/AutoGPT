@@ -341,9 +341,11 @@ def _build_confirm_message(
                 "derived from them retracted too."
             )
         if resumed_count:
+            summary += f" {resumed_count} memory edge(s) had already been erased"
             summary += (
-                f" {resumed_count} memory edge(s) had already been erased; the "
-                f"facts derived from them were {erased}."
+                f"; the facts derived from them were {erased}."
+                if derived_count
+                else "."
             )
     elif resumed_count:
         summary = f"{resumed_count} memory edge(s) had already been erased."

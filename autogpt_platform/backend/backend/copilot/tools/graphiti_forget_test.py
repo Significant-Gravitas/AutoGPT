@@ -488,6 +488,22 @@ class TestBuildConfirmMessage:
         assert "already" not in message
         assert "uuid-1" in message
 
+    def test_resumed_edges_claim_derived_facts_only_when_there_were_any(
+        self,
+    ) -> None:
+        none_derived = _build_confirm_message(1, True, [], 0, 1)
+        assert none_derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased."
+        )
+        assert "derived" not in none_derived
+
+        derived = _build_confirm_message(1, True, [], 2, 1)
+        assert derived.endswith(
+            "1 memory edge(s) had already been erased; the facts derived "
+            "from them were retracted and erased."
+        )
+
     def test_erasure_is_claimed_only_when_nothing_failed(self) -> None:
         """A derived fact is counted once retracted, before its text is erased,
         so a failure means its text may still be there."""
