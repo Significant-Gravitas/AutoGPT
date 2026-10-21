@@ -16,12 +16,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.context import set_execution_context
 from backend.copilot.gate import held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate import shadow
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
+from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
+from backend.copilot.tree import SpawnRequest, derive_child_envelope, root_envelope
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.feature_flag import Flag
 from backend.util.posthog_events import PostHogEvent
@@ -40,6 +43,7 @@ _EVENT_KEYS = {
     "source_kind",
     "chat_session_id",
     "turn_id",
+    "tree_id",
     "expert_id",
     "impersonated",
     "sample_rate",
@@ -227,6 +231,27 @@ async def test_the_event_names_the_decision_and_carries_none_of_the_content(
     assert event["impersonated"] is False
     assert event["rubric_version"] and event["llm_model"] and event["jev_model"]
     assert isinstance(event["latency_ms"], int) and event["latency_ms"] >= 0
+
+
+async def test_a_delegated_turn_is_recorded_under_its_own_turn_and_its_root_tree(
+    rows, events
+):
+    child = derive_child_envelope(root_envelope("root-turn"), SpawnRequest())
+
+    async def delegated_read() -> None:
+        # What the executor sets for the child's own turn, in the child's task.
+        set_execution_context("user-1", _session(), envelope=child)
+        set_turn_trace_id("child-turn")
+        await _read(_Fetch(_PAGE))
+
+    with _flags("shadow"), patch(
+        f"{_READS}.judge_content", AsyncMock(return_value=_HELD)
+    ):
+        await asyncio.create_task(delegated_read())
+        await _settled()
+
+    (event,) = _recorded(events)
+    assert (event["turn_id"], event["tree_id"]) == ("child-turn", "root-turn")
 
 
 @pytest.mark.parametrize(

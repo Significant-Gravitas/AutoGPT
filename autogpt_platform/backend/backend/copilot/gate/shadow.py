@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import get_current_envelope
-from backend.copilot.llm_attribution import is_turn_impersonated
+from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import SOURCE
 from backend.util import posthog_client
@@ -77,7 +77,9 @@ def judge_later(
         "tool_call_id": tool_call_id,
         "source_kind": source_kind,
         "chat_session_id": session.session_id,
-        "turn_id": envelope.tree_id if envelope else None,
+        # A delegated turn keeps its root's tree id but has its own turn id.
+        "turn_id": turn_trace_id(),
+        "tree_id": envelope.tree_id if envelope else None,
         "expert_id": session.expert_id,
         "impersonated": is_turn_impersonated(),
         "sample_rate": config.read_screen_shadow_sample_rate,
