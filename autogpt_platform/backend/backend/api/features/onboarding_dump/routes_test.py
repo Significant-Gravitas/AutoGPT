@@ -159,7 +159,7 @@ class DumpStore:
 
 
 # ``require_brain_dump_flag`` runs the real ``is_feature_enabled``, which
-# consults this env override before LaunchDarkly — so the gate is driven
+# consults this env override before PostHog — so the gate is driven
 # here exactly the way it is driven locally, with no mock in the path.
 FLAG_ENV_VAR = "FORCE_FLAG_ONBOARDING_BRAIN_DUMP"
 

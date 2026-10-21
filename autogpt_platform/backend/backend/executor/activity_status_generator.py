@@ -267,10 +267,10 @@ async def generate_activity_status_for_execution(
         graph_version: The graph version
         execution_stats: Execution statistics
         db_client: Database client for fetching data
-        user_id: User ID for LaunchDarkly feature flag evaluation
+        user_id: User ID for PostHog feature flag evaluation
         execution_status: The overall execution status (COMPLETED, FAILED, TERMINATED)
         model_name: AI model to use for generation (default: gpt-4o-mini)
-        skip_feature_flag: Whether to skip LaunchDarkly feature flag check
+        skip_feature_flag: Whether to skip PostHog feature flag check
         system_prompt: Custom system prompt template (default: DEFAULT_SYSTEM_PROMPT)
         user_prompt: Custom user prompt template with placeholders (default: DEFAULT_USER_PROMPT)
         skip_existing: Whether to skip if activity_status and correctness_score already exist
@@ -279,11 +279,11 @@ async def generate_activity_status_for_execution(
         Activity status response with activity_status and correctness_score, or
         None if generation is disabled or skipped
     """
-    # Check LaunchDarkly feature flag for AI activity status generation with full context support
+    # Check PostHog feature flag for AI activity status generation with full context support
     if not skip_feature_flag and not await is_feature_enabled(
         Flag.AI_ACTIVITY_STATUS, user_id
     ):
-        logger.debug("AI activity status generation is disabled via LaunchDarkly")
+        logger.debug("AI activity status generation is disabled via PostHog")
         return None
 
     # Check if we should skip existing data (for admin regeneration option).

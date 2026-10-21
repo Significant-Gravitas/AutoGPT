@@ -39,7 +39,7 @@ class ConnectionTier(BaseModel):
     """One quality level on a connection.
 
     ``display_model`` is the model this tier resolves to, run through the
-    same router the turn will use — LaunchDarkly cell, then registry, then
+    same router the turn will use — feature-flag cell, then registry, then
     config — so it cannot drift from what actually answers.
 
     On a ChatGPT connection it is the model the catalog pins for that cell,

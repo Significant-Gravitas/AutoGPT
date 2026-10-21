@@ -58,7 +58,7 @@ def hire_experts_flag_on():
 
     ``build_expert_context`` reads it to decide whether the roster block may
     name ``delegate_to_expert``; without pinning it these tests would follow
-    whatever LaunchDarkly (or a local ``FORCE_FLAG_`` override) says.
+    whatever PostHog (or a local ``FORCE_FLAG_`` override) says.
     """
     with patch(f"{_EC}.is_feature_enabled", _flag_mock()):
         yield

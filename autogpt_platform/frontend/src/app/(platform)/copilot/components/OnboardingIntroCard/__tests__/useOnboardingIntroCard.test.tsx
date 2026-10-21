@@ -109,7 +109,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     expect(result.current.greeting).toBe("");
   });
 
-  it("releases the composer once LaunchDarkly says the flag is off", async () => {
+  it("releases the composer once the flag service says the flag is off", async () => {
     // The regression: with the flag off the intro query is disabled, so it
     // never answers — and "no answer yet" was read as "still generating".
     // isAwaitingGreeting stayed true forever and EmptySession hides the
@@ -123,9 +123,9 @@ describe("useOnboardingIntroCard — flag gating", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("renders the plain hero while LaunchDarkly has not answered for a user with no handoff", async () => {
+  it("renders the plain hero while the flag service has not answered for a user with no handoff", async () => {
     // Holding on "no answer yet" alone hid the composer on every flag-off
-    // /copilot load until LaunchDarkly replied — the flag-off page has to
+    // /copilot load until the flag service replied — the flag-off page has to
     // render untouched.
     flags.current = {};
     flagsReady.current = false;
@@ -136,7 +136,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("still holds the composer while LaunchDarkly has not answered for a user coming out of the wizard", async () => {
+  it("still holds the composer while the flag service has not answered for a user coming out of the wizard", async () => {
     // The hold exists to stop the regular hero flashing before the
     // greeting page takes over, and the pending overlay is seeded
     // synchronously — so this user is held before the flag resolves.
@@ -226,7 +226,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(urls).toEqual([]);
   });
 
-  it("waits for LaunchDarkly before consuming the handoff", async () => {
+  it("waits for the flag service before consuming the handoff", async () => {
     flagsReady.current = false;
     setIntroPath("A");
     countIntroRequests();

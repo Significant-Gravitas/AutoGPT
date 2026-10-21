@@ -400,7 +400,7 @@ graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
 async def is_enabled_for_user(user_id: str | None) -> bool:
     """Check if Graphiti memory is enabled for a specific user.
 
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
+    Gated solely by PostHog flag ``graphiti-memory``
     (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
     """
     if not user_id:

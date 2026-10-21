@@ -209,7 +209,7 @@ class ChatMessage(BaseModel):
     # model. None on user/tool rows.
     #
     # routing_source is excluded from serialized payloads: "ld" vs "env"
-    # would let a client infer LaunchDarkly cohort membership. It still
+    # would let a client infer flag cohort membership. It still
     # persists — the DB save path maps fields explicitly (not via
     # model_dump) and the back-fill reads attributes.
     model: str | None = None

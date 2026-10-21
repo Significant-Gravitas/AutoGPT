@@ -182,7 +182,7 @@ configure_environment() {
   export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
 
   # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
-  # tiers. Without LaunchDarkly every account resolves to NO_TIER, which
+  # tiers. Without PostHog flags every account resolves to NO_TIER, which
   # falls back to the BASIC multiplier and would inherit the cloud ceilings
   # from ChatConfig. A self-hosted operator pays the model provider directly,
   # so both caps are off unless the operator sets them. -1 is the "no cap"

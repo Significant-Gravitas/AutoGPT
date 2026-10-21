@@ -97,7 +97,6 @@
     "jose": "6.2.3",
     "jszip": "3.10.1",
     "katex": "0.16.25",
-    "launchdarkly-react-client-sdk": "3.9.0",
     "lodash": "4.17.21",
     "lucide-react": "0.552.0",
     "motion": "13.2.0",

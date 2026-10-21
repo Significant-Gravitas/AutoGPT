@@ -1,12 +1,11 @@
 # Feature flags
 
-Which vendor answers a flag read is set per deployment by `FEATURE_FLAG_BACKEND`:
-`posthog` (the default), `launchdarkly`, or `dual` — evaluate both, serve
-LaunchDarkly's answer, and log every disagreement. Without `POSTHOG_API_KEY`
-the default reads every flag as its code default, which is what a self-hosted
-install and CI get. Call sites are unaffected by
-the choice; they read through `evaluate_feature_flag()` on the backend and
-`useGetFlag` / `useFlagStatus` on the frontend.
+Every flag is read from PostHog. LaunchDarkly was removed in October 2026
+(SECRT-2708), after Dev and Prod had served every flag from PostHog since 16
+October. Without `POSTHOG_API_KEY` every flag reads as its code default, which
+is what a self-hosted install and CI get. Call sites read through
+`evaluate_feature_flag()` on the backend and `useGetFlag` / `useFlagStatus` on
+the frontend.
 
 ## One PostHog project per environment
 
@@ -36,29 +35,31 @@ is defined in each project. The **Projects** tab on the
 [flag list](https://eu.posthog.com/project/281733/feature_flags?tab=projects)
 and on each flag's page shows a flag across both projects side by side.
 
-Dev and Prod both run `FEATURE_FLAG_BACKEND=posthog`, so a flag is changed in
-that environment's PostHog project and LaunchDarkly answers nothing there.
+A flag is changed in that environment's PostHog project.
 
-**The browser.** With `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server`, the default,
-the browser gets its flags from the backend's `GET /api/feature-flags`, which evaluates
-them through the same path as the backend's own reads, so the browser and the
-backend give one answer from one project. A Vercel preview in `server` mode
-gets the answer of the backend it calls, and a backend with no vendor answers
-`configured: false`, so the browser serves its own defaults and stops asking.
-The other values read flags in the browser itself: `launchdarkly` from
-LaunchDarkly, and `posthog` /
-`dual` from the project `NEXT_PUBLIC_POSTHOG_KEY` names. `useExperiment` reads
-posthog-js in every mode.
+**The browser.** The browser gets its flags from the backend's
+`GET /api/feature-flags`, which evaluates them through the same path as the
+backend's own reads, so the browser and the backend give one answer from one
+project. A Vercel preview gets the answer of the backend it calls, and a
+backend without PostHog answers `configured: false`, so the browser serves its
+own defaults and stops asking. The set of flags it serves is `FrontendFlag` in
+`backend/util/feature_flag/frontend.py`. Only experiments read posthog-js
+directly: `useExperiment` reads the arm from the project
+`NEXT_PUBLIC_POSTHOG_KEY` names.
+
+**What a read sends.** A signed-in read sends PostHog the person properties
+`role`, `email`, `email_domain` and `created_at` from the auth user row, and a
+caller that knows the visitor's country (the trial offer) adds `country`, the
+ISO code from the signed country token. These ride on the read only and are
+never stored on the person profile. `country` is our own property, not
+PostHog's `$geoip_country_code`: server-side reads get no GeoIP, so a rule on
+the country must target `country`.
 
 **The `environment` property.** Every PostHog flag read the backend makes, its
-own and the browser's in `server` mode, carries the person property
-`environment`: the backend's `APP_ENV` (`local`, `dev` or `prod`), the same
-value its analytics events carry. A release condition can use it in either
-project like any other person property. It is only an evaluation input, never
-stored on a person. Browser reads through posthog-js (`posthog` / `dual` mode)
-don't carry it: they send `buildFlagPersonProperties` (email, email domain,
-role, created at) only, so a condition on `environment` matches only the
-backend's reads there.
+own and the browser's, carries the person property `environment`: the
+backend's `APP_ENV` (`local`, `dev` or `prod`), the same value its analytics
+events carry. A release condition can use it in either project like any other
+person property. It is only an evaluation input, never stored on a person.
 
 **Splitting signed-out visitors.** A visitor who allowed analytics is bucketed
 under `visitor:<their PostHog id>`, but only by conditions their read can
@@ -97,8 +98,7 @@ Redis.
 | `POSTHOG_FLAG_DEFINITION_REFRESH_SECONDS` | `30` | How often the refresher fetches, and how often everyone else re-reads the shared copy. |
 | `POSTHOG_FLAG_DEFINITION_CACHE_TTL_SECONDS` | `600` | How long the shared copy stays readable after the last refresh. |
 
-None of them is read unless `FEATURE_FLAG_BACKEND` is `posthog` or `dual` **and**
-`POSTHOG_SECRET_KEY` is set — without that key the SDK evaluates over the
+None of them is read unless `POSTHOG_SECRET_KEY` is set — without that key the SDK evaluates over the
 wire and has no definitions to share.
 
 **Per environment.** Leave the defaults on `dev` and `prod`: both run several

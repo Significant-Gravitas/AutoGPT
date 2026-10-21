@@ -2837,7 +2837,7 @@ _UPDATE_HINTS = {
 
 async def is_skills_feature_enabled(user_id: str | None) -> bool:
     """Per-user kill-switch for the skills feature (``COPILOT_SKILLS``
-    LaunchDarkly flag).  Default-on; the flag exists only so we can
+    feature flag).  Default-on; the flag exists only so we can
     disable the feature without a redeploy.  Anonymous calls
     (no ``user_id``) treat as enabled so unauthenticated paths don't
     surprise-break.
@@ -3150,7 +3150,7 @@ class StoreSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "Skill registry is currently disabled for this user. "
-                    "Re-enable the ``copilot-skills`` LaunchDarkly flag to "
+                    "Re-enable the ``copilot-skills`` feature flag to "
                     "use ``store_skill`` / ``read_skill`` / ``delete_skill`` "
                     "/ ``list_skills``."
                 ),

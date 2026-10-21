@@ -117,7 +117,7 @@ class SubscriptionStatusResponse(BaseModel):
         default_factory=dict,
         description=(
             "Tier → yearly amount in cents. Populated only for tiers with a"
-            " yearly Stripe price configured in LaunchDarkly. Empty for"
+            " yearly Stripe price configured in PostHog. Empty for"
             " monthly-only configurations."
         ),
     )
@@ -335,7 +335,7 @@ async def get_subscription_status(
         pending = await get_pending_subscription_change(user_id)
     except (stripe.StripeError, PendingChangeUnknown):
         # Swallow Stripe-side failures (rate limits, transient network) AND
-        # PendingChangeUnknown (LaunchDarkly price-id lookup failed). Both
+        # PendingChangeUnknown (PostHog price-id lookup failed). Both
         # propagate past the cache so the next request retries fresh instead
         # of serving a stale None for the TTL window. Let real bugs (KeyError,
         # AttributeError, etc.) propagate so they surface in Sentry.

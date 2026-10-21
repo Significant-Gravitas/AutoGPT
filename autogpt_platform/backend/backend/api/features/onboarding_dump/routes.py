@@ -42,12 +42,12 @@ async def require_brain_dump_flag(
     """Gate every endpoint on the brain-dump flag, fail-closed.
 
     Deliberately not ``create_feature_flag_dependency``: that helper
-    short-circuits to 404 whenever LaunchDarkly has no SDK key, which is
+    short-circuits to 404 whenever PostHog is not configured, which is
     every local dev and test environment — and it does so *before*
     consulting the ``FORCE_FLAG_ONBOARDING_BRAIN_DUMP`` override, so the
     documented way to switch the feature on locally could never work.
     ``is_feature_enabled`` checks the env override first and still
-    defaults to False when LaunchDarkly is unreachable.
+    defaults to False when PostHog is unreachable.
     """
     if not await is_feature_enabled(Flag.ONBOARDING_BRAIN_DUMP, user_id):
         raise fastapi.HTTPException(status_code=404, detail="Feature not available")

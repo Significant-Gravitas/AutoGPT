@@ -1,23 +1,19 @@
 import asyncio
+import json
 import os
 import uuid
-from typing import Any, ClassVar
 from unittest.mock import AsyncMock
 
 import fastapi
 import httpx
 import pytest
 from autogpt_libs.auth import get_optional_user_id
-from ldclient import Context, LDClient
-from ldclient.config import Config as LDConfig
-from ldclient.integrations.test_data import TestData
-from ldclient.interfaces import DataSourceState, EventProcessor, UpdateProcessor
 from posthog import Posthog
 from posthog.types import FeatureFlag
 
-import backend.util.feature_flag as ff
 from backend.util.feature_flag import (
     Flag,
+    _UserContext,
     frontend,
     get_feature_flag_value,
     is_feature_enabled,
@@ -28,7 +24,6 @@ from backend.util.feature_flag.frontend import (
     _anonymous_flags,
     _defined_flags,
 )
-from backend.util.settings import FeatureFlagBackend
 
 from .routes import router
 
@@ -46,62 +41,26 @@ app.include_router(router, prefix="/api")
 
 
 @pytest.fixture(autouse=True)
-def launchdarkly(mocker, monkeypatch: pytest.MonkeyPatch):
-    """A real LaunchDarkly client serving fixed targeting, and no env overrides.
-
-    Yields every analytics event the client would have sent LaunchDarkly.
-    """
+def posthog_flags(mocker, monkeypatch: pytest.MonkeyPatch):
+    """A real PostHog client serving fixed targeting from local definitions,
+    with no network and no env overrides."""
     for name in list(os.environ):
         if name.startswith(
             ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_", "FORCE_ALL_FLAGS")
         ):
             monkeypatch.delenv(name)
-    td = TestData.data_source()
-    td.update(
-        td.flag(FrontendFlag.COPILOT_VOICE_MODE.value)
-        .boolean_flag()
-        .variation_for_user("u-staff", True)
-        .fallthrough_variation(False)
-    )
-    td.update(
-        td.flag(FrontendFlag.HIRE_EXPERTS.value).boolean_flag().variation_for_all(True)
-    )
-    td.update(
-        td.flag(FrontendFlag.MARKETPLACE_SEARCH_TERMS.value)
-        .variations(SEARCH_TERMS, VISITOR_TERMS)
-        .variation_for_user(f"visitor:{VISITOR}", 1)
-        .fallthrough_variation(0)
-    )
-    td.update(
-        td.flag(PINNING)
-        .boolean_flag()
-        .variation_for_user(f"visitor:{VISITOR}", True)
-        .variation_for_user(f"visitor:{'v' * 65}", True)
-        .variation_for_user("visitor:visitor:bad$id", True)
-        .variation_for_user(USER_ID, True)
-        .if_match("email_domain", "agpt.co")
-        .then_return(True)
-        .fallthrough_variation(False)
-    )
-    _RecordedEvents.sent.clear()
-    client = LDClient(
-        LDConfig(
-            "sdk-test", update_processor_class=td, event_processor_class=_RecordedEvents
-        )
-    )
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.LAUNCHDARKLY
-    )
-    mocker.patch.object(ff.settings.secrets, "launch_darkly_sdk_key", "sdk-test")
-    monkeypatch.setattr(ff, "_init_attempted", True)
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    mocker.patch.object(ph.settings.secrets, "posthog_api_key", "phc-test")
+    client = _posthog_with_fixed_targeting()
+    mocker.patch.object(client, "_get_flags_decision", side_effect=ConnectionError)
+    mocker.patch.object(client, "capture")
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
     _anonymous_flags.cache_clear()
     _defined_flags.cache_clear()
-    yield _RecordedEvents.sent
+    yield client
     _anonymous_flags.cache_clear()
     _defined_flags.cache_clear()
     app.dependency_overrides.clear()
-    client.close()
+    client.shutdown()
 
 
 @pytest.mark.parametrize("caller", ["u-staff", "u-other", None])
@@ -135,9 +94,7 @@ async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
     # A failed user lookup makes every answer a guess about someone else.
     mocker.patch(
         "backend.util.feature_flag._fetch_user_context_status",
-        AsyncMock(
-            return_value=(Context.builder(USER_ID).anonymous(True).build(), False)
-        ),
+        AsyncMock(return_value=(_UserContext(key=USER_ID), False)),
     )
 
     flags = (await _get_flags(USER_ID))["flags"]
@@ -148,74 +105,46 @@ async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
 
 @pytest.mark.parametrize("ready_first", [False, True])
 async def test_a_signed_out_answer_is_kept_long_only_when_complete(
-    mocker, monkeypatch, ready_first
+    mocker, monkeypatch, posthog_flags, ready_first
 ):
     """A vendor that is down or starting is asked again within seconds, while a
     complete answer keeps serving every signed-out visitor from one read."""
     monkeypatch.setattr(frontend, "PARTIAL_TTL_SECONDS", 0.01)
-    ready = ff.ldclient.get()
-    not_ready = LDClient(LDConfig("sdk-test", offline=True))
-    get = mocker.patch(
-        "backend.util.feature_flag.ldclient.get",
-        return_value=ready if ready_first else not_ready,
+    not_ready = _posthog_still_loading(mocker)
+    get = mocker.patch.object(
+        ph,
+        "get_flag_client",
+        return_value=posthog_flags if ready_first else not_ready,
     )
     try:
         first = (await _get_flags(None))["flags"]
-        get.return_value = not_ready if ready_first else ready
+        get.return_value = not_ready if ready_first else posthog_flags
         await asyncio.sleep(0.05)
         second = (await _get_flags(None))["flags"]
     finally:
-        not_ready.close()
+        not_ready.shutdown()
 
     # Either way the second read sees the first, complete answer.
     assert (HIRE_EXPERTS in first, second.get(HIRE_EXPERTS)) == (ready_first, True)
 
 
-@pytest.mark.parametrize(
-    "data_source,body",
-    [
-        # A rejected key ends LaunchDarkly's attempts; the route gates then serve
-        # defaults, and the page must too rather than poll forever.
-        ("_RejectedKey", {"flags": {}, "configured": False}),
-        # Still connecting past the start-up wait: the page keeps asking.
-        ("_StillConnecting", {"flags": {}, "configured": True}),
-    ],
-)
-async def test_a_vendor_that_cannot_answer_says_whether_it_ever_will(
-    mocker, data_source, body
+async def test_a_vendor_still_loading_leaves_every_flag_out_and_says_it_will_answer(
+    mocker,
 ):
-    client = LDClient(
-        LDConfig(
-            "sdk-test", update_processor_class=globals()[data_source], send_events=False
-        ),
-        start_wait=0,
-    )
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    # Definitions not loaded and /flags unreachable, as while PostHog starts.
+    client = _posthog_still_loading(mocker)
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
     try:
         answer = await _get_flags("u-staff")
     finally:
-        client.close()
+        client.shutdown()
 
-    assert answer == body
-
-
-async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker):
-    # Offline, the client answers every read as CLIENT_NOT_READY, as while it starts.
-    client = LDClient(LDConfig("sdk-test", offline=True))
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
-    try:
-        flags = (await _get_flags("u-staff"))["flags"]
-    finally:
-        client.close()
-
-    assert flags == {}
+    # PostHog keeps retrying, so the page keeps asking rather than settling on defaults.
+    assert answer == {"flags": {}, "configured": True}
 
 
 async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker):
     """Each would be a remote /flags call on the executor every flag read shares."""
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
-    )
     client = _posthog_splitting_pinning_and_gating_hire_on_email()
     remote = mocker.patch.object(
         client, "_get_flags_decision", side_effect=ConnectionError
@@ -235,9 +164,6 @@ async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker
 async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
     mocker, loaded
 ):
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
-    )
     client = _posthog_splitting_pinning_and_gating_hire_on_email()
     if not loaded:
         client.feature_flags = None
@@ -254,23 +180,10 @@ async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
     assert (HIRE_EXPERTS in flags, flags.get(PROGRESS_BAR, "left out")) == expected
 
 
-async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(mocker):
-    mocker.patch.object(ff.settings.secrets, "launch_darkly_sdk_key", "")
-
-    body = await _get_flags("u-staff")
-
-    assert body["configured"] is False
-
-
-async def test_posthog_with_no_key_leaves_every_flag_to_the_frontend(
-    mocker, monkeypatch: pytest.MonkeyPatch
-):
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
-    )
+async def test_posthog_with_no_key_leaves_every_flag_to_the_frontend(mocker):
     mocker.patch.object(ph.settings.secrets, "posthog_api_key", "")
-    monkeypatch.setattr(ph, "_client", None)
-    monkeypatch.setattr(ph, "_init_attempted", False)
+    # What the real client getter answers without a key.
+    mocker.patch.object(ph, "get_flag_client", return_value=None)
 
     assert await _get_flags(USER_ID) == {"flags": {}, "configured": False}
 
@@ -318,11 +231,11 @@ async def test_a_malformed_visitor_id_counts_as_none(malformed):
 async def test_a_users_id_sent_as_a_visitor_id_is_never_looked_up_as_that_user(
     mocker,
 ):
-    # The lookup would hand back an agpt.co user, whom the flag's rule turns on.
-    employee = Context.builder("u-staff").set("email_domain", "agpt.co").build()
+    # The lookup would hand back the user, whom the flag targets.
+    user = _UserContext(key=USER_ID, anonymous=False)
     lookup = mocker.patch(
         "backend.util.feature_flag._fetch_user_context_status",
-        AsyncMock(return_value=(employee, True)),
+        AsyncMock(return_value=(user, True)),
     )
 
     flags = (await _get_flags(None, USER_ID))["flags"]
@@ -336,7 +249,7 @@ async def test_a_users_id_sent_as_a_visitor_id_never_matches_that_users_targets(
 ):
     mocker.patch(
         "backend.util.feature_flag._fetch_user_context_status",
-        AsyncMock(return_value=(Context.builder(USER_ID).build(), True)),
+        AsyncMock(return_value=(_UserContext(key=USER_ID, anonymous=False), True)),
     )
 
     as_user = (await _get_flags(USER_ID))["flags"]
@@ -345,22 +258,9 @@ async def test_a_users_id_sent_as_a_visitor_id_never_matches_that_users_targets(
     assert (as_user[PINNING], as_visitor[PINNING]) == (True, False)
 
 
-async def test_fresh_visitor_ids_send_launchdarkly_nothing(launchdarkly):
-    await _get_flags(None)
-    launchdarkly.clear()
-
-    for _ in range(20):
-        await _get_flags(None, str(uuid.uuid4()))
-
-    assert launchdarkly == []
-
-
 async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
     """No billed event, no remote /flags call and no turn on the executor every
     flag read shares: the id is the caller's to pick, so a new one must be free."""
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
-    )
     client = _posthog_splitting_pinning_and_gating_hire_on_email()
     mocker.patch.object(ph, "get_flag_client", return_value=client)
     remote = mocker.patch.object(
@@ -395,48 +295,89 @@ async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
     assert all(v.get(HIRE_EXPERTS) is True for v in visitors)
 
 
-class _StillConnecting(UpdateProcessor):
-    """A data source that has not received flags yet."""
+def _posthog_with_fixed_targeting() -> Posthog:
+    """Local definitions every read decides in-process, without /flags."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        _targeted(1, FrontendFlag.COPILOT_VOICE_MODE.value, ["u-staff"]),
+        {
+            "id": 2,
+            "key": HIRE_EXPERTS,
+            "active": True,
+            "filters": {"groups": [{"properties": [], "rollout_percentage": 100}]},
+        },
+        {
+            "id": 3,
+            "key": FrontendFlag.MARKETPLACE_SEARCH_TERMS.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [_distinct_id_in([f"visitor:{VISITOR}"])],
+                        "rollout_percentage": 100,
+                        "variant": "visitor",
+                    },
+                    {"properties": [], "rollout_percentage": 100, "variant": "all"},
+                ],
+                "multivariate": {
+                    "variants": [
+                        {"key": "all", "rollout_percentage": 100},
+                        {"key": "visitor", "rollout_percentage": 0},
+                    ]
+                },
+                "payloads": {
+                    "all": json.dumps(SEARCH_TERMS),
+                    "visitor": json.dumps(VISITOR_TERMS),
+                },
+            },
+        },
+        _targeted(
+            4,
+            PINNING,
+            [
+                f"visitor:{VISITOR}",
+                f"visitor:{'v' * 65}",
+                "visitor:visitor:bad$id",
+                USER_ID,
+            ],
+        ),
+    ]
+    return client
 
-    def __init__(self, config: LDConfig, store: Any, ready: Any):
-        self.config = config
 
-    def start(self) -> None:
-        pass
-
-    def stop(self) -> None:
-        pass
-
-    def is_alive(self) -> bool:
-        return True
-
-    def initialized(self) -> bool:
-        return False
-
-
-class _RejectedKey(_StillConnecting):
-    """Gives up for good, as LaunchDarkly's own data sources do on a 401."""
-
-    def start(self) -> None:
-        sink = self.config.data_source_update_sink
-        assert sink is not None
-        sink.update_status(DataSourceState.OFF, None)
+def _targeted(flag_id: int, key: str, distinct_ids: list[str]) -> dict:
+    """A boolean flag on for exactly these distinct ids, off for everyone else."""
+    return {
+        "id": flag_id,
+        "key": key,
+        "active": True,
+        "filters": {
+            "groups": [
+                {
+                    "properties": [_distinct_id_in(distinct_ids)],
+                    "rollout_percentage": 100,
+                }
+            ]
+        },
+    }
 
 
-class _RecordedEvents(EventProcessor):
-    sent: ClassVar[list[Any]] = []
+def _distinct_id_in(distinct_ids: list[str]) -> dict:
+    return {
+        "key": "distinct_id",
+        "type": "person",
+        "operator": "exact",
+        "value": distinct_ids,
+    }
 
-    def __init__(self, config: LDConfig):
-        pass
 
-    def send_event(self, event: Any) -> None:
-        self.sent.append(event)
-
-    def flush(self) -> None:
-        pass
-
-    def stop(self) -> None:
-        pass
+def _posthog_still_loading(mocker) -> Posthog:
+    """No definitions yet and /flags unreachable: every read goes unanswered."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    mocker.patch.object(client, "load_feature_flags")
+    mocker.patch.object(client, "_get_flags_decision", side_effect=ConnectionError)
+    mocker.patch.object(client, "capture")
+    return client
 
 
 def _posthog_splitting_pinning_and_gating_hire_on_email() -> Posthog:

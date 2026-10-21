@@ -2345,7 +2345,7 @@ def _resolve_sdk_model() -> str | None:
     user's subscription plan.  Otherwise derives from
     ``config.thinking_standard_model``.
 
-    For per-user routing (LaunchDarkly overrides), see
+    For per-user routing (PostHog overrides), see
     :func:`_resolve_sdk_model_for_request`.
     """
     if config.claude_agent_model:
@@ -2400,7 +2400,7 @@ async def _resolve_sdk_model_for_request(
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
+    2. PostHog ``copilot-model-routing[thinking][{tier}]`` if it
        serves a value different from the config default for *user_id*.
        An LD-served override wins over subscription mode so admins can
        route specific users to a specific model without flipping
@@ -5028,7 +5028,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             The SDK path does not currently branch on this value.
         model: Per-request model preference from the frontend toggle.
             'advanced' → Claude Opus; 'standard' → global config default.
-            Takes priority over per-user LaunchDarkly targeting.
+            Takes priority over per-user PostHog targeting.
     """
     if session is None:
         session = await get_chat_session(session_id, user_id)

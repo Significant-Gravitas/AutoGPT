@@ -1,17 +1,10 @@
 import { act, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
-});
 import { FeatureFlagProvider } from "../feature-flag-provider";
 import { Flag, useFlagStatus } from "../use-get-flag";
 
-const ld = vi.hoisted(() => ({
-  props: [] as Array<{ context?: unknown; deferInitialization?: boolean }>,
-  // What the SDK has answered so far; empty until it initialises.
+const source = vi.hoisted(() => ({
+  // What the flag service has answered so far; empty until it does.
   flags: {} as Record<string, unknown>,
 }));
 
@@ -19,34 +12,15 @@ const auth = vi.hoisted(() => ({
   state: { user: null as { id: string } | null, isUserLoading: true },
 }));
 
-interface Props {
-  context?: unknown;
-  deferInitialization?: boolean;
-  children: ReactNode;
-}
-
-vi.mock("launchdarkly-react-client-sdk", () => {
-  function MockLDProvider({ context, deferInitialization, children }: Props) {
-    ld.props.push({ context, deferInitialization });
-    return <>{children}</>;
-  }
-  return {
-    LDProvider: MockLDProvider,
-    useFlags: () => ld.flags,
-    useLDClient: () => undefined,
-  };
-});
+vi.mock("../flag-source", () => ({
+  useFlagSource: (key: string) => ({
+    value: source.flags[key],
+    resolved: key in source.flags,
+  }),
+}));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => auth.state,
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: {
-    areFeatureFlagsEnabled: () => true,
-    getLaunchDarklyClientId: () => "test-client-id",
-    getCookiebotCBID: () => undefined,
-  },
 }));
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
@@ -62,10 +36,25 @@ function HireProbe() {
   );
 }
 
+function renderProbe() {
+  return render(
+    <FeatureFlagProvider>
+      <HireProbe />
+    </FeatureFlagProvider>,
+  );
+}
+
+function rerenderProbe(rerender: ReturnType<typeof render>["rerender"]) {
+  rerender(
+    <FeatureFlagProvider>
+      <HireProbe />
+    </FeatureFlagProvider>,
+  );
+}
+
 describe("FeatureFlagProvider while the session loads", () => {
   beforeEach(() => {
-    ld.props.length = 0;
-    ld.flags = {};
+    source.flags = {};
     auth.state = { user: null, isUserLoading: true };
   });
 
@@ -79,68 +68,30 @@ describe("FeatureFlagProvider while the session loads", () => {
     expect(screen.getByRole("heading", { name: "Maria" })).toBeDefined();
   });
 
-  it("defers LaunchDarkly until the context is known", () => {
-    render(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
-
-    expect(ld.props.at(-1)).toEqual({
-      context: undefined,
-      deferInitialization: true,
-    });
-  });
-
   it("keeps gated UI in the not-answered state rather than off", () => {
-    render(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+    renderProbe();
 
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
   });
 
-  it("hands the resolved session to LaunchDarkly without remounting the page", () => {
-    const { rerender } = render(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+  it("keeps the page mounted while the session resolves", () => {
+    const { rerender } = renderProbe();
     const probe = screen.getByText(/^hire:/);
 
     auth.state = { user: { id: "user-1" }, isUserLoading: false };
-    rerender(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+    rerenderProbe(rerender);
 
-    expect(ld.props.at(-1)?.context).toMatchObject({
-      user: { key: "user-1", anonymous: false },
-    });
-    // Same DOM node: the provider stayed mounted across the session resolving.
     expect(screen.getByText(/^hire:/)).toBe(probe);
   });
 });
 
 // The route gates (/raise, /team, /home, skills) call notFound() once a flag
-// reads ready-but-off. With LaunchDarkly deferred until the session resolves,
-// the fallback timeout must not count down while the vendor cannot answer.
-describe("flag resolution timeout while LaunchDarkly is deferred", () => {
-  function renderProbe() {
-    return render(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
-  }
-
+// reads ready-but-off. Flags are read for the signed-in user, so the fallback
+// timeout must not count down until the session is known.
+describe("flag resolution timeout while the session loads", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    ld.props.length = 0;
-    ld.flags = {};
+    source.flags = {};
     auth.state = { user: null, isUserLoading: true };
   });
 
@@ -158,42 +109,30 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
   });
 
-  it("gives LaunchDarkly its full timeout once the session resolves", () => {
+  it("gives the flag service its full timeout once the session resolves", () => {
     const { rerender } = renderProbe();
     act(() => {
       vi.advanceTimersByTime(6_000);
     });
 
     auth.state = { user: { id: "user-1" }, isUserLoading: false };
-    rerender(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+    rerenderProbe(rerender);
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
 
-    ld.flags = { "hire-experts": true };
-    rerender(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+    source.flags = { "hire-experts": true };
+    rerenderProbe(rerender);
 
     expect(screen.getByText("hire: true ready: true")).toBeDefined();
   });
 
-  it("still times out once initialisation has started and nothing answers", () => {
+  it("still times out once the session is known and nothing answers", () => {
     const { rerender } = renderProbe();
 
     auth.state = { user: null, isUserLoading: false };
-    rerender(
-      <FeatureFlagProvider>
-        <HireProbe />
-      </FeatureFlagProvider>,
-    );
+    rerenderProbe(rerender);
     act(() => {
       vi.advanceTimersByTime(4_999);
     });

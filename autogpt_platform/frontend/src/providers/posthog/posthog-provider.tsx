@@ -10,8 +10,6 @@ import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-prop
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
-import { usesPostHog } from "@/services/feature-flags/flag-backend";
-import { buildFlagPersonProperties } from "@/services/feature-flags/helpers";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
@@ -33,8 +31,8 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
     let unfollowConsent = () => {};
     if (postHogCredentials.key) {
       // Seed PostHog's anonymous identity with the first-party anonymous id
-      // LaunchDarkly and the backend also use, so pre-signup activity from
-      // every tool lands on the same person once identify() runs. Without
+      // the backend also stores, so pre-signup activity lands on the same
+      // person once identify() runs. Without
       // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
@@ -80,11 +78,6 @@ export function PostHogUserTracker() {
 
     if (user) {
       if (previousUserIdRef.current !== user.id) {
-        // Flag-only properties ride on /flags and are never stored on the
-        // person profile, so identify stays exactly what analytics sends.
-        if (usesPostHog()) {
-          posthog.setPersonPropertiesForFlags(buildFlagPersonProperties(user));
-        }
         posthog.identify(user.id, {
           email: user.email,
           ...(user.user_metadata?.name && { name: user.user_metadata.name }),

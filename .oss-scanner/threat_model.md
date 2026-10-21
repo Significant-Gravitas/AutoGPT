@@ -223,7 +223,7 @@ cd /src/autogpt_platform/frontend
   then sign in again (`POST http://localhost:3000/api/auth/sign-in/email` with the email and password) and fetch a
   token from the new session; the old session keeps the old role. An admin can give a user credits with
   `POST /api/credits/admin/add_credits`.
-- **Feature flags** come from LaunchDarkly, which isn't configured here, so every flag is off.
+- **Feature flags** come from PostHog, which isn't configured here, so every flag is off.
   `FORCE_FLAG_<KEY>=true` in the backend's environment turns one on (the flag key upper-cased, with `-` as `_`), and
   `FORCE_ALL_FLAGS=true` turns them all on. Code behind a flag is in scope: the hosted service turns flags on for
   some or all users.

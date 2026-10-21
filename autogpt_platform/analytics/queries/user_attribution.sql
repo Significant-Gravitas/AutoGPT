@@ -6,9 +6,9 @@
 --   One row per user: where they came from, captured once around
 --   signup by the browser that created the account. Carries the ids
 --   the analytics tools knew the user by before they had a user id,
---   so channel (DataFast), product analytics (PostHog) and flag
---   bucketing (LaunchDarkly, via the shared anonymous id) can all be
---   joined to activation, retention and revenue on user_id.
+--   so channel (DataFast) and product analytics and flag bucketing
+--   (PostHog, via the shared anonymous id) can all be joined to
+--   activation, retention and revenue on user_id.
 --
 --   Join to analytics.user_lifecycle for "which channel brings users
 --   who activate". Rows exist only for users who signed up (or first
@@ -20,7 +20,7 @@
 -- OUTPUT COLUMNS
 --   user_id              TEXT         User UUID
 --   captured_at          TIMESTAMPTZ  When the row was first written
---   anonymous_id         TEXT         First-party anonymous id shared with PostHog + LaunchDarkly
+--   anonymous_id         TEXT         First-party anonymous id shared with PostHog
 --   posthog_distinct_id  TEXT         PostHog device id at signup, when different
 --   datafast_visitor_id  TEXT         DataFast visitor (join key into DataFast exports)
 --   datafast_session_id  TEXT         DataFast session that contained the signup

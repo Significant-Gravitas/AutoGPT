@@ -31,7 +31,7 @@ export const MainMarkeplacePage = () => {
   } = useMainMarketplacePage();
   const { isLoggedIn, isUserLoading } = useAuth();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  // Branch on `ready` so the shelf does not pop in after LaunchDarkly
+  // Branch on `ready` so the shelf does not pop in after the flag service
   // answers and push the whole workflow catalogue down.
   const skillsHub = useFlagStatus(Flag.SKILLS_HUB);
   // Hiring is still behind the flag, but the expert pages are public: a
