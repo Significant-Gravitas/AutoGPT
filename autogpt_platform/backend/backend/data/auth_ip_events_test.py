@@ -85,7 +85,7 @@ async def test_report_merges_accounts_linked_by_ip_and_by_domain(
 async def test_domain_match_is_exact_so_an_underscore_is_no_wildcard(
     server: SpinTestServer, accounts
 ):
-    make, tag = accounts
+    make, _ = accounts
     target = await make("a@x_{tag}.example")
     lookalike = await make("b@xy{tag}.example")
 
@@ -97,7 +97,7 @@ async def test_domain_match_is_exact_so_an_underscore_is_no_wildcard(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_public_mail_domain_links_no_accounts(server: SpinTestServer, accounts):
-    make, tag = accounts
+    make, _ = accounts
     target = await make("a-{tag}@gmail.com")
     mate = await make("b-{tag}@gmail.com")
     await _log(target, AuthIpEventKind.SIGN_IN, "203.0.113.60")
@@ -115,7 +115,7 @@ async def test_a_public_mail_domain_links_no_accounts(server: SpinTestServer, ac
 async def test_report_shows_bans_in_force_and_the_blocks_that_cover_the_account(
     server: SpinTestServer, accounts
 ):
-    make, tag = accounts
+    make, _ = accounts
     target = await make("a@{tag}.example")
     banned = await make("b@{tag}.example", banned=True)
     lapsed = await make(
