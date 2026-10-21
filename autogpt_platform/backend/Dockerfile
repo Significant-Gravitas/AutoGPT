@@ -1,3 +1,7 @@
+# Node.js for Prisma and agent-browser comes from the official image, which
+# gets Node's security releases before the NodeSource apt repository does.
+FROM node:24.22.1-trixie-slim AS node
+
 # ============================ DEPENDENCY BUILDER ============================ #
 
 FROM debian:13-slim AS builder
@@ -18,16 +22,10 @@ RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcqui
 # before its first install.
 ARG APT_REFRESH
 
-# Install Node.js repository key and setup
+# Install Python and build dependencies
 RUN apt-get update --allow-releaseinfo-change --fix-missing \
-    && apt-get install -y curl ca-certificates gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
-
-# Update package list and install Python, Node.js, and build dependencies
-RUN apt-get update \
     && apt-get install -y \
+    ca-certificates \
     python3.13 \
     python3.13-dev \
     python3.13-venv \
@@ -38,8 +36,12 @@ RUN apt-get update \
     libz-dev \
     libssl-dev \
     postgresql-client \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=node /usr/local/bin/node /usr/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
