@@ -41,6 +41,7 @@ from backend.copilot.tool_image import (
     IMAGE_READ_DESCRIPTION,
     IMAGE_TOO_LARGE_MESSAGE,
     MAX_IMAGE_BYTES,
+    ImageReadError,
     prepare_image,
 )
 from backend.util.sandbox_login import run_internal
@@ -359,11 +360,13 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                     return _mcp(
                         IMAGE_TOO_LARGE_MESSAGE,
                         error=True,
+                        outside=(),
                     )
             elif _is_likely_binary(remote):
                 return _mcp(
                     _binary_read_guidance(remote),
                     error=True,
+                    outside=(),
                 )
             if ext in IMAGE_EXTENSIONS:
                 raw = await read_sandbox_image(sandbox, remote)
@@ -401,6 +404,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp(
             _binary_read_guidance(resolved),
             error=True,
+            outside=(),
         )
 
     try:
@@ -841,6 +845,7 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         return _mcp(
             _binary_read_guidance(expanded),
             error=True,
+            outside=(),
         )
     try:
         limit = _DEFAULT_READ_LIMIT if limit is None else limit
@@ -870,9 +875,12 @@ def _image_result(raw: bytes, offset: int, limit: int | None) -> dict[str, Any]:
         return _mcp(
             "Image not shown: offset/limit only apply to text. Read the whole image.",
             error=True,
+            outside=(),
         )
     try:
         image = prepare_image(raw)
+    except ImageReadError as exc:
+        return _mcp(str(exc), error=True, outside=())
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return {

@@ -103,3 +103,32 @@ async def test_workspace_metadata_still_withholds_outside_instructions(
     assert _INJECTION in judge.await_args.kwargs["text"]
     assert BINARY_IMAGE_READ_GUIDANCE not in judge.await_args.kwargs["text"]
     assert '"type":"approval_required"' in result.output
+
+
+@pytest.mark.parametrize("failure", ["size", "corrupt", "range"])
+async def test_image_recovery_guidance_is_not_outside_content(workspace_read, failure):
+    info, _, judge = workspace_read
+    info.name, info.mime_type = "image.png", "image/png"
+    if failure == "size":
+        info.size_bytes = 3 * 1024 * 1024 + 1
+    result = await workspace_files.ReadWorkspaceFileTool().execute(
+        "user-1",
+        ChatSession.new("user-1", dry_run=False),
+        "read-1",
+        file_id=info.id,
+        **({"offset": 1} if failure == "range" else {}),
+    )
+    assert '"type":"error"' in result.output
+    assert "Image not shown" in result.output
+    judge.assert_not_awaited()
+
+
+async def test_unexpected_reader_error_is_still_judged(workspace_read):
+    info, manager, judge = workspace_read
+    info.name, info.mime_type = "image.png", "image/png"
+    manager.read_file_by_id.side_effect = ValueError(_INJECTION)
+    result = await workspace_files.ReadWorkspaceFileTool().execute(
+        "user-1", ChatSession.new("user-1", dry_run=False), "read-1", file_id=info.id
+    )
+    assert _INJECTION in judge.await_args.kwargs["text"]
+    assert '"type":"approval_required"' in result.output

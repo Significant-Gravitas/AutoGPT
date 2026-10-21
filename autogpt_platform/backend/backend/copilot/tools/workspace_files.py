@@ -26,6 +26,7 @@ from backend.copilot.tool_image import (
     IMAGE_READ_DESCRIPTION,
     IMAGE_TOO_LARGE_MESSAGE,
     MAX_IMAGE_BYTES,
+    ImageReadError,
     prepare_image,
 )
 from backend.copilot.tools.workdir import (
@@ -707,11 +708,11 @@ class ReadWorkspaceFileTool(BaseTool):
                 return ErrorResponse(
                     message="Image not shown: offset/length only apply to text. Read the whole image.",
                     session_id=session_id,
-                )
+                ).from_outside()
             if is_image and not force_download_url:
                 try:
                     if file_info.size_bytes > MAX_IMAGE_BYTES:
-                        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
+                        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
                     image = await asyncio.to_thread(
                         prepare_image,
                         (
@@ -720,12 +721,12 @@ class ReadWorkspaceFileTool(BaseTool):
                             else await manager.read_file_by_id(target_file_id)
                         ),
                     )
-                except ValueError as exc:
+                except ImageReadError as exc:
                     return ErrorResponse(
                         message=str(exc)
                         + (f" Also saved to {save_to_path}." if save_to_path else ""),
                         session_id=session_id,
-                    )
+                    ).from_outside()
                 return (
                     WorkspaceFileMetadataResponse(
                         file_id=file_info.id,

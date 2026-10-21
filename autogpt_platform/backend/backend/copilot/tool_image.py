@@ -76,9 +76,13 @@ class _AnimatedImage(Protocol):
     is_animated: bool
 
 
+class ImageReadError(ValueError):
+    """Recovery guidance authored here, never interpolated from file contents."""
+
+
 def prepare_image(raw: bytes) -> ToolImage:
     if len(raw) > MAX_IMAGE_BYTES:
-        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
+        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
     try:
         with Image.open(io.BytesIO(raw)) as image:
             mime = (
@@ -87,11 +91,11 @@ def prepare_image(raw: bytes) -> ToolImage:
                 else Image.MIME.get(image.format or "", "")
             )
             if mime not in IMAGE_MIME_TYPES:
-                raise ValueError(
+                raise ImageReadError(
                     "Image not shown: convert it to PNG, JPEG, GIF or WebP, then read it again."
                 )
             if max(image.size) > MAX_IMAGE_DIMENSION:
-                raise ValueError(
+                raise ImageReadError(
                     "Image not shown: exceeds 2000 pixels per side. Resize or crop it and read it again."
                 )
             pixel_limit = Image.MAX_IMAGE_PIXELS
@@ -114,11 +118,11 @@ def prepare_image(raw: bytes) -> ToolImage:
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ) as exc:
-        raise ValueError(
+        raise ImageReadError(
             "Image not shown: the file is corrupt or cannot be decoded. Re-export it as PNG or JPEG."
         ) from exc
     if len(raw) > MAX_IMAGE_BYTES:
-        raise ValueError(IMAGE_TOO_LARGE_MESSAGE)
+        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
     return ToolImage.model_validate(
         {"mime_type": mime, "data_base64": base64.b64encode(raw).decode("ascii")}
     )
