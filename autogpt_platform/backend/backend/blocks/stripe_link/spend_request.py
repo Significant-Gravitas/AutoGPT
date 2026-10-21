@@ -16,6 +16,7 @@ from pydantic import field_validator, model_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -36,7 +37,7 @@ settings = Settings()
 
 
 # Raw virtual-card numbers cannot be handed out on the hosted platform: block
-# outputs are persisted with the execution and surface into AutoPilot
+# outputs are persisted with the execution and surface into Otto
 # transcripts, so a PAN there is cardholder data at rest and a stored CVC is
 # prohibited outright. Rather than returning a crippled card block, the card
 # flow is absent from Cloud entirely — you cannot create a spend request you
@@ -197,6 +198,7 @@ class StripeLinkListPaymentMethodsBlock(Block):
                     ]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -678,6 +680,7 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             test_mock={
                 "_link_api_request": lambda *args, **kwargs: {"status": "approved"}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

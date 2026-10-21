@@ -57,6 +57,23 @@ _RATES: dict[str, ModelRate] = {
         cache_read_per_mtok=1.5,
         cache_write_per_mtok=18.75,
     ),
+    # Claude Opus 4.8 — published at $5/$25 per Mtok in/out (Anthropic's
+    # official price list, verified 2026-09-26), matching catalog.py's
+    # claude-opus-4-8 credits (750/3750 -> /150 margin divisor = $5/$25).
+    # cache_write_per_mtok uses the 5-min-TTL rate ($6.25); the 1-hour-TTL
+    # rate is $10.00 but this table has no per-TTL granularity yet.
+    "claude-opus-4-8": ModelRate(
+        input_per_mtok=5.0,
+        output_per_mtok=25.0,
+        cache_read_per_mtok=0.50,
+        cache_write_per_mtok=6.25,
+    ),
+    "anthropic/claude-opus-4.8": ModelRate(
+        input_per_mtok=5.0,
+        output_per_mtok=25.0,
+        cache_read_per_mtok=0.50,
+        cache_write_per_mtok=6.25,
+    ),
     # Claude Sonnet 4.6
     "claude-sonnet-4-6": ModelRate(
         input_per_mtok=3.0,

@@ -6,7 +6,7 @@ Blocks for getting available filament options from Slant3D.
 ## Slant3D Filament
 
 ### What it is
-Get list of available filaments
+Find available materials and colors for quoting or ordering physical 3D-printed parts from Slant3D. Returns filament public IDs, material, color, and availability. Use a specific filament_id when a material or color matches more than one filament. Slant3D Slicer uses default black PLA when no filament is selected.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -15,12 +15,19 @@ This block queries the Slant3D API to retrieve a list of all available filament 
 Use this to populate filament selection dropdowns or validate filament choices before placing orders.
 <!-- END MANUAL -->
 
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| profiles | Filter materials; empty returns all | List["PLA" \| "PETG" \| "OPM"] | No |
+| colors | Filter color names; empty returns all | List[str] | No |
+
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| filaments | List of available filaments | List[Filament] |
+| filaments | Available filaments; use publicId as filament_id | List[Filament] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

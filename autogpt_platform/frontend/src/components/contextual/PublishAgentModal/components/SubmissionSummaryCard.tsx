@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 import { Clock01Icon, ImageNotFound01Icon } from "@hugeicons/core-free-icons";
@@ -32,6 +33,7 @@ export function SubmissionSummaryCard({
         {thumbnailSrc ? (
           <Image
             src={thumbnailSrc}
+            unoptimized={isLocalStoreMediaUrl(thumbnailSrc)}
             alt=""
             fill
             sizes="86px"

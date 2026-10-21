@@ -2,7 +2,7 @@
 
 graphiti-core requires sequential ``add_episode()`` calls within the same
 group_id. This module provides one asyncio.Queue per resolved memory group so
-AutoPilot and each hired expert serialize their own writes independently.
+Otto and each hired expert serialize their own writes independently.
 """
 
 import asyncio
@@ -56,7 +56,7 @@ class MemoryScopeViolationError(ValueError):
     """An ingestion payload targeted a different memory group than its worker.
 
     This is the worker's only isolation check — every payload that would
-    cross an AutoPilot/expert memory boundary funnels through it — so it is
+    cross an Otto/expert memory boundary funnels through it — so it is
     raised (and logged) distinctly from transient ingestion failures.
     """
 
@@ -127,12 +127,15 @@ class IngestionCompletion:
 # clamp (``dream/fetch.py:MAX_SESSION_BODY_BYTES``).
 MAX_EPISODE_BODY_BYTES = 64 * 1024
 
+# Graphiti keeps a fact only as an edge between two entities: the user and the
+# products they name must both be extractable, or a stored memory yields nothing.
 CUSTOM_EXTRACTION_INSTRUCTIONS = """
-- Do not extract "User", "Assistant", "AI", "System", "CoPilot", or "human" as entity nodes.
-- Do not extract software tool names, block names, API endpoint names, or internal system identifiers as entities.
+- Do not extract "Assistant", "AI", "System", or "CoPilot" as entity nodes.
+- Do not extract AutoGPT block names, tool or function names, API endpoint names, or internal system identifiers as entities. Third-party products and services the user's business uses (a CRM, a shop platform, a payment provider) ARE entities.
 - Do not extract action descriptions like "the assistant created..." as facts. Extract only the underlying user intent or real-world information.
 - Focus on real-world entities: people, companies, products, projects, concepts, and preferences.
 - Use canonical names: if the speaker says "my company" and context reveals it is "Acme Corp", use "Acme Corp".
+- In a JSON memory, the "user" field names the person the memory is about: always extract that value as an entity and relate the memory's content to it.
 """
 
 
@@ -247,7 +250,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
     Exits after ``_WORKER_IDLE_TIMEOUT`` seconds of inactivity so that
     idle workers don't leak memory indefinitely. ``group_id`` is resolved by
     the enqueuer and is never re-derived here; this is what prevents an expert
-    write from falling back into the owning user's AutoPilot graph.
+    write from falling back into the owning user's Otto graph.
     """
     # Snapshot the loop-local state at task start so cleanup always runs
     # against the same state dict the worker was registered in, even if the
@@ -387,7 +390,7 @@ async def enqueue_conversation_turn(
         logger.warning("Invalid memory scope for ingestion: %s", user_id[:12])
         return
 
-    user_display_name = await _resolve_user_name(user_id)
+    user_display_name = await resolve_user_name(user_id)
 
     episode_name = f"conversation_{session_id}"
 
@@ -425,6 +428,7 @@ async def enqueue_conversation_turn(
         finding = _distill_finding(assistant_msg)
         if finding:
             envelope = MemoryEnvelope(
+                user=user_display_name,
                 content=finding,
                 source_kind=SourceKind.assistant_derived,
                 memory_kind=MemoryKind.finding,
@@ -607,7 +611,7 @@ async def _enqueue_payload(user_id: str, group_id: str, payload: dict) -> bool:
     return True
 
 
-async def _resolve_user_name(user_id: str) -> str:
+async def resolve_user_name(user_id: str) -> str:
     """Get the user's display name from BusinessUnderstanding, or fall back to 'User'."""
     try:
         from backend.data.db_accessors import understanding_db

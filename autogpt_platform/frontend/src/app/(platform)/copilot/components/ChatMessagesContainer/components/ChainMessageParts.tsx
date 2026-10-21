@@ -1,4 +1,6 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
+import type { ToolUIPart } from "ai";
+import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
 import type {
@@ -13,7 +15,6 @@ interface Props {
   isCurrentlyStreaming: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
@@ -26,7 +27,6 @@ export function ChainMessageParts({
   isCurrentlyStreaming,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
@@ -50,6 +50,16 @@ export function ChainMessageParts({
         />
       );
     }
+    if (segment.kind === "experts") {
+      return (
+        <ExpertChangeGroup
+          key={`${messageID}-experts-${segment.index}`}
+          parts={segment.parts as ToolUIPart[]}
+          isCurrentlyStreaming={isCurrentlyStreaming}
+          readOnly={readOnly}
+        />
+      );
+    }
     return (
       <MessagePartRenderer
         key={`${messageID}-${segment.index}`}
@@ -58,7 +68,6 @@ export function ChainMessageParts({
         partIndex={segment.index}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}

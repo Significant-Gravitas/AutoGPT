@@ -81,9 +81,9 @@ def derive_group_id(user_id: str) -> str:
 
 
 def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
-    """Derive the Graphiti namespace for an AutoPilot or expert session.
+    """Derive the Graphiti namespace for an Otto or expert session.
 
-    Plain AutoPilot sessions retain the exact legacy ``user_<user_id>``
+    Plain Otto sessions retain the exact legacy ``user_<user_id>``
     namespace so all existing user memories remain available. Expert sessions
     use a fixed-length digest of the globally unique Expert ID, so memory stays
     with the expert if authorized ownership changes later. Access remains a
@@ -115,7 +115,7 @@ def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
 def derive_memory_scope_key(user_id: str, expert_id: str | None = None) -> str:
     """Stable internal key for queues, locks, and background markers.
 
-    AutoPilot keeps the legacy raw user key where existing Redis contracts use
+    Otto keeps the legacy raw user key where existing Redis contracts use
     it. Expert scopes use the same opaque ID as their Graphiti namespace.
     """
     if expert_id is None:

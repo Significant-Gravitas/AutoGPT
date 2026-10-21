@@ -4,12 +4,16 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.tools.manage_schedules import (
     DeleteScheduleTool,
     ListSchedulesTool,
+    PauseScheduleTool,
+    ResumeScheduleTool,
     ScheduleDeletedResponse,
     ScheduleListResponse,
+    ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import ErrorResponse
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -170,9 +174,10 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     with (
         patch(
-            f"{_SCHEDULES_PATH}.get_library_agent",
-            new_callable=AsyncMock,
-            return_value=mock_agent,
+            f"{_SCHEDULES_PATH}.library_db",
+            return_value=MagicMock(
+                get_library_agent=AsyncMock(return_value=mock_agent)
+            ),
         ),
         patch(
             f"{_SCHEDULES_PATH}.get_scheduler_client",
@@ -187,7 +192,7 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     assert isinstance(result, ScheduleListResponse)
     mock_client.get_execution_schedules.assert_called_once_with(
-        graph_id="graph-42", user_id=_USER
+        graph_id="graph-42", user_id=_USER, include_paused=True
     )
 
 
@@ -196,9 +201,10 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
     from backend.util.exceptions import NotFoundError
 
     with patch(
-        f"{_SCHEDULES_PATH}.get_library_agent",
-        new_callable=AsyncMock,
-        side_effect=NotFoundError("not found"),
+        f"{_SCHEDULES_PATH}.library_db",
+        return_value=MagicMock(
+            get_library_agent=AsyncMock(side_effect=NotFoundError("not found"))
+        ),
     ):
         result = await list_tool._execute(
             user_id=_USER,
@@ -211,12 +217,16 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
 
 
 @pytest.mark.parametrize(
-    ("session_expert_id", "expected_id"),
-    [(None, "autopilot"), ("expert-a", "expert-a-job"), ("expert-b", "expert-b-job")],
+    ("session_expert_id", "expected_ids"),
+    [
+        (None, ["autopilot", "expert-a-job", "expert-b-job"]),
+        ("expert-a", ["expert-a-job"]),
+        ("expert-b", ["expert-b-job"]),
+    ],
 )
 @pytest.mark.asyncio
-async def test_list_schedules_only_returns_current_persona_scope(
-    list_tool, session_expert_id, expected_id
+async def test_list_schedules_autopilot_sees_all_experts_see_their_own(
+    list_tool, session_expert_id, expected_ids
 ):
     scoped_session = make_session(_USER, expert_id=session_expert_id)
     mock_client = AsyncMock()
@@ -232,7 +242,12 @@ async def test_list_schedules_only_returns_current_persona_scope(
         result = await list_tool._execute(user_id=_USER, session=scoped_session)
 
     assert isinstance(result, ScheduleListResponse)
-    assert [schedule.schedule_id for schedule in result.schedules] == [expected_id]
+    assert [schedule.schedule_id for schedule in result.schedules] == expected_ids
+    assert all(
+        schedule.expert_id == schedule.schedule_id.removesuffix("-job")
+        for schedule in result.schedules
+        if schedule.schedule_id != "autopilot"
+    )
 
 
 # ── DeleteScheduleTool ─────────────────────────────────────────────
@@ -324,14 +339,13 @@ async def test_delete_schedule_not_authorized(delete_tool, session):
 @pytest.mark.parametrize(
     ("session_expert_id", "target_expert_id"),
     [
-        (None, "expert-a"),
         ("expert-a", None),
         ("expert-a", "expert-b"),
         ("expert-b", "expert-a"),
     ],
 )
 @pytest.mark.asyncio
-async def test_delete_schedule_refuses_cross_persona_job(
+async def test_delete_schedule_refuses_cross_expert_job(
     delete_tool, session_expert_id, target_expert_id
 ):
     scoped_session = make_session(_USER, expert_id=session_expert_id)
@@ -374,4 +388,286 @@ async def test_delete_schedule_allows_same_expert_job(delete_tool):
     assert isinstance(result, ScheduleDeletedResponse)
     mock_client.delete_schedule.assert_awaited_once_with(
         schedule_id="expert-job", user_id=_USER
+    )
+
+
+@pytest.mark.asyncio
+async def test_autopilot_can_delete_an_expert_schedule(delete_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER, session=session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
+    mock_client.delete_schedule.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "session_expert_id"),
+    [
+        (PauseScheduleTool(), "pause_schedule", None),
+        (ResumeScheduleTool(), "resume_schedule", None),
+        (PauseScheduleTool(), "pause_schedule", "expert-a"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_pause_and_resume_within_scope(tool, method, session_expert_id):
+    scoped_session = make_session(_USER, expert_id=session_expert_id)
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    setattr(mock_client, method, AsyncMock(return_value=True))
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(
+            user_id=_USER, session=scoped_session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    getattr(mock_client, method).assert_awaited_once_with("expert-job", _USER)
+
+
+@pytest.mark.asyncio
+async def test_expert_cannot_pause_another_experts_schedule():
+    scoped_session = make_session(_USER, expert_id="expert-b")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    mock_client.pause_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await PauseScheduleTool()._execute(
+            user_id=_USER, session=scoped_session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    mock_client.pause_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_marks_paused_entries(list_tool, session):
+    paused = _make_graph_info(schedule_id="paused-job")
+    paused.next_run_time = ""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert result.schedules[0].paused is True
+    assert (
+        mock_client.get_execution_schedules.call_args.kwargs["include_paused"] is True
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [
+        (DeleteScheduleTool(), "delete_schedule"),
+        (ResumeScheduleTool(), "resume_schedule"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_archived_experts_paused_schedule_is_out_of_reach(
+    tool, method, session
+):
+    """detach_expert_triggers pauses rather than deletes so re-hire can restore
+    the cadence. Deleting one loses it permanently; resuming one produces a
+    schedule that fires and is refused at run time. The REST listing already
+    hides these rows, so the tools have to agree."""
+    paused = _make_graph_info(schedule_id="archived-job", expert_id="gone")
+    paused = paused.model_copy(update={"next_run_time": ""})
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.experts.experts_db.active_expert_ids",
+            AsyncMock(return_value=set()),
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, schedule_id="archived-job"
+        )
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    getattr(mock_client, method).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_live_experts_paused_schedule_is_still_reachable(session):
+    """The guard keys on the expert being gone, not on the schedule being
+    paused — pausing one and resuming it must keep working."""
+    paused = _make_graph_info(schedule_id="live-job", expert_id="expert-a")
+    paused = paused.model_copy(update={"next_run_time": ""})
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+    mock_client.resume_schedule = AsyncMock(return_value=True)
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.experts.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await ResumeScheduleTool()._execute(
+            user_id=_USER, session=session, schedule_id="live-job"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    mock_client.resume_schedule.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_hides_an_archived_experts_paused_schedule(list_tool, session):
+    """Listing one the mutation tools refuse is worse than not listing it: the
+    model would hand its id to resume_schedule and be told it does not exist."""
+    live = _make_graph_info(schedule_id="live", expert_id="expert-a")
+    archived = _make_graph_info(schedule_id="archived", expert_id="gone").model_copy(
+        update={"next_run_time": ""}
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[live, archived])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.experts.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["live"]
+
+
+@pytest.mark.asyncio
+async def test_list_keeps_a_live_experts_paused_schedule(list_tool, session):
+    """The guard keys on the expert being gone, not on the schedule being
+    paused — a paused row still needs to be listable to be resumed."""
+    paused = _make_graph_info(schedule_id="paused", expert_id="expert-a").model_copy(
+        update={"next_run_time": ""}
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with (
+        patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(
+            "backend.api.features.experts.experts_db.active_expert_ids",
+            AsyncMock(return_value={"expert-a"}),
+        ),
+    ):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["paused"]
+    assert result.schedules[0].paused is True
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "changed", "expect_event"),
+    [
+        (PauseScheduleTool(), "pause_schedule", True, True),
+        (PauseScheduleTool(), "pause_schedule", False, False),
+        (ResumeScheduleTool(), "resume_schedule", True, True),
+        (ResumeScheduleTool(), "resume_schedule", False, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_no_op_toggle_leaves_no_activity_event(
+    tool, method, changed, expect_event, session
+):
+    """The scheduler returns False when the schedule was already in that state.
+    The activity log is append-only, so pausing an already-paused schedule must
+    not leave a schedule.paused entry the user never caused."""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="sched-1")]
+    )
+    setattr(mock_client, method, AsyncMock(return_value=changed))
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(
+            user_id=_USER, session=session, schedule_id="sched-1"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    assert result.changed is changed
+    assert (tool.activity_event(session, result) is not None) is expect_event
+
+
+# ── Prisma disconnected (the copilot executor) ─────────────────────
+
+
+@pytest.fixture
+def copilot_executor_db(mocker):
+    """Prisma disconnected in-process, the DatabaseManager client answering."""
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    for model in ("LibraryAgent", "Expert"):
+        disconnected = MagicMock()
+        disconnected.find_first = AsyncMock(side_effect=ClientNotConnectedError())
+        disconnected.find_many = AsyncMock(side_effect=ClientNotConnectedError())
+        mocker.patch(f"prisma.models.{model}.prisma", return_value=disconnected)
+
+    db_manager = MagicMock()
+    db_manager.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    db_manager.active_expert_ids = AsyncMock(return_value={"expert-live"})
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+    return db_manager
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_resolves_the_library_agent_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(
+            user_id=_USER, session=session, library_agent_id="lib-agent-1"
+        )
+
+    assert isinstance(result, ScheduleListResponse)
+    copilot_executor_db.get_library_agent.assert_awaited_once_with(
+        id="lib-agent-1", user_id=_USER
+    )
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        graph_id="graph-1", user_id=_USER, include_paused=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_checks_paused_experts_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    live = _make_graph_info(schedule_id="sched-live", expert_id="expert-live")
+    gone = _make_graph_info(schedule_id="sched-gone", expert_id="expert-gone")
+    live.next_run_time = gone.next_run_time = ""
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[live, gone])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["sched-live"]
+    copilot_executor_db.active_expert_ids.assert_awaited_once_with(
+        _USER, {"expert-live", "expert-gone"}
     )

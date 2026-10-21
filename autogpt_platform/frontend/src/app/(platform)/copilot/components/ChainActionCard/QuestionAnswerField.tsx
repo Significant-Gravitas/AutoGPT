@@ -2,9 +2,10 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   question: ClarifyingQuestion;
@@ -17,9 +18,12 @@ interface Props {
 
 /** The answer input for one question: options render as tappable rows with a
  *  trailing "Type something…" escape hatch into free text; questions without
- *  options go straight to the textarea. Mounted per-question — the parent keys
- *  this component on the question's pager id, so the typing toggle resets
- *  between questions instead of leaking across them. */
+ *  options go straight to the textarea. The options stay on screen while the
+ *  user types, and each one can be copied into the textarea to reword it or
+ *  merge it with others.
+ *  Mounted per-question — the parent keys this component on the question's
+ *  pager id, so the typing toggle resets between questions instead of leaking
+ *  across them. */
 export function QuestionAnswerField({
   question,
   value,
@@ -35,73 +39,81 @@ export function QuestionAnswerField({
   // textarea too, but must not steal focus when the card first renders —
   // that is what the pager's autoFocus is for.
   const [toggled, setToggled] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  if (options.length === 0 || typing) {
-    return (
-      <div className="flex flex-col gap-1.5">
-        <textarea
-          required
-          rows={3}
-          aria-labelledby={labelId}
-          autoFocus={autoFocus || toggled}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          // Enter advances the pager; Shift+Enter is the newline.
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.shiftKey) return;
-            e.preventDefault();
-            onSubmit();
-          }}
-          // The example is the options joined, so replaying it to someone who
-          // just declined those options would only be noise.
-          placeholder={
-            options.length === 0 && question.example
-              ? `e.g. ${question.example}`
-              : "Type your answer"
-          }
-          className="resize-none rounded-2xl bg-zinc-50 px-3 py-2 text-sm leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
-        />
-        {options.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              // Drop the free text, or the pager would happily submit a value
-              // the option list gives no sign of having selected.
-              if (isCustom) onChange("");
-              setToggled(true);
-              setTyping(false);
-            }}
-            className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-          >
-            Choose from options instead
-          </button>
-        )}
-      </div>
-    );
+  const textarea = (
+    <textarea
+      ref={textareaRef}
+      required
+      rows={options.length > 0 ? 2 : 3}
+      aria-labelledby={labelId}
+      autoFocus={autoFocus || toggled}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      // Enter advances the pager; Shift+Enter is the newline.
+      onKeyDown={(e) => {
+        if (!isKey(e, "Enter") || e.shiftKey) return;
+        e.preventDefault();
+        onSubmit();
+      }}
+      // The example is the options joined, so replaying it right under
+      // those same options would only be noise.
+      placeholder={
+        options.length === 0 && question.example
+          ? `e.g. ${question.example}`
+          : "Type your answer"
+      }
+      className="resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+    />
+  );
+
+  if (options.length === 0) return textarea;
+
+  // Choosing an option replaces whatever was typed, so the textarea closes
+  // rather than echoing the option's text back as if the user had written it.
+  function handleOptionChange(option: string) {
+    setTyping(false);
+    onChange(option);
+  }
+
+  // A second edit adds to the draft rather than replacing it, so the user
+  // can build one answer out of several options.
+  function handleOptionEdit(option: string) {
+    const draft =
+      typing && value.trim() ? `${value.trimEnd()}\n${option}` : option;
+    onChange(draft);
+    setToggled(true);
+    setTyping(true);
+    textareaRef.current?.focus();
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <QuestionOptionList
         options={options}
         value={value}
         labelId={labelId}
-        focusActiveOption={autoFocus || toggled}
-        onChange={onChange}
+        focusActiveOption={!typing && (autoFocus || toggled)}
+        onChange={handleOptionChange}
+        onEdit={handleOptionEdit}
         onSubmit={onSubmit}
       />
-      <button
-        type="button"
-        onClick={() => {
-          if (options.includes(value.trim())) onChange("");
-          setToggled(true);
-          setTyping(true);
-        }}
-        className="flex items-center gap-2 rounded-2xl border border-dashed border-zinc-200 px-3 py-2 text-left text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
-      >
-        <Icon icon={PencilEdit02Icon} size={14} className="shrink-0" />
-        Type something…
-      </button>
+      {typing ? (
+        textarea
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            if (options.includes(value.trim())) onChange("");
+            setToggled(true);
+            setTyping(true);
+          }}
+          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+        >
+          <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
+          Type something…
+        </button>
+      )}
     </div>
   );
 }

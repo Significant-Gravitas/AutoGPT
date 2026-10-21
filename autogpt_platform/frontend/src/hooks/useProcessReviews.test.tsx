@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { expect, test, vi } from "vitest";
 import {
+  getGetV2GetPendingReviewsForChatSessionQueryKey,
   getGetV2GetPendingReviewsForExecutionQueryKey,
   getGetV2GetPendingReviewsQueryKey,
 } from "@/app/api/__generated__/endpoints/executions/executions";
@@ -49,7 +50,8 @@ test("invalidates both the user-wide and the per-execution review queries", asyn
   );
   const { result, invalidatedKeys } = setup();
 
-  await result.current.processReviews([item], ["run-1", "run-1"]);
+  const run = { graph_exec_id: "run-1" };
+  await result.current.processReviews([item], [run, run]);
 
   const keys = invalidatedKeys();
   expect(keys).toContainEqual(getGetV2GetPendingReviewsQueryKey());
@@ -61,6 +63,28 @@ test("invalidates both the user-wide and the per-execution review queries", asyn
   ).toHaveLength(1);
 });
 
+test("a chat review invalidates its session's queue, not an execution's", async () => {
+  server.use(
+    getPostV2ProcessReviewActionMockHandler200({
+      approved_count: 1,
+      rejected_count: 0,
+      failed_count: 0,
+    }),
+  );
+  const { result, invalidatedKeys } = setup();
+
+  await result.current.processReviews(
+    [item],
+    [{ graph_exec_id: null, session_id: "chat-1" }],
+  );
+
+  const keys = invalidatedKeys();
+  expect(keys).toContainEqual(
+    getGetV2GetPendingReviewsForChatSessionQueryKey("chat-1"),
+  );
+  expect(keys).toHaveLength(2);
+});
+
 test("still invalidates when the mutation rejects", async () => {
   server.use(
     http.post("/api/proxy/api/review/action", () => HttpResponse.error()),
@@ -68,7 +92,7 @@ test("still invalidates when the mutation rejects", async () => {
   const { result, invalidatedKeys } = setup();
 
   await expect(
-    result.current.processReviews([item], ["run-1"]),
+    result.current.processReviews([item], [{ graph_exec_id: "run-1" }]),
   ).rejects.toBeDefined();
 
   expect(invalidatedKeys()).toContainEqual(getGetV2GetPendingReviewsQueryKey());

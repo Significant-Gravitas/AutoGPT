@@ -37,5 +37,5 @@ def test_no_spend_history_means_no_invented_date():
     assert cause.days_left is None
     assert cause.runs_out_label is None
     assert cause.headline == "Your credits are running low"
-    assert "2 scheduled agents would stop" in cause.body
+    assert "2 scheduled workflows would stop" in cause.body
     assert cause.tag == "low balance"

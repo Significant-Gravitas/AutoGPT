@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,7 @@ import {
 } from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
 import {
+  getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
 } from "../SubscriptionStep/helpers";
@@ -25,7 +27,15 @@ const postHog = vi.hoisted(() => ({
 
 vi.mock("@posthog/react", () => ({
   useFeatureFlagVariantKey: () => postHog.variant,
+  usePostHog: () => undefined,
 }));
+
+const posthogJS = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
+vi.mock("posthog-js", () => ({ default: posthogJS }));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
   FadeIn: ({ children }: { children: React.ReactNode }) => (
@@ -48,9 +58,11 @@ afterEach(() => {
 
 beforeEach(() => {
   postHog.variant = undefined;
+  posthogJS.capture.mockClear();
+  sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
-  // The paywall is the first step.
-  useOnboardingWizardStore.getState().goToStep(1);
+  // The paywall is the last interactive step (step 3), before Preparing.
+  useOnboardingWizardStore.getState().goToStep(3);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
@@ -95,12 +107,12 @@ describe("subscription pricing experiment helpers", () => {
     expect(pro).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
   });
 
@@ -132,8 +144,17 @@ describe("subscription pricing experiment helpers", () => {
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
+  });
+
+  test("reports a pricing arm only once PostHog has assigned a real one", () => {
+    expect(getReportedPricingVariant("yearly-max", true)).toBe("yearly-max");
+    expect(getReportedPricingVariant("control", true)).toBe("control");
+    // Still loading flags, not enrolled, or an arm this page does not know.
+    expect(getReportedPricingVariant("yearly-max", false)).toBeUndefined();
+    expect(getReportedPricingVariant(null, true)).toBeUndefined();
+    expect(getReportedPricingVariant("annual-team", true)).toBeUndefined();
   });
 });
 
@@ -197,7 +218,7 @@ describe("SubscriptionStep", () => {
     expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Welcome on success, paywall on cancel)", async () => {
+  test("selecting Pro persists selectedPlan and returns to Preparing on success, paywall on cancel", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
@@ -227,21 +248,19 @@ describe("SubscriptionStep", () => {
 
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
     expect(capturedTierBody!.tier).toBe("PRO");
-    // Success returns to Welcome (step 2) to begin onboarding; cancel returns
-    // to the paywall (step 1).
+    // Checkout returns to semantic steps so optional layout changes are safe.
     expect(capturedTierBody!.success_url).toContain(
-      "/onboarding?step=2&subscription=success",
+      "/onboarding?step=preparing&subscription=success",
     );
     expect(capturedTierBody!.cancel_url).toContain(
-      "/onboarding?step=1&subscription=cancelled",
+      "/onboarding?step=subscription&subscription=cancelled",
     );
     // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
     // report the subscription value to Google Ads.
     expect(capturedTierBody!.success_url).toContain(
       "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
     );
-    // Paywall-first: no profile data exists yet, so nothing is POSTed here —
-    // the Preparing step submits the profile at the end of onboarding.
+    // Answers have already been collected; Preparing submits the final profile.
     expect(profileCalled).toBe(false);
   });
 
@@ -263,11 +282,57 @@ describe("SubscriptionStep", () => {
       expect(gtagCalls).toContainEqual([
         "event",
         "conversion",
-        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+        {
+          send_to: "AW-123/BC",
+          value: 50,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
       ]);
     });
-    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
   });
+
+  test.each(["https://checkout.stripe.com/pay/old_account", null])(
+    "ignores an old account's checkout response with URL %s",
+    async (url) => {
+      const location = stubLocation();
+      let resolveResponse: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        resolveResponse = resolve;
+      });
+      const received = vi.fn();
+      server.use(
+        http.post("*/api/credits/subscription", async () => {
+          received();
+          await pending;
+          return HttpResponse.json({ url });
+        }),
+      );
+      useOnboardingWizardStore.setState({ userID: "previous-user" });
+      render(<SubscriptionStep />);
+      fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+      await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      act(() => {
+        useOnboardingWizardStore.setState({
+          userID: "next-user",
+          currentStep: 1,
+        });
+        resolveResponse?.();
+      });
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /Upgrade to Max/i })
+            .hasAttribute("disabled"),
+        ).toBe(false),
+      );
+      expect(location.href).toBe("http://localhost/");
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+    },
+  );
 
   test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
@@ -285,9 +350,7 @@ describe("SubscriptionStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
-      expect(useOnboardingWizardStore.getState().currentStep).toBeGreaterThan(
-        1,
-      );
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
     });
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
@@ -365,6 +428,62 @@ describe("SubscriptionStep", () => {
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("MAX");
   });
 
+  test("reports the paywall view and the picked plan with its pricing arm to PostHog", async () => {
+    postHog.variant = "yearly-max";
+    let capturedTierBody: { surface?: string } | null = null;
+    server.use(
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    // The backend reads `surface` for its checkout_started event.
+    expect(capturedTierBody!.surface).toBe("onboarding");
+    expect(posthogJS.capture).toHaveBeenCalledWith("paywall_viewed", {
+      surface: "onboarding",
+    });
+    expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+      subscription_tier: "MAX",
+      billing_cycle: "yearly",
+      surface: "onboarding",
+      pricing_variant: "yearly-max",
+    });
+  });
+
+  // PostHog answers `false` for a user outside the rollout. They see the
+  // control layout but are not in the control arm.
+  test("reports no pricing arm for a user the experiment did not enrol", async () => {
+    postHog.variant = false;
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+        subscription_tier: "MAX",
+        billing_cycle: "monthly",
+        surface: "onboarding",
+      });
+    });
+  });
+
   test("selecting Team opens the intake form and does not advance", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     try {
@@ -377,7 +496,7 @@ describe("SubscriptionStep", () => {
       );
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedPlan).toBeNull();
-      expect(state.currentStep).toBe(1);
+      expect(state.currentStep).toBe(3);
     } finally {
       openSpy.mockRestore();
     }
@@ -407,14 +526,13 @@ describe("SubscriptionStep", () => {
     });
     // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
     // step handles submission via useOnboardingPage). Advances from the
-    // paywall (step 1) to Welcome (step 2).
+    // paywall (step 3) to Preparing (step 4).
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {
-    useOnboardingWizardStore.getState().setName("Ada");
     useOnboardingWizardStore.getState().setRole("Engineer");
 
     let resolveTier: (value: unknown) => void = () => undefined;

@@ -8,12 +8,14 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.llm_attribution import openrouter_attribution
+from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -56,7 +58,10 @@ def build_sdk_env(
     3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
        from the parent environment (no overrides needed).
     4. **OpenRouter** (default) — overrides base URL and auth token to
-       route through the proxy, with Langfuse trace headers.
+       route through the proxy, with the headers and body fields OpenRouter
+       Broadcast attributes generations by (user, chat session,
+       environment). Only this mode reaches Broadcast, so only its
+       generations show in PostHog LLM analytics and Langfuse broadcast.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
@@ -108,7 +113,7 @@ def build_sdk_env(
             f"build_sdk_env() called under transport "
             f"{config.transport.name!r}, which doesn't support the SDK. "
             "The request should have been downgraded to the baseline "
-            "path — see executor.processor.resolve_use_sdk_for_mode."
+            "path — see executor.processor.resolve_use_sdk."
         )
 
     # --- Mode 1: Claude Code subscription auth ---
@@ -142,7 +147,9 @@ def build_sdk_env(
             "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
         }
 
-        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        # Inject broadcast headers: OpenRouter Broadcast skips the
+        # Anthropic-native ``/messages`` endpoint unless ``x-session-id``
+        # is present.
         def _safe(v: str) -> str:
             return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
 
@@ -153,6 +160,7 @@ def build_sdk_env(
             parts.append(f"x-user-id: {_safe(user_id)}")
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
 
     # --- Common: workspace isolation + security hardening (all modes) ---
     # Route subagent temp files into the per-session workspace so output
@@ -166,6 +174,13 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Run sub-agents in the foreground.  Since Claude Code 2.1.198 the
+    # Agent/Task tool launches them in the background by default and returns
+    # ``async_launched`` at once; their report only arrives as a new CLI turn
+    # after the ``ResultMessage``, by which point the turn has ended and the
+    # CLI has been closed, killing the sub-agent and losing its work.  This
+    # also stops the CLI from moving long tool calls to the background.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter
@@ -173,20 +188,26 @@ def build_sdk_env(
     # flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
-    # Pin the CLI's perceived context window at the 200K default.  1M context
-    # is GA (no beta header) on Sonnet 4.6+/5 and newer CLIs enable it by
-    # default via their model capability table (native_1m) or server-side
-    # flags; this kill-switch gates every 1M branch in the CLI's window
-    # resolution, so the autocompact trigger below stays anchored to 200K
-    # across SDK upgrades.  (The experimental-betas flag above no longer
-    # covers 1M — it stopped being a beta.)
-    env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+    # Pin the CLI's perceived context window explicitly.  This env var is the
+    # highest-precedence input to the CLI's window resolution, so it preempts
+    # the model table, the 1M capability flags and the server-side experiment
+    # branches that newer CLIs consult — without it the compaction trigger is
+    # an emergent property of whichever bundled CLI we happen to ship.
+    window = _pinned_context_window(model)
+    env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
-    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
-    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
-    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
-    # writes happen, so there's no cost to cap) and an aggressive trigger
-    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # The window above is clamped by the model's own window, which this
+    # kill-switch holds at 200K; keeping it set past that point would swallow
+    # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the
+    # experimental-betas flag above does not cover it.
+    if window <= _CLI_DEFAULT_CONTEXT_WINDOW:
+        env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+
+    # Trigger threshold, as a percentage of the window pinned above (CLI
+    # default: ~93%).  The override caps Anthropic cache-creation cost;
+    # Moonshot routes skip it because their OpenRouter endpoint returns
+    # ``cache_create=0`` (no cache writes happen, so there's no cost to cap)
+    # and an aggressive trigger cascades into 3+ compactions per turn.
     # Operators can also set the config to 0 to disable globally.
     if (
         not is_moonshot_model(model)
@@ -205,6 +226,25 @@ def build_sdk_env(
     )
 
     return env
+
+
+# What the CLI assumes any Claude model's window to be once 1M is gated off.
+_CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+
+
+def _pinned_context_window(model: str | None) -> int:
+    """Configured window pin, capped at a Moonshot route's real window.
+
+    A pin above what the provider serves puts the compaction trigger past the
+    point the provider rejects the turn, so compaction never fires.  Anthropic
+    is deliberately not capped: the catalog holds every Anthropic entry at 200K
+    pending the Claude-5 tokenizer soak, which would cancel a legitimate raise.
+    An unlisted Kimi SKU falls back to the window the CLI assumes anyway.
+    """
+    window = config.claude_agent_context_window
+    if not is_moonshot_model(model):
+        return window
+    return min(window, moonshot_context_window(model) or _CLI_DEFAULT_CONTEXT_WINDOW)
 
 
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
@@ -226,3 +266,20 @@ def _autocompact_pct_for_model(model: str | None) -> int:
     if model and "claude-sonnet-5" in model:
         pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
     return pct
+
+
+def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
+    """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
+    (main turn, sub-agents, compaction), carrying the fields OpenRouter
+    Broadcast attributes a generation by.
+
+    ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
+    session ids) so that every user field on the request names the same
+    platform user.
+    """
+    body = openrouter_attribution(
+        user_id=user_id, session_id=session_id, generation_name="copilot-sdk"
+    )
+    if user_id:
+        body["metadata"] = {"user_id": body["user"]}
+    return json.dumps(body)

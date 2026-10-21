@@ -1,0 +1,300 @@
+"""Reconcile trial entitlements from current Stripe state, never event order."""
+
+from datetime import UTC, datetime
+
+import stripe
+from prisma import Prisma
+from prisma.enums import SubscriptionTier
+
+from backend.data.db import query_raw_with_schema, transaction
+from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.subscription_checkout import other_plan_has_access
+from backend.data.subscription_trial import TrialState, get_subscription_trial
+from backend.data.subscription_trial_claims import claim_trial_identities
+from backend.data.subscription_trial_payment import Invoice as Invoice
+from backend.data.subscription_trial_payment import (
+    SubscriptionSnapshot as SubscriptionSnapshot,
+)
+from backend.data.subscription_trial_payment import get_customer_default_payment_method
+from backend.data.subscription_trial_rejection import TrialRejectionReason
+
+# Our clock may trail Stripe's: a trial Stripe ended "now" can read as ending
+# a moment from now here.
+STRIPE_CLOCK_SKEW_SECONDS = 300
+
+
+async def reconcile_trial_subscription(
+    user_id: str, subscription_id: str
+) -> tuple[dict, SubscriptionTier | None] | None:
+    trial = await get_subscription_trial(user_id)
+    if trial is None:
+        return None
+    async with transaction() as tx:
+        await query_raw_with_schema(
+            'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" '
+            'WHERE "userId" = $1 FOR UPDATE',
+            user_id,
+            client=tx,
+        )
+        row = await tx.subscriptiontrial.find_unique_or_raise(where={"userId": user_id})
+        return await _reconcile_locked(TrialState.from_db(row), subscription_id, tx)
+
+
+async def _reconcile_locked(
+    trial: TrialState, subscription_id: str, tx: Prisma
+) -> tuple[dict, SubscriptionTier | None] | None:
+    raw = await stripe_call(
+        stripe.Subscription.retrieve_async,
+        subscription_id,
+        expand=["default_payment_method", "latest_invoice"],
+    )
+    snapshot = SubscriptionSnapshot.model_validate(raw)
+    if snapshot.metadata.get("trial_enrollment_id") != trial.id:
+        return None
+    if (
+        snapshot.customer != trial.customer_id
+        or snapshot.metadata.get("user_id") != trial.user_id
+    ):
+        raise ValueError("Stripe trial ownership does not match the enrollment")
+    if snapshot.metadata.get("trial_checkout_attempt") != str(trial.checkout_attempt):
+        user = await tx.user.find_unique_or_raise(where={"id": trial.user_id})
+        return dict(raw), user.subscriptionTier
+    if trial.subscription_id and trial.subscription_id != snapshot.id:
+        raise ValueError("A different subscription already consumed this trial")
+    if snapshot.default_payment_method is None and snapshot.default_source is None:
+        snapshot.customer_default_payment_method = (
+            await get_customer_default_payment_method(trial.customer_id)
+        )
+    now = datetime.now(UTC)
+    checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(
+        trial, snapshot.id, tx
+    )
+    rejection_reason = (
+        trial.rejection_reason
+        or TrialRejectionReason.from_stripe_comment(
+            snapshot.cancellation_details.comment
+            if snapshot.cancellation_details
+            else None
+        )
+    )
+    if (
+        checkout_complete
+        and snapshot.status == "trialing"
+        and trial.converted_at is None
+    ):
+        method = snapshot.effective_payment_method()
+        fingerprint = method.card.fingerprint if method and method.card else None
+        if snapshot.has_verified_card(now):
+            if not fingerprint:
+                rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
+            elif not await claim_trial_identities(trial, fingerprint, tx):
+                rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
+        if rejection_reason or await _ends_scheduled_cancellation_now(trial, snapshot):
+            cancel_params: stripe.Subscription.CancelParams = {
+                "invoice_now": False,
+                "prorate": False,
+                "expand": ["default_payment_method", "latest_invoice"],
+            }
+            if rejection_reason:
+                cancel_params["cancellation_details"] = {
+                    "comment": rejection_reason.stripe_comment
+                }
+            raw = await stripe_call(
+                stripe.Subscription.cancel_async,
+                snapshot.id,
+                **cancel_params,
+            )
+            snapshot = SubscriptionSnapshot.model_validate(raw)
+            if snapshot.id != subscription_id or snapshot.status != "canceled":
+                raise ValueError("Stripe did not confirm trial cancellation")
+    # The one other price a trial may end on is the plan the customer chose
+    # to start in its place, once that switch has gone through.
+    if (
+        trial.converted_at is None
+        and snapshot.status in ("active", "trialing")
+        and not snapshot.has_accepted_price(trial.offer)
+        and not (snapshot.status == "active" and snapshot.chosen_plan())
+    ):
+        raise ValueError(
+            "Stripe items do not match the accepted trial price and quantity"
+        )
+    tier = (
+        trial_subscription_tier(trial, snapshot, now)
+        if checkout_complete
+        else SubscriptionTier.NO_TIER
+    )
+    await _save_snapshot(
+        trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
+    )
+    if trial.converted_at:
+        return dict(raw), None
+    if tier == SubscriptionTier.NO_TIER:
+        for status in ("active", "trialing"):
+            others = await stripe_call(
+                stripe.Subscription.list_async,
+                customer=trial.customer_id,
+                status=status,
+                limit=100,
+            )
+            async for other in stripe_list_items(others):
+                if other.id != snapshot.id:
+                    return dict(raw), None
+    await tx.user.update_many(
+        where={
+            "id": trial.user_id,
+            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+        },
+        data={"subscriptionTier": tier},
+    )
+    return dict(raw), tier
+
+
+async def _ends_scheduled_cancellation_now(
+    trial: TrialState, snapshot: SubscriptionSnapshot
+) -> bool:
+    """A cancel-pending trial keeps its access until Stripe ends it at trial_end.
+
+    A plan bought meanwhile ends it now, so TRIAL never overwrites that plan if
+    its stale-subscription cleanup failed. So do items changed off the accepted
+    price: the reconcile refuses an unconverted trial on any other price."""
+    if not snapshot.cancel_at_period_end:
+        return False
+    if not snapshot.has_accepted_price(trial.offer):
+        return True
+    return await other_plan_has_access(trial.customer_id, snapshot.id)
+
+
+async def _completed_card_checkout(
+    trial: TrialState, subscription_id: str, tx: Prisma
+) -> bool:
+    if trial.checkout_session_id:
+        session = await stripe_call(
+            stripe.checkout.Session.retrieve_async, trial.checkout_session_id
+        )
+        return _checkout_proves_card_collection(trial, subscription_id, session)
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async, customer=trial.customer_id, limit=100
+    )
+    async for session in stripe_list_items(sessions):
+        if (session.metadata or {}).get("trial_enrollment_id") != trial.id:
+            continue
+        if (session.metadata or {}).get("trial_checkout_attempt") != str(
+            trial.checkout_attempt
+        ):
+            continue
+        complete = _checkout_proves_card_collection(trial, subscription_id, session)
+        await tx.subscriptiontrial.update(
+            where={"id": trial.id}, data={"stripeCheckoutSessionId": session.id}
+        )
+        return complete
+    return False
+
+
+def _checkout_proves_card_collection(
+    trial: TrialState, subscription_id: str, session: stripe.checkout.Session
+) -> bool:
+    if session.status != "complete":
+        return False
+    metadata = session.metadata or {}
+    if (
+        session.mode != "subscription"
+        or session.customer != trial.customer_id
+        or session.subscription != subscription_id
+        or metadata.get("user_id") != trial.user_id
+        or metadata.get("trial_enrollment_id") != trial.id
+        or metadata.get("trial_checkout_attempt") != str(trial.checkout_attempt)
+        or metadata.get("trial_offer_version") != trial.offer.version
+        or session.payment_method_collection != "always"
+        or session.payment_method_types != ["card"]
+    ):
+        raise ValueError("Checkout does not prove this enrollment's card collection")
+    return True
+
+
+def trial_subscription_tier(
+    trial: TrialState, subscription: SubscriptionSnapshot, now: datetime
+) -> SubscriptionTier:
+    end = subscription.trial_end
+    if end is None:
+        return SubscriptionTier.NO_TIER
+    if subscription.status == "trialing" and end > now.timestamp():
+        # A cancel-pending trial is never charged, so the card verified at its
+        # start holds even if it expires before trial_end.
+        if subscription.has_verified_card(now) or (
+            subscription.cancel_at_period_end and trial.card_verified_at is not None
+        ):
+            return SubscriptionTier.TRIAL
+        return SubscriptionTier.NO_TIER
+    invoice = subscription.latest_invoice
+    if (
+        subscription.status == "active"
+        and end <= now.timestamp() + STRIPE_CLOCK_SKEW_SECONDS
+        and invoice is not None
+        and invoice.status == "paid"
+        and invoice.created >= end
+        and invoice.billing_reason != "subscription_create"
+    ):
+        chosen = subscription.chosen_plan()
+        return chosen.tier if chosen else SubscriptionTier(trial.offer.tier)
+    return SubscriptionTier.NO_TIER
+
+
+async def _save_snapshot(
+    trial: TrialState,
+    snapshot: SubscriptionSnapshot,
+    tier: SubscriptionTier,
+    now: datetime,
+    tx: Prisma,
+    checkout_complete: bool,
+    rejection_reason: TrialRejectionReason | None = None,
+) -> None:
+    verified_at = (
+        (trial.card_verified_at or now)
+        if checkout_complete and tier == SubscriptionTier.TRIAL
+        else None
+    )
+    consumed_at = trial.consumed_at
+    if checkout_complete:
+        consumed_at = consumed_at or now
+    converted_at = trial.converted_at
+    conversion_invoice_id = trial.conversion_invoice_id
+    # Only a paid conversion reads as a paid tier here.
+    if converted_at is None and tier not in (
+        SubscriptionTier.TRIAL,
+        SubscriptionTier.NO_TIER,
+    ):
+        if snapshot.latest_invoice is None:
+            raise ValueError("Trial conversion requires a paid invoice")
+        converted_at = now
+        conversion_invoice_id = snapshot.latest_invoice.id
+    await tx.subscriptiontrial.update(
+        where={"userId": trial.user_id},
+        data={
+            "stripeSubscriptionId": snapshot.id,
+            "rejectionReason": rejection_reason,
+            "status": (
+                "checkout_pending"
+                if not checkout_complete
+                and snapshot.status
+                in ("trialing", "incomplete", "canceled", "incomplete_expired")
+                else snapshot.status
+            ),
+            "cardVerifiedAt": verified_at,
+            "startedAt": _timestamp(snapshot.trial_start),
+            "endsAt": _timestamp(
+                snapshot.ended_at
+                if snapshot.status == "canceled" and snapshot.ended_at is not None
+                else snapshot.trial_end
+            ),
+            "consumedAt": consumed_at,
+            "convertedAt": converted_at,
+            "stripeConversionInvoiceId": conversion_invoice_id,
+            "cancelAtPeriodEnd": snapshot.cancel_at_period_end,
+            "notificationRevision": trial.notification_revision
+            + int(trial.cancel_at_period_end != snapshot.cancel_at_period_end),
+        },
+    )
+
+
+def _timestamp(value: int | None) -> datetime | None:
+    return datetime.fromtimestamp(value, UTC) if value is not None else None

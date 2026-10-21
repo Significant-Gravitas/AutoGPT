@@ -1,0 +1,333 @@
+"""Trial notices use accepted terms and current subscription state."""
+
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import Literal
+
+import stripe
+from prisma.enums import NotificationType
+
+from backend.data.credit import (
+    _invoice_subscription_id,
+    _invoice_subscription_metadata,
+    _track_billing_event,
+    sync_subscription_from_stripe,
+)
+from backend.data.db_accessors import credit_db, user_db
+from backend.data.notifications import (
+    NotificationEventModel,
+    SubscriptionPlan,
+    TrialUpdateData,
+)
+from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.subscription_trial import TrialState
+from backend.notifications.dedupe import claim_once, release_claim
+from backend.notifications.lifecycle_plan import currency_symbol, format_amount
+from backend.notifications.queue import queue_notification_async
+from backend.notifications.trial_audience import (
+    join_paying_audience,
+    leave_trial_group,
+    queue_trial_audience_change,
+)
+from backend.notifications.trial_plan import notice_plan
+from backend.util.posthog_events import PostHogEvent
+
+logger = logging.getLogger(__name__)
+TRIAL_REMINDER_WINDOW = timedelta(days=3)
+
+TrialNoticeKind = Literal[
+    "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
+]
+
+TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
+    "started": PostHogEvent.TRIAL_STARTED,
+    "ending": PostHogEvent.TRIAL_ENDING,
+    "canceled": PostHogEvent.TRIAL_CANCELED,
+    "resumed": PostHogEvent.TRIAL_RESUMED,
+    "ended": PostHogEvent.TRIAL_ENDED,
+    "converted": PostHogEvent.TRIAL_CONVERTED,
+    "payment_failed": PostHogEvent.PAYMENT_FAILED,
+}
+
+
+async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
+    metadata = subscription.get("metadata") or {}
+    if not metadata.get("trial_enrollment_id"):
+        return False
+    current = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, subscription["id"])
+    )
+    user_id = (current.get("metadata") or {}).get("user_id")
+    if not user_id:
+        raise ValueError("Trial notification has no user identity")
+    trial = await credit_db().get_subscription_trial(user_id)
+    if trial is None:
+        raise ValueError("Trial notification has no matching enrollment")
+    if not _owns_subscription(trial, current):
+        raise ValueError("Trial notification ownership does not match the enrollment")
+    attempt = (current.get("metadata") or {}).get("trial_checkout_attempt", "")
+    if attempt.isdecimal() and int(attempt) < trial.checkout_attempt:
+        return True
+    if attempt != str(trial.checkout_attempt) or trial.subscription_id != current["id"]:
+        raise ValueError(
+            "Trial notification does not match the current checkout attempt"
+        )
+    if trial.consumed_at is None:
+        return True
+    if trial.converted_at is not None and kind in (
+        "ended",
+        "canceled",
+        "resumed",
+        "payment_failed",
+    ):
+        return False
+    if not _notice_applies(trial, kind, current):
+        return True
+    user = await user_db().get_user_by_id(user_id)
+    if kind == "ended" and await _another_plan_is_live(trial, current):
+        await leave_trial_group(user)
+        return True
+    data = trial_notice_data(trial, kind, user.name or "there", current)
+    claim = trial_notice_key(trial, kind)
+    data.notice_key = claim
+    if not await claim_once(claim):
+        return True
+    try:
+        await queue_trial_audience_change(kind, user, current)
+        result = await queue_notification_async(
+            NotificationEventModel[TrialUpdateData](
+                user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
+            )
+        )
+        if not result.success:
+            raise RuntimeError(f"Could not queue trial notice: {result.message}")
+    except Exception:
+        await release_claim(claim)
+        raise
+    if kind == "converted":
+        await join_paying_audience(user)
+    plan = notice_plan(trial, kind, current)
+    _track_billing_event(
+        TRIAL_NOTICE_EVENTS[kind],
+        user_id,
+        {
+            "trial_id": trial.id,
+            "trial_offer_version": trial.offer.version,
+            "subscription_tier": plan.tier,
+            "billing_cycle": plan.cycle,
+            "trial_duration_days": trial.offer.duration_days,
+        },
+    )
+    return True
+
+
+async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
+    if not _invoice_subscription_metadata(invoice).get("trial_enrollment_id"):
+        return False
+    sub_id = _invoice_subscription_id(invoice)
+    if not sub_id:
+        return False
+    subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
+    if not (subscription.get("metadata") or {}).get("trial_enrollment_id"):
+        return False
+    await sync_subscription_from_stripe(subscription)
+    user_id = (subscription.get("metadata") or {}).get("user_id")
+    if not user_id:
+        raise ValueError("Trial invoice has no user identity")
+    trial = await credit_db().get_subscription_trial(user_id)
+    if trial is None:
+        raise ValueError("Trial invoice has no matching enrollment")
+    if paid and trial.converted_at:
+        if invoice.get("id") != trial.conversion_invoice_id:
+            return False
+        await notify_trial(subscription, "converted")
+        return True
+    if not paid and trial.converted_at is None:
+        await notify_trial(subscription, "payment_failed")
+        return True
+    return False
+
+
+async def trial_notice_disposition(
+    user_id: str, data: TrialUpdateData
+) -> Literal["current", "suppressed", "obsolete"]:
+    if not data.notice_key:
+        return "obsolete"
+    trial = await credit_db().get_subscription_trial(user_id)
+    if trial is None or trial.subscription_id is None:
+        return "obsolete"
+    current = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, trial.subscription_id)
+    )
+    if (
+        not _owns_subscription(trial, current)
+        or current.get("id") != trial.subscription_id
+    ):
+        return "obsolete"
+    await credit_db().sync_subscription_from_stripe(current)
+    trial = await credit_db().get_subscription_trial(user_id)
+    if (
+        trial is None
+        or trial.consumed_at is None
+        or trial.ends_at is None
+        or trial.subscription_id != current.get("id")
+        or (current.get("metadata") or {}).get("trial_checkout_attempt")
+        != str(trial.checkout_attempt)
+    ):
+        return "obsolete"
+    if data.notice_key != trial_notice_key(trial, data.kind):
+        return "obsolete"
+    expected = trial_notice_data(trial, data.kind, data.user_name, current)
+    if not _notice_matches_current_terms(data, expected, trial, current):
+        return "obsolete"
+    if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
+        current.get("cancel_at_period_end")
+    ):
+        return "suppressed"
+    return "current" if _notice_applies(trial, data.kind, current) else "suppressed"
+
+
+def _notice_matches_current_terms(
+    data: TrialUpdateData, expected: TrialUpdateData, trial: TrialState, current: dict
+) -> bool:
+    # Transitional shim: remove once old-format queued notices drain, per the
+    # rollout plan in docs/engineering/transactional-email-design.md.
+    terms = notice_plan(trial, data.kind, current)
+    plan = data.plan.model_copy()
+    legacy_label = f"{expected.plan.name} — {expected.plan.cycle}"
+    legacy_amount = format_amount(terms.unit_amount, terms.currency)
+    legacy_price = (
+        f"{legacy_amount} {terms.currency.upper()} / {expected.plan.cycle_noun}"
+    )
+    # Accept only the old presentation of these same terms, so a deploy does
+    # not discard queued notices or conceal a changed amount, plan or end date.
+    if plan.label == legacy_label:
+        plan.label = expected.plan.label
+    if plan.price_display == legacy_price:
+        plan.price_display = expected.plan.price_display
+    return data.model_copy(update={"plan": plan, "notice_key": None}) == expected
+
+
+def _owns_subscription(trial: TrialState, current: dict) -> bool:
+    metadata = current.get("metadata") or {}
+    return (
+        trial.customer_id == current.get("customer")
+        and trial.id == metadata.get("trial_enrollment_id")
+        and trial.user_id == metadata.get("user_id")
+    )
+
+
+async def on_trial_subscription_updated(subscription: dict, previous: dict) -> bool:
+    if not (subscription.get("metadata") or {}).get("trial_enrollment_id"):
+        return False
+    user_id = (subscription.get("metadata") or {}).get("user_id")
+    if not user_id:
+        raise ValueError("Trial update has no user identity")
+    trial = await credit_db().get_subscription_trial(user_id)
+    if trial is None:
+        return False
+    if trial.converted_at is not None:
+        # A payload still trialing is a trial-era cancel or resume handled
+        # after the conversion. Subscribe now on a cancel-pending trial ends
+        # the trial and clears the cancellation in one update. The trial's own
+        # notices cover both; only later flips are paid news.
+        if subscription.get("status") == "trialing":
+            return True
+        was_trialing = previous.get("status") == "trialing"
+        return was_trialing and "cancel_at_period_end" in previous
+    if "cancel_at_period_end" in previous:
+        kind = "canceled" if trial.cancel_at_period_end else "resumed"
+        await notify_trial(subscription, kind)
+    return True
+
+
+def trial_notice_key(trial: TrialState, kind: TrialNoticeKind) -> str:
+    key = f"trial:{trial.id}:{kind}"
+    if kind in ("canceled", "resumed"):
+        return f"{key}:{trial.notification_revision}"
+    if kind == "ending":
+        if trial.ends_at is None:
+            raise ValueError("Trial reminder requires an end date")
+        return f"{key}:{int(trial.ends_at.timestamp())}"
+    if kind == "converted":
+        if not trial.conversion_invoice_id:
+            raise ValueError("Trial conversion notice requires its invoice")
+        return f"{key}:{trial.conversion_invoice_id}"
+    return key
+
+
+def trial_notice_data(
+    trial: TrialState,
+    kind: TrialNoticeKind,
+    name: str,
+    current: dict | None = None,
+) -> TrialUpdateData:
+    if trial.ends_at is None:
+        raise ValueError("Cannot send a trial notice without the accepted end date")
+    plan = notice_plan(trial, kind, current)
+    title = plan.tier.title()
+    cycle_noun = "month" if plan.cycle == "monthly" else "year"
+    amount = format_amount(plan.unit_amount, plan.currency)
+    if plan.unit_amount is not None and not currency_symbol(plan.currency):
+        amount = f"{amount} {plan.currency.upper()}"
+    return TrialUpdateData(
+        user_name=name,
+        kind=kind,
+        plan=SubscriptionPlan(
+            name=title,
+            cycle=plan.cycle,
+            cycle_noun=cycle_noun,
+            label=f"{title} · {plan.cycle}",
+            price_display=f"{amount} / {cycle_noun}",
+        ),
+        ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
+        onboarding_credit_amount=trial.offer.onboarding_credit_amount,
+        offer_version=trial.offer.version,
+    )
+
+
+def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> bool:
+    status = current.get("status")
+    trial_end = current.get("trial_end") or 0
+    now = datetime.now(UTC).timestamp()
+    in_trial = status == "trialing" and trial_end > now
+    if kind == "ending" and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds():
+        return False
+    if kind in ("started", "ending", "resumed"):
+        return (
+            in_trial
+            and trial.card_verified_at is not None
+            and not current.get("cancel_at_period_end")
+        )
+    if kind == "canceled":
+        # It promises access until trial_end, which only a verified card gives.
+        return (
+            in_trial
+            and trial.card_verified_at is not None
+            and bool(current.get("cancel_at_period_end"))
+        )
+    if kind == "converted":
+        return status == "active" and trial.converted_at is not None
+    if kind == "payment_failed":
+        return (
+            status in ("past_due", "unpaid", "incomplete")
+            and trial.converted_at is None
+        )
+    return status in ("canceled", "unpaid", "paused") and trial.converted_at is None
+
+
+async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
+    """A trial ended by buying another plan is not news, and its trial_canceled
+    status must not overwrite the new plan's. The person still leaves the
+    trial group."""
+    for status in ("active", "trialing"):
+        page = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=trial.customer_id,
+            status=status,
+            limit=100,
+        )
+        async for other in stripe_list_items(page):
+            if other.id != current.get("id"):
+                return True
+    return False

@@ -57,6 +57,7 @@ afterEach(() => {
 describe("getFileSizeError", () => {
   it("returns null when the file is within the limit", () => {
     const file = makeFile(1024);
+    expect(SUBMISSION_MEDIA_MAX_SIZE_MB).toBe(4);
     expect(getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB)).toBeNull();
   });
 
@@ -69,6 +70,18 @@ describe("getFileSizeError", () => {
 });
 
 describe("uploadSubmissionMediaDirect", () => {
+  it("requests review for Expert appearance uploads", async () => {
+    const fetchMock = mockFetchOnce({
+      ok: true,
+      status: 200,
+      json: () => "https://cdn.test/approved.png",
+    });
+    await uploadSubmissionMediaDirect(makeFile(10), "expert-avatar");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://backend.test/api/store/submissions/media?purpose=expert-avatar",
+    );
+  });
+
   it("bypasses the proxy and hits the backend directly", async () => {
     const fetchMock = mockFetchOnce({
       ok: true,

@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
@@ -17,6 +18,7 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
+from .cost_tracking import TokenUsage
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
@@ -31,6 +33,7 @@ from .service import (
     _normalize_model_name,
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
+    _record_result_usage,
     _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
@@ -299,7 +302,7 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
@@ -1005,8 +1008,23 @@ class TestSystemPromptPreset:
         assert isinstance(fresh, dict)
         assert fresh.get("exclude_dynamic_sections") is True
 
-    def test_default_config_is_enabled(self, _clean_config_env):
-        """The default value for claude_agent_cross_user_prompt_cache is True."""
+    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
+        """The default config passes only AutoGPT's Copilot system prompt."""
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -1017,20 +1035,6 @@ class TestSystemPromptPreset:
             aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
-
-    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
 class TestStreamErrorCodePrefix:
@@ -1158,18 +1162,7 @@ class TestRetryStateObservedModel:
 
 
 class TestMoonshotCostOverrideGate:
-    """Regression guards for the decision logic in
-    ``_run_stream_attempt`` that picks between the CLI-reported cost
-    and the Moonshot rate-card override.  The code:
-
-        active_model = state.observed_model or getattr(state.options, "model", None)
-        if _is_moonshot_model(active_model):
-            state.usage.cost_usd = _override_cost_for_moonshot(...)
-        else:
-            state.usage.cost_usd = sdk_msg.total_cost_usd
-
-    is critical-path billing logic — make sure observed_model wins over
-    the requested primary, and Anthropic turns pass through untouched."""
+    """Observed model wins over requested primary when pricing a billed result."""
 
     def _decide_cost(
         self,
@@ -1180,21 +1173,25 @@ class TestMoonshotCostOverrideGate:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
     ) -> float:
-        """Mirror of the real decision block — lets us assert the gate
-        without constructing the whole 1000-line generator."""
-        from .service import _is_moonshot_model, _override_cost_for_moonshot
-
-        active_model = observed_model or options_model
-        if _is_moonshot_model(active_model):
-            return _override_cost_for_moonshot(
-                model=active_model,
-                sdk_reported_usd=sdk_reported_usd,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cache_read_tokens=0,
-                cache_creation_tokens=0,
-            )
-        return sdk_reported_usd
+        """Exercise the production result handler with a minimal SDK result."""
+        state = MagicMock(
+            observed_model=observed_model,
+            options=SimpleNamespace(model=options_model),
+            usage=TokenUsage(),
+        )
+        result = ResultMessage(
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
+            total_cost_usd=sdk_reported_usd,
+            usage={"input_tokens": prompt_tokens, "output_tokens": completion_tokens},
+        )
+        _record_result_usage(result, state, "")
+        assert state.usage.cost_usd is not None
+        return state.usage.cost_usd
 
     def test_anthropic_turn_passes_sdk_cost_through(self):
         """Anthropic — the CLI's pricing table is authoritative, so
@@ -1282,10 +1279,7 @@ class TestMoonshotCostOverrideGate:
 
 
 class TestMoonshotHelperReexports:
-    """``sdk/service.py`` imports the Moonshot helpers under local
-    aliases (``_is_moonshot_model``, ``_override_cost_for_moonshot``).
-    Regression guard so a refactor doesn't silently break the import
-    path the hot-loop code relies on."""
+    """The service's model-dependent environment gates use the shared predicate."""
 
     def test_is_moonshot_model_aliased(self):
         from backend.copilot.moonshot import is_moonshot_model as canonical
@@ -1294,18 +1288,11 @@ class TestMoonshotHelperReexports:
 
         assert _is_moonshot_model is canonical
 
-    def test_override_cost_for_moonshot_aliased(self):
-        from backend.copilot.moonshot import override_cost_usd as canonical
-
-        from .service import _override_cost_for_moonshot
-
-        assert _override_cost_for_moonshot is canonical
-
 
 class TestIdleTimeoutThreshold:
     """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
     fires when the SDK is idle with no tool pending. The longer 2-hour cap
-    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    applies while any tool call is pending so a 45-min sub-Otto isn't
     killed, but a truly hung tool still eventually frees session resources."""
 
     def _make_adapter(self, current: dict, resolved: set):
@@ -1351,7 +1338,7 @@ class TestIdleTimeoutThreshold:
 
     def test_hung_tool_cap_is_2_hours(self):
         # Hard cap protects against a hung tool leaking resources forever.
-        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        # 2 hours is plenty for any legitimate sub-Otto or graph run.
         assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
 
     def test_long_cap_is_strictly_longer_than_short_cap(self):
@@ -1585,7 +1572,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
             yield ResultMessage(
                 subtype="success",
@@ -1630,7 +1617,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield None  # heartbeat
             yield ResultMessage(
                 subtype="success",
@@ -1679,7 +1666,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(
                 content=[
                     ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
@@ -1748,7 +1735,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="init", data={})
             yield AssistantMessage(
                 content=[
@@ -1810,7 +1797,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield ResultMessage(
                 subtype="error",
                 duration_ms=1,
@@ -1849,7 +1836,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="task_progress", data={"step": 1})
             yield ResultMessage(
                 subtype="success",
@@ -1888,7 +1875,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             # Two consecutive AssistantMessages with empty tool args —
             # the breaker counter should advance but not yet trip.
             for i in range(2):
@@ -2097,7 +2084,7 @@ class TestStreamEndedWithoutResultMessage:
         transcript_builder.append_assistant = MagicMock()
         transcript_builder.append_tool_result = MagicMock()
         return _RetryState(
-            options=MagicMock(),
+            options=MagicMock(resume=None, session_id=session_id),
             query_message="hello",
             compaction_stats=None,
             use_resume=False,
@@ -2129,7 +2116,7 @@ class TestStreamEndedWithoutResultMessage:
         ctx = self._ctx()
         state = self._state()
 
-        async def empty_iter(_client, wake=None):
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
             # Drain immediately — no ResultMessage ever arrives. Mirrors
             # the CLI exiting on per-query ``max_budget_usd`` exhaustion
             # mid-tool-call.
@@ -2305,8 +2292,8 @@ class TestHiddenShortNamesForPermissions:
     def test_whitelist_hides_everything_not_listed(self):
         all_tools = all_known_tool_names()
         # Pick one stable, well-known tool as the whitelist.
-        keep = "find_block"
-        assert keep in all_tools, "test relies on find_block being registered"
+        keep = "find_capability"
+        assert keep in all_tools, "test relies on find_capability being registered"
         perms = CopilotPermissions(
             tools=[keep],
             tools_exclude=False,

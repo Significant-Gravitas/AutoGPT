@@ -63,6 +63,7 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
+AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -105,6 +106,7 @@ class ChatSessionMetadata(BaseModel):
     dry_run: bool = False
     llm_auth_provider: CopilotLlmAuthProvider = "platform"
     llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -121,6 +123,8 @@ class ChatSessionMetadata(BaseModel):
     # falls — see ``blocks/autopilot.py`` (legacy resumes) and
     # ``autopilot_session_guard`` (legacy cannot staff).
     origin: ChatSessionOrigin | None = None
+    # The chat's approval mode; None means the default (``copilot/gate``).
+    autopilot_mode: AutopilotMode | None = None
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -134,7 +138,7 @@ class ChatSessionMetadata(BaseModel):
     dream_pass_id: str | None = None
 
     # Delegation provenance, set by ``delegate_to_expert``: which expert
-    # (None = plain AutoPilot) asked for this work, and from which session.
+    # (None = plain Otto) asked for this work, and from which session.
     # The session id is the poll capability — ``get_sub_session_result``
     # accepts a cross-expert sub only when it names the caller here.
     delegated_by_expert_id: str | None = None
@@ -145,10 +149,21 @@ class ChatSessionMetadata(BaseModel):
     # expert can tell "this is now mine" from "report back to whoever asked".
     handed_off_from_expert_id: str | None = None
 
+    # What this session is for, set by the session itself so a teammate can
+    # find it with ``find_session``. Free text: the task spine (#14240) can
+    # narrow it to its own ids later without a migration.
+    purpose: str | None = None
+
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
     pending_question: PendingQuestion | None = None
+
+    @property
+    def pauses_irreversible_actions(self) -> bool:
+        """Whether a workflow this chat starts pauses before irreversible blocks."""
+        # A legacy row cannot prove nobody is watching, so it pauses too.
+        return self.origin != "automation"
 
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
@@ -197,6 +212,19 @@ class ChatMessage(BaseModel):
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
     routing_source: RoutingSource | None = Field(default=None, exclude=True)
+
+    # Which connection served this turn. Unlike routing_source this is the
+    # user's own choice, not an internal cohort, so it is safe to serialize
+    # and is what lets a chat show what each turn actually ran on.
+    # None on user/tool rows and on rows written before this existed --
+    # ``segment_of`` resolves those against the session's own route.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+
+    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
+    # row; a rating of the reply is scored against it. Internal, so excluded
+    # from payloads like routing_source, and persisted the same way.
+    langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
@@ -261,6 +289,11 @@ class ChatMessage(BaseModel):
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
             routing_source=cast("RoutingSource | None", prisma_message.routingSource),
+            llm_auth_provider=cast(
+                "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
+            ),
+            llm_credential_id=prisma_message.llmCredentialId,
+            langfuse_trace_id=prisma_message.langfuseTraceId,
         )
 
 
@@ -319,6 +352,7 @@ def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
     is_user_message: bool,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """Append a user/assistant message to the session if not already present.
 
@@ -333,7 +367,9 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
-    session.messages.append(ChatMessage(role=role, content=message))
+    session.messages.append(
+        ChatMessage(role=role, content=message, metadata=metadata or None)
+    )
     return True
 
 
@@ -366,7 +402,7 @@ class ChatSessionInfo(BaseModel):
     team_id: str | None = None
     # Whether the user has pinned this session to the top of the sidebar.
     is_pinned: bool = False
-    # Hired expert this session is scoped to; None = plain Autopilot session.
+    # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
 
     @property
@@ -528,8 +564,9 @@ class ChatSession(ChatSessionInfo):
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
-        Called by the baseline tool executor **before** the tool actually
-        runs (the announcement is about dispatch, not success).  If the
+        Called by :meth:`BaseTool.execute` — the one path both engines take —
+        after its gates and **before** the tool actually runs (the
+        announcement is about dispatch, not success).  If the
         tool raises, the name stays in the buffer for the rest of the
         turn — that matches the guide-read gate's contract ("was the tool
         called?") but means any future gate wanting *successful*
@@ -865,7 +902,7 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
     async_redis = await get_redis_async()
-    raw_session: bytes | None = await async_redis.get(redis_key)
+    raw_session = await async_redis.get(redis_key)
 
     if raw_session is None:
         return None
@@ -978,20 +1015,46 @@ async def upsert_chat_session(
 
         # Ordinary upserts keep best-effort cache-on-DB-error behavior;
         # tenancy changes return above after eviction instead.
-        # Title (update_session_title) and pin state (update_session_pinned)
-        # are mutated *outside* this lock — they only touch their single field,
-        # not messages — so a concurrent rename, auto-title, or pin/unpin may
-        # have written a newer value to Redis while this upsert was in progress.
-        # Always prefer the cached title/pin to avoid reverting it with the
-        # stale in-memory copy.
+        # Title and pin state are mutated outside this lock. Connection route
+        # updates use this same lock, but a route update that completed before
+        # this upsert acquired it may still be newer than this turn's in-memory
+        # session. Prefer those cached fields so the stale turn cannot revert
+        # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
+            cache_it = True
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
                     updates["title"] = existing_cached.title
+                # The route decides who pays for the next turn. A long turn
+                # finishing after the user switched connection would otherwise
+                # put the old one back in Redis while the database holds the
+                # new one, and bill the next turn to the connection they just
+                # left. The approval mode is changed the same way mid-turn, and
+                # a stale one would run the next turn under the mode the user
+                # just left. Only these keys are taken from the cache; the rest
+                # of this session's metadata is this turn's own.
+                cached_meta = existing_cached.metadata
+                from_cache = {
+                    "llm_auth_provider": cached_meta.llm_auth_provider,
+                    "llm_credential_id": cached_meta.llm_credential_id,
+                    "autopilot_mode": cached_meta.autopilot_mode,
+                }
+                merged = session.metadata.model_copy(update=from_cache)
+                if merged != session.metadata:
+                    updates["metadata"] = merged
                 session = session.model_copy(update=updates)
-            await cache_chat_session(session)
+            else:
+                # With no cached copy the database holds the mode, which this
+                # upsert never writes, so it cannot be stale there.
+                stored = await _with_stored_autopilot_mode(session)
+                # Without the stored mode this turn's copy could be stale, so
+                # leave the cache empty and let the next read go to the database.
+                cache_it = stored is not None
+                session = stored or session
+            if cache_it:
+                await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
             if db_error is None:
@@ -1102,6 +1165,10 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                     "model": msg.model,
                     "routing_source": msg.routing_source,
+                    "llm_auth_provider": msg.llm_auth_provider,
+                    "llm_credential_id": msg.llm_credential_id,
+                    "langfuse_trace_id": msg.langfuse_trace_id,
+                    "metadata": msg.metadata,
                 }
             )
         logger.info(
@@ -1152,6 +1219,9 @@ async def _save_session_to_db(
                 sequence=msg.sequence,
                 model=msg.model,
                 routing_source=msg.routing_source,
+                llm_auth_provider=msg.llm_auth_provider,
+                llm_credential_id=msg.llm_credential_id,
+                langfuse_trace_id=msg.langfuse_trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1321,7 +1391,7 @@ async def create_chat_session(
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
         delegated_by_expert_id: Expert that delegated this session's work
-            (None = plain AutoPilot). Provenance only.
+            (None = plain Otto). Provenance only.
         delegated_by_session_id: Session that delegated this session's work.
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
@@ -1661,6 +1731,109 @@ async def update_session_title(
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    """Move an existing chat onto a different connection, from the next turn.
+
+    The session's metadata is segment zero -- where the chat started, and the
+    answer for any turn that carries no stamp of its own. Changing it does not
+    rewrite history: turns already stamped keep the connection they ran on, so
+    a chat that hit a limit and continued elsewhere reads as what it was.
+
+    Written through the same cache the title update uses, because a stale
+    cached session would send the next turn back to the connection the user
+    just moved off.
+    """
+    # This is a read-modify-write of the cached session. Serialize it with
+    # full-session upserts so a route change cannot write an older cache
+    # snapshot over messages that a turn just persisted (or vice versa).
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize route update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_llm_route(
+            session_id, user_id, llm_auth_provider, llm_credential_id
+        )
+        if not updated:
+            return False
+
+        # Cache refresh is best-effort -- the DB write already succeeded.
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.llm_auth_provider = llm_auth_provider
+                cached.metadata.llm_credential_id = llm_credential_id
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
+
+
+async def update_session_autopilot_mode(
+    session_id: str, user_id: str, mode: AutopilotMode
+) -> bool:
+    """Set the chat's approval mode from the next tool call on.
+
+    Written through the cache under the session lock, as the route change is,
+    so a stale cached copy cannot put the chat back on its old mode.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize mode update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_autopilot_mode(
+            session_id, user_id, mode
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.autopilot_mode = mode
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache mode update failed for session {session_id}; "
+                f"evicting so the next read takes the database's mode: {e}"
+            )
+            await invalidate_session_cache(session_id)
+        return True
+
+
+async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession | None:
+    """``session`` with the database's mode, or None if that could not be read."""
+    try:
+        stored = await chat_db().get_chat_session_metadata(session.session_id)
+    except Exception as e:
+        logger.warning(
+            f"Could not read the stored mode for session {session.session_id}: {e}"
+        )
+        return None
+    if stored is None or stored.metadata.autopilot_mode == (
+        session.metadata.autopilot_mode
+    ):
+        return session
+    return session.model_copy(
+        update={
+            "metadata": session.metadata.model_copy(
+                update={"autopilot_mode": stored.metadata.autopilot_mode}
+            )
+        }
+    )
 
 
 async def update_session_pinned(

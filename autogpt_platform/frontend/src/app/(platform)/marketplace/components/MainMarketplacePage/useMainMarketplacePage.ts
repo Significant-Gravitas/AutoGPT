@@ -1,9 +1,6 @@
-import {
-  useGetV2ListStoreAgents,
-  useGetV2ListStoreCreators,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { useGetV2ListStoreAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
+import { useState } from "react";
 
 const queryConfig = {
   staleTime: 60 * 1000, // 60 seconds - match server cache
@@ -13,6 +10,8 @@ const queryConfig = {
 };
 
 export const useMainMarketplacePage = () => {
+  const [category, setCategory] = useState<string | null>(null);
+
   // Data is prefetched on server and hydrated, these queries will use cached data
   const {
     data: featuredAgents,
@@ -38,10 +37,14 @@ export const useMainMarketplacePage = () => {
     {
       sorted_by: "runs",
       page_size: 1000,
+      ...(category ? { category } : {}),
     },
     {
       query: {
         ...queryConfig,
+        // Keep the current grid on screen while a category change loads, so
+        // picking a filter doesn't collapse the whole page to skeletons.
+        placeholderData: (previousData) => previousData,
         select: (x) => {
           return x.data as StoreAgentsResponse;
         },
@@ -49,31 +52,14 @@ export const useMainMarketplacePage = () => {
     },
   );
 
-  const {
-    data: featuredCreators,
-    isLoading: isFeaturedCreatorsLoading,
-    isError: isFeaturedCreatorsError,
-  } = useGetV2ListStoreCreators(
-    { featured: true, sorted_by: "num_agents" },
-    {
-      query: {
-        ...queryConfig,
-        select: (x) => {
-          return x.data as CreatorsResponse;
-        },
-      },
-    },
-  );
-
-  const isLoading =
-    isFeaturedAgentsLoading || isTopAgentsLoading || isFeaturedCreatorsLoading;
-  const hasError =
-    isFeaturedAgentsError || isTopAgentsError || isFeaturedCreatorsError;
+  const isLoading = isFeaturedAgentsLoading || isTopAgentsLoading;
+  const hasError = isFeaturedAgentsError || isTopAgentsError;
 
   return {
     featuredAgents,
     topAgents,
-    featuredCreators,
+    category,
+    setCategory,
     isLoading,
     hasError,
   };

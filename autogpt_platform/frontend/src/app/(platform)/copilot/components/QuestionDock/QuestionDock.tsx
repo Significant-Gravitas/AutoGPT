@@ -1,7 +1,14 @@
 "use client";
 
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
+import {
+  isAnswered,
+  toAnswerText,
+  toMultiAnswer,
+  type QuestionAnswer,
+} from "../../tools/clarifying-questions";
+import { QuestionMultiAnswerField } from "../ChainActionCard/QuestionMultiAnswerField";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionsContext } from "../ToolChain/chainActions";
 import {
@@ -9,6 +16,7 @@ import {
   getPendingQuestions,
   type PendingQuestions,
 } from "./helpers";
+import { isKey } from "@/lib/keyboard";
 
 interface FormProps {
   dockId: string;
@@ -20,13 +28,14 @@ interface FormProps {
 export function QuestionsForm({ dockId, questions }: FormProps) {
   const actions = useContext(CopilotChatActionsContext);
   const chainActions = useContext(ChainActionsContext);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
+  const formId = useId();
 
   const dismissed = dockId === dismissedId;
-  const allAnswered = questions.every((q) => answers[q.keyword]?.trim());
+  const allAnswered = questions.every((q) => isAnswered(answers[q.keyword]));
 
   // Inside a tool chain the Answer button is replaced by the chain's single
   // Proceed step — register readiness + message instead.
@@ -35,6 +44,9 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
     chainActions.register({
       id: dockId,
       ready: allAnswered,
+      // Answers are ready on the first character of the last one; the user
+      // reviews them through the dock's own action, not an automatic send.
+      manualProceed: true,
       buildMessage: () =>
         allAnswered ? buildAnswersMessage(questions, answers) : null,
       onSent: () => setDismissedId(dockId),
@@ -64,7 +76,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
     if (chainActions) return;
     if (!actions) return;
     if (!allAnswered) {
-      const unanswered = questions.find((q) => !answers[q.keyword]?.trim());
+      const unanswered = questions.find((q) => !isAnswered(answers[q.keyword]));
       if (unanswered) inputRefs.current[unanswered.keyword]?.focus();
       return;
     }
@@ -87,30 +99,56 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
         </button>
       </div>
       <div className="flex flex-col gap-2.5">
-        {questions.map((q) => (
-          <label key={q.keyword} className="flex flex-col gap-1">
-            <span className="text-[13px] text-zinc-700">{q.question}</span>
-            <input
-              ref={(element) => {
-                inputRefs.current[q.keyword] = element;
-              }}
-              type="text"
-              required
-              value={answers[q.keyword] ?? ""}
-              onChange={(e) =>
-                setAnswers((prev) => ({
-                  ...prev,
-                  [q.keyword]: e.target.value,
-                }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSubmit();
-              }}
-              placeholder={q.example ? `e.g. ${q.example}` : "Type your answer"}
-              className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
-            />
-          </label>
-        ))}
+        {questions.map((q) =>
+          q.allow_multiple && q.options ? (
+            <div key={q.keyword} className="flex flex-col gap-1">
+              <span
+                id={`${formId}-${q.keyword}`}
+                className="text-[13px] text-zinc-700"
+              >
+                {q.question}
+              </span>
+              <QuestionMultiAnswerField
+                ref={(element) => {
+                  inputRefs.current[q.keyword] = element;
+                }}
+                options={q.options}
+                value={toMultiAnswer(answers[q.keyword])}
+                labelId={`${formId}-${q.keyword}`}
+                autoFocus={false}
+                onChange={(value) =>
+                  setAnswers((prev) => ({ ...prev, [q.keyword]: value }))
+                }
+                onSubmit={handleSubmit}
+              />
+            </div>
+          ) : (
+            <label key={q.keyword} className="flex flex-col gap-1">
+              <span className="text-[13px] text-zinc-700">{q.question}</span>
+              <input
+                ref={(element) => {
+                  inputRefs.current[q.keyword] = element;
+                }}
+                type="text"
+                required
+                value={toAnswerText(answers[q.keyword])}
+                onChange={(e) =>
+                  setAnswers((prev) => ({
+                    ...prev,
+                    [q.keyword]: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (isKey(e, "Enter")) handleSubmit();
+                }}
+                placeholder={
+                  q.example ? `e.g. ${q.example}` : "Type your answer"
+                }
+                className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
+              />
+            </label>
+          ),
+        )}
       </div>
       {!chainActions && (
         <div className="flex justify-end pt-2.5">

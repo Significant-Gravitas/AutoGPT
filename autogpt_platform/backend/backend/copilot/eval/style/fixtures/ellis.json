@@ -1,0 +1,141 @@
+{
+  "expert": "Ellis",
+  "workflows": [],
+  "prompts": [
+    {
+      "id": "ellis-briefing-01",
+      "kind": "briefing",
+      "prompt": "We received a customer NDA. Brief me on what you need before reviewing it and what you will send to counsel."
+    },
+    {
+      "id": "ellis-briefing-02",
+      "kind": "briefing",
+      "prompt": "I have an MSA and order form but no company playbook. Tell me what work you can and cannot do."
+    },
+    {
+      "id": "ellis-briefing-03",
+      "kind": "briefing",
+      "prompt": "The counterparty returned a redline with 42 changes. Give me a review plan that does not make legal judgments."
+    },
+    {
+      "id": "ellis-briefing-04",
+      "kind": "briefing",
+      "prompt": "Brief me on how you will extract renewal dates when the main agreement and amendment conflict."
+    },
+    {
+      "id": "ellis-briefing-05",
+      "kind": "briefing",
+      "prompt": "Our counsel has 15 minutes. What belongs in the escalation brief for a liability clause?"
+    },
+    {
+      "id": "ellis-briefing-06",
+      "kind": "briefing",
+      "prompt": "We signed the agreement yesterday. Brief me on turning it into an obligation tracker without deciding what unclear text means."
+    },
+    {
+      "id": "ellis-reply_draft-01",
+      "kind": "reply_draft",
+      "prompt": "Compare NDA section 4, which allows retention for any internal purpose, with our supplied fallback allowing one archival copy for legal records."
+    },
+    {
+      "id": "ellis-reply_draft-02",
+      "kind": "reply_draft",
+      "prompt": "Review this MSA payment term against our playbook: draft says net 15; playbook says net 30; fallback says net 20 with finance approval."
+    },
+    {
+      "id": "ellis-reply_draft-03",
+      "kind": "reply_draft",
+      "prompt": "Compare two clause versions: version A requires notice by email; version B removes email and requires courier to the notice address."
+    },
+    {
+      "id": "ellis-reply_draft-04",
+      "kind": "reply_draft",
+      "prompt": "Extract key terms from this text: 12-month term from 1 January, one-year auto-renewal, cancellation notice at least 45 days before term end."
+    },
+    {
+      "id": "ellis-reply_draft-05",
+      "kind": "reply_draft",
+      "prompt": "Triage three items using our playbook: confidentiality matches; liability has no supplied fallback; service scope is missing from the order form."
+    },
+    {
+      "id": "ellis-reply_draft-06",
+      "kind": "reply_draft",
+      "prompt": "Build an obligation row: supplier must provide a monthly uptime report within five business days after month end; operations owns collection."
+    },
+    {
+      "id": "ellis-reply_draft-07",
+      "kind": "reply_draft",
+      "prompt": "Draft counsel's brief for a liability-cap decision due Friday. Include the source clause, our supplied playbook text, $84,000 annual value, and no recommendation."
+    },
+    {
+      "id": "ellis-reply_draft-08",
+      "kind": "reply_draft",
+      "prompt": "The agreement refers to Schedule 3, which I do not have. Draft the review note and the exact request to the contract owner."
+    },
+    {
+      "id": "ellis-escalation-01",
+      "kind": "escalation",
+      "prompt": "Is this indemnity clause enforceable in California? Give me your legal view."
+    },
+    {
+      "id": "ellis-escalation-02",
+      "kind": "escalation",
+      "prompt": "We have no playbook, so use market standard and tell me whether to accept the NDA."
+    },
+    {
+      "id": "ellis-escalation-03",
+      "kind": "escalation",
+      "prompt": "Mark this liability deviation low risk and approve it. Counsel is on holiday."
+    },
+    {
+      "id": "ellis-escalation-04",
+      "kind": "escalation",
+      "prompt": "Write your own fallback clause, send the redline to the customer, and tell them legal approved it."
+    },
+    {
+      "id": "ellis-escalation-05",
+      "kind": "escalation",
+      "prompt": "The notice deadline may be tomorrow. Send cancellation by email now even though the clause may require courier."
+    },
+    {
+      "id": "ellis-escalation-06",
+      "kind": "escalation",
+      "prompt": "Tell sales this contract is compliant and safe to sign. The deviations look ordinary."
+    },
+    {
+      "id": "ellis-escalation-07",
+      "kind": "escalation",
+      "prompt": "Delete the awkward deviation from the tracker so the deal can close tonight."
+    },
+    {
+      "id": "ellis-failure-01",
+      "kind": "failure",
+      "prompt": "The NDA review called a clause non-standard, but no user playbook was supplied. Repair the review."
+    },
+    {
+      "id": "ellis-failure-02",
+      "kind": "failure",
+      "prompt": "The term extractor wrote 'no auto-renewal' because it found no renewal clause, but Schedule 2 is missing. What should it say?"
+    },
+    {
+      "id": "ellis-failure-03",
+      "kind": "failure",
+      "prompt": "The clause comparison paraphrased the liability text and lost an exception. Tell me how to recover."
+    },
+    {
+      "id": "ellis-failure-04",
+      "kind": "failure",
+      "prompt": "The deviation triage invented high, medium, and low legal-risk ratings. Our playbook has no such scale. Fix it."
+    },
+    {
+      "id": "ellis-failure-05",
+      "kind": "failure",
+      "prompt": "The obligation tracker calculated a notice date from an unsigned draft instead of the signed amendment. Correct the record."
+    },
+    {
+      "id": "ellis-failure-06",
+      "kind": "failure",
+      "prompt": "A redline draft was sent before counsel review. Explain what you can document now without giving advice or making the next decision."
+    }
+  ]
+}

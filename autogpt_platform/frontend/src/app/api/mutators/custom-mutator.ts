@@ -9,6 +9,11 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
+import {
+  fetchWithFailureLog,
+  logClientRequestFailure,
+  logServerRequestFailure,
+} from "./request-failure-log";
 
 function getBaseURL(): string {
   if (!environment.isServerSide()) {
@@ -36,7 +41,13 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
     return c.json();
   }
 
-  if (contentType && contentType.includes("application/pdf")) {
+  if (
+    contentType &&
+    (contentType.includes("application/pdf") ||
+      contentType.includes("application/zip") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/"))
+  ) {
     return c.blob() as Promise<T>;
   }
 
@@ -102,7 +113,7 @@ export const customMutator = async <
     }
   }
 
-  const response = await fetch(fullUrl, {
+  const response = await fetchWithFailureLog(fullUrl, {
     ...requestOptions,
     method,
     headers,
@@ -131,30 +142,51 @@ export const customMutator = async <
       responseData = { error: "Failed to parse response" };
     }
 
+    const rawDetail = responseData?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail
+          .map((e: unknown) =>
+            e && typeof e === "object" && "msg" in e
+              ? String((e as { msg: unknown }).msg)
+              : JSON.stringify(e),
+          )
+          .join("; ")
+      : typeof rawDetail === "string"
+        ? rawDetail
+        : typeof rawDetail?.message === "string"
+          ? rawDetail.message
+          : rawDetail != null
+            ? JSON.stringify(rawDetail)
+            : undefined;
+
     const errorMessage =
-      responseData?.detail ||
+      detail ||
       responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;
 
-    console.error(
-      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      {
-        status: response.status,
-        method,
-        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
-        errorMessage,
-        responseData: responseData || "No response data",
-      },
-    );
+    const failure = {
+      status: response.status,
+      method,
+      url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+      errorMessage,
+      responseData,
+    };
+
+    if (environment.isServerSide()) {
+      logServerRequestFailure(failure);
+    } else {
+      logClientRequestFailure(failure);
+    }
 
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<T["data"]>(response);
+  const responseData = await getBody<unknown>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(responseData);
+  const transformedData =
+    responseData instanceof Blob ? responseData : transformDates(responseData);
 
   return {
     status: response.status,

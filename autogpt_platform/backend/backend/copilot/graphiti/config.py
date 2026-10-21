@@ -45,9 +45,9 @@ class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
     All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
-    LLM/embedder keys fall back to the AutoPilot-dedicated keys
+    LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
-    tracked under AutoPilot, then to the platform-wide OpenRouter / OpenAI
+    tracked under Otto, then to the platform-wide OpenRouter / OpenAI
     keys as a last resort.
     """
 
@@ -215,7 +215,7 @@ class GraphitiConfig(BaseSettings):
     def resolve_llm_api_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
-        # Prefer the AutoPilot-dedicated key so memory costs are tracked
+        # Prefer the Otto-dedicated key so memory costs are tracked
         # separately from the platform-wide OpenRouter key.
         cloud_key = os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY")
         if cloud_key:
@@ -242,7 +242,7 @@ class GraphitiConfig(BaseSettings):
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:
             return self.embedder_api_key
-        # Prefer the AutoPilot-dedicated OpenAI key so memory costs are
+        # Prefer the Otto-dedicated OpenAI key so memory costs are
         # tracked separately from the platform-wide OpenAI key.
         cloud_key = os.getenv("CHAT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
         if cloud_key:

@@ -138,6 +138,9 @@ class TestStartChatTurn:
         assert create_call.kwargs["source_platform"] == "discord"
         mock_stream_registry.create_session.assert_awaited_once()
         mock_enqueue.assert_awaited_once()
+        # Its paid reads count against, and ask on, this chat's spend ceiling.
+        envelope = mock_enqueue.await_args.kwargs["envelope"]
+        assert envelope.tainted and envelope.spend_session_id == "sess-new"
 
     @pytest.mark.asyncio
     async def test_stale_session_id_falls_back_to_fresh_session(self):
@@ -509,7 +512,7 @@ class TestUploadWorkspaceFile:
         ):
             await upload_workspace_file(self._req(session_id="sess-1"))
         # Session-scoped manager (like the web upload) plus a flat filename —
-        # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
+        # write_file defaults the path to /sessions/<id>/<name> where Otto
         # reads it. No explicit uploads/<uuid> path.
         mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
         kwargs = write.await_args.kwargs
@@ -790,6 +793,10 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "paywalled"
+        assert denial.message == (
+            "Chatting with experts requires an active subscription. "
+            "Upgrade your plan to start chatting."
+        )
         assert denial.button_url == "https://app/settings/billing"
         assert denial.button_label == "Subscribe"
 
@@ -833,6 +840,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio
@@ -847,6 +857,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio

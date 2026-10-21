@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import (
     TOOL_GROUPS,
@@ -434,6 +435,23 @@ class TestTransfer:
         assert mock_sessions[0].metadata.origin == expected
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, roster, mock_turn, mock_sessions
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.handoff_to_expert.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_never_waits_for_a_result(self, roster, mock_turn, mock_sessions):
         await HandoffToExpertTool()._execute(
             user_id="alice",
@@ -442,6 +460,22 @@ class TestTransfer:
             prompt="hi",
         )
         assert mock_turn.await_args.kwargs["timeout"] == 0
+
+    @pytest.mark.asyncio
+    async def test_handed_off_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
 
     @pytest.mark.asyncio
     async def test_framing_transfers_ownership(self, roster, mock_turn, mock_sessions):
@@ -509,7 +543,7 @@ class TestTerminalResponse:
     async def test_response_names_the_new_owner(self, roster, mock_turn, mock_sessions):
         r = await self._handoff()
         assert r.expert is not None and r.expert.name == "Bea"
-        assert "Sub-AutoPilot" not in r.message
+        assert "Subtask" not in r.message
         assert "Bea owns this now" in r.message
 
     @pytest.mark.asyncio
@@ -593,7 +627,19 @@ class TestFailedTransfer:
         self, roster, mock_turn, mock_sessions
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
-        assert "already running" in r.message
+        assert spawn_limit_message() in r.message
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_waiting_for_a_slot_has_still_moved(
+        self, roster, mock_turn, mock_sessions, deleted_sessions
+    ):
+        """Its turn is queued in the target's own session, so the target owns
+        it now and the thread stays."""
+        r = await self._handoff(mock_turn, "queued_for_slot")
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "transferred"
+        assert "starting when one of their task slots frees" in r.message
+        assert deleted_sessions == []
 
     @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
     @pytest.mark.asyncio
@@ -676,14 +722,15 @@ class TestExpertToolGate:
     experts_enabled=False for user_id=None)."""
 
     def test_flag_off_disables_every_team_group(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=False, expert_id=None) == [
-            "experts",
-            "expert_admin",
-            "delegation",
-        ]
-        assert expert_tool_disabled_groups(
-            experts_enabled=False, expert_id="expert-a"
-        ) == ["experts", "expert_admin", "delegation"]
+        expected = ["experts", "expert_admin", "delegation", "expert_resources"]
+        assert (
+            expert_tool_disabled_groups(experts_enabled=False, expert_id=None)
+            == expected
+        )
+        assert (
+            expert_tool_disabled_groups(experts_enabled=False, expert_id="expert-a")
+            == expected
+        )
 
     def test_plain_session_loses_expert_session_tools(self) -> None:
         assert expert_tool_disabled_groups(experts_enabled=True, expert_id=None) == [
@@ -701,26 +748,32 @@ class TestExecuteToolEnforcesDisabledGroups:
     handed to the model — a presentation filter. ``execute_tool`` is the
     actual enforcement boundary: a model that names a hidden tool anyway
     must be refused BEFORE ``tool.execute`` runs, not just told about it
-    afterwards."""
+    afterwards.
+
+    Both cases use an eager tool on purpose. A deferred one is refused here
+    whatever its group, so it cannot tell a working group gate from a broken
+    one — and it can never dispatch, which is the point of the second test.
+    """
 
     @pytest.mark.asyncio
     async def test_a_tool_in_a_disabled_group_is_refused_without_dispatching(
         self,
     ) -> None:
         session = _session()
-        tool = get_tool("hire_expert")
+        tool = get_tool("handoff_to_expert")
         assert tool is not None
 
         with patch.object(
             tool, "execute", new=AsyncMock(return_value="should never run")
         ) as execute_mock:
             result = await execute_tool(
-                tool_name="hire_expert",
+                tool_name="handoff_to_expert",
                 parameters={},
                 user_id="alice",
                 session=session,
                 tool_call_id="call-1",
-                disabled_groups=["expert_admin"],
+                disabled_groups=["experts"],
+                disabled_tools=(),
             )
 
         execute_mock.assert_not_awaited()
@@ -731,19 +784,20 @@ class TestExecuteToolEnforcesDisabledGroups:
     @pytest.mark.asyncio
     async def test_a_tool_outside_any_disabled_group_still_dispatches(self) -> None:
         session = _session()
-        tool = get_tool("hire_expert")
+        tool = get_tool("handoff_to_expert")
         assert tool is not None
 
         with patch.object(
             tool, "execute", new=AsyncMock(return_value="it ran")
         ) as execute_mock:
             result = await execute_tool(
-                tool_name="hire_expert",
+                tool_name="handoff_to_expert",
                 parameters={},
                 user_id="alice",
                 session=session,
                 tool_call_id="call-1",
                 disabled_groups=(),
+                disabled_tools=(),
             )
 
         execute_mock.assert_awaited_once()

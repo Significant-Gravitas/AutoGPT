@@ -3,37 +3,11 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useEffect, useState } from "react";
+import { ReviewInputFields } from "./components/ReviewInputFields/ReviewInputFields";
+import { reviewFields } from "./components/ReviewInputFields/helpers";
+import { useReviewBlockSchema } from "./components/ReviewInputFields/useReviewBlockSchema";
 
-interface StructuredReviewPayload {
-  data: unknown;
-  instructions?: string;
-}
-
-function isStructuredReviewPayload(
-  payload: unknown,
-): payload is StructuredReviewPayload {
-  return (
-    payload !== null &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (typeof (payload as any).instructions === "string" ||
-      (payload as any).instructions === undefined)
-  );
-}
-
-function extractReviewData(payload: unknown): {
-  data: unknown;
-  instructions?: string;
-} {
-  if (isStructuredReviewPayload(payload)) {
-    return {
-      data: payload.data,
-      instructions: payload.instructions,
-    };
-  }
-
-  return { data: payload };
-}
+type ReviewPayload = PendingHumanReviewModel["payload"];
 
 interface PendingReviewCardProps {
   review: PendingHumanReviewModel;
@@ -54,18 +28,19 @@ export function PendingReviewCard({
   showAutoApprove = true,
   nodeId,
 }: PendingReviewCardProps) {
-  const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
 
-  let instructions = review.instructions;
+  // A block's review names the block in `action`; a human-in-the-loop block's
+  // instructions are the author's own words, shown above its data.
+  const instructions = review.action ? undefined : review.instructions;
+  const { schema, isLoading: isSchemaLoading } = useReviewBlockSchema(
+    review.block_id,
+  );
 
-  const isHITLBlock = instructions && !instructions.includes("Block");
-
-  if (instructions && !isHITLBlock) {
-    instructions = undefined;
-  }
-
-  const [currentData, setCurrentData] = useState(extractedData.data);
+  // Render the payload as stored: it is exactly what the reviewer's decision
+  // sends back as the block's input, so unwrapping any key here would show
+  // one thing and execute another.
+  const [currentData, setCurrentData] = useState<ReviewPayload>(review.payload);
 
   useEffect(() => {
     if (externalDataValue !== undefined) {
@@ -76,9 +51,21 @@ export function PendingReviewCard({
     }
   }, [externalDataValue]);
 
-  const handleDataChange = (newValue: unknown) => {
+  function handleDataChange(newValue: ReviewPayload) {
     setCurrentData(newValue);
     onReviewDataChange(review.node_exec_id, JSON.stringify(newValue, null, 2));
+  }
+
+  const renderFields = (readOnly: boolean) => {
+    if (!isPlainObject(currentData) || isSchemaLoading) return null;
+    return (
+      <ReviewInputFields
+        fields={reviewFields(currentData, schema)}
+        values={currentData}
+        onChange={(values) => handleDataChange(values as ReviewPayload)}
+        readOnly={readOnly}
+      />
+    );
   };
 
   const renderDataInput = () => {
@@ -167,7 +154,9 @@ export function PendingReviewCard({
           </Text>
         )}
 
-        {isDataEditable && !autoApproveFuture ? (
+        {isPlainObject(currentData) ? (
+          renderFields(!isDataEditable || autoApproveFuture)
+        ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
           <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -202,4 +191,8 @@ export function PendingReviewCard({
       )}
     </div>
   );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

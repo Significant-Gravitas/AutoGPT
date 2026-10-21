@@ -7,7 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import { headline, isInsufficientDump, SILENCE_NUDGE_SECONDS } from "./helpers";
+import {
+  BRAIN_DUMP_HEADLINE,
+  isInsufficientDump,
+  SILENCE_NUDGE_SECONDS,
+} from "./helpers";
 import {
   clearRecording,
   getMetaById,
@@ -26,7 +30,6 @@ export type ScreenState =
   | "insufficient";
 
 export function useBrainDumpStep() {
-  const name = useOnboardingWizardStore((s) => s.name);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
   const recorder = useBrainDumpRecorder();
@@ -194,6 +197,7 @@ export function useBrainDumpStep() {
     }
 
     const startedAt = performance.now();
+    let finalizeLatencyMs: number;
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -201,15 +205,15 @@ export function useBrainDumpStep() {
         duration_secs: durationSecs,
         mime_type: recorder.mimeType,
       });
-      trackBrainDump("finalize_latency_ms", {
-        ms: Math.round(performance.now() - startedAt),
-        input_mode: "voice",
-      });
+      finalizeLatencyMs = Math.round(performance.now() - startedAt);
       if (response.status !== 200 || response.data.status === "failed") {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        trackBrainDump("transcription_failed", { error_code: errorCode });
+        trackBrainDump("transcription_failed", {
+          error_code: errorCode,
+          finalize_latency_ms: finalizeLatencyMs,
+        });
         // The recording itself went through — it just didn't carry enough
         // to personalize from, so the recovery screen offers a fresh take
         // instead of a retry of this one. Nothing is cleared until the
@@ -226,6 +230,7 @@ export function useBrainDumpStep() {
     trackBrainDump("brain_dump_completed", {
       duration_secs: Math.round(durationSecs),
       input_mode: "voice",
+      finalize_latency_ms: finalizeLatencyMs,
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -453,7 +458,7 @@ export function useBrainDumpStep() {
   }
 
   return {
-    headline: headline(name),
+    headline: BRAIN_DUMP_HEADLINE,
     screen,
     insufficientMode,
     typedText,

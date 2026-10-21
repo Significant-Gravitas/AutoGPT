@@ -1,5 +1,7 @@
 """Unit tests for the Anthropic rate card used in direct-mode cost computation."""
 
+import pytest
+
 from .anthropic_rate_card import compute_anthropic_cost_usd, get_max_output_tokens
 
 
@@ -184,3 +186,62 @@ class TestSonnet5Rates:
         # brings sticker rates, update this to 18.0 — that change is
         # expected, not a mispricing.
         assert cost == 12.0
+
+
+class TestSonnet5_5Rates:
+    """Sonnet 5.5 is the default standard-tier model, so a missing rate-card
+    entry is the expensive failure: direct-Anthropic deployments would cap
+    output at the 32K fallback and bill at the Opus fallback (~7.5x)."""
+
+    def test_sonnet_5_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-sonnet-5-5") == 128000
+
+    def test_sonnet_5_5_billed_at_published_rates_without_fallback(self, caplog):
+        cost = compute_anthropic_cost_usd(
+            model="claude-sonnet-5-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        # Sticker $2/$10 per 1M — the Opus fallback would charge $90.
+        assert cost == 12.0
+        assert "falling back" not in caplog.text
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.7), ("1h", 4.2)])
+    def test_sonnet_5_5_cache_rates(self, cache_ttl, expected_cost):
+        cost = compute_anthropic_cost_usd(
+            model="claude-sonnet-5-5",
+            prompt_tokens=2_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_creation_tokens=1_000_000,
+            cache_ttl=cache_ttl,
+        )
+        assert cost == expected_cost
+
+
+class TestOpus5Rates:
+    """Opus 5 direct-mode costs must use published rates, not the 3x fallback."""
+
+    def test_opus_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-opus-5") == 128000
+
+    def test_opus_5_billed_at_published_rates_without_fallback(self, caplog):
+        cost = compute_anthropic_cost_usd(
+            model="claude-opus-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        assert cost == 30.0
+        assert "falling back" not in caplog.text
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 6.75), ("1h", 10.5)])
+    def test_opus_5_cache_rates(self, cache_ttl, expected_cost):
+        cost = compute_anthropic_cost_usd(
+            model="claude-opus-5",
+            prompt_tokens=2_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_creation_tokens=1_000_000,
+            cache_ttl=cache_ttl,
+        )
+        assert cost == expected_cost

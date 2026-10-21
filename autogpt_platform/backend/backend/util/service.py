@@ -23,6 +23,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    get_type_hints,
     overload,
 )
 
@@ -36,6 +37,7 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
+from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
@@ -546,6 +548,71 @@ class AppServiceClient(ABC):
 ASC = TypeVar("ASC", bound=AppServiceClient)
 
 
+def _build_return_adapter(
+    func: Callable[..., Any], annotation: Any, method_name: str
+) -> TypeAdapter | None:
+    """Build the TypeAdapter that validates an RPC method's return value.
+
+    A return annotation written as a forward reference — ``list["SomeModel"]`` —
+    arrives here as ``list[ForwardRef("SomeModel")]``, and pydantic resolves that
+    name against the namespace of whoever builds the adapter, which is this module
+    rather than the one that declared the endpoint. Such an adapter is never fully
+    defined, so validating with it raises ``PydanticUserError`` on *every* call.
+    Re-resolving the hints against the declaring module fixes those.
+
+    Returns ``None`` when no usable adapter can be built, so the call falls back to
+    the raw payload (as a failed validation already does) with one warning at client
+    build time instead of an exception on every request.
+    """
+    adapter = _usable_adapter(annotation)
+    if adapter is not None:
+        return adapter
+
+    try:
+        # include_extras keeps Annotated metadata — a constraint or discriminator
+        # carried there is part of the validation contract.
+        resolved = get_type_hints(inspect.unwrap(func), include_extras=True).get(
+            "return", annotation
+        )
+    except Exception as e:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} could not be "
+            f"resolved ({type(e).__name__}: {e}); returning results unvalidated"
+        )
+        return None
+
+    adapter = _usable_adapter(resolved)
+    if adapter is None:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} has no usable "
+            "TypeAdapter; returning results unvalidated"
+        )
+    return adapter
+
+
+def _usable_adapter(annotation: Any) -> TypeAdapter | None:
+    """A TypeAdapter for *annotation*, or None if it cannot be built or rebuilt.
+
+    ``rebuild()`` returns None when the adapter is already complete and False when
+    it still has unresolved references.
+    """
+    try:
+        adapter = TypeAdapter(annotation)
+        return None if adapter.rebuild(raise_errors=False) is False else adapter
+    except Exception:
+        return None
+
+
+def _send_trace_headers(request: httpx.Request) -> None:
+    """Carry the caller's trace to the service, whose request transaction then
+    continues it. Runs inside the HTTP client span, which becomes the parent."""
+    request.headers.update(tracing.trace_propagation_headers())
+
+
+async def _send_trace_headers_async(request: httpx.Request) -> None:
+    _send_trace_headers(request)
+
+
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
@@ -558,24 +625,28 @@ def get_service_client(
         if not request_retry:
             return fn
 
-        # Use preconfigured retry decorator for service communication
-        return create_retry_decorator(
-            max_attempts=api_comm_retry,
-            max_wait=api_comm_max_wait,
-            context="Service communication",
-            exclude_exceptions=(
-                # Don't retry these specific exceptions that won't be fixed by retrying
-                ValueError,  # Invalid input/parameters
-                DataError,  # Prisma data integrity errors (foreign key, unique constraints)
-                UniqueViolationError,  # Unique constraint violations
-                KeyError,  # Missing required data
-                TypeError,  # Wrong data types
-                AttributeError,  # Missing attributes
-                asyncio.CancelledError,  # Task was cancelled
-                concurrent.futures.CancelledError,  # Future was cancelled
-                HTTPClientError,  # HTTP 4xx client errors - don't retry
-            ),
-        )(fn)
+        # Use preconfigured retry decorator for service communication. It keeps
+        # fn's sync/async shape, which its overloads can't express.
+        return cast(
+            Callable[..., R],
+            create_retry_decorator(
+                max_attempts=api_comm_retry,
+                max_wait=api_comm_max_wait,
+                context="Service communication",
+                exclude_exceptions=(
+                    # Don't retry these specific exceptions that won't be fixed by retrying
+                    ValueError,  # Invalid input/parameters
+                    DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                    UniqueViolationError,  # Unique constraint violations
+                    KeyError,  # Missing required data
+                    TypeError,  # Wrong data types
+                    AttributeError,  # Missing attributes
+                    asyncio.CancelledError,  # Task was cancelled
+                    concurrent.futures.CancelledError,  # Future was cancelled
+                    HTTPClientError,  # HTTP 4xx client errors - don't retry
+                ),
+            )(fn),
+        )
 
     class DynamicClient:
         def __init__(self) -> None:
@@ -597,6 +668,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers]},
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
@@ -608,6 +680,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers_async]},
             )
 
         @property
@@ -833,7 +906,9 @@ def get_service_client(
             sig = inspect.signature(original_func)
             ret_ann = sig.return_annotation
             expected_return = (
-                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+                None
+                if ret_ann is inspect.Signature.empty
+                else _build_return_adapter(original_func, ret_ann, rpc_name)
             )
 
             if inspect.iscoroutinefunction(original_func):

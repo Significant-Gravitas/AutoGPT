@@ -9,7 +9,7 @@ from autogpt_libs.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
 from backend.blocks._base import Block, BlockSchema
-from backend.data import db
+from backend.data import db, redis_client
 from backend.data.block import initialize_blocks
 from backend.data.db_manager import DatabaseManager
 from backend.data.execution import (
@@ -53,7 +53,10 @@ class SpinTestServer:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await db.disconnect()
+        try:
+            await redis_client.disconnect_async()
+        finally:
+            await db.disconnect()
 
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)

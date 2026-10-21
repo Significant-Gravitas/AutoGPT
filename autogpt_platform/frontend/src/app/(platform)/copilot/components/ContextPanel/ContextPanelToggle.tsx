@@ -2,93 +2,120 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useCopilotUIStore } from "../../store";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import { WorkspaceFilesPopover } from "../WorkspaceFileCards/components/WorkspaceFilesPopover";
-import { File02Icon, SidebarRightIcon } from "@hugeicons/core-free-icons";
+import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
+import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useIsMobile } from "../../useIsMobile";
+import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
+import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 
 interface Props {
   sessionId?: string | null;
+  /** The chat's live expert, whose integrations lead the controls. */
+  expert?: ContextPanelExpert | null;
 }
 
-export function ContextPanelToggle({ sessionId }: Props) {
-  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  const hasArtifact = useCopilotUIStore(
-    (s) => s.artifactPanel.activeArtifact != null,
+// Sized and stroked like the sidebar's nav icons so the chat's top-right
+// controls read as the same family.
+const toggleClass =
+  "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none";
+
+/** The chat's top-right controls: the expert's integrations, the Computer
+ *  toggle and the files toggle, each opening its face of the side panel. The
+ *  Computer toggle is always there for a chat with a session: the panel's
+ *  own "Turn on screen" button lives on that face, so it must be reachable
+ *  before any desktop exists. */
+export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
+  const { deliverables, documentCount: liveDocumentCount } =
+    useSessionFiles(sessionId);
+  const documentCount = Math.max(deliverables.length, liveDocumentCount);
+  const isFilesOpen = useCopilotUIStore(
+    (s) =>
+      s.artifactPanel.isOpen &&
+      s.artifactPanel.activeTab === "files" &&
+      s.artifactPanel.activeArtifact == null &&
+      !s.artifactPanel.isComputerOpen,
   );
-  const activeTab = useCopilotUIStore((s) => s.artifactPanel.activeTab);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
-  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
-  const lastArtifact = useCopilotUIStore((s) => s.artifactPanel.lastArtifact);
-  const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  // Sized and stroked like the sidebar's nav icons so the chat's top-right
-  // controls read as the same family.
-  const buttonClass =
-    "size-8 shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:!bg-zinc-200 active:scale-[0.97] motion-reduce:transition-none";
-  const iconClass = "!size-4 text-sidebar-foreground/90";
-  const isArtifactsOpen = isOpen && activeTab === "artifacts";
-  // An open artifact preview and the artifacts tab are both faces of the
-  // right sidebar, so the sidebar toggle reads active for either and is the
-  // one control that closes them — the panel carries no close button.
-  const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
-  // While the right sidebar owns that region the inline files card has
-  // nowhere to sit, so the workspace-files trigger becomes a popover; it
-  // returns to the pinned card as soon as the sidebar closes.
-  const showFilesAsPopover = isRightSidebarOpen;
-  const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
+  const isComputerOpen = useCopilotUIStore(
+    (s) => s.artifactPanel.isComputerOpen,
+  );
+  const isPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  const openComputer = useCopilotUIStore((s) => s.openComputer);
+  const closeComputer = useCopilotUIStore((s) => s.closeComputer);
+  const isMobile = useIsMobile();
+  // The mobile sheet has no computer face to open, and mobile already floats
+  // a files button over the chat's top-left corner.
+  const showComputerToggle = !!sessionId && !isMobile;
+  const showFilesToggle = !isMobile;
 
-  function handleSidebarToggle() {
-    if (hasArtifact) {
-      closeArtifactPanel();
-      return;
-    }
-    // Reopening brings back the preview that was showing when the sidebar
-    // closed (e.g. hello.md), not just the tabs view.
-    if (!isRightSidebarOpen && lastArtifact) {
-      openArtifact(lastArtifact);
-      return;
-    }
-    toggleContextPanelTab("artifacts");
+  function handleComputerToggle() {
+    // Back to whatever the computer was covering: the preview, the tab, or
+    // nothing at all.
+    if (isComputerOpen) closeComputer();
+    else openComputer();
   }
 
+  if (!expert && !showComputerToggle && !showFilesToggle) return null;
+
   return (
-    <div className="flex shrink-0 items-center gap-1 p-2">
-      {showFilesAsPopover && sessionId ? (
-        <WorkspaceFilesPopover
-          sessionId={sessionId}
-          wrapperClassName="p-0"
-          triggerClassName={buttonClass}
-          iconClassName={iconClass}
-        />
-      ) : (
+    // With the side panel open the chat column narrows under these controls,
+    // so they lift off the messages instead of blending into them.
+    <div
+      className={cn(
+        "m-1 flex shrink-0 items-center gap-1 rounded-xl border border-transparent bg-white p-1 transition-shadow duration-150",
+        isPanelOpen && "border-zinc-200/70 shadow-sm",
+      )}
+    >
+      {expert && <IntegrationsToggle expert={expert} className={toggleClass} />}
+      {showComputerToggle && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleComputerToggle}
+          aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
+          aria-pressed={isComputerOpen}
+          className={cn(toggleClass, "size-8", isComputerOpen && "bg-zinc-100")}
+        >
+          <Icon
+            icon={ComputerIcon}
+            className="!size-4 text-sidebar-foreground/90"
+          />
+        </Button>
+      )}
+      {showFilesToggle && (
         <Button
           type="button"
           variant="ghost"
           size="icon"
           onClick={() => toggleContextPanelTab("files")}
-          aria-label={
-            isFilesCardOpen ? "Hide workspace files" : "Open workspace files"
-          }
-          aria-pressed={isFilesCardOpen}
-          className={cn(buttonClass, isFilesCardOpen && "bg-zinc-200/70")}
+          aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
+            documentCount > 0
+              ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
+              : ""
+          }`}
+          aria-pressed={isFilesOpen}
+          className={cn(
+            toggleClass,
+            "h-8",
+            documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
+            isFilesOpen && "bg-zinc-100",
+          )}
         >
-          <Icon icon={File02Icon} className={iconClass} />
+          <Icon
+            icon={LicenseDraftIcon}
+            className="!size-4 text-sidebar-foreground/90"
+          />
+          {documentCount > 0 && (
+            <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+              {documentCount}
+            </span>
+          )}
         </Button>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={handleSidebarToggle}
-        aria-label={isRightSidebarOpen ? "Hide artifacts" : "Open artifacts"}
-        aria-pressed={isRightSidebarOpen}
-        className={cn(buttonClass, isRightSidebarOpen && "bg-zinc-200/70")}
-      >
-        <Icon icon={SidebarRightIcon} className={iconClass} />
-      </Button>
     </div>
   );
 }

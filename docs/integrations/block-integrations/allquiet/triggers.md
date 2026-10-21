@@ -3,7 +3,7 @@
 A webhook trigger that starts a graph when All Quiet posts an incident to it, so agents can react to incidents rather than only create them.
 <!-- END MANUAL -->
 
-## All Quiet Incident Trigger
+## AllQuiet Incident Trigger
 
 ### What it is
 Triggers a graph when All Quiet posts an incident to this webhook

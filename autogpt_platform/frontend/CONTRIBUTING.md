@@ -505,8 +505,8 @@ Check a flag in a client component:
 ```tsx
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-export function AgentActivityPanel() {
-  const enabled = useGetFlag(Flag.AGENT_ACTIVITY);
+export function SkillsPanel() {
+  const enabled = useGetFlag(Flag.SKILLS_HUB);
   if (!enabled) return null;
   return <div>Feature is enabled!</div>;
 }
@@ -528,9 +528,13 @@ Local dev and Playwright:
 
 Adding new flags:
 
-1. Add the flag to the `Flag` enum and `FlagValues` type
-2. Provide a mock value in the mock map
-3. Configure the flag in LaunchDarkly
+1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
+2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
+3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
+   - `launchdarkly`: LaunchDarkly
+   - `posthog`: PostHog
+   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
+   - `server`: whichever the backend's `FEATURE_FLAG_BACKEND` names, by the same rule
 
 ---
 
@@ -834,6 +838,7 @@ Common scripts (see `package.json` for full list):
 - `pnpm lint` — ESLint + Prettier check
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
+- `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests

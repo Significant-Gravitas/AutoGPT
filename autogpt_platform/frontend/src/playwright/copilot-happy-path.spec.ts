@@ -4,7 +4,7 @@ import { CopilotPage } from "./pages/copilot.page";
 
 test.use({ storageState: E2E_AUTH_STATES.marketplace });
 
-test("copilot happy path: user can create a deterministic AutoPilot session and keep it after reload", async ({
+test("copilot happy path: user can create a deterministic Otto session and keep it after reload", async ({
   page,
 }) => {
   test.setTimeout(120000);

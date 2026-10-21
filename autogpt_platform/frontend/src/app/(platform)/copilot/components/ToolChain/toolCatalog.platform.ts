@@ -1,5 +1,7 @@
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import {
   quoted,
+  quotedName,
   strField,
   type ToolInput,
   type ToolMeta,
@@ -44,6 +46,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Running command",
     done: "Ran command",
     subject: (input) => quoted(input, "command", 60),
+  },
+  start_desktop: {
+    category: "browser",
+    running: "Starting desktop",
+    done: "Started desktop",
   },
   list_workspace_files: {
     category: "file-list",
@@ -99,8 +106,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   list_agent_triggers: {
     category: "trigger",
-    running: "Listing agent triggers",
-    done: "Listed agent triggers",
+    running: "Listing workflow triggers",
+    done: "Listed workflow triggers",
   },
   setup_agent_webhook_trigger: {
     category: "trigger",
@@ -126,18 +133,49 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "block",
     running: "Running block",
     done: "Ran block",
-    subject: (input) =>
-      quoted(input, "block_name") ?? quoted(input, "block_id", 20),
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
+  },
+  find_capability: {
+    category: "block",
+    running: "Searching capabilities for",
+    done: "Searched capabilities for",
+    subject: (input) => quoted(input, "query"),
+  },
+  describe_capability: {
+    category: "block",
+    running: "Reading capability",
+    done: "Read capability",
+    subject: (input) => quotedName(strField(input, "id")),
+  },
+  run_capability: {
+    category: "block",
+    running: "Running",
+    done: "Ran",
+    subject: (input, context) =>
+      quotedName(
+        getBlockDisplayName(context.displayName, context.output) ??
+          strField(input, "id"),
+      ),
+  },
+  resume_capability: {
+    category: "block",
+    running: "Resuming",
+    done: "Resumed",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
   schedule_agent: {
     category: "agent",
-    running: "Scheduling agent",
-    done: "Scheduled agent",
+    running: "Scheduling workflow",
+    done: "Scheduled workflow",
   },
   continue_run_block: {
     category: "block",
     running: "Continuing block run",
     done: "Continued block run",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
   run_mcp_tool: {
     category: "mcp",

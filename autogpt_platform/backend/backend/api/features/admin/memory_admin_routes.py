@@ -38,6 +38,7 @@ from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.util.clients import get_scheduler_client
+from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +230,7 @@ def _audit_cross_user_access(
     caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
         "email", ""
     )
-    memory_scope = f"expert {expert_id!r}" if expert_id is not None else "AutoPilot"
+    memory_scope = f"expert {expert_id!r}" if expert_id is not None else "Otto"
     if group_id is not None:
         memory_scope = f"{memory_scope} (group {group_id})"
     logger.info(
@@ -238,7 +239,7 @@ def _audit_cross_user_access(
         # The URL is repr-escaped too: with path-scoped expert routes the
         # expert_id is a path segment, so control characters would
         # otherwise ride into the log line through the URL itself.
-        f"for {request.method} {str(request.url)!r}"
+        f"for {request.method} {redact_url(str(request.url))!r}"
     )
 
 
@@ -347,7 +348,7 @@ async def _count(driver, query: str) -> int:
 # Routes
 # ---------------------------------------------------------------------------
 #
-# Memory scope is structural: account (AutoPilot) reads live at
+# Memory scope is structural: account (Otto) reads live at
 # ``/{user_id}/...`` and expert reads at
 # ``/{user_id}/experts/{expert_id}/...``. Each pair shares one ``_impl``
 # so the route bodies aren't duplicated. Maintenance POSTs exist only
@@ -411,7 +412,7 @@ async def get_memory_overview(
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> MemoryOverview:
-    """Count summary of the user's account (AutoPilot) memory graph."""
+    """Count summary of the user's account (Otto) memory graph."""
     return await _get_memory_overview_impl(
         request=request,
         user_id=user_id,
@@ -499,7 +500,7 @@ async def list_entities(
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> EntityListResponse:
-    """Entities in the user's account (AutoPilot) memory graph."""
+    """Entities in the user's account (Otto) memory graph."""
     return await _list_entities_impl(
         request=request,
         user_id=user_id,
@@ -626,7 +627,7 @@ async def list_facts(
     status: _FACT_STATUS_QUERY = "any",
     scope: Annotated[str | None, Query()] = None,
 ) -> FactListResponse:
-    """Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph."""
+    """Facts (RELATES_TO edges) in the user's account (Otto) memory graph."""
     return await _list_facts_impl(
         request=request,
         user_id=user_id,
@@ -731,7 +732,7 @@ async def list_communities(
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> CommunityListResponse:
-    """Communities in the user's account (AutoPilot) memory graph."""
+    """Communities in the user's account (Otto) memory graph."""
     return await _list_communities_impl(
         request=request,
         user_id=user_id,

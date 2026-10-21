@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotModal } from "../../../../useCopilotModal";
+import { MAX_ATTACHMENTS } from "../../../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "../ComposerPlusMenu";
 
 let mockWorkspaceFilesFlag = false;
@@ -129,6 +130,43 @@ describe("ComposerPlusMenu", () => {
       await screen.findByRole("menuitem", { name: /scheduled/i }),
     );
     expect(onClearGuidedPrompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("disables both file entries at the cap and says what the cap is", async () => {
+    mockWorkspaceFilesFlag = true;
+    const onFilesSelected = vi.fn();
+    const onUseWorkspaceFile = vi.fn();
+    render(
+      <ComposerPlusMenu
+        onFilesSelected={onFilesSelected}
+        onUseWorkspaceFile={onUseWorkspaceFile}
+        isAtCap
+      />,
+    );
+    openMenu();
+
+    const items = await screen.findAllByRole("menuitem");
+    const disabled = items.filter(
+      (item) => item.getAttribute("data-disabled") !== null,
+    );
+    expect(disabled.map((item) => item.textContent)).toEqual([
+      `Attach file${MAX_ATTACHMENTS} max`,
+      `Use File from Workspace${MAX_ATTACHMENTS} max`,
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /use file from workspace/i }),
+    );
+    expect(onUseWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("leaves the non-file entries alone at the cap", async () => {
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} isAtCap />);
+    openMenu();
+
+    fireEvent.click(await screen.findByRole("menuitem", { name: /skills/i }));
+
+    expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
   it("hides the workspace option when its flag is disabled", async () => {

@@ -24,7 +24,7 @@ class AskQuestionTool(BaseTool):
     """Ask the user one or more clarifying questions and wait for answers.
 
     Use this tool when the user's request is ambiguous and you need more
-    information before proceeding.  Call find_block or other discovery tools
+    information before proceeding.  Call find_capability or other discovery tools
     first to ground your questions in real platform options, then call this
     tool with concrete questions listing those options.
     """
@@ -61,9 +61,17 @@ class AskQuestionTool(BaseTool):
                                 "description": (
                                     "Options for this question, offered to the "
                                     "user as choices; they can always type a "
-                                    "custom answer instead. Exactly one option "
-                                    "is chosen, so split a question that needs "
-                                    "several answers into separate questions."
+                                    "custom answer instead."
+                                ),
+                            },
+                            "allow_multiple": {
+                                "type": "boolean",
+                                "description": (
+                                    "Let the user pick several of 'options'. "
+                                    "Set it when the answers combine ('which "
+                                    "roles?'); leave it out for a choice "
+                                    "between alternatives. Ignored without "
+                                    "options."
                                 ),
                             },
                             "keyword": {
@@ -75,7 +83,8 @@ class AskQuestionTool(BaseTool):
                     },
                     "description": (
                         "One or more clarifying questions. Each item has "
-                        "'question' (required), 'options', and 'keyword'."
+                        "'question' (required), 'options', 'allow_multiple' "
+                        "and 'keyword'."
                     ),
                 },
             },
@@ -170,6 +179,9 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         keyword=keyword,
         example=", ".join(options) if options else None,
         options=options,
+        # A free-text question has nothing to multi-select, so the flag is
+        # dropped rather than sent on for the card to render a lone checkbox.
+        allow_multiple=bool(options) and _parse_allow_multiple(item),
     )
 
 
@@ -195,3 +207,15 @@ def _parse_options(raw: Any) -> list[str]:
             if len(unique) == MAX_OPTIONS:
                 break
     return list(unique)
+
+
+def _parse_allow_multiple(item: dict[str, Any]) -> bool:
+    """Read the multi-select flag, tolerating the string a model may send.
+
+    Anything else is False: a question defaults to one answer, and guessing
+    at a truthy value would silently change what the card asks for.
+    """
+    raw = item.get("allow_multiple")
+    if isinstance(raw, bool):
+        return raw
+    return isinstance(raw, str) and raw.strip().lower() == "true"

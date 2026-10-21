@@ -15,7 +15,9 @@ describe("TopUpDialog", () => {
     render(<TopUpDialog isOpen onClose={() => {}} />);
 
     expect(screen.getByText("You're out of automation credits")).toBeDefined();
-    expect(screen.getByText(/Top up to keep your agents/)).toBeDefined();
+    expect(
+      screen.getByText(/Top up to keep your workflows and experts running/),
+    ).toBeDefined();
     expect(screen.queryByText("Add automation credits")).toBeNull();
   });
 
@@ -24,7 +26,7 @@ describe("TopUpDialog", () => {
 
     expect(screen.getByText("Add automation credits")).toBeDefined();
     expect(
-      screen.getByText(/Credits are used to run your agents/),
+      screen.getByText(/Credits are used to run your workflows and experts/),
     ).toBeDefined();
     expect(screen.queryByText("You're out of automation credits")).toBeNull();
   });
@@ -63,17 +65,12 @@ describe("TopUpDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // Escape is handled twice by the design-system Dialog: `DialogWrap` passes
-  // `onEscapeKeyDown={handleClose}`, and Radix's dismissable layer then also
-  // fires `onOpenChange(false)` on the root. Both land on `controlled.set`.
-  // Closing is idempotent so nothing breaks, but pin the count — if the Dialog
-  // is ever fixed this test should be the thing that notices.
-  it("notifies close on Escape (twice, via the shared Dialog)", async () => {
+  it("notifies close exactly once on Escape", async () => {
     const onClose = vi.fn();
     render(<TopUpDialog isOpen onClose={onClose} />);
 
     await userEvent.keyboard("{Escape}");
 
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

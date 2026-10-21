@@ -30,6 +30,7 @@ def mock_session_lookup():
     session = MagicMock()
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
+    session.metadata.delegated_by_session_id = None
     with patch(
         "backend.copilot.sdk.session_waiter.get_chat_session",
         new=AsyncMock(return_value=session),
@@ -83,7 +84,44 @@ async def test_queue_branch_timeout_zero_returns_immediately():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
-    queue_mock.assert_awaited_once_with(session_id="sess-busy", message="follow-up")
+    queue_mock.assert_awaited_once_with(
+        session_id="sess-busy", message="follow-up", metadata=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_branch_keeps_the_callers_message_metadata():
+    """A spawn tool's sender provenance must survive the in-flight fallback:
+    the pending message is what becomes the persisted user row."""
+    queue_mock = AsyncMock(return_value=_QR())
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_user_message",
+            new=queue_mock,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(),
+        ),
+    ):
+        outcome, _ = await run_copilot_turn_via_queue(
+            session_id="sess-busy",
+            user_id="u1",
+            message="follow-up",
+            timeout=0,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            message_metadata=provenance,
+        )
+
+    assert outcome == "queued"
+    assert queue_mock.await_args.kwargs["metadata"] == provenance
 
 
 @pytest.mark.asyncio
@@ -151,8 +189,8 @@ async def test_idle_session_enqueues_normally():
     idle_db = MagicMock()
     # Session is idle → CAS idle → running succeeds; running count is 1
     # after the flip (this caller is the only running session).
+    idle_db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     idle_db.update_chat_session_status = AsyncMock(return_value=True)
-    idle_db.count_chat_sessions_by_status = AsyncMock(return_value=1)
     idle_db.list_chat_sessions_by_status = AsyncMock(return_value=[])
     idle_db.get_chat_session_status = AsyncMock(return_value="idle")
 
@@ -192,6 +230,67 @@ async def test_idle_session_enqueues_normally():
     assert result.queued is False
     create_session.assert_awaited_once()
     enqueue.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "delegated_by, inflight, expected",
+    [
+        # A sub-session's turn with four running waits for a slot instead of
+        # taking the fifth.
+        ("parent-session", 4, "queued_for_slot"),
+        # An AutoPilotBlock turn keeps the inflight cap...
+        (None, 4, "completed"),
+        # ...which still refuses at its number.
+        (None, 15, "rejected_concurrent_turn_cap"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_delegated_turn_leaves_the_users_last_slot_free(
+    mock_session_lookup, delegated_by: str | None, inflight: int, expected: str
+):
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = delegated_by
+    db = MagicMock()
+    # Four already running: the admit decides by the capacity it is given.
+    db.admit_chat_session_turn = AsyncMock(
+        side_effect=lambda **kw: "full" if 4 >= kw["capacity"] else "admitted"
+    )
+    db.get_chat_session_status = AsyncMock(return_value="idle")
+    queued = MagicMock()
+    queued.get_chat_session_status = AsyncMock(return_value="queued")
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=inflight),
+        ),
+        patch.object(active_turns, "chat_db", return_value=db),
+        patch.object(active_turns, "get_running_turn_limit", return_value=5),
+        patch(
+            "backend.copilot.executor.utils.get_inflight_turn_limit", return_value=15
+        ),
+        patch("backend.copilot.sdk.session_waiter.stream_registry.create_session"),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn"),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn"),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=queued),
+    ):
+        outcome, _ = await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="kick off",
+            timeout=0.1,
+            tool_call_id="sub:parent-session",
+            tool_name="run_sub_session",
+        )
+
+    assert outcome == expected
 
 
 @pytest.mark.asyncio
@@ -246,3 +345,178 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_in_flight_session_with_allow_queue_false_is_refused():
+    """``allow_queue=False`` must refuse an in-flight target rather than
+    append to its buffer — a spawn's prompt would otherwise execute inside
+    another turn's envelope and permissions. Covered directly, because the
+    only other coverage is through mocked callers, so deleting the guard
+    would leave those green."""
+    queue_message = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_user_message",
+            new=queue_message,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("running"),
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-busy",
+            user_id="u1",
+            message="do the thing",
+            timeout=5,
+            tool_call_id="autopilot_block",
+            tool_name="autopilot_block",
+            allow_queue=False,
+        )
+
+    assert outcome == "refused"
+    assert result.refusal, "a refusal must carry a message the model can act on"
+    queue_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_session_with_allow_queue_false_is_refused():
+    """A session that already has a task waiting for a slot takes no second
+    one: its queued row is the one the promotion replays."""
+    scheduled = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("queued"),
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-waiting",
+            user_id="u1",
+            message="do the thing",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            allow_queue=False,
+        )
+
+    assert outcome == "refused"
+    assert result.refusal
+    scheduled.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_tree_refusal_becomes_the_refused_outcome():
+    """A ledger refusal (budget or node cap) reaches the caller as
+    ``refused`` carrying the ledger's own message, not as ``failed``."""
+    from backend.copilot.tree import TreeRefusal
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This task's tree has closed.")),
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-idle",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert outcome == "refused"
+    assert result.refusal == "This task's tree has closed."
+
+
+def _status_db(status: str) -> MagicMock:
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value=status)
+    return db
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("impersonated", [False, True])
+async def test_a_child_turn_carries_its_parents_impersonation(impersonated: bool):
+    """A sub-session started inside an impersonated turn is the admin's work
+    too, so its LLM analytics are marked the same way."""
+    scheduled = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_impersonated",
+            return_value=impersonated,
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert scheduled.await_args.kwargs["impersonated"] is impersonated
+
+
+@pytest.mark.asyncio
+async def test_a_queued_child_turn_carries_its_parents_impersonation(
+    mock_session_lookup,
+):
+    """A delegated child the running cap sends to the queue keeps the flag
+    for when it is promoted."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    queued = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_impersonated",
+            return_value=True,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=active_turns.ConcurrentTurnLimitError()),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn", new=queued),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_queued_session",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert queued.await_args.kwargs["impersonated"] is True

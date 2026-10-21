@@ -1,0 +1,259 @@
+import {
+  getGetTrialsGetTrialStatusMockHandler200,
+  getPostTrialsCancelTrialMockHandler200,
+  getPostTrialsResumeTrialMockHandler200,
+  getPostTrialsStartTrialCheckoutMockHandler200,
+} from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import type { TrialCheckoutResponse } from "@/app/api/__generated__/models/trialCheckoutResponse";
+import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { server } from "@/mocks/mock-server";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
+import {
+  deferredTrialResponse,
+  setTrialUser,
+  trialOffer,
+  trialResponse,
+} from "@/tests/integrations/trial-fixtures";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => setTrialUser("user-a"));
+afterEach(() => {
+  setTrialUser(null);
+  vi.restoreAllMocks();
+});
+
+function offerForCurrentUser() {
+  return trialResponse({
+    eligible: true,
+    active: false,
+    status: null,
+    offer: {
+      ...trialOffer,
+      duration_days: useAuthStore.getState().user?.id === "user-b" ? 10 : 7,
+    },
+  });
+}
+
+describe("trial account isolation", () => {
+  it("hides user A's status immediately when switching to user B", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(() =>
+        useAuthStore.getState().user?.id === "user-a"
+          ? trialResponse()
+          : pending.promise,
+      ),
+    );
+    render(<TrialCard />);
+    await screen.findByRole("button", { name: "Cancel trial" });
+    act(() => setTrialUser("user-b"));
+    expect(screen.queryByText("Your trial")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel trial" })).toBeNull();
+    pending.resolve(offerForCurrentUser());
+    await screen.findByRole("button", { name: /start 10-day trial/i });
+    act(() => setTrialUser(null));
+    expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+  });
+
+  it("never redirects user B to a checkout requested by user A", async () => {
+    const pending = deferredTrialResponse<TrialCheckoutResponse>();
+    const checkout = vi.fn(() => pending.promise);
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(offerForCurrentUser),
+      getPostTrialsStartTrialCheckoutMockHandler200(checkout),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /start 7-day trial/i }),
+    );
+    await waitFor(() => expect(checkout).toHaveBeenCalledOnce());
+    act(() => setTrialUser("user-b"));
+    await screen.findByRole("button", { name: /start 10-day trial/i });
+    pending.resolve({ url: "https://checkout.stripe.com/c/pay/user_a" });
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: /start 10-day trial/i })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("does not apply user A's late cancellation result to user B", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    const cancel = vi.fn(() => pending.promise);
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(() =>
+        trialResponse({
+          offer: {
+            ...trialOffer,
+            unit_amount:
+              useAuthStore.getState().user?.id === "user-a" ? 2000 : 3000,
+          },
+        }),
+      ),
+      getPostTrialsCancelTrialMockHandler200(cancel),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cancel trial" }),
+    );
+    fireEvent.click(
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
+    );
+    await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    act(() => setTrialUser("user-b"));
+    await screen.findByText(/\$30\.00/);
+    pending.resolve(trialResponse({ active: false, status: "canceled" }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Cancel trial" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(screen.queryByText(/Cancellation confirmed/)).toBeNull();
+    expect(screen.getByText(/\$30\.00/)).toBeDefined();
+  });
+
+  it("does not open user A's late cancellation popup for user B", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(trialForCurrentUser),
+      getPostTrialsCancelTrialMockHandler200(() => pending.promise),
+    );
+    render(<TrialCard />);
+    await confirmCancel();
+    act(() => setTrialUser("user-b"));
+    await screen.findByText(/\$30\.00/);
+    pending.resolve(trialResponse({ cancel_at_period_end: true }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Cancel trial" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Cancellation pending")).toBeNull();
+  });
+
+  it("hides user A's open cancellation popup from user B", async () => {
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(trialForCurrentUser),
+      getPostTrialsCancelTrialMockHandler200(
+        trialResponse({
+          cancel_at_period_end: true,
+        }),
+      ),
+    );
+    render(<TrialCard />);
+    await confirmCancel();
+    await screen.findByRole("dialog", { name: "Cancellation confirmed" });
+    act(() => setTrialUser("user-b"));
+    await screen.findByText(/\$30\.00/);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not apply user A's late resume to user B", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    const resume = vi.fn(() => pending.promise);
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(() =>
+        trialResponse({
+          cancel_at_period_end: true,
+          offer: {
+            ...trialOffer,
+            unit_amount:
+              useAuthStore.getState().user?.id === "user-a" ? 2000 : 3000,
+          },
+        }),
+      ),
+      getPostTrialsResumeTrialMockHandler200(resume),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Resume trial" }),
+    );
+    await waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    act(() => setTrialUser("user-b"));
+    await screen.findByText(/\$30 \/ month/);
+    pending.resolve(trialResponse());
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Resume trial" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(screen.getByText("Cancellation pending")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not close user B's popup when user A's late resume lands", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(() =>
+        useAuthStore.getState().user?.id === "user-a"
+          ? trialResponse({ cancel_at_period_end: true })
+          : trialForCurrentUser(),
+      ),
+      getPostTrialsResumeTrialMockHandler200(() => pending.promise),
+      getPostTrialsCancelTrialMockHandler200(
+        trialResponse({ cancel_at_period_end: true }),
+      ),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Resume trial" }),
+    );
+    act(() => setTrialUser("user-b"));
+    await confirmCancel();
+    await screen.findByRole("dialog", { name: "Cancellation confirmed" });
+
+    pending.resolve(trialResponse());
+    await act(() => new Promise((settle) => setTimeout(settle, 50)));
+
+    expect(
+      screen.getByRole("dialog", { name: "Cancellation confirmed" }),
+    ).toBeDefined();
+  });
+});
+
+function trialForCurrentUser() {
+  return trialResponse({
+    offer: {
+      ...trialOffer,
+      unit_amount: useAuthStore.getState().user?.id === "user-a" ? 2000 : 3000,
+    },
+  });
+}
+
+async function confirmCancel() {
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
+  const confirm = await screen.findByRole("dialog", {
+    name: "Cancel your trial?",
+  });
+  fireEvent.click(
+    within(confirm).getByRole("button", { name: "Cancel trial" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("dialog", { name: "Cancel your trial?" }),
+    ).toBeNull(),
+  );
+}

@@ -26,7 +26,7 @@ async def upload_attachments(
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Upload the user's attachments to the workspace.
 
-    ``session_id`` scopes the files to the turn's session so AutoPilot can
+    ``session_id`` scopes the files to the turn's session so Otto can
     read them. Returns ``(file_ids, problems)`` — the IDs that succeeded,
     and ``(filename, reason)`` for the ones that were rejected — so the
     caller can attach the successes and surface the failures.
@@ -64,7 +64,7 @@ def format_attachment_problems(problems: list[tuple[str, str]]) -> str:
 
 
 def model_attachment_note(problems: list[tuple[str, str]]) -> str:
-    """Note injected into the turn so AutoPilot knows which files it does NOT
+    """Note injected into the turn so Otto knows which files it does NOT
     have, instead of assuming a dropped attachment was read."""
     listed = ", ".join(f"{filename} ({reason})" for filename, reason in problems)
     return (

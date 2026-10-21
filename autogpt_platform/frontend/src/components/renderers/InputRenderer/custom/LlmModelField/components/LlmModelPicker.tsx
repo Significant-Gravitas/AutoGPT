@@ -9,6 +9,7 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
+  compareModelEntries,
   getCreatorDisplayName,
   getModelDisplayName,
   getProviderDisplayName,
@@ -101,7 +102,7 @@ export function LlmModelPicker({
           providerCount: providers.size,
         };
       })
-      .sort((a, b) => a.title.localeCompare(b.title));
+      .sort(compareModelEntries);
   }, [modelsByTitle]);
 
   const providerEntries = useMemo(() => {

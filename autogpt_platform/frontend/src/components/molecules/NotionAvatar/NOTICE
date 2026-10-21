@@ -1,0 +1,24 @@
+Notion-style avatar artwork
+===========================
+
+The avatar layers in parts.generated.ts are derived from the "Noto avatar"
+illustration pack by Felix Wong, released under CC0 1.0 (public domain
+dedication) — no rights reserved, no attribution required.
+
+    Designer:  https://www.producthunt.com/@felix12777
+    Pack:      https://abstractlab.gumroad.com/l/noto-avatar
+    Licence:   https://creativecommons.org/publicdomain/zero/1.0/
+
+They were vendored from the notion-avatar project by Mayandev (Phil Zou),
+which is licensed under the MIT License:
+
+    Project:   https://github.com/Mayandev/notion-avatar
+    Licence:   https://github.com/Mayandev/notion-avatar/blob/main/LICENSE.md
+
+Nothing is depended on at runtime: the layers are copied into this repo, so
+there is no package to install and no service to call.
+
+Only the `public/avatar/preview` layers are vendored, and the seasonal
+`festival` pack is excluded. Regenerate with:
+
+    node scripts/vendor-notion-avatar.mjs /path/to/notion-avatar

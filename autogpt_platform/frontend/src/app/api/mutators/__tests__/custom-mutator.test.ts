@@ -28,6 +28,8 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
 
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 import { customMutator } from "../custom-mutator";
@@ -190,7 +192,7 @@ describe("customMutator — Sentry trace propagation", () => {
   });
 });
 
-describe("customMutator — empty body handling", () => {
+describe("customMutator — response body handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsClientSide.mockReturnValue(true);
@@ -267,5 +269,136 @@ describe("customMutator — empty body handling", () => {
     }>("/api/foo", { method: "GET" });
 
     expect(result.data).toEqual({ ok: true });
+  });
+
+  it.each([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+  ])("preserves %s bytes as a Blob", async (contentType) => {
+    const bytes = new Uint8Array([0, 255, 128, 10, 42]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(bytes, {
+          headers: { "content-type": contentType },
+        }),
+      ),
+    );
+
+    const result = await customMutator<{
+      data: Blob;
+      status: number;
+      headers: Headers;
+    }>("/api/store/media/user/images/image.png", { method: "GET" });
+
+    expect(result.data).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await result.data.arrayBuffer())).toEqual(bytes);
+    expect(result.data.type).toBe(contentType);
+  });
+});
+
+describe("customMutator validation errors", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+  });
+
+  it.each([
+    [
+      {
+        detail: [
+          { msg: "Field required", loc: ["body", "name"] },
+          { msg: "Invalid value" },
+        ],
+      },
+      "Field required; Invalid value",
+    ],
+    [{ detail: "Not allowed" }, "Not allowed"],
+    [{ detail: { reason: "Invalid input" } }, '{"reason":"Invalid input"}'],
+    [
+      {
+        detail: {
+          type: "validation_error",
+          message: "Agent Output › Name: This field is required",
+          node_errors: { "node-1": { name: "This field is required" } },
+        },
+      },
+      "Agent Output › Name: This field is required",
+    ],
+    [
+      { detail: [{ reason: "Invalid input" }, null] },
+      '{"reason":"Invalid input"}; null',
+    ],
+    [{ detail: null, message: "Fallback message" }, "Fallback message"],
+    [{ detail: [], message: "Fallback message" }, "Fallback message"],
+    [{ message: "Missing detail" }, "Missing detail"],
+  ])("formats response %j as a readable message", async (body, message) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Entity",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => body,
+      }),
+    );
+
+    await expect(
+      customMutator("/test", { method: "POST" }),
+    ).rejects.toMatchObject({
+      message,
+      status: 422,
+    });
+  });
+});
+
+describe("customMutator — response dates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+  });
+
+  it("returns server timestamps as Dates and user inputs verbatim", async () => {
+    const execution = {
+      id: "exec-1",
+      started_at: "2024-03-10T09:30:00Z",
+      inputs: { when: "2024-03-10T09:30:00", at: "2024-03-10T09:30:00Z" },
+      nodes: [{ input_default: { when: "2024-03-10T09:30:00Z" } }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(execution),
+      }),
+    );
+
+    const res = await customMutator<{
+      data: typeof execution;
+      status: number;
+      headers: Headers;
+    }>("/test", {
+      method: "GET",
+    });
+
+    expect(res.data.started_at).toBeInstanceOf(Date);
+    expect(res.data.inputs).toEqual(execution.inputs);
+    expect(res.data.nodes[0].input_default).toEqual(
+      execution.nodes[0].input_default,
+    );
+    expect(JSON.parse(JSON.stringify(res.data.inputs))).toEqual(
+      execution.inputs,
+    );
   });
 });

@@ -30,6 +30,36 @@ const smoothShadowRing = plugin(function smoothShadowRing({
   });
 });
 
+// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
+// stay percent-encoded or the data URI terminates early.
+const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
+
+// Lays grain over an element's own background. Deliberately sets no `position`,
+// so it never fights the positioning utilities already on the target — callers
+// must position the element themselves.
+const grainTexture = plugin(function grainTexture({ addUtilities }) {
+  addUtilities({
+    ".grain-overlay::after": {
+      content: '""',
+      position: "absolute",
+      inset: "0",
+      backgroundImage: GRAIN_TEXTURE,
+      opacity: "0.5",
+      mixBlendMode: "soft-light",
+      pointerEvents: "none",
+    },
+  });
+});
+
+const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
+  matchUtilities(
+    {
+      "text-shadow": (value) => ({ textShadow: value }),
+    },
+    { values: theme("textShadow") },
+  );
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -161,6 +191,19 @@ const config = {
       },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+        "message-table": "0 1px 2px rgba(0,0,0,0.04)",
+      },
+      backgroundImage: {
+        "message-table-header":
+          "radial-gradient(35% 160% at 8% 0%, rgba(139,92,246,0.05), transparent), radial-gradient(35% 160% at 50% 0%, rgba(99,102,241,0.04), transparent), radial-gradient(35% 160% at 92% 0%, rgba(59,130,246,0.05), transparent), linear-gradient(to bottom, theme(colors.white), theme(colors.zinc.50))",
+      },
+      textShadow: {
+        "message-table-violet":
+          "0 0 6px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.55)",
+        "message-table-indigo":
+          "0 0 6px rgba(99,102,241,0.45), 0 0 18px rgba(99,102,241,0.55)",
+        "message-table-blue":
+          "0 0 6px rgba(59,130,246,0.45), 0 0 18px rgba(59,130,246,0.55)",
       },
       keyframes: {
         "accordion-down": {
@@ -305,6 +348,8 @@ const config = {
     tailwindcssAnimate,
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
+    grainTexture,
+    textShadow,
   ],
 } satisfies Config;
 

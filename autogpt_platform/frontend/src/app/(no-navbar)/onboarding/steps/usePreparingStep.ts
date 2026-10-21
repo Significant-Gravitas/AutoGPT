@@ -14,7 +14,7 @@ const GENERIC_CHECKLIST = [
 // opens on an empty "Recommended" section.
 const BRAIN_DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing AutoPilot on your work",
+  "Briefing Otto on your work",
   "Building your space",
   "Finding tools for your work",
 ] as const;
@@ -51,7 +51,9 @@ export function usePreparingStep({
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
   const isDumpPath = isBrainDumpEnabled && peekIntroPath() === "A";
-  const checklist = isDumpPath ? BRAIN_DUMP_CHECKLIST : GENERIC_CHECKLIST;
+  const checklist: readonly string[] = isDumpPath
+    ? BRAIN_DUMP_CHECKLIST
+    : GENERIC_CHECKLIST;
   const duration = isDumpPath ? BRAIN_DUMP_DURATION_MS : GENERIC_DURATION_MS;
   const stepInterval = duration / checklist.length;
 

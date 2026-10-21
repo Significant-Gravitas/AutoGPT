@@ -1,11 +1,12 @@
 import {
   getListCopilotSkillsQueryKey,
   useUploadCopilotSkill,
+  useUploadCopilotSkillPackage,
 } from "@/app/api/__generated__/endpoints/skills/skills";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { getSkillUploadError } from "./helpers";
+import { getSkillUploadError, isSkillPackageFile } from "./helpers";
 
 interface Args {
   onUploaded?: (name: string) => void;
@@ -16,8 +17,11 @@ export function useUploadSkillButton({ onUploaded }: Args = {}) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { mutateAsync: uploadSkill, isPending: isUploading } =
+  const { mutateAsync: uploadSkill, isPending: isUploadingFile } =
     useUploadCopilotSkill();
+  const { mutateAsync: uploadPackage, isPending: isUploadingPackage } =
+    useUploadCopilotSkillPackage();
+  const isUploading = isUploadingFile || isUploadingPackage;
 
   function openFilePicker() {
     fileInputRef.current?.click();
@@ -30,21 +34,11 @@ export function useUploadSkillButton({ onUploaded }: Args = {}) {
     if (!file) return;
 
     try {
-      const content = await file.text();
+      const result = isSkillPackageFile(file)
+        ? await uploadPackage({ data: { file } })
+        : await uploadMarkdownSkill(file);
+      if (!result) return;
 
-      // Pre-flight the common rejections client-side so the user gets an
-      // instant, specific message instead of waiting on a server round-trip.
-      const validationError = getSkillUploadError(content);
-      if (validationError) {
-        toast({
-          title: "Can't upload this skill",
-          description: validationError,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const result = await uploadSkill({ data: { content } });
       const name =
         result.status === 201 ? result.data.name : (file.name ?? "skill");
       toast({ title: `Skill "${name}" uploaded` });
@@ -64,6 +58,25 @@ export function useUploadSkillButton({ onUploaded }: Args = {}) {
         variant: "destructive",
       });
     }
+  }
+
+  // `null` when the client-side pre-flight rejected the file and has already
+  // said so, so the caller reports nothing further.
+  async function uploadMarkdownSkill(file: File) {
+    const content = await file.text();
+
+    // Pre-flight the common rejections client-side so the user gets an
+    // instant, specific message instead of waiting on a server round-trip.
+    const validationError = getSkillUploadError(content);
+    if (validationError) {
+      toast({
+        title: "Can't upload this skill",
+        description: validationError,
+        variant: "destructive",
+      });
+      return null;
+    }
+    return uploadSkill({ data: { content } });
   }
 
   return {

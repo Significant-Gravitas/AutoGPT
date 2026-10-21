@@ -11,6 +11,10 @@ from backend.util.settings import BehaveAs, Settings
 
 class Entitlement(str, Enum):
     CODEX_SUBSCRIPTION_TRANSPORT = "codex_subscription_transport"
+    # The Advanced model tier. Gated on hosted so it is a reason to upgrade
+    # rather than a reason not to; granted outright on self-host, where
+    # there is no plan to sell and the operator pays for their own tokens.
+    ADVANCED_MODEL_TIER = "advanced_model_tier"
 
 
 class EntitlementPolicy(BaseModel):
@@ -26,11 +30,16 @@ ENTITLEMENT_POLICIES: Mapping[Entitlement, EntitlementPolicy] = MappingProxyType
             minimum_tier=SubscriptionTier.MAX,
             allow_local=True,
         ),
+        Entitlement.ADVANCED_MODEL_TIER: EntitlementPolicy(
+            minimum_tier=SubscriptionTier.MAX,
+            allow_local=True,
+        ),
     }
 )
 
 _TIER_ORDER = (
     SubscriptionTier.NO_TIER,
+    SubscriptionTier.TRIAL,
     SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
     SubscriptionTier.MAX,

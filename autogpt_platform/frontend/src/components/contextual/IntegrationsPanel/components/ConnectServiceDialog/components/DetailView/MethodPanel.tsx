@@ -1,5 +1,7 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import {
   AuthType,
   type AuthMethod,
@@ -7,6 +9,9 @@ import {
 } from "../../helpers";
 import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
 import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
+import { ChatGPTConnectExplainer } from "./ChatGPTConnectExplainer";
+import { InlineHostScopedForm } from "../ConnectMethodView/InlineHostScopedForm";
+import { InlineUserPasswordForm } from "../ConnectMethodView/InlineUserPasswordForm";
 import { OAuthConnectButton } from "./OAuthConnectButton";
 import { UnsupportedNotice } from "./UnsupportedNotice";
 
@@ -21,7 +26,7 @@ const TAB_LABEL: Record<AuthMethod, string> = {
 interface Props {
   method: AuthMethod;
   provider: ConnectableProvider;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function MethodPanel({ method, provider, onSuccess }: Props) {
@@ -29,12 +34,16 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
   if (method === AuthType.oauth2) {
     const isChatGPT = authProvider === "codex";
     return (
-      <OAuthConnectButton
-        provider={authProvider}
-        providerName={isChatGPT ? "ChatGPT" : provider.name}
-        buttonLabel={isChatGPT ? "Sign in with ChatGPT" : undefined}
-        onSuccess={onSuccess}
-      />
+      <div className="flex flex-col gap-4">
+        {isChatGPT && <ChatGPTConnectExplainer />}
+        <OAuthConnectButton
+          provider={authProvider}
+          providerName={isChatGPT ? "ChatGPT" : provider.name}
+          buttonLabel={isChatGPT ? "Sign in with ChatGPT" : undefined}
+          termsNotice={isChatGPT ? "OpenAI" : undefined}
+          onSuccess={onSuccess}
+        />
+      </div>
     );
   }
   if (method === AuthType.api_key) {
@@ -49,6 +58,20 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
   if (method === AuthType.device_code) {
     return (
       <DeviceAuthConnectButton
+        provider={provider.id}
+        providerName={provider.name}
+        onSuccess={onSuccess}
+      />
+    );
+  }
+  if (method === AuthType.host_scoped) {
+    return (
+      <InlineHostScopedForm provider={provider.id} onSuccess={onSuccess} />
+    );
+  }
+  if (method === AuthType.user_password) {
+    return (
+      <InlineUserPasswordForm
         provider={provider.id}
         providerName={provider.name}
         onSuccess={onSuccess}

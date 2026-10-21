@@ -34,8 +34,11 @@ function renderMarketplace(
   render(
     <>
       <MarketplaceStep
+        name="Otto"
         color="rose-300"
         submitted={null}
+        isFinal={false}
+        isSubmitting={false}
         onSubmit={onSubmit}
         onSkip={onSkip}
         {...overrides}
@@ -64,6 +67,14 @@ describe("MarketplaceStep", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(onSkip).toHaveBeenCalled();
+  });
+
+  test("raises the expert itself when it is the flow's last beat", async () => {
+    const { onSubmit } = renderMarketplace({ isFinal: true });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bring Otto to life" }),
+    );
+    expect(onSubmit).toHaveBeenCalledWith([]);
   });
 
   test("shows only three default marketplace workflows", async () => {
@@ -143,13 +154,15 @@ describe("MarketplaceStep", () => {
     expect(await screen.findByText("SEO Blog Writer")).toBeDefined();
     expect(await screen.findByText("Local SEO")).toBeDefined();
     expect(screen.queryByText("Marketplace skill")).toBeNull();
-    await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Add" }))[0],
+    );
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /Remove SEO Blog Writer/ }),
       ).toBeDefined(),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /Remove Local SEO/ }),

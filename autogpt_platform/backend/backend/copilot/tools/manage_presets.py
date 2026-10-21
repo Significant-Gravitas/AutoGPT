@@ -128,7 +128,7 @@ class ListPresetsTool(BaseTool):
         return (
             "List the user's presets (saved run configurations and webhook "
             "triggers). Optionally filter by library_agent_id or graph_id. Use "
-            "before update_preset/delete_preset to find a preset_id."
+            "before tool:update_preset / tool:delete_preset to find a preset_id."
         )
 
     @property
@@ -205,7 +205,7 @@ class ListPresetsTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -267,7 +267,7 @@ class UpdatePresetTool(BaseTool):
             "resume it (is_active=false/true), or reconfigure its inputs. For a "
             "webhook trigger, 'inputs' is the trigger block's config (e.g. repo, "
             "events) and changing it re-registers the webhook with the preset's "
-            "existing credentials. Find preset_id via list_presets."
+            "existing credentials. Find preset_id via tool:list_presets."
         )
 
     @property
@@ -282,6 +282,7 @@ class UpdatePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to update.",
+                    "entity": "preset",
                 },
                 "name": {"type": "string", "description": "New name."},
                 "description": {
@@ -291,6 +292,7 @@ class UpdatePresetTool(BaseTool):
                 "is_active": {
                     "type": "boolean",
                     "description": "Set false to pause the trigger, true to resume.",
+                    "title": "Active",
                 },
                 "inputs": {
                     "type": "object",
@@ -389,7 +391,7 @@ class DeletePresetTool(BaseTool):
     def description(self) -> str:
         return (
             "Delete a preset by preset_id. If it's a webhook trigger, its webhook "
-            "is deregistered and cleaned up. Find preset_id via list_presets."
+            "is deregistered and cleaned up. Find preset_id via tool:list_presets."
         )
 
     @property
@@ -404,6 +406,7 @@ class DeletePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to delete.",
+                    "entity": "preset",
                 },
             },
             "required": ["preset_id"],

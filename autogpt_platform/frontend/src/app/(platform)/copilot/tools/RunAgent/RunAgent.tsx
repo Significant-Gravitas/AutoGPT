@@ -89,7 +89,9 @@ export function RunAgentTool({ part }: Props) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
-              text={isCorrupted ? "Agent result could not be displayed" : text}
+              text={
+                isCorrupted ? "Workflow result could not be displayed" : text
+              }
               className={isError ? "text-red-500" : undefined}
             />
           </div>
@@ -98,7 +100,7 @@ export function RunAgentTool({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 

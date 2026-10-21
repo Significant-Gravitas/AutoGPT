@@ -77,6 +77,21 @@ describe("minimap helpers", () => {
     expect(entries[0].title).toBe("Your message");
   });
 
+  it("never ticks a held call's rows as the user's words", () => {
+    const entries = toMinimapEntries([
+      textMessage("t1", "user", "make two folders"),
+      {
+        ...textMessage("t2", "user", "I answered an action"),
+        metadata: { held_calls_answered: true },
+      } as UIMessage,
+      {
+        ...textMessage("t3", "user", "<held_call_result>"),
+        metadata: { held_call: { review_id: "r1" } },
+      } as UIMessage,
+    ]);
+    expect(entries.map((e) => e.id)).toEqual(["t1"]);
+  });
+
   it("truncates long titles with an ellipsis", () => {
     const entries = toMinimapEntries([
       textMessage("t1", "user", "x".repeat(100)),
@@ -86,12 +101,12 @@ describe("minimap helpers", () => {
   });
 
   it("swells ticks toward the cursor and tapers with distance", () => {
-    expect(tickScale(3, null)).toBe(0.4);
+    expect(tickScale(3, null)).toBe(0.6);
     expect(tickScale(3, 3)).toBe(1);
     expect(tickScale(4, 3)).toBeCloseTo(0.8);
-    expect(tickScale(9, 3)).toBe(0.4);
+    expect(tickScale(9, 3)).toBe(0.6);
     expect(tickColor(0)).toBe("bg-zinc-800");
-    expect(tickColor(1)).toBe("bg-zinc-400");
-    expect(tickColor(4)).toBe("bg-zinc-300");
+    expect(tickColor(1)).toBe("bg-zinc-500");
+    expect(tickColor(4)).toBe("bg-zinc-400");
   });
 });

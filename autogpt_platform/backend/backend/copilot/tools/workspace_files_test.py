@@ -10,6 +10,7 @@ import pytest
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.workdir import validate_ephemeral_path
 from backend.copilot.tools.workspace_files import (
     _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
@@ -22,7 +23,6 @@ from backend.copilot.tools.workspace_files import (
     WriteWorkspaceFileTool,
     _read_local_tool_result,
     _resolve_write_content,
-    _validate_ephemeral_path,
 )
 
 # Re-export so pytest discovers the session-scoped fixture
@@ -39,14 +39,14 @@ def ephemeral_dir(tmp_path, monkeypatch):
     session_dir.mkdir()
 
     monkeypatch.setattr(
-        "backend.copilot.tools.workspace_files.make_session_path",
+        "backend.copilot.tools.workdir.make_session_path",
         lambda session_id: str(session_dir),
     )
     return session_dir
 
 
 # ---------------------------------------------------------------------------
-# _validate_ephemeral_path
+# validate_ephemeral_path
 # ---------------------------------------------------------------------------
 
 
@@ -54,7 +54,7 @@ class TestValidateEphemeralPath:
     def test_valid_path(self, ephemeral_dir):
         target = ephemeral_dir / "file.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -62,7 +62,7 @@ class TestValidateEphemeralPath:
 
     def test_path_traversal_rejected(self, ephemeral_dir):
         evil_path = str(ephemeral_dir / ".." / "etc" / "passwd")
-        result = _validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
+        result = validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
         # Should return ErrorResponse
         from backend.copilot.tools.models import ErrorResponse
 
@@ -73,7 +73,7 @@ class TestValidateEphemeralPath:
         other_dir.mkdir()
         target = other_dir / "steal.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -86,7 +86,7 @@ class TestValidateEphemeralPath:
         outside_file.write_text("secret")
         symlink = ephemeral_dir / "link.txt"
         symlink.symlink_to(outside_file)
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(symlink), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -98,7 +98,7 @@ class TestValidateEphemeralPath:
         nested.mkdir(parents=True)
         target = nested / "data.csv"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -859,9 +859,10 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
 
 
 class TestSkillsRegistryACL:
-    """Writes and deletes targeting ``/skills/`` must go through the
-    skills registry (``store_skill`` / ``delete_skill``) which enforces
-    frontmatter validation, the per-user cap, and content sanitisation.
+    """Writes and deletes targeting either skills folder — Otto's
+    ``/skills/`` or an expert's ``/experts/<id>/skills/`` — must go through
+    the skills registry (``store_skill`` / ``delete_skill``) which enforces
+    frontmatter validation, the per-expert cap, and content sanitisation.
     A direct workspace write would bypass all of that."""
 
     @pytest.mark.asyncio
@@ -873,6 +874,10 @@ class TestSkillsRegistryACL:
             "  /Skills/foo/SKILL.md  ",  # case + whitespace tolerance
             "skills",
             "/skills/",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "experts/expert-a/skills/foo/scripts/run.py",
+            "  /Experts/expert-a/Skills/foo/SKILL.md  ",
+            "/experts/expert-a/skills",
         ],
     )
     async def test_write_workspace_file_rejects_skills_path(self, path):
@@ -909,13 +914,39 @@ class TestSkillsRegistryACL:
         assert "skills registry" in result.message
 
     @pytest.mark.asyncio
-    async def test_delete_workspace_file_rejects_skills_path(self):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/references/notes.md",
+        ],
+    )
+    async def test_delete_workspace_file_rejects_skills_path(self, path):
         tool = DeleteWorkspaceFileTool()
         session = make_session("user-acl-test")
         result = await tool._execute(
             user_id="user-acl-test",
             session=session,
-            path="/skills/foo/SKILL.md",
+            path=path,
         )
         assert isinstance(result, ErrorResponse)
         assert "skills registry" in result.message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/experts/expert-a/notes.md",
+            "/experts",
+            "/expertskills/foo/SKILL.md",
+            "/documents/skills-notes.md",
+        ],
+    )
+    async def test_paths_outside_either_registry_are_not_blocked(self, path):
+        """The guard must not swallow an ordinary path that merely starts the
+        same way — an expert folder that is not its skills folder, or a
+        lookalike name."""
+        from backend.copilot.tools.workspace_files import _path_under_skills_registry
+
+        assert _path_under_skills_registry(path) is False

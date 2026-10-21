@@ -90,7 +90,6 @@ from backend.integrations.credentials_store import (
     mem0_credentials,
     minimax_credentials,
     nvidia_credentials,
-    ollama_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
@@ -366,14 +365,7 @@ LLM_COST = (
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_amount=0,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": ollama_credentials.id,
-                    "provider": ollama_credentials.provider,
-                    "type": ollama_credentials.type,
-                },
-            },
+            cost_filter={"model": model},
         )
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "ollama"

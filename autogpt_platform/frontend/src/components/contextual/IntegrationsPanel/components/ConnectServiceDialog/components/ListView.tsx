@@ -13,13 +13,20 @@ interface Props {
   setQuery: (next: string) => void;
   providers: ConnectableProvider[];
   onSelect: (id: string) => void;
+  description: string;
 }
 
-export function ListView({ query, setQuery, providers, onSelect }: Props) {
+export function ListView({
+  query,
+  setQuery,
+  providers,
+  onSelect,
+  description,
+}: Props) {
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-[#505057]">
-        Pick a service to connect an API key or authorize with OAuth.
+        {description}
       </Text>
 
       <div className="relative w-full">
@@ -49,7 +56,9 @@ export function ListView({ query, setQuery, providers, onSelect }: Props) {
         </div>
       ) : (
         <div className="relative">
-          <ScrollArea className="h-[380px] pr-2">
+          {/* Radix wraps the list in a `display: table` div that grows to fit
+              each row's full description, pushing cards past the edge. */}
+          <ScrollArea className="h-[380px] pr-2 [&_[data-radix-scroll-area-viewport]>div]:!block">
             <ul className="flex flex-col gap-2 pb-4">
               {providers.map((provider) => (
                 <li key={provider.id}>

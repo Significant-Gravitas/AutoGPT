@@ -621,3 +621,74 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
     });
   });
 });
+
+// Exactly what `build_files_block` emits: the files hint first, then the
+// folders hint, either or both present.
+const FILE_HINT =
+  "Use read_workspace_file with the file_id to access file contents.";
+const FOLDER_HINT =
+  "Use list_workspace_files with the folder_id to see what is in a folder.";
+
+function userParts(content: string) {
+  const { messages } = convertChatSessionMessagesToUiMessages(
+    SESSION_ID,
+    [{ role: "user", content, sequence: 0 }],
+    { isComplete: true },
+  );
+  return messages[0].parts;
+}
+
+describe("the [Attached files] block", () => {
+  it("parses a folder-only block, leaving no raw text in the bubble", () => {
+    const parts = userParts(
+      `Look at this.\n\n[Attached files]\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FOLDER_HINT}`,
+    );
+
+    expect(parts).toEqual([
+      { type: "text", text: "Look at this.", state: "done" },
+      {
+        type: "data-workspace-folder",
+        data: {
+          id: "0fd0aaaa-1111-4222-8333-444455556666",
+          name: "Reports",
+          fileCount: 3,
+        },
+      },
+    ]);
+  });
+
+  it("parses a block with both a file and a folder, dropping both hint lines", () => {
+    const parts = userParts(
+      `Compare these.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FILE_HINT}\n${FOLDER_HINT}`,
+    );
+
+    const text = parts.find((p) => p.type === "text");
+    expect(text).toEqual({
+      type: "text",
+      text: "Compare these.",
+      state: "done",
+    });
+    expect(parts.map((p) => p.type)).toEqual([
+      "text",
+      "file",
+      "data-workspace-folder",
+    ]);
+    // Neither hint may survive as prose in the user's own bubble.
+    expect(JSON.stringify(parts)).not.toContain("list_workspace_files");
+    expect(JSON.stringify(parts)).not.toContain("read_workspace_file");
+  });
+
+  it("still parses a legacy files-only block", () => {
+    const parts = userParts(
+      `Here.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n${FILE_HINT}`,
+    );
+    expect(parts.map((p) => p.type)).toEqual(["text", "file"]);
+    expect(JSON.stringify(parts)).not.toContain("[Attached files]");
+  });
+
+  it("leaves a message with no block alone", () => {
+    expect(userParts("just text")).toEqual([
+      { type: "text", text: "just text", state: "done" },
+    ]);
+  });
+});

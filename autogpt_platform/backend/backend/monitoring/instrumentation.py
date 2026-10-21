@@ -29,6 +29,16 @@ GRAPH_EXECUTIONS_BY_USER = Counter(
     labelnames=["status"],  # Only status, user_id tracked separately when needed
 )
 
+# Terminal outcome of a graph RUN, recorded by the executor when the run's
+# final status is persisted. Distinct from GRAPH_EXECUTIONS above, which counts
+# execute *requests* at the API and cannot see a run that starts fine and then
+# fails ten nodes in. This is the series an "agents are failing" alert reads.
+GRAPH_RUN_COMPLETIONS = Counter(
+    "autogpt_graph_run_completions_total",
+    "Graph runs reaching a terminal status, by status",
+    labelnames=["status"],  # COMPLETED / FAILED / TERMINATED — bounded
+)
+
 BLOCK_EXECUTIONS = Counter(
     "autogpt_block_executions_total",
     "Total number of block executions",
@@ -52,6 +62,30 @@ SCHEDULER_JOBS = Gauge(
     "autogpt_scheduler_jobs",
     "Current number of scheduled jobs",
     labelnames=["job_type", "status"],
+)
+
+# Scheduled copilot turns that were dispatched but then failed while running:
+# the turn itself errored, or a tool it called returned an error. Counted in
+# the copilot executor, because the scheduler only sees the dispatch.
+COPILOT_SCHEDULED_TURN_FAILURES = Counter(
+    "autogpt_copilot_scheduled_turn_failures_total",
+    "Scheduled copilot turns that failed after dispatch",
+    labelnames=["reason", "tool"],
+)
+
+# Every Stripe SDK call, by resource/method and how it ended. Stripe applies
+# its rate limit per account rather than per endpoint, so the rate_limited
+# outcome is worth alerting on regardless of which call path produced it.
+STRIPE_REQUESTS = Counter(
+    "autogpt_stripe_requests_total",
+    "Stripe API requests by resource, method and outcome",
+    labelnames=["resource", "method", "outcome"],
+)
+
+STRIPE_REQUEST_DURATION = Histogram(
+    "autogpt_stripe_request_duration_seconds",
+    "Stripe API request duration in seconds",
+    labelnames=["resource", "method"],
 )
 
 DATABASE_QUERIES = Histogram(
@@ -230,6 +264,11 @@ def record_graph_execution(graph_id: str, status: str, user_id: str):
     GRAPH_EXECUTIONS_BY_USER.labels(status=status).inc()
 
 
+def record_graph_run_completion(status: str):
+    """Record a graph run reaching a terminal status (COMPLETED/FAILED/TERMINATED)."""
+    GRAPH_RUN_COMPLETIONS.labels(status=status).inc()
+
+
 def record_block_execution(block_type: str, status: str, duration: float):
     """Record a block execution event with duration."""
     BLOCK_EXECUTIONS.labels(block_type=block_type, status=status).inc()
@@ -248,6 +287,13 @@ def update_websocket_connections(user_id: str, delta: int):
         WEBSOCKET_CONNECTIONS.inc(delta)
     else:
         WEBSOCKET_CONNECTIONS.dec(abs(delta))
+
+
+def record_stripe_request(resource: str, method: str, outcome: str, duration: float):
+    """Record one Stripe API call. ``outcome`` is one of ok / rate_limited /
+    connection_error / timeout / api_error (see backend.data.stripe_client)."""
+    STRIPE_REQUESTS.labels(resource=resource, method=method, outcome=outcome).inc()
+    STRIPE_REQUEST_DURATION.labels(resource=resource, method=method).observe(duration)
 
 
 def record_database_query(operation: str, table: str, duration: float):

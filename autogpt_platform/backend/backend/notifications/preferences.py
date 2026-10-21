@@ -19,6 +19,7 @@ SERVICE_MESSAGES = frozenset(
         NotificationType.SUBSCRIPTION_CANCELLED,
         NotificationType.SUBSCRIPTION_RESUMED,
         NotificationType.SUBSCRIPTION_ENDED,
+        NotificationType.TRIAL_UPDATE,
     }
 )
 

@@ -317,12 +317,6 @@ class BaselineReasoningEmitter:
     fresh ``ChatMessage(role="reasoning")`` is appended and mutated
     in-place as further deltas arrive; :meth:`close` drops the reference
     but leaves the appended row intact.
-
-    ``render_in_ui=False`` suppresses only the live wire events
-    (``StreamReasoning*``); the ``role='reasoning'`` persistence row is
-    still appended so ``convertChatSessionToUiMessages.ts`` can hydrate
-    the reasoning bubble on reload.  The state machine advances
-    identically either way.
     """
 
     def __init__(
@@ -331,7 +325,6 @@ class BaselineReasoningEmitter:
         *,
         coalesce_min_chars: int = _COALESCE_MIN_CHARS,
         coalesce_max_interval_ms: float = _COALESCE_MAX_INTERVAL_MS,
-        render_in_ui: bool = True,
     ) -> None:
         self._block_id: str = str(uuid.uuid4())
         self._open: bool = False
@@ -343,7 +336,6 @@ class BaselineReasoningEmitter:
         self._coalesce_max_interval_ms = coalesce_max_interval_ms
         self._pending_delta: str = ""
         self._last_flush_monotonic: float = 0.0
-        self._render_in_ui = render_in_ui
 
     @property
     def is_open(self) -> bool:
@@ -375,9 +367,8 @@ class BaselineReasoningEmitter:
         # syscalls off the hot path without changing semantics.
         now = time.monotonic()
         if not self._open:
-            if self._render_in_ui:
-                events.append(StreamReasoningStart(id=self._block_id))
-                events.append(StreamReasoningDelta(id=self._block_id, delta=text))
+            events.append(StreamReasoningStart(id=self._block_id))
+            events.append(StreamReasoningDelta(id=self._block_id, delta=text))
             self._open = True
             self._last_flush_monotonic = now
             if self._session_messages is not None:
@@ -390,10 +381,9 @@ class BaselineReasoningEmitter:
 
         self._pending_delta += text
         if self._should_flush_pending(now):
-            if self._render_in_ui:
-                events.append(
-                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-                )
+            events.append(
+                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+            )
             self._pending_delta = ""
             self._last_flush_monotonic = now
         return events
@@ -426,12 +416,11 @@ class BaselineReasoningEmitter:
         if not self._open:
             return []
         events: list[StreamBaseResponse] = []
-        if self._render_in_ui:
-            if self._pending_delta:
-                events.append(
-                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-                )
-            events.append(StreamReasoningEnd(id=self._block_id))
+        if self._pending_delta:
+            events.append(
+                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+            )
+        events.append(StreamReasoningEnd(id=self._block_id))
         self._pending_delta = ""
         self._open = False
         self._block_id = str(uuid.uuid4())
